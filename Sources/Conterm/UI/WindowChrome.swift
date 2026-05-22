@@ -1,0 +1,300 @@
+import AppKit
+import SwiftUI
+
+/// Configures the NSWindow that hosts our SwiftUI scene. We hide the title
+/// bar and let SwiftUI paint the full surface, then round the window
+/// corners by giving the content view a CALayer mask.
+@MainActor
+enum WindowChrome {
+    /// How far DOWN (in points) to nudge the traffic-light buttons from
+    /// their AppKit-default position so they vertically align with the
+    /// CENTER of our 38pt tab bar (which starts at y=6 from the top of
+    /// the window content).
+    static let trafficLightYOffset: CGFloat = 12
+    /// How far RIGHT to nudge the traffic-light buttons from their
+    /// AppKit-default left edge inset (so they're not flush against
+    /// the rounded window corner).
+    static let trafficLightXOffset: CGFloat = 4
+
+    static func apply(to window: NSWindow) {
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.styleMask.insert(.fullSizeContentView)
+        window.styleMask.insert(.resizable)
+        // Off, intentionally. With it ON, AppKit treats any background
+        // click as a window-move drag, which swallows the top-edge
+        // resize affordance — dragging the top edge down moved the
+        // whole window instead of shrinking it. With it OFF, the
+        // window is still draggable from the title-bar strip
+        // (kept enabled by .fullSizeContentView), and resize from
+        // every edge / corner works.
+        window.isMovableByWindowBackground = false
+
+        // Hide the title bar background but keep the traffic lights — they
+        // sit on top of the SwiftUI canvas in the top-left.
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = false
+        window.standardWindowButton(.zoomButton)?.isHidden = false
+        window.standardWindowButton(.closeButton)?.isHidden = false
+
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.hasShadow = true
+
+        // Round the window's content view.
+        if let contentView = window.contentView {
+            contentView.wantsLayer = true
+            contentView.layer?.cornerRadius = Theme.windowCorner
+            contentView.layer?.masksToBounds = true
+            contentView.layer?.cornerCurve = .continuous
+        }
+
+        // Nudge the traffic lights down to align with our tab bar.
+        // AppKit re-applies its default geometry on multiple events
+        // (resize, fullscreen, become-key, etc.), so we hook all
+        // those and reposition every time.
+        TrafficLightShifter.attach(to: window,
+                                    xOffset: trafficLightXOffset,
+                                    yOffset: trafficLightYOffset)
+
+        // Install transparent NSView overlays around the window
+        // edges. They're 10pt wide (vs AppKit's default ~5pt for
+        // edge resize hit-testing, which gets even narrower because
+        // of our rounded corners) and forward drag events to the
+        // window's manual frame manipulation. This makes the
+        // resize handles much easier to grab.
+        WindowEdgeResizers.install(in: window)
+    }
+}
+
+/// Reposition the three traffic-light buttons by yOffset (points
+/// DOWN from AppKit's default top-inset) on every window event that
+/// could possibly re-lay them. We keep the AppleSpacing between the
+/// three buttons; we just translate them vertically as a group.
+@MainActor
+private final class TrafficLightShifter: NSObject {
+    private weak var window: NSWindow?
+    private let xOffset: CGFloat
+    private let yOffset: CGFloat
+    private static var attached: [ObjectIdentifier: TrafficLightShifter] = [:]
+
+    static func attach(to window: NSWindow, xOffset: CGFloat, yOffset: CGFloat) {
+        let key = ObjectIdentifier(window)
+        if attached[key] != nil { return }
+        let s = TrafficLightShifter(window: window, xOffset: xOffset, yOffset: yOffset)
+        attached[key] = s
+        s.register()
+        s.reposition()
+    }
+
+    init(window: NSWindow, xOffset: CGFloat, yOffset: CGFloat) {
+        self.window = window
+        self.xOffset = xOffset
+        self.yOffset = yOffset
+        super.init()
+    }
+
+    private func register() {
+        let nc = NotificationCenter.default
+        let events: [NSNotification.Name] = [
+            NSWindow.didResizeNotification,
+            NSWindow.didBecomeKeyNotification,
+            NSWindow.didBecomeMainNotification,
+            NSWindow.didExitFullScreenNotification,
+            NSWindow.didEnterFullScreenNotification,
+        ]
+        for n in events {
+            nc.addObserver(forName: n, object: window, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.reposition() }
+            }
+        }
+    }
+
+    /// Cached original-x positions per button. AppKit may or may not
+    /// reset positions on window events; recording the FIRST-seen x
+    /// per button and always restoring from that guarantees the
+    /// offset doesn't accumulate.
+    private var originalX: [NSWindow.ButtonType.RawValue: CGFloat] = [:]
+
+    private func reposition() {
+        guard let window else { return }
+        let buttons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+        for type in buttons {
+            guard let btn = window.standardWindowButton(type) else { continue }
+            // Remember the AppKit-default x the first time we see it.
+            if originalX[type.rawValue] == nil {
+                originalX[type.rawValue] = btn.frame.origin.x
+            }
+            var frame = btn.frame
+            frame.origin.y = (btn.superview?.bounds.height ?? 0)
+                - btn.frame.height
+                - (defaultTopInset(for: type) + yOffset)
+            frame.origin.x = (originalX[type.rawValue] ?? btn.frame.origin.x) + xOffset
+            btn.frame = frame
+        }
+    }
+
+    /// AppKit's default vertical inset from the title-bar's top edge
+    /// to the top of each traffic-light button. This is the SYSTEM
+    /// default we then add `yOffset` to.
+    private func defaultTopInset(for type: NSWindow.ButtonType) -> CGFloat {
+        // 6 pts is the standard Big-Sur+ inset.
+        return 6
+    }
+}
+
+// MARK: - Window edge resizers
+
+/// Transparent NSView strip placed along a window edge or corner.
+/// Sets a resize cursor on hover and manually adjusts the window
+/// frame on drag. Used to widen the resize hit-area beyond AppKit's
+/// default ~5pt (which is awkward when the window has rounded
+/// corners that visually push the resize affordance inward).
+@MainActor
+final class WindowEdgeResizer: NSView {
+    enum Edge {
+        case top, bottom, left, right
+        case topLeft, topRight, bottomLeft, bottomRight
+    }
+
+    let edge: Edge
+    private var startFrame: NSRect = .zero
+    private var startPoint: NSPoint = .zero
+
+    init(edge: Edge) {
+        self.edge = edge
+        super.init(frame: .zero)
+        wantsLayer = false
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // Only handle if the point is inside our bounds.
+        bounds.contains(convert(point, from: superview)) ? self : nil
+    }
+
+    override func resetCursorRects() {
+        let cursor: NSCursor
+        switch edge {
+        case .left, .right:
+            cursor = .resizeLeftRight
+        case .top, .bottom:
+            cursor = .resizeUpDown
+        case .topLeft, .bottomRight:
+            cursor = .crosshair       // closest standard cursor; macOS has _diagonalResizing privately
+        case .topRight, .bottomLeft:
+            cursor = .crosshair
+        }
+        addCursorRect(bounds, cursor: cursor)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let win = window else { return }
+        startFrame = win.frame
+        startPoint = NSEvent.mouseLocation
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let win = window else { return }
+        let current = NSEvent.mouseLocation
+        let dx = current.x - startPoint.x
+        let dy = current.y - startPoint.y
+        let minW: CGFloat = 320
+        let minH: CGFloat = 200
+        var f = startFrame
+        switch edge {
+        case .right:
+            f.size.width = max(minW, startFrame.size.width + dx)
+        case .left:
+            let newW = max(minW, startFrame.size.width - dx)
+            let actualDx = startFrame.size.width - newW
+            f.origin.x = startFrame.origin.x + actualDx
+            f.size.width = newW
+        case .top:
+            // macOS coordinates: y goes up; top edge moves window TOP.
+            f.size.height = max(minH, startFrame.size.height + dy)
+        case .bottom:
+            let newH = max(minH, startFrame.size.height - dy)
+            let actualDy = startFrame.size.height - newH
+            f.origin.y = startFrame.origin.y + actualDy
+            f.size.height = newH
+        case .topRight:
+            f.size.width  = max(minW, startFrame.size.width + dx)
+            f.size.height = max(minH, startFrame.size.height + dy)
+        case .topLeft:
+            let newW = max(minW, startFrame.size.width - dx)
+            f.origin.x = startFrame.origin.x + (startFrame.size.width - newW)
+            f.size.width = newW
+            f.size.height = max(minH, startFrame.size.height + dy)
+        case .bottomRight:
+            f.size.width = max(minW, startFrame.size.width + dx)
+            let newH = max(minH, startFrame.size.height - dy)
+            f.origin.y = startFrame.origin.y + (startFrame.size.height - newH)
+            f.size.height = newH
+        case .bottomLeft:
+            let newW = max(minW, startFrame.size.width - dx)
+            f.origin.x = startFrame.origin.x + (startFrame.size.width - newW)
+            f.size.width = newW
+            let newH = max(minH, startFrame.size.height - dy)
+            f.origin.y = startFrame.origin.y + (startFrame.size.height - newH)
+            f.size.height = newH
+        }
+        win.setFrame(f, display: true)
+    }
+}
+
+@MainActor
+enum WindowEdgeResizers {
+    /// Edge thickness in points — wider than AppKit's default ~5pt
+    /// so it's easy to grab even when the rounded corners push the
+    /// effective resize zone inward.
+    static let thickness: CGFloat = 10
+    /// Square corner-handle size for diagonal resize.
+    static let cornerSize: CGFloat = 16
+
+    static func install(in window: NSWindow) {
+        guard let frameView = window.contentView?.superview else { return }
+        // Only install once per window.
+        if frameView.subviews.contains(where: { $0 is WindowEdgeResizer }) {
+            return
+        }
+        let edges: [(WindowEdgeResizer.Edge, NSView.AutoresizingMask)] = [
+            (.top,         [.width, .minYMargin]),
+            (.bottom,      [.width, .maxYMargin]),
+            (.left,        [.height, .maxXMargin]),
+            (.right,       [.height, .minXMargin]),
+            (.topLeft,     [.maxXMargin, .minYMargin]),
+            (.topRight,    [.minXMargin, .minYMargin]),
+            (.bottomLeft,  [.maxXMargin, .maxYMargin]),
+            (.bottomRight, [.minXMargin, .maxYMargin]),
+        ]
+        let bounds = frameView.bounds
+        let t = thickness
+        let c = cornerSize
+        for (edge, mask) in edges {
+            let v = WindowEdgeResizer(edge: edge)
+            v.autoresizingMask = mask
+            switch edge {
+            case .top:
+                v.frame = NSRect(x: c, y: bounds.height - t, width: bounds.width - 2*c, height: t)
+            case .bottom:
+                v.frame = NSRect(x: c, y: 0, width: bounds.width - 2*c, height: t)
+            case .left:
+                v.frame = NSRect(x: 0, y: c, width: t, height: bounds.height - 2*c)
+            case .right:
+                v.frame = NSRect(x: bounds.width - t, y: c, width: t, height: bounds.height - 2*c)
+            case .topLeft:
+                v.frame = NSRect(x: 0, y: bounds.height - c, width: c, height: c)
+            case .topRight:
+                v.frame = NSRect(x: bounds.width - c, y: bounds.height - c, width: c, height: c)
+            case .bottomLeft:
+                v.frame = NSRect(x: 0, y: 0, width: c, height: c)
+            case .bottomRight:
+                v.frame = NSRect(x: bounds.width - c, y: 0, width: c, height: c)
+            }
+            // Above all SwiftUI content so we get the mouse events
+            // before they reach the SwiftUI host.
+            frameView.addSubview(v, positioned: .above, relativeTo: nil)
+        }
+    }
+}
