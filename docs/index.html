@@ -47,14 +47,16 @@ section{position:relative;z-index:2}
 /* ---- ambient gradient field ---- */
 .field{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
 .blob{position:absolute;border-radius:50%;filter:blur(130px);opacity:.55}
-.blob.a{width:620px;height:620px;top:-220px;left:-160px;
-  background:radial-gradient(circle,#7d4bff,transparent 70%)}
-.blob.b{width:560px;height:560px;top:-120px;right:-180px;
-  background:radial-gradient(circle,#ff5fb5,transparent 70%)}
-.blob.c{width:680px;height:680px;top:760px;left:38%;
-  background:radial-gradient(circle,#1fb8ff,transparent 70%);opacity:.4}
-.blob.d{width:520px;height:520px;bottom:-200px;right:-120px;
-  background:radial-gradient(circle,#9d6bff,transparent 70%);opacity:.38}
+.blob.a{width:720px;height:720px;top:-220px;left:-180px;
+  background:radial-gradient(circle,#7c2dff,transparent 70%);opacity:.9}
+.blob.b{width:660px;height:660px;top:-140px;right:-200px;
+  background:radial-gradient(circle,#ff1c9c,transparent 70%);opacity:.85}
+.blob.c{width:780px;height:780px;top:820px;left:34%;
+  background:radial-gradient(circle,#00b8ff,transparent 70%);opacity:.7}
+.blob.d{width:600px;height:600px;bottom:-220px;right:-140px;
+  background:radial-gradient(circle,#9b3dff,transparent 70%);opacity:.65}
+.blob.e{width:520px;height:520px;bottom:200px;left:-160px;
+  background:radial-gradient(circle,#ff4d6d,transparent 70%);opacity:.6}
 
 /* film grain */
 body::after{
@@ -65,24 +67,26 @@ body::after{
 
 .wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
 
-/* ---- nav ---- */
+/* ---- nav (auto-hidden at top, slides in on scroll) ---- */
 nav{
-  position:sticky;top:0;z-index:50;
-  backdrop-filter:blur(18px) saturate(170%);
-  -webkit-backdrop-filter:blur(18px) saturate(170%);
-  border-bottom:1px solid transparent;
-  transition:border-color .3s,background .3s;
+  position:fixed;top:0;left:0;right:0;z-index:50;
+  backdrop-filter:blur(22px) saturate(180%);
+  -webkit-backdrop-filter:blur(22px) saturate(180%);
+  background:rgba(10,9,16,.55);
+  border-bottom:1px solid var(--glass-brd);
+  transform:translateY(-110%);
+  transition:transform .4s cubic-bezier(.2,.7,.2,1);
 }
-nav.scrolled{
-  background:rgba(10,9,16,.6);
-  border-bottom-color:var(--glass-brd);
-}
+nav.scrolled{transform:translateY(0)}
 .nav-in{
-  max-width:var(--max);margin:0 auto;padding:14px 24px;
+  max-width:var(--max);margin:0 auto;padding:12px 24px;
   display:flex;align-items:center;gap:14px;
 }
-.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17px}
-.brand img{width:26px;height:26px;border-radius:7px}
+.brand{display:flex;align-items:center}
+.brand-logo{
+  height:30px;width:auto;display:block;
+  filter:drop-shadow(0 2px 10px rgba(255,255,255,.06));
+}
 .nav-links{margin-left:auto;display:flex;align-items:center;gap:8px}
 .nav-links a.text{
   color:var(--muted);padding:8px 14px;border-radius:10px;font-size:14.5px;
@@ -159,23 +163,15 @@ h1{
     0 30px 60px -34px rgba(0,0,0,.85);
 }
 
-/* ---- demo window ---- */
+/* ---- demo frame (the video already shows its own window chrome) ---- */
 .demo{padding:30px 0 40px}
 .window{
   max-width:960px;margin:0 auto;border-radius:18px;overflow:hidden;
-  padding:0;
+  padding:6px;
 }
-.window-bar{
-  display:flex;align-items:center;gap:8px;padding:13px 16px;
-  border-bottom:1px solid var(--glass-brd);
-  background:rgba(255,255,255,.03);
+.window video{
+  width:100%;display:block;background:#000;border-radius:12px;
 }
-.tl{width:12px;height:12px;border-radius:50%}
-.tl.r{background:#ff5f57}.tl.y{background:#febc2e}.tl.g{background:#28c840}
-.window-title{
-  margin-left:8px;font-size:12.5px;color:var(--muted);
-}
-.window video{width:100%;display:block;background:#000}
 .demo-note{
   text-align:center;font-size:13px;color:var(--muted);
   margin:16px auto 0;max-width:560px;
@@ -274,13 +270,13 @@ footer{
 <div class="field" aria-hidden="true">
   <div class="blob a"></div><div class="blob b"></div>
   <div class="blob c"></div><div class="blob d"></div>
+  <div class="blob e"></div>
 </div>
 
 <nav id="nav">
   <div class="nav-in">
-    <a class="brand" href="#top">
-      <img src="assets/icon.png" alt="" />
-      <span>Conterm</span>
+    <a class="brand" href="#top" aria-label="Conterm">
+      <img class="brand-logo" src="assets/text-logo.png" alt="Conterm" />
     </a>
     <div class="nav-links">
       <a class="text" href="#features">Features</a>
@@ -322,11 +318,6 @@ footer{
   <!-- ============ DEMO ============ -->
   <section class="demo wrap reveal">
     <div class="window glass">
-      <div class="window-bar">
-        <span class="tl r"></span><span class="tl y"></span>
-        <span class="tl g"></span>
-        <span class="window-title">Conterm</span>
-      </div>
       <video src="assets/demo.mp4" poster="assets/demo-poster.jpg"
              autoplay muted loop playsinline controls
              preload="metadata"></video>
@@ -449,10 +440,6 @@ footer{
 <footer>
   <div class="wrap">
     <div class="foot-in">
-      <a class="brand" href="#top">
-        <img src="assets/icon.png" alt="" style="width:24px;height:24px;border-radius:6px" />
-        <span style="font-size:15px">Conterm</span>
-      </a>
       <div class="foot-links">
         <a href="https://github.com/mahdiarfrm/conterm">GitHub</a>
         <a href="https://github.com/mahdiarfrm/conterm/releases">Releases</a>
@@ -472,7 +459,7 @@ footer{
 <script>
 // nav background on scroll
 const nav=document.getElementById('nav');
-const onScroll=()=>nav.classList.toggle('scrolled',window.scrollY>10);
+const onScroll=()=>nav.classList.toggle('scrolled',window.scrollY>80);
 onScroll();addEventListener('scroll',onScroll,{passive:true});
 
 // reveal-on-scroll
