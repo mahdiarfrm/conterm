@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Conterm — A modern terminal for macOS</title>
+<meta name="description" content="Conterm is a modern terminal for macOS, built on libghostty. GPU-accelerated rendering, soft glass chrome, splittable panes, and a ⌘K command palette." />
+<meta name="theme-color" content="#07060b" />
+<link rel="icon" href="assets/icon.png" />
+<link rel="apple-touch-icon" href="assets/icon.png" />
+
+<!-- Social preview -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Conterm — A modern terminal for macOS" />
+<meta property="og:description" content="GPU-accelerated rendering, soft glass chrome, splittable panes, and a ⌘K command palette. Built on libghostty." />
+<meta property="og:image" content="https://mahdiarfrm.github.io/conterm/assets/banner.png" />
+<meta property="og:url" content="https://mahdiarfrm.github.io/conterm/" />
+<meta name="twitter:card" content="summary_large_image" />
+
+<style>
+:root{
+  --bg:#07060b;
+  --text:#ECEAF6;
+  --muted:#9C97B0;
+  --purple:#B59CFF;
+  --cyan:#7BD7FF;
+  --pink:#FF8FD4;
+  --glass-brd:rgba(255,255,255,.10);
+  --max:1120px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",
+    "Segoe UI",Roboto,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+a{color:inherit;text-decoration:none}
+img{max-width:100%;display:block}
+section{position:relative;z-index:2}
+
+/* ---- ambient gradient field ---- */
+.field{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+.blob{position:absolute;border-radius:50%;filter:blur(130px);opacity:.55}
+.blob.a{width:620px;height:620px;top:-220px;left:-160px;
+  background:radial-gradient(circle,#7d4bff,transparent 70%)}
+.blob.b{width:560px;height:560px;top:-120px;right:-180px;
+  background:radial-gradient(circle,#ff5fb5,transparent 70%)}
+.blob.c{width:680px;height:680px;top:760px;left:38%;
+  background:radial-gradient(circle,#1fb8ff,transparent 70%);opacity:.4}
+.blob.d{width:520px;height:520px;bottom:-200px;right:-120px;
+  background:radial-gradient(circle,#9d6bff,transparent 70%);opacity:.38}
+
+/* film grain */
+body::after{
+  content:"";position:fixed;inset:0;z-index:1;pointer-events:none;
+  opacity:.04;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
+
+/* ---- nav ---- */
+nav{
+  position:sticky;top:0;z-index:50;
+  backdrop-filter:blur(18px) saturate(170%);
+  -webkit-backdrop-filter:blur(18px) saturate(170%);
+  border-bottom:1px solid transparent;
+  transition:border-color .3s,background .3s;
+}
+nav.scrolled{
+  background:rgba(10,9,16,.6);
+  border-bottom-color:var(--glass-brd);
+}
+.nav-in{
+  max-width:var(--max);margin:0 auto;padding:14px 24px;
+  display:flex;align-items:center;gap:14px;
+}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17px}
+.brand img{width:26px;height:26px;border-radius:7px}
+.nav-links{margin-left:auto;display:flex;align-items:center;gap:8px}
+.nav-links a.text{
+  color:var(--muted);padding:8px 14px;border-radius:10px;font-size:14.5px;
+  transition:color .2s,background .2s;
+}
+.nav-links a.text:hover{color:var(--text);background:rgba(255,255,255,.05)}
+
+/* ---- buttons ---- */
+.btn{
+  display:inline-flex;align-items:center;gap:9px;
+  padding:12px 22px;border-radius:13px;font-size:15px;font-weight:600;
+  cursor:pointer;transition:transform .18s,box-shadow .25s,background .25s;
+  white-space:nowrap;
+}
+.btn:active{transform:translateY(1px)}
+.btn-primary{
+  color:#140d22;
+  background:linear-gradient(135deg,var(--cyan),var(--purple) 55%,var(--pink));
+  box-shadow:0 10px 34px -10px rgba(181,156,255,.7),
+    inset 0 1px 0 rgba(255,255,255,.45);
+}
+.btn-primary:hover{transform:translateY(-2px);
+  box-shadow:0 16px 44px -10px rgba(181,156,255,.85),
+    inset 0 1px 0 rgba(255,255,255,.45)}
+.btn-ghost{
+  color:var(--text);
+  background:rgba(255,255,255,.05);
+  border:1px solid var(--glass-brd);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+}
+.btn-ghost:hover{background:rgba(255,255,255,.1);transform:translateY(-2px)}
+.btn-sm{padding:9px 16px;font-size:14px;border-radius:11px}
+
+/* ---- hero ---- */
+.hero{text-align:center;padding:84px 0 70px}
+.pill{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:7px 15px;border-radius:999px;font-size:13px;font-weight:500;
+  color:var(--muted);
+  background:rgba(255,255,255,.04);
+  border:1px solid var(--glass-brd);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+}
+.pill .dot{width:7px;height:7px;border-radius:50%;
+  background:#5ce6a0;box-shadow:0 0 10px #5ce6a0}
+.hero-icon{
+  width:120px;height:120px;margin:30px auto 6px;border-radius:27px;
+  filter:drop-shadow(0 24px 60px rgba(123,215,255,.32));
+}
+.hero-logo{width:min(340px,72vw);margin:6px auto 22px}
+h1{
+  font-size:clamp(34px,5.6vw,62px);line-height:1.06;
+  font-weight:700;letter-spacing:-.02em;margin:0 auto;
+  max-width:780px;
+}
+.grad{
+  background:linear-gradient(115deg,var(--cyan),var(--purple) 50%,var(--pink));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.hero-sub{
+  margin:20px auto 0;max-width:560px;font-size:18px;color:var(--muted);
+}
+.cta-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:32px}
+.hero-meta{margin-top:18px;font-size:13.5px;color:var(--muted)}
+
+/* ---- generic glass card ---- */
+.glass{
+  background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.018));
+  border:1px solid var(--glass-brd);
+  border-radius:22px;
+  backdrop-filter:blur(22px) saturate(160%);
+  -webkit-backdrop-filter:blur(22px) saturate(160%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1),
+    0 30px 60px -34px rgba(0,0,0,.85);
+}
+
+/* ---- demo window ---- */
+.demo{padding:30px 0 40px}
+.window{
+  max-width:960px;margin:0 auto;border-radius:18px;overflow:hidden;
+  padding:0;
+}
+.window-bar{
+  display:flex;align-items:center;gap:8px;padding:13px 16px;
+  border-bottom:1px solid var(--glass-brd);
+  background:rgba(255,255,255,.03);
+}
+.tl{width:12px;height:12px;border-radius:50%}
+.tl.r{background:#ff5f57}.tl.y{background:#febc2e}.tl.g{background:#28c840}
+.window-title{
+  margin-left:8px;font-size:12.5px;color:var(--muted);
+}
+.window video{width:100%;display:block;background:#000}
+.demo-note{
+  text-align:center;font-size:13px;color:var(--muted);
+  margin:16px auto 0;max-width:560px;
+}
+
+/* ---- section heading ---- */
+.sec-head{text-align:center;max-width:620px;margin:0 auto 46px}
+.sec-head .eyebrow{
+  font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--purple);
+}
+.sec-head h2{
+  font-size:clamp(28px,4vw,42px);font-weight:700;letter-spacing:-.02em;
+  margin-top:10px;
+}
+.sec-head p{margin-top:12px;color:var(--muted);font-size:16.5px}
+
+/* ---- features ---- */
+.features{padding:70px 0}
+.grid{
+  display:grid;gap:18px;
+  grid-template-columns:repeat(auto-fit,minmax(290px,1fr));
+}
+.feature{padding:26px 24px;transition:transform .22s,border-color .22s}
+.feature:hover{transform:translateY(-5px);border-color:rgba(255,255,255,.2)}
+.f-icon{
+  width:46px;height:46px;border-radius:13px;display:grid;place-items:center;
+  margin-bottom:16px;
+  background:linear-gradient(150deg,rgba(181,156,255,.28),rgba(123,215,255,.14));
+  border:1px solid rgba(255,255,255,.14);
+}
+.f-icon svg{width:23px;height:23px;stroke:var(--text);fill:none;
+  stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.feature h3{font-size:18px;font-weight:650;letter-spacing:-.01em}
+.feature p{margin-top:7px;color:var(--muted);font-size:14.7px}
+kbd{
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:12px;padding:2px 7px;border-radius:6px;
+  background:rgba(255,255,255,.08);border:1px solid var(--glass-brd);
+  color:var(--text);
+}
+
+/* ---- download CTA ---- */
+.download{padding:40px 0 90px}
+.cta-card{
+  max-width:760px;margin:0 auto;padding:54px 40px;text-align:center;
+  position:relative;overflow:hidden;
+}
+.cta-card h2{font-size:clamp(26px,3.6vw,38px);font-weight:700;letter-spacing:-.02em}
+.cta-card p{margin:14px auto 0;max-width:480px;color:var(--muted)}
+.cta-card .cta-row{margin-top:28px}
+.req{
+  margin-top:26px;display:flex;gap:10px 22px;justify-content:center;
+  flex-wrap:wrap;font-size:13px;color:var(--muted);
+}
+.firstrun{
+  margin-top:22px;font-size:13px;color:var(--muted);
+  border-top:1px solid var(--glass-brd);padding-top:20px;
+}
+.firstrun code{
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+  background:rgba(255,255,255,.06);padding:2px 7px;border-radius:6px;
+}
+
+/* ---- footer ---- */
+footer{
+  border-top:1px solid var(--glass-brd);
+  padding:38px 0;font-size:14px;color:var(--muted);
+}
+.foot-in{
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  justify-content:space-between;
+}
+.foot-links{display:flex;gap:20px;flex-wrap:wrap}
+.foot-links a:hover{color:var(--text)}
+.foot-note{font-size:12.5px;margin-top:14px;color:#736e85;max-width:560px}
+
+/* ---- reveal animation ---- */
+.reveal{opacity:0;transform:translateY(26px);
+  transition:opacity .7s ease,transform .7s ease}
+.reveal.in{opacity:1;transform:none}
+
+@media (max-width:560px){
+  .hero{padding:54px 0 50px}
+  .nav-links a.text{display:none}
+  .cta-card{padding:40px 22px}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .reveal{transition:none;opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<div class="field" aria-hidden="true">
+  <div class="blob a"></div><div class="blob b"></div>
+  <div class="blob c"></div><div class="blob d"></div>
+</div>
+
+<nav id="nav">
+  <div class="nav-in">
+    <a class="brand" href="#top">
+      <img src="assets/icon.png" alt="" />
+      <span>Conterm</span>
+    </a>
+    <div class="nav-links">
+      <a class="text" href="#features">Features</a>
+      <a class="text" href="https://github.com/mahdiarfrm/conterm">GitHub</a>
+      <a class="btn btn-primary btn-sm"
+         href="https://github.com/mahdiarfrm/conterm/releases/latest">Download</a>
+    </div>
+  </div>
+</nav>
+
+<main id="top">
+
+  <!-- ============ HERO ============ -->
+  <section class="hero wrap">
+    <span class="pill"><span class="dot"></span> v0.4.0 — now available</span>
+    <img class="hero-icon" src="assets/icon.png" alt="Conterm app icon" />
+    <img class="hero-logo" src="assets/text-logo.png" alt="Conterm" />
+    <h1>The terminal macOS <span class="grad">always deserved</span>.</h1>
+    <p class="hero-sub">
+      A modern terminal built on Ghostty's GPU-accelerated core — wrapped
+      in soft glass chrome, splittable panes, and a ⌘K command palette.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary"
+         href="https://github.com/mahdiarfrm/conterm/releases/latest">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+             stroke-linejoin="round"><path d="M12 3v13m0 0l-5-5m5 5l5-5"/>
+             <path d="M5 21h14"/></svg>
+        Download for macOS
+      </a>
+      <a class="btn btn-ghost" href="https://github.com/mahdiarfrm/conterm">
+        View source
+      </a>
+    </div>
+    <p class="hero-meta">Free &amp; open source · macOS 14+ · Apple Silicon</p>
+  </section>
+
+  <!-- ============ DEMO ============ -->
+  <section class="demo wrap reveal">
+    <div class="window glass">
+      <div class="window-bar">
+        <span class="tl r"></span><span class="tl y"></span>
+        <span class="tl g"></span>
+        <span class="window-title">Conterm</span>
+      </div>
+      <video src="assets/demo.mp4" poster="assets/demo-poster.jpg"
+             autoplay muted loop playsinline controls
+             preload="metadata"></video>
+    </div>
+    <p class="demo-note">
+      Heads up: screen recording can't capture macOS's live blur and
+      liquid-glass effects — they look flat or missing in this clip.
+      The real app renders far better than a capture can show.
+    </p>
+  </section>
+
+  <!-- ============ FEATURES ============ -->
+  <section class="features wrap" id="features">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Features</div>
+      <h2>Everything you reach for, faster.</h2>
+      <p>Conterm keeps Ghostty's rock-solid terminal core and adds the
+         chrome a modern macOS app should have.</p>
+    </div>
+    <div class="grid">
+
+      <div class="feature glass reveal">
+        <div class="f-icon"><svg viewBox="0 0 24 24">
+          <rect x="3" y="4" width="7.5" height="16" rx="1.6"/>
+          <rect x="13.5" y="4" width="7.5" height="16" rx="1.6"/></svg></div>
+        <h3>Splittable panes</h3>
+        <p>Split any pane with <kbd>⌘D</kbd> and <kbd>⌘⇧D</kbd> — recursively,
+           as deep as you like, with spring transitions.</p>
+      </div>
+
+      <div class="feature glass reveal">
+        <div class="f-icon"><svg viewBox="0 0 24 24">
+          <rect x="3" y="5" width="18" height="14" rx="3"/>
+          <path d="M7 10h6M7 14h9"/></svg></div>
+        <h3>Command palette</h3>
+        <p>Hit <kbd>⌘K</kbd> to fuzzy-search commands, jump to recent paths,
+           search shell history, or switch SSH hosts.</p>
+      </div>
+
+      <div class="feature glass reveal">
+        <div class="f-icon"><svg viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg></div>
+        <h3>Scrollback search</h3>
+        <p>Search the full scrollback with <kbd>⌘F</kbd> — press
+           <kbd>Enter</kbd> to scroll the terminal straight to the match.</p>
+      </div>
+
+      <div class="feature glass reveal">
+        <div class="f-icon"><svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M3 12h18M12 3c2.6 2.5 2.6 15 0 18M12 3c-2.6 2.5-2.6 15 0 18"/>
+          </svg></div>
+        <h3>SSH-host detection</h3>
+        <p>When you <kbd>ssh</kbd> somewhere, the pane chrome switches to the
+           host name — and snaps back the moment you <kbd>exit</kbd>.</p>
+      </div>
+
+      <div class="feature glass reveal">
+        <div class="f-icon"><svg viewBox="0 0 24 24">
+          <rect x="3" y="8" width="13" height="12" rx="2"/>
+          <path d="M8 8V5a2 2 0 012-2h9a2 2 0 012 2v9a2 2 0 01-2 2h-3"/></svg></div>
+        <h3>Tab groups</h3>
+        <p>Organize related tabs into color-coded groups, so a busy window
+           never turns into a guessing game.</p>
+      </div>
+
+      <div class="feature glass reveal">
+        <div class="f-icon"><svg viewBox="0 0 24 24">
+          <path d="M21 12a9 9 0 11-3-6.7"/><path d="M21 4v5h-5"/></svg></div>
+        <h3>Per-window state save</h3>
+        <p>Windows, tabs, panes, and split layouts are all restored exactly
+           where you left them across launches.</p>
+      </div>
+
+      <div class="feature glass reveal">
+        <div class="f-icon"><svg viewBox="0 0 24 24">
+          <path d="M4 7h10M18 7h2M4 17h2M10 17h10"/>
+          <circle cx="16" cy="7" r="2.4"/><circle cx="8" cy="17" r="2.4"/></svg></div>
+        <h3>Ghostty config compatible</h3>
+        <p>Reads your existing Ghostty config and understands every option —
+           drop in, nothing to relearn.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ DOWNLOAD ============ -->
+  <section class="download wrap" id="download">
+    <div class="cta-card glass reveal">
+      <h2>Ready to <span class="grad">try Conterm</span>?</h2>
+      <p>Download the latest release, drag it to Applications, and you're in.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary"
+           href="https://github.com/mahdiarfrm/conterm/releases/latest">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round"
+               stroke-linejoin="round"><path d="M12 3v13m0 0l-5-5m5 5l5-5"/>
+               <path d="M5 21h14"/></svg>
+          Download Conterm
+        </a>
+        <a class="btn btn-ghost"
+           href="https://github.com/mahdiarfrm/conterm/releases">All releases</a>
+      </div>
+      <div class="req">
+        <span>macOS 14 (Sonoma) or later</span>
+        <span>Apple Silicon</span>
+        <span>Glass effects need macOS 26</span>
+      </div>
+      <div class="firstrun">
+        Conterm is ad-hoc signed (open source, not notarized through a paid
+        Apple Developer account). On first launch, right-click the app →
+        <strong>Open</strong> → <strong>Open</strong>. If macOS still refuses:
+        <code>xattr -dr com.apple.quarantine /Applications/Conterm.app</code>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-in">
+      <a class="brand" href="#top">
+        <img src="assets/icon.png" alt="" style="width:24px;height:24px;border-radius:6px" />
+        <span style="font-size:15px">Conterm</span>
+      </a>
+      <div class="foot-links">
+        <a href="https://github.com/mahdiarfrm/conterm">GitHub</a>
+        <a href="https://github.com/mahdiarfrm/conterm/releases">Releases</a>
+        <a href="https://github.com/mahdiarfrm/conterm/issues">Report an issue</a>
+        <a href="https://github.com/mahdiarfrm/conterm/blob/main/LICENSE">MIT License</a>
+      </div>
+    </div>
+    <p class="foot-note">
+      Built on <a href="https://github.com/ghostty-org/ghostty"
+      style="color:var(--purple)">libghostty</a>, Ghostty's embeddable
+      terminal core. Conterm is an independent frontend and is not
+      affiliated with Ghostty.
+    </p>
+  </div>
+</footer>
+
+<script>
+// nav background on scroll
+const nav=document.getElementById('nav');
+const onScroll=()=>nav.classList.toggle('scrolled',window.scrollY>10);
+onScroll();addEventListener('scroll',onScroll,{passive:true});
+
+// reveal-on-scroll
+const io=new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{if(e.isIntersecting){
+    e.target.classList.add('in');io.unobserve(e.target);}});
+},{threshold:.12});
+document.querySelectorAll('.reveal').forEach((el,i)=>{
+  el.style.transitionDelay=(i%3)*70+'ms';
+  io.observe(el);
+});
+</script>
+</body>
+</html>
