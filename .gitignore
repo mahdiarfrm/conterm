@@ -1,0 +1,16 @@
+.build/
+.swiftpm/
+Package.resolved
+build/
+dist/
+release/
+Conterm.app/
+*.app/
+*.dSYM
+*.zip
+GhosttyKit.xcframework/
+GhosttyKit.xcframework.tar.gz
+Resources/ghostty/
+ICONS_FINAL.prev/
+.DS_Store
+.claude/

@@ -1,0 +1,155 @@
+import AppKit
+import SwiftUI
+
+/// Floating status pill for an AI coding agent (Claude Code / opencode)
+/// running in a pane. Liquid-glass capsule: the agent's monochrome mark
+/// on the LEFT, then the status text. It stays visible the whole time
+/// the agent is running — calm while *ready*, an orange neon light
+/// sweeping the capsule edge while *thinking*, steady amber when it
+/// *needs you*. Vanishes only when the session ends.
+///
+/// The sweeping glow only animates while the agent is *working*, so it
+/// costs nothing while merely ready/attention.
+struct AgentPill: View {
+    let status: AgentStatus
+
+    @State private var sweep: Double = 0
+    @State private var pulse = false
+
+    private var working: Bool { status.phase == .working }
+    private var attention: Bool { status.phase == .attention }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            mark
+            Text(status.label)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+                .fixedSize()
+                // Crossfade the words instead of a hard swap, so
+                // "thinking…" → "Ready." → "needs you" dissolves.
+                .contentTransition(.opacity)
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 9)
+        .glassPill()
+        // Phase-keyed identity so the ring (a different shape per
+        // phase) crossfades on transition instead of popping.
+        .overlay { neonRing.id(status.phase).transition(.opacity) }
+        .shadow(color: glowColor.opacity(working ? 0.55 : (attention ? 0.45 : 0.15)),
+                radius: working ? 12 : (attention ? 9 : 5))
+        // Spring (not ease) the whole morph: the capsule width
+        // tracks the label length, the mark tint and glow ramp,
+        // all on one buttery physical curve.
+        .animation(Theme.Spring.snappy, value: status)
+        .onAppear { startAnimations() }
+        .onChange(of: status.phase) { _, _ in startAnimations() }
+    }
+
+    // MARK: - Agent mark (left)
+
+    @ViewBuilder
+    private var mark: some View {
+        let tint = (working || attention) ? glowColor : Theme.textSecondary
+        if let asset = status.tool.markAsset,
+           let url = Bundle.main.url(forResource: asset, withExtension: "png"),
+           let img = NSImage(contentsOf: url) {
+            let templated = status.tool.markIsTemplate
+            let prepared: NSImage = {
+                let c = img.copy() as! NSImage
+                c.isTemplate = templated
+                return c
+            }()
+            Image(nsImage: prepared)
+                .resizable().interpolation(.high)
+                // Preserve the mark's aspect (OpenCode's is a tall
+                // block — squishing it into a square distorted it).
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 18, height: 18)
+                // Template marks get tinted; designed artwork shows
+                // in its own colours.
+                .foregroundStyle(templated ? tint : Color.primary)
+                // The mark spins gently while thinking.
+                .rotationEffect(.degrees(working ? sweep * 360 : 0))
+        } else {
+            Image(systemName: status.tool.fallbackSymbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(tint)
+                .rotationEffect(.degrees(working ? sweep * 360 : 0))
+        }
+    }
+
+    // MARK: - Neon ring
+
+    /// Per-agent accent (Claude=orange, opencode=violet, …).
+    private var glowColor: Color { status.tool.glowColor }
+
+    @ViewBuilder
+    private var neonRing: some View {
+        if working {
+            Capsule(style: .continuous)
+                .stroke(
+                    AngularGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: .clear,                 location: 0.00),
+                            .init(color: glowColor.opacity(0.0), location: 0.55),
+                            .init(color: glowColor,              location: 0.78),
+                            .init(color: .white,                 location: 0.84),
+                            .init(color: glowColor,              location: 0.90),
+                            .init(color: glowColor.opacity(0.0), location: 1.00),
+                        ]),
+                        center: .center,
+                        angle: .degrees(sweep * 360)
+                    ),
+                    lineWidth: 2.2
+                )
+                .blur(radius: 4)
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(
+                            AngularGradient(
+                                gradient: Gradient(stops: [
+                                    .init(color: .clear,      location: 0.0),
+                                    .init(color: glowColor.opacity(0.0), location: 0.6),
+                                    .init(color: .white,      location: 0.84),
+                                    .init(color: glowColor.opacity(0.0), location: 1.0),
+                                ]),
+                                center: .center,
+                                angle: .degrees(sweep * 360)
+                            ),
+                            lineWidth: 1.0
+                        )
+                )
+                .allowsHitTesting(false)
+        } else if attention {
+            Capsule(style: .continuous)
+                .strokeBorder(glowColor.opacity(pulse ? 0.85 : 0.40),
+                              lineWidth: 1.4)
+                .shadow(color: glowColor.opacity(pulse ? 0.6 : 0.25),
+                        radius: pulse ? 10 : 4)
+                .allowsHitTesting(false)
+        } else {
+            // ready: a soft, static rim so it still reads as "alive".
+            Capsule(style: .continuous)
+                .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.75)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func startAnimations() {
+        if working {
+            sweep = 0
+            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                sweep = 1
+            }
+        } else if attention {
+            pulse = false
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        } else {
+            pulse = false
+        }
+    }
+}
