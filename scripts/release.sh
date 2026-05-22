@@ -28,109 +28,143 @@ mkdir -p "$STAGE"
 # Copy the app preserving extended attrs / symlinks / signature.
 ditto Conterm.app "$STAGE/Conterm.app"
 
-# Write a minimal install README inside the stage dir.
+# Write a simple install README inside the stage dir (shown in the
+# DMG window, and copied alongside the app).
 cat > "$STAGE/README.txt" <<'EOF'
 Conterm — Install
 =================
 
-⚠️  IMPORTANT: do step 1 BEFORE you launch the app, or things will
-   go wrong (keyboard input may not work, app may behave weirdly).
-   This is because of macOS's "App Translocation" feature for
-   quarantined downloads.
+1) Drag Conterm.app onto the Applications folder (shown in this
+   window).
 
-1) DRAG (not copy) Conterm.app from this folder into /Applications.
-   If Conterm.app is currently in your Downloads folder, that's
-   fine — just drag it from there straight to /Applications.
+2) First launch only — macOS will say Conterm is from an
+   "unidentified developer". That's expected: Conterm is
+   open-source and ad-hoc signed, not notarized through a paid
+   Apple Developer account. To open it:
 
-2) Open Terminal.app (Apple's built-in one) and run ONCE:
+     • Right-click Conterm in Applications → Open → Open.
 
-       xattr -d com.apple.quarantine /Applications/Conterm.app
+   If macOS still refuses, open Apple's Terminal.app and run:
 
-   This removes macOS's quarantine flag so Conterm can launch
-   normally without Gatekeeper warnings or App Translocation
-   getting in the way.
+     xattr -dr com.apple.quarantine /Applications/Conterm.app
 
-3) Open Conterm normally from now on — double-click, Spotlight,
-   or Dock all work.
+   then open Conterm normally.
 
-   (If you skipped step 2, you can right-click → Open the first
-   time to bypass Gatekeeper, but App Translocation may still mess
-   with things until you do step 2.)
-
-
-First time you cd into a protected folder
------------------------------------------
-When you cd into ~/Documents, ~/Downloads, or ~/Desktop the first
-time, macOS may pop a permission prompt:
-
-   "Conterm" would like to access files in your Documents folder.
-
-Click Allow — your shell needs it to run git, ls, etc. inside
-those folders. The prompt appears once per protected folder.
-
-
-Keys
-----
-  ⌘T            new tab
-  ⌘W            close active pane / tab
-  ⌘D            split pane horizontally
-  ⌘⇧D           split pane vertically
-  ⌘K            open command palette
-  ⌘F            search current pane's scrollback
-  ⌘1 … ⌘9       jump to tab N
-  ⌥1 … ⌥9       focus pane N in current tab
-  ⌘,            settings
-  Esc           close palette / settings / search
-
-
-Customization
--------------
-Conterm reads config from:
-
-  ~/.config/conterm/config
-
-Every Ghostty config option works (font-size, cursor-style,
-background-opacity, etc.). Reference:
-
-  https://ghostty.org/docs/config/reference
+3) From then on, launch Conterm any way you like — double-click,
+   Spotlight, or Dock.
 
 
 Requirements
 ------------
   macOS 14 (Sonoma) or later, Apple Silicon.
+  The liquid-glass / blur effects need macOS 26 (Tahoe); on
+  earlier versions Conterm runs fine with plain chrome.
 
 
-Source / issues
+First time in a protected folder
+--------------------------------
+The first time you cd into ~/Documents, ~/Downloads, or ~/Desktop,
+macOS may ask for permission. Click Allow — your shell needs it to
+run git, ls, etc. there. The prompt appears once per folder.
+
+
+Keys
+----
+  ⌘T  new tab            ⌘D   split horizontally
+  ⌘W  close pane / tab   ⌘⇧D  split vertically
+  ⌘K  command palette    ⌘F   search scrollback
+  ⌘1…⌘9  jump to tab     ⌥1…⌥9  focus pane
+  ⌘,  settings           Esc  dismiss palette / search
+
+
+Customization
+-------------
+Conterm reads config from ~/.config/conterm/config. Every Ghostty
+config option works (font-size, cursor-style, background-opacity,
+…). Reference: https://ghostty.org/docs/config/reference
+
+
+Source & issues
 ---------------
   https://github.com/mahdiarfrm/conterm
-  Telegram Contact: @BlindFoolDead
+  Telegram: @BlindFoolDead
 EOF
 
 # Make the zip with ditto so resource forks / signature survive.
 ditto -c -k --sequesterRsrc --keepParent "$STAGE" "$ZIP"
 echo "OK: $ZIP ($(du -h "$ZIP" | cut -f1))"
 
-# Optional .dmg — only built when first arg is "dmg".
+# Optional .dmg — only built when first arg is "dmg". Produces a
+# styled DMG: black window background, the Conterm text-logo at the
+# bottom, and Conterm.app / Applications / README.txt arranged for a
+# one-drag install.
 if [[ "$WANT_DMG" == "dmg" ]] && command -v hdiutil >/dev/null 2>&1; then
     echo "==> creating $DMG"
-    # Build a read-write DMG, then convert to compressed read-only.
+    VOLNAME="Conterm"
+
+    # Render the window background (black canvas + text-logo) into a
+    # hidden .background folder inside the staged volume contents.
+    mkdir -p "$STAGE/.background"
+    swift scripts/dmg-background.swift \
+        "$STAGE/.background/background.tiff" docs/assets/text-logo.png
+
+    # Detach any stale Conterm volume from a previous run.
+    hdiutil detach "/Volumes/$VOLNAME" -quiet 2>/dev/null || true
+
+    # Build a read-write DMG sized to the staged contents + headroom.
+    STAGE_MB=$(du -sm "$STAGE" | cut -f1)
     RW_DMG="$(mktemp -d)/conterm-rw.dmg"
     hdiutil create -srcfolder "$STAGE" \
-                   -volname "Conterm" \
+                   -volname "$VOLNAME" \
                    -fs HFS+ \
                    -format UDRW \
-                   -size 30m \
+                   -size "$((STAGE_MB + 60))m" \
                    "$RW_DMG" >/dev/null
 
-    # Add an Applications symlink so users can drag-drop into /Applications
-    # right from the DMG window.
-    MOUNT_DIR="$(mktemp -d)/conterm-mount"
-    hdiutil attach "$RW_DMG" -mountpoint "$MOUNT_DIR" -nobrowse -quiet
+    hdiutil attach "$RW_DMG" -nobrowse -noautoopen -quiet
+    MOUNT_DIR="/Volumes/$VOLNAME"
+
+    # Applications symlink for drag-to-install.
     ln -sf /Applications "$MOUNT_DIR/Applications"
+    # Keep the background folder out of the user's view.
+    chflags hidden "$MOUNT_DIR/.background"
+
+    # Arrange the Finder window: icon view, no toolbar, custom
+    # background, and explicit icon positions (see dmg-background.swift
+    # for the matching 740x580 layout). The delays give Finder time to
+    # commit the view settings to .DS_Store before we detach.
+    osascript <<OSA
+tell application "Finder"
+    tell disk "$VOLNAME"
+        open
+        delay 1
+        set current view of container window to icon view
+        set toolbar visible of container window to false
+        set statusbar visible of container window to false
+        set the bounds of container window to {180, 100, 920, 708}
+        set opts to the icon view options of container window
+        set arrangement of opts to not arranged
+        set icon size of opts to 112
+        set text size of opts to 12
+        set background picture of opts to file ".background:background.tiff"
+        set position of item "Conterm.app" of container window to {245, 175}
+        set position of item "Applications" of container window to {495, 175}
+        set position of item "README.txt" of container window to {370, 340}
+        update without registering applications
+        delay 3
+        close
+    end tell
+end tell
+OSA
+
+    sync
+    sleep 2
+    sync
     hdiutil detach "$MOUNT_DIR" -quiet
 
+    # Convert to a compressed, read-only DMG for distribution.
     hdiutil convert "$RW_DMG" -format UDZO -o "$DMG" -quiet
-    rm -rf "$RW_DMG" "$MOUNT_DIR"
+    rm -rf "$RW_DMG"
     echo "OK: $DMG ($(du -h "$DMG" | cut -f1))"
 fi
 
