@@ -270,6 +270,15 @@ footer{
 .foot-links{display:flex;gap:20px;flex-wrap:wrap}
 .foot-links a:hover{color:var(--text)}
 .foot-note{font-size:12.5px;margin-top:14px;color:#736e85;max-width:560px}
+.foot-credit{
+  font-size:12.5px;margin-top:14px;color:#8a85a0;
+}
+.foot-credit a{
+  color:var(--text);font-weight:550;
+  border-bottom:1px dashed rgba(255,255,255,.18);
+  transition:border-color .2s,color .2s;
+}
+.foot-credit a:hover{border-bottom-color:var(--purple);color:var(--purple)}
 
 /* ---- reveal animation ---- */
 .reveal{opacity:0;transform:translateY(26px);
@@ -474,6 +483,10 @@ footer{
       style="color:var(--purple)">libghostty</a>, Ghostty's embeddable
       terminal core. Conterm is an independent frontend and is not
       affiliated with Ghostty.
+    </p>
+    <p class="foot-credit">
+      Made with care by
+      <a href="https://github.com/mahdiarfrm">Mahdiyar Faramarzpour</a>.
     </p>
   </div>
 </footer>
