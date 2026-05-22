@@ -8,26 +8,41 @@
   <a href="https://github.com/mahdiarfrm/conterm/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/mahdiarfrm/conterm?style=flat&color=B59CFF" /></a>
 </p>
 
+> [!WARNING]
+> **Conterm is beta software.** Expect rough edges, missing features, and
+> the occasional crash. The terminal core (libghostty) is rock-solid, but
+> the chrome around it is young — UI bugs and quirks are likely. Please
+> [file issues](https://github.com/mahdiarfrm/conterm/issues) when you
+> hit one.
+
 ## About
 
 Conterm is a modern terminal for macOS, built on
 [libghostty](https://github.com/ghostty-org/ghostty). It pairs Ghostty's
 GPU-accelerated rendering with soft glass chrome, splittable panes,
-spring transitions, a ⌘K command palette, automatic SSH-host detection,
-and a floating directory badge in every pane.
+spring transitions, and a ⌘K command palette.
+
+## Demo
+
+<video src="https://github.com/mahdiarfrm/conterm/raw/main/docs/assets/demo.mp4" controls muted width="100%"></video>
+
+> [!NOTE]
+> Screen recording can't capture macOS's live blur / liquid-glass
+> effects — they show up flat or missing in this clip. This is a rough
+> capture, not a faithful representation of the actual product. If the
+> video doesn't play inline,
+> [watch it here](https://github.com/mahdiarfrm/conterm/raw/main/docs/assets/demo.mp4).
 
 ## Features
 
 - **Splittable panes** — `⌘D` (horizontal) and `⌘⇧D` (vertical), recursive.
-- **Pill tabs** — horizontal or vertical, with matchedGeometryEffect indicator.
-- **Liquid-glass directory badge** — top-right of every pane, with the
-  `⌥N` keybind to switch and a 🌐 indicator when you're SSH'd.
-- **SSH-host detection** — when you `ssh foo`, the badge switches to
-  `foo` (works with `~/.ssh/config` aliases). Snaps back on `exit`.
 - **Command palette (⌘K)** — fuzzy-search commands, jump to recent
   paths, search shell history, switch SSH hosts.
 - **Scrollback search (⌘F)** — search the full scrollback; press
   `Enter` to scroll the terminal to the match.
+- **SSH-host detection** — when you `ssh foo`, the pane chrome switches
+  to show `foo` (works with `~/.ssh/config` aliases). Snaps back on `exit`.
+- **Tab groups** — color-coded grouping for organizing related tabs.
 - **Per-window state save** — windows, tabs, panes, and split layouts
   are restored across launches.
 - **Ghostty config compatible** — reads your existing
@@ -45,7 +60,7 @@ xcode-select --install
 git clone https://github.com/mahdiarfrm/conterm.git
 cd conterm
 
-# Downloads GhosttyKit.xcframework (~139 MB):
+# Downloads GhosttyKit.xcframework:
 bash scripts/setup.sh
 
 # Build and assemble Conterm.app:
@@ -57,25 +72,29 @@ open ./Conterm.app
 
 ### Release builds
 
-Pre-built binaries are published to the
-[Releases page](https://github.com/mahdiarfrm/conterm/releases) when
-available. Until the first release is cut, build from source above.
+A pre-built `.dmg` is published to the
+[Releases page](https://github.com/mahdiarfrm/conterm/releases) for
+each version. Open it and drag `Conterm.app` onto the `Applications`
+folder.
 
 ### First launch
 
-Because the build is **ad-hoc codesigned** (not notarized through an
-Apple developer account), Gatekeeper blocks double-click launch the
-first time. Right-click `Conterm.app` → **Open** → **Open** to bypass
-once. If macOS still refuses:
+Conterm is **ad-hoc codesigned** — it's open-source and not notarized
+through a paid Apple Developer account, so the first launch needs one
+extra step: right-click `Conterm.app` → **Open** → **Open**. If macOS
+still refuses:
 
 ```bash
-xattr -d com.apple.quarantine /Applications/Conterm.app
+xattr -dr com.apple.quarantine /Applications/Conterm.app
 ```
 
 ### Requirements
 
 - macOS 14 (Sonoma) or later. Tested on macOS 15 (Sequoia) and 26 (Tahoe).
 - Apple Silicon (M1/M2/M3/etc.). Intel is untested.
+- **Visual effects** — the liquid-glass and blur chrome only render on
+  macOS 26 (Tahoe). On macOS 14–15 the app works fully, just with
+  plain (non-glass) chrome.
 
 ## Keys
 
