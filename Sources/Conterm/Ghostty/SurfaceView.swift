@@ -126,6 +126,13 @@ extension Ghostty {
         override func resignFirstResponder() -> Bool {
             let ok = super.resignFirstResponder()
             controller?.setFocus(false)
+            // Send a synthetic RELEASE so libghostty can't be left in
+            // a stuck "button pressed" state if a previous drag ended
+            // with the real mouseUp on a different view (dragged out
+            // of the window, focus change mid-drag, etc.). Without
+            // this, the very next position update on this surface
+            // would extend a phantom selection.
+            controller?.clearStuckMouseState()
             // Losing focus drops the suppression so a later RELEASE
             // that arrives at a different pane (drag finalising
             // outside us) doesn't get eaten.
@@ -483,7 +490,16 @@ extension Ghostty {
         }
 
         override func mouseMoved(with event: NSEvent) { forwardMousePos(event) }
-        override func mouseDragged(with event: NSEvent) { forwardMousePos(event) }
+        override func mouseDragged(with event: NSEvent) {
+            // During a focus-transfer click we didn't forward the
+            // PRESS to libghostty; we must also not forward drag
+            // positions, otherwise a tiny accidental wiggle between
+            // mouseDown and mouseUp combines with any leftover
+            // selection state to highlight text the user never meant
+            // to select.
+            if suppressNextLeftMouseUp { return }
+            forwardMousePos(event)
+        }
         override func rightMouseDragged(with event: NSEvent) { forwardMousePos(event) }
         override func otherMouseDragged(with event: NSEvent) { forwardMousePos(event) }
 
