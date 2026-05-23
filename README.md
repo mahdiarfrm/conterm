@@ -19,8 +19,9 @@
 
 Conterm is a modern terminal for macOS, built on
 [libghostty](https://github.com/ghostty-org/ghostty). It pairs Ghostty's
-GPU-accelerated rendering with soft glass chrome, splittable panes,
-spring transitions, and a ⌘K command palette.
+GPU-accelerated rendering with Liquid Glass chrome, splittable panes,
+vertical or horizontal tabs, built-in notes, and a ⌘K command palette
+that runs your shell history and SSH config.
 
 ## Demo
 
@@ -35,19 +36,45 @@ spring transitions, and a ⌘K command palette.
 
 ## Features
 
-- **Splittable panes** — `⌘D` (horizontal) and `⌘⇧D` (vertical), recursive.
-- **Command palette (⌘K)** — fuzzy-search commands, jump to recent
-  paths, search shell history, switch SSH hosts.
-- **Scrollback search (⌘F)** — search the full scrollback; press
+- **Splittable panes** — `⌘D` (horizontal) and `⌘⇧D` (vertical),
+  recursive. Drag dividers to resize, focus any pane with `⌥1`–`⌥9`.
+- **Vertical or horizontal tabs** — flip the tab bar to a left sidebar
+  for Arc-style layouts; auto-hides on left-edge hover when you want
+  the screen back.
+- **Command palette (`⌘K`)** — fuzzy-search commands, recent
+  directories, **shell history** (re-run any zsh/bash command),
+  **your SSH config** (with `Include` support), and **every open pane
+  across every window**.
+- **Scrollback search (`⌘F`)** — search the full scrollback; press
   `Enter` to scroll the terminal to the match.
 - **SSH-host detection** — when you `ssh foo`, the pane chrome switches
-  to show `foo` (works with `~/.ssh/config` aliases). Snaps back on `exit`.
-- **Tab groups** — color-coded grouping for organizing related tabs.
+  to show `foo` (works with `~/.ssh/config` aliases). Snaps back on
+  `exit`.
+- **Built-in notes** — quick notes saved with your config and
+  searchable from `⌘K`. Capture a snippet without leaving the terminal.
+- **Tab groups** — color-coded grouping for organizing related tabs,
+  browser-style.
+- **460+ themes** — every bundled libghostty theme in a searchable
+  picker with mini-previews; live font family and size controls.
+- **Live system stats** — optional CPU, RAM, and network sparklines
+  pinned to the tab bar, with a popover for detailed graphs.
+- **Liquid Glass chrome** *(macOS 26)* — refractive glass behind every
+  UI surface with a Clear↔Frosted slider, light/dark tint, and a
+  battery-saving mode that drops to a flat fill when the window is
+  inactive.
+- **AI agent status pills** — per-pane glowing pill shows when
+  [Claude Code](https://www.anthropic.com/claude-code) or
+  [opencode](https://opencode.ai) is ready, thinking, or needs your
+  attention. Notification center in the tab bar collects what you
+  missed.
+- **Reveal / Open** — jump to the current pane's directory in Finder
+  or Cursor from `⌘K`.
 - **Per-window state save** — windows, tabs, panes, and split layouts
   are restored across launches.
 - **Ghostty config compatible** — reads your existing
   `~/Library/Application Support/com.mitchellh.ghostty/config` and
-  understands every Ghostty option.
+  understands every Ghostty option. **Safe mode** boots on Ghostty
+  defaults if you ever break your config.
 
 ## Install
 
