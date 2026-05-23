@@ -285,10 +285,69 @@ footer{
   transition:opacity .7s ease,transform .7s ease}
 .reveal.in{opacity:1;transform:none}
 
-@media (max-width:560px){
-  .hero{padding:54px 0 50px}
+/* universal wrap safety: never let a long word punch through the viewport */
+h1,h2,h3,p,.grad,.firstrun{overflow-wrap:break-word}
+.grad{white-space:normal}
+
+@media (max-width:760px){
   .nav-links a.text{display:none}
-  .cta-card{padding:40px 22px}
+  .nav-in{padding:10px 18px;gap:10px}
+  .grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+}
+
+@media (max-width:640px){
+  .wrap{padding:0 18px}
+
+  /* nav */
+  .brand-logo{height:26px}
+
+  /* hero */
+  .hero{padding:64px 0 44px}
+  .hero-icon{width:96px;height:96px;margin:22px auto 4px;border-radius:22px}
+  .hero-logo{width:min(260px,76vw);margin:4px auto 16px}
+  h1{font-size:clamp(28px,7.6vw,42px);line-height:1.1;max-width:560px}
+  .hero-sub{font-size:15.5px;margin-top:16px}
+  .cta-row{flex-direction:column;align-items:stretch;gap:10px;margin-top:24px}
+  .btn{justify-content:center;padding:14px 22px}
+  .hero-meta{margin-top:16px;font-size:12.5px}
+
+  /* demo */
+  .demo{padding:20px 0 28px}
+  .window{padding:4px;border-radius:14px}
+  .window video{border-radius:10px}
+  .demo-note{font-size:12.5px;padding:0 4px;margin-top:12px}
+
+  /* features */
+  .features{padding:50px 0}
+  .sec-head{margin-bottom:30px}
+  .sec-head h2{font-size:clamp(24px,6vw,32px)}
+  .sec-head p{font-size:15px}
+  .grid{grid-template-columns:1fr;gap:14px}
+  .feature{padding:22px 20px}
+  .f-icon{width:42px;height:42px;margin-bottom:14px;border-radius:11px}
+  .feature h3{font-size:17px}
+  .feature p{font-size:14.2px}
+
+  /* download CTA */
+  .download{padding:28px 0 64px}
+  .cta-card{padding:34px 22px}
+  .cta-card .cta-row{margin-top:22px}
+  .req{font-size:12.5px;gap:6px 14px}
+  .firstrun{font-size:12.5px;text-align:left}
+  .firstrun code{word-break:break-word;display:inline-block;max-width:100%}
+
+  /* footer */
+  footer{padding:28px 0}
+  .foot-in{gap:12px}
+  .foot-links{gap:12px 18px;font-size:13.5px}
+  .foot-note{font-size:12px}
+  .foot-credit{font-size:12px}
+}
+
+@media (max-width:380px){
+  h1{font-size:clamp(24px,8vw,32px)}
+  .hero-icon{width:84px;height:84px}
+  .hero-logo{width:min(220px,80vw)}
 }
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
