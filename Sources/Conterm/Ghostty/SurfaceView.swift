@@ -511,9 +511,21 @@ extension Ghostty {
                                          state: ghostty_input_mouse_state_e,
                                          button: ghostty_input_mouse_button_e) {
             guard let ctrl = controller else { return }
-            ctrl.sendMouseButton(state: state, button: button,
-                                  mods: InputMapping.mods(from: event.modifierFlags))
-            forwardMousePos(event)
+            // libghostty's `mouse_button` uses whatever position was
+            // last set via `mouse_pos` — it doesn't take a position
+            // parameter. We MUST sync position to the actual click
+            // point BEFORE the PRESS/RELEASE, otherwise the click
+            // anchors at a stale position (e.g. wherever the cursor
+            // was last sampled by `forwardMousePos`, which is rate-
+            // limited at 30 Hz and dead-zoned at 2 pt). The wrong-
+            // anchor case is what makes a plain click form a giant
+            // selection between the stale position and the click point.
+            let p = convert(event.locationInWindow, from: nil)
+            let mods = InputMapping.mods(from: event.modifierFlags)
+            ctrl.sendMousePos(x: Double(p.x), y: Double(p.y), mods: mods)
+            lastForwardedMouseAt = p
+            lastForwardedMouseTime = CACurrentMediaTime()
+            ctrl.sendMouseButton(state: state, button: button, mods: mods)
         }
 
         /// Last (point, time) we forwarded to libghostty.
