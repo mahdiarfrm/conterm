@@ -286,8 +286,14 @@ footer{
 .reveal.in{opacity:1;transform:none}
 
 /* universal wrap safety: never let a long word punch through the viewport */
-h1,h2,h3,p,.grad,.firstrun{overflow-wrap:break-word}
+h1,h2,h3,p,.grad,.firstrun{overflow-wrap:break-word;word-wrap:break-word}
 .grad{white-space:normal}
+/* Lock every block-level container to the viewport so nothing can
+   spill horizontally. `max-width:100%` defeats any inherited max-width
+   that's larger than the viewport (the hero h1 had max-width:780px
+   that, combined with letter-spacing+padding, pushed text past the
+   right edge on phones). */
+h1,h2,h3,p,section,.sec-head,.cta-card,.grid,.feature,.window{max-width:100%}
 
 @media (max-width:760px){
   .nav-links a.text{display:none}
@@ -298,56 +304,77 @@ h1,h2,h3,p,.grad,.firstrun{overflow-wrap:break-word}
 @media (max-width:640px){
   .wrap{padding:0 18px}
 
+  /* Gradient blobs — at desktop sizes (720 px each) they're WAY bigger
+     than a phone viewport and read as a single dark fog instead of
+     ambient highlights. Scale them to the viewport so they look like
+     the same composition, just smaller. `filter:blur()` also scales
+     down so they stay soft without devouring the screen. */
+  .blob{filter:blur(64px)}
+  .blob.a{width:75vw;height:75vw;top:-18vw;left:-22vw}
+  .blob.b{width:70vw;height:70vw;top:-14vw;right:-22vw;left:auto}
+  .blob.c{width:90vw;height:90vw;top:50%;left:-10vw}
+  .blob.d{width:65vw;height:65vw;bottom:-15vw;right:-18vw}
+  .blob.e{width:55vw;height:55vw;bottom:30%;left:-18vw}
+
   /* nav */
   .brand-logo{height:26px}
 
   /* hero */
-  .hero{padding:64px 0 44px}
-  .hero-icon{width:96px;height:96px;margin:22px auto 4px;border-radius:22px}
-  .hero-logo{width:min(260px,76vw);margin:4px auto 16px}
-  h1{font-size:clamp(28px,7.6vw,42px);line-height:1.1;max-width:560px}
-  .hero-sub{font-size:15.5px;margin-top:16px}
-  .cta-row{flex-direction:column;align-items:stretch;gap:10px;margin-top:24px}
+  .hero{padding:54px 0 38px}
+  .hero-icon{width:84px;height:84px;margin:18px auto 4px;border-radius:20px}
+  .hero-logo{width:min(220px,68vw);margin:4px auto 12px}
+  h1{font-size:clamp(26px,7.2vw,38px);line-height:1.12;max-width:560px}
+  .hero-sub{font-size:15px;margin-top:14px;line-height:1.55}
+  .cta-row{flex-direction:column;align-items:stretch;gap:10px;margin-top:22px}
   .btn{justify-content:center;padding:14px 22px}
-  .hero-meta{margin-top:16px;font-size:12.5px}
+  .hero-meta{margin-top:14px;font-size:12.5px}
+  .pill{font-size:12px;padding:6px 12px}
 
   /* demo */
-  .demo{padding:20px 0 28px}
+  .demo{padding:14px 0 22px}
   .window{padding:4px;border-radius:14px}
   .window video{border-radius:10px}
-  .demo-note{font-size:12.5px;padding:0 4px;margin-top:12px}
+  .demo-note{font-size:12.5px;padding:0 4px;margin-top:12px;line-height:1.5}
 
   /* features */
-  .features{padding:50px 0}
-  .sec-head{margin-bottom:30px}
-  .sec-head h2{font-size:clamp(24px,6vw,32px)}
-  .sec-head p{font-size:15px}
-  .grid{grid-template-columns:1fr;gap:14px}
-  .feature{padding:22px 20px}
-  .f-icon{width:42px;height:42px;margin-bottom:14px;border-radius:11px}
-  .feature h3{font-size:17px}
-  .feature p{font-size:14.2px}
+  .features{padding:42px 0}
+  .sec-head{margin-bottom:24px}
+  .sec-head .eyebrow{font-size:11.5px}
+  .sec-head h2{font-size:clamp(22px,5.4vw,28px);line-height:1.2;hyphens:auto;-webkit-hyphens:auto}
+  .sec-head p{font-size:14.5px;margin-top:8px}
+  .grid{grid-template-columns:1fr;gap:12px}
+  .feature{padding:20px 18px;border-radius:18px}
+  .f-icon{width:40px;height:40px;margin-bottom:12px;border-radius:11px}
+  .f-icon svg{width:21px;height:21px}
+  .feature h3{font-size:16.5px}
+  .feature p{font-size:14px;line-height:1.5}
 
   /* download CTA */
-  .download{padding:28px 0 64px}
-  .cta-card{padding:34px 22px}
-  .cta-card .cta-row{margin-top:22px}
-  .req{font-size:12.5px;gap:6px 14px}
-  .firstrun{font-size:12.5px;text-align:left}
+  .download{padding:22px 0 56px}
+  .cta-card{padding:30px 20px;border-radius:18px}
+  .cta-card h2{font-size:clamp(22px,5.5vw,30px)}
+  .cta-card p{font-size:14.5px}
+  .cta-card .cta-row{margin-top:20px}
+  .req{font-size:12px;gap:6px 12px;margin-top:20px}
+  .firstrun{font-size:12px;margin-top:18px;padding-top:16px;text-align:left}
   .firstrun code{word-break:break-word;display:inline-block;max-width:100%}
 
   /* footer */
-  footer{padding:28px 0}
-  .foot-in{gap:12px}
-  .foot-links{gap:12px 18px;font-size:13.5px}
-  .foot-note{font-size:12px}
-  .foot-credit{font-size:12px}
+  footer{padding:22px 0}
+  .foot-in{gap:12px;justify-content:center}
+  .foot-links{gap:10px 16px;font-size:13px;justify-content:center}
+  .foot-note{font-size:12px;text-align:center;margin-top:12px}
+  .foot-credit{font-size:12px;text-align:center}
 }
 
 @media (max-width:380px){
-  h1{font-size:clamp(24px,8vw,32px)}
-  .hero-icon{width:84px;height:84px}
-  .hero-logo{width:min(220px,80vw)}
+  .hero{padding:48px 0 32px}
+  h1{font-size:clamp(22px,7vw,28px)}
+  .hero-icon{width:76px;height:76px}
+  .hero-logo{width:min(200px,72vw)}
+  .hero-sub{font-size:14.5px}
+  .feature h3{font-size:16px}
+  .cta-card{padding:26px 18px}
 }
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
@@ -381,7 +408,7 @@ h1,h2,h3,p,.grad,.firstrun{overflow-wrap:break-word}
 
   <!-- ============ HERO ============ -->
   <section class="hero wrap">
-    <span class="pill"><span class="dot"></span> v0.4.0 — now available</span>
+    <span class="pill"><span class="dot"></span> v0.5.0 — now available</span>
     <img class="hero-icon" src="assets/icon.png" alt="Conterm app icon" />
     <img class="hero-logo" src="assets/text-logo.png" alt="Conterm" />
     <h1>The terminal macOS <span class="grad">always deserved</span>.</h1>
