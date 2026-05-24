@@ -515,11 +515,11 @@ extension Ghostty {
             // last set via `mouse_pos` — it doesn't take a position
             // parameter. We MUST sync position to the actual click
             // point BEFORE the PRESS/RELEASE, otherwise the click
-            // anchors at a stale position (e.g. wherever the cursor
-            // was last sampled by `forwardMousePos`, which is rate-
-            // limited at 30 Hz and dead-zoned at 2 pt). The wrong-
-            // anchor case is what makes a plain click form a giant
-            // selection between the stale position and the click point.
+            // anchors at a stale position (the rate-limited / dead-
+            // zoned forwardMousePos can leave it minutes-old). Mouse
+            // coords go in POINTS — libghostty applies content_scale
+            // internally, so doubling here would send clicks off-
+            // screen and break double/triple-click entirely.
             let p = convert(event.locationInWindow, from: nil)
             let mods = InputMapping.mods(from: event.modifierFlags)
             ctrl.sendMousePos(x: Double(p.x), y: Double(p.y), mods: mods)
