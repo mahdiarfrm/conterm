@@ -12,6 +12,7 @@ import SwiftUI
 /// costs nothing while merely ready/attention.
 struct AgentPill: View {
     let status: AgentStatus
+    @EnvironmentObject var prefs: Preferences
 
     @State private var sweep: Double = 0
     @State private var pulse = false
@@ -36,15 +37,42 @@ struct AgentPill: View {
         .glassPill()
         // Phase-keyed identity so the ring (a different shape per
         // phase) crossfades on transition instead of popping.
-        .overlay { neonRing.id(status.phase).transition(.opacity) }
-        .shadow(color: glowColor.opacity(working ? 0.55 : (attention ? 0.45 : 0.15)),
-                radius: working ? 12 : (attention ? 9 : 5))
+        .overlay {
+            if prefs.agentPillLite {
+                liteRing
+            } else {
+                neonRing.id(status.phase).transition(.opacity)
+            }
+        }
+        .shadow(color: glowColor.opacity(
+                    prefs.agentPillLite
+                        ? 0
+                        : (working ? 0.55 : (attention ? 0.45 : 0.15))),
+                radius: prefs.agentPillLite
+                    ? 0
+                    : (working ? 12 : (attention ? 9 : 5)))
         // Spring (not ease) the whole morph: the capsule width
         // tracks the label length, the mark tint and glow ramp,
         // all on one buttery physical curve.
         .animation(Theme.Spring.snappy, value: status)
         .onAppear { startAnimations() }
         .onChange(of: status.phase) { _, _ in startAnimations() }
+        .onChange(of: prefs.agentPillLite) { _, _ in startAnimations() }
+    }
+
+    /// Low-animation overlay used when `agentPillLite` is on. A flat
+    /// colored border replaces the gradient sweep / blur halo; only
+    /// the attention state still pulses so a needs-you is still
+    /// noticeable from a glance.
+    @ViewBuilder
+    private var liteRing: some View {
+        let color: Color = (working || attention) ? glowColor
+                                                  : Color.white.opacity(0.16)
+        let opacity: Double = attention ? (pulse ? 0.85 : 0.40)
+                                        : (working ? 0.75 : 1.0)
+        Capsule(style: .continuous)
+            .strokeBorder(color.opacity(opacity), lineWidth: 1.2)
+            .allowsHitTesting(false)
     }
 
     // MARK: - Agent mark (left)
@@ -70,13 +98,16 @@ struct AgentPill: View {
                 // Template marks get tinted; designed artwork shows
                 // in its own colours.
                 .foregroundStyle(templated ? tint : Color.primary)
-                // The mark spins gently while thinking.
-                .rotationEffect(.degrees(working ? sweep * 360 : 0))
+                // Mark spins gently while thinking; skipped in lite
+                // mode to avoid a continuous redraw.
+                .rotationEffect(.degrees(
+                    (working && !prefs.agentPillLite) ? sweep * 360 : 0))
         } else {
             Image(systemName: status.tool.fallbackSymbol)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(tint)
-                .rotationEffect(.degrees(working ? sweep * 360 : 0))
+                .rotationEffect(.degrees(
+                    (working && !prefs.agentPillLite) ? sweep * 360 : 0))
         }
     }
 
@@ -138,6 +169,20 @@ struct AgentPill: View {
     }
 
     private func startAnimations() {
+        if prefs.agentPillLite {
+            // Lite mode: no sweep, no working-state animation. Only
+            // attention pulses, so a needs-you is still noticeable.
+            sweep = 0
+            if attention {
+                pulse = false
+                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            } else {
+                pulse = false
+            }
+            return
+        }
         if working {
             sweep = 0
             withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {

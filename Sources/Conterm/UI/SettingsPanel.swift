@@ -378,17 +378,24 @@ struct SettingsPanel: View {
                     .labelsHidden()
                 }
                 SettingsRow(title: "SSH compatibility mode",
-                            subtitle: "Use xterm-256color over SSH instead of trying to install xterm-ghostty terminfo on the remote (no more “Setting up xterm-ghostty terminfo on …” message). Also remaps Shift / Option / Ctrl + Arrow to the standard xterm CSI sequences so word/line motions work in remote vim & tmux regardless of the remote's TERM. Trade-off: locally, Shift+Arrow no longer extends libghostty's selection.") {
+                            subtitle: "Use xterm-256color and standard xterm modifier sequences over SSH so Shift / Option / Ctrl + Arrow work in remote vim, tmux, and similar TUIs.") {
                     Toggle("", isOn: Binding(
                         get: { prefs.sshCompatMode },
                         set: { newValue in
                             prefs.sshCompatMode = newValue
-                            // Rewrite the lastword file + push the
-                            // new config to every live surface so
-                            // the toggle takes effect on the next
-                            // keystroke / next ssh, no relaunch.
+                            // Reload the config so the change applies
+                            // to live panes without a relaunch.
                             Ghostty.App.shared?.reloadConfig()
                         }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+                SettingsRow(title: "Agent pill — lite",
+                            subtitle: "Reduce animations on the agent status pill to save battery during long sessions. The pill still shows ready, thinking, and needs-you states.") {
+                    Toggle("", isOn: Binding(
+                        get: { prefs.agentPillLite },
+                        set: { prefs.agentPillLite = $0 }
                     ))
                     .toggleStyle(.switch)
                     .labelsHidden()

@@ -45,13 +45,8 @@ if [[ -d "$GHOSTTY_RES" ]]; then
     cp -R "$GHOSTTY_RES" Resources/ghostty
     echo "OK: copied shell-integration from $GHOSTTY_RES ($(du -sh Resources/ghostty | cut -f1))"
 
-    # Strip the "Setting up xterm-ghostty terminfo on <host>..." progress
-    # echo from the bundled ssh() wrappers across all five shells. The
-    # remote install still happens; we just don't announce it. Failure
-    # warnings stay (those are actionable). Conterm has its own
-    # "SSH compatibility mode" toggle that disables the wrapper entirely;
-    # this just keeps the install-path quiet so neither code path is
-    # noisy.
+    # Quiet the progress message in the bundled ssh() wrappers so the
+    # terminfo install runs silently. Failure warnings are kept.
     sed -i '' '/Setting up xterm-ghostty terminfo on/d' \
         Resources/ghostty/shell-integration/bash/ghostty.bash \
         Resources/ghostty/shell-integration/zsh/ghostty-integration \

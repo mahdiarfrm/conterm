@@ -94,17 +94,24 @@ final class Preferences: ObservableObject {
     @Published var batterySavingMode: Bool {
         didSet { ud.set(batterySavingMode, forKey: K.batterySavingMode) }
     }
-    /// "SSH compatibility mode". When ON: don't try to install
-    /// `xterm-ghostty` terminfo on remotes (kills the "Setting up
-    /// xterm-ghostty terminfo on …" message), and override Shift /
-    /// Option / Ctrl + Arrow to emit the standard xterm CSI modifier
-    /// sequences (`\e[1;2D` etc.) so they work in remote vim / tmux
-    /// regardless of the remote's `TERM`. Trade-off: locally,
-    /// `Shift+Arrow` no longer extends the libghostty selection.
+    /// Use a broadly-compatible TERM (`xterm-256color`) and standard
+    /// xterm modifier sequences for `Shift`/`Option`/`Ctrl + Arrow`
+    /// over SSH, so word- and line-motions work in remote vim, tmux,
+    /// and similar TUIs. Trade-off: with this enabled, `Shift+Arrow`
+    /// no longer extends libghostty's local text selection.
     @Published var sshCompatMode: Bool {
         didSet {
             ud.set(sshCompatMode, forKey: K.sshCompatMode)
         }
+    }
+    /// Render the per-pane agent status pill (Claude Code / opencode)
+    /// with reduced animations: a static colored border instead of
+    /// the rotating mark, sweep glow, and attention pulse. The pill
+    /// still shows ready / thinking / needs-you states; it just stops
+    /// continuously redrawing, which lowers GPU cost during long
+    /// agent sessions.
+    @Published var agentPillLite: Bool {
+        didSet { ud.set(agentPillLite, forKey: K.agentPillLite) }
     }
 
     private let ud = UserDefaults.standard
@@ -127,6 +134,7 @@ final class Preferences: ObservableObject {
         static let useDefaultConfig = "conterm.useDefaultConfig"
         static let lightGlass       = "conterm.lightGlass"
         static let sshCompatMode    = "conterm.sshCompatMode"
+        static let agentPillLite    = "conterm.agentPillLite"
     }
 
     init() {
@@ -152,6 +160,7 @@ final class Preferences: ObservableObject {
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
         self.lightGlass             = ud.object(forKey: K.lightGlass) as? Bool ?? false
         self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? false
+        self.agentPillLite          = ud.object(forKey: K.agentPillLite) as? Bool ?? false
     }
 
     /// First launch always shows the intro so the user sees what it does.

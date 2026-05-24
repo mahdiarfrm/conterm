@@ -16,6 +16,11 @@ struct CommandPalette: View {
     /// — typing/filtering doesn't re-cascade (rows key off this, not
     /// the query), so it never feels janky mid-search.
     @State private var appeared = false
+    /// Cached SSH rows. Refreshed when the user enters SSH mode in
+    /// the palette so scrolling and filtering use an in-memory list
+    /// instead of re-parsing the shell-history file on every body
+    /// re-eval.
+    @State private var cachedAllSSHRows: [SSHRow] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -59,12 +64,14 @@ struct CommandPalette: View {
             queryFocused = true; query = ""; state.paletteFocusedIndex = 0
             appeared = false
             DispatchQueue.main.async { appeared = true }
+            if state.paletteMode == .sshHosts { refreshSSHRowsIfNeeded() }
         }
-        .onChange(of: state.paletteMode) { _, _ in
+        .onChange(of: state.paletteMode) { _, mode in
             // Mode change resets query + focus.
             query = ""
             state.paletteFocusedIndex = 0
             DispatchQueue.main.async { queryFocused = true }
+            if mode == .sshHosts { refreshSSHRowsIfNeeded() }
         }
         .onChange(of: query) { _, _ in state.paletteFocusedIndex = 0 }
         .onChange(of: state.paletteFocusedIndex) { _, _ in clampFocus() }
@@ -664,13 +671,21 @@ struct CommandPalette: View {
         var id: String { (isRecent ? "r-" : "a-") + host.alias }
     }
 
-    private var allSSHRows: [SSHRow] {
-        let recents = SSHRecents.load()
+    /// Builds the full SSH row list: recents from shell history and
+    /// palette clicks, followed by the remaining `~/.ssh/config`
+    /// hosts. Reads the history file, so call from
+    /// `refreshSSHRowsIfNeeded()` rather than from a SwiftUI body.
+    private func computeAllSSHRows() -> [SSHRow] {
         let hostByAlias = Dictionary(uniqueKeysWithValues:
             Self.sshHosts.map { ($0.alias, $0) })
-        let recentRows = recents.compactMap { alias -> SSHRow? in
-            guard let h = hostByAlias[alias] else { return nil }
-            return SSHRow(host: h, isRecent: true)
+        var seen = Set<String>()
+        var recents: [String] = []
+        for alias in SSHHistory.recentTargets() + SSHRecents.load() {
+            if seen.insert(alias).inserted { recents.append(alias) }
+        }
+        let recentRows = recents.map { alias -> SSHRow in
+            let host = hostByAlias[alias] ?? SSHHost(alias: alias, hostname: nil)
+            return SSHRow(host: host, isRecent: true)
         }
         let recentSet = Set(recents)
         let restRows = Self.sshHosts
@@ -679,10 +694,17 @@ struct CommandPalette: View {
         return recentRows + restRows
     }
 
+    /// Rebuilds `cachedAllSSHRows` from the latest shell history
+    /// and `~/.ssh/config`. Called once each time the user enters
+    /// SSH mode in the palette.
+    private func refreshSSHRowsIfNeeded() {
+        cachedAllSSHRows = computeAllSSHRows()
+    }
+
     private var filteredSSHRows: [SSHRow] {
-        guard !query.isEmpty else { return allSSHRows }
+        guard !query.isEmpty else { return cachedAllSSHRows }
         let q = query.lowercased()
-        return allSSHRows.filter { row in
+        return cachedAllSSHRows.filter { row in
             row.host.alias.lowercased().contains(q) ||
             (row.host.hostname?.lowercased().contains(q) ?? false)
         }

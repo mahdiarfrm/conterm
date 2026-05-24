@@ -21,6 +21,122 @@ enum SSHRecents {
     }
 }
 
+/// Scans the user's shell history for `ssh <target>` invocations and
+/// returns the unique targets newest-first. Surfaces hosts the user
+/// actually `ssh`'d to from the shell, alongside entries from
+/// `~/.ssh/config`, in the command palette's "Recent" section.
+enum SSHHistory {
+    /// `ssh` flags that take a separate argument, so when scanning a
+    /// command line for the host we skip the next token after these.
+    private static let flagsWithArg: Set<String> = [
+        "-p", "-i", "-l", "-L", "-R", "-D", "-F", "-o", "-J",
+        "-W", "-c", "-m", "-e", "-Q", "-b", "-B", "-I", "-S",
+    ]
+
+    /// Returns up to `limit` unique SSH targets, ordered newest first.
+    /// Sort uses the zsh extended-format timestamp when available
+    /// (`: <ts>:<dur>;<cmd>`) and falls back to file position for
+    /// plain bash entries.
+    static func recentTargets(limit: Int = 30) -> [String] {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        var entries: [(time: Double, target: String)] = []
+        var fallback: Double = 0
+
+        // zsh
+        if let zsh = readFile("\(home)/.zsh_history") {
+            for raw in zsh.split(separator: "\n", omittingEmptySubsequences: false) {
+                let line = String(raw).trimmingCharacters(in: .whitespaces)
+                if line.isEmpty { continue }
+                let (ts, cmd) = parseZshLine(line, fallback: &fallback)
+                if let target = extractTarget(cmd) {
+                    entries.append((ts, target))
+                }
+            }
+        }
+        // bash (no per-line timestamps unless HISTTIMEFORMAT is set, which
+        // we don't try to parse — just use file order)
+        if let bash = readFile("\(home)/.bash_history") {
+            for raw in bash.split(separator: "\n", omittingEmptySubsequences: false) {
+                let line = String(raw).trimmingCharacters(in: .whitespaces)
+                if line.isEmpty || line.hasPrefix("#") { continue }
+                fallback += 1
+                if let target = extractTarget(line) {
+                    entries.append((fallback, target))
+                }
+            }
+        }
+
+        // Newest first by actual timestamp (or fallback file-position).
+        entries.sort { $0.time > $1.time }
+
+        // Dedup preserving the newest occurrence (now first by the sort).
+        var seen = Set<String>()
+        var out: [String] = []
+        for e in entries {
+            if seen.insert(e.target).inserted {
+                out.append(e.target)
+                if out.count >= limit { break }
+            }
+        }
+        return out
+    }
+
+    /// Parses a single zsh history line. Returns the real epoch
+    /// timestamp from extended format (`: 1730000000:0;ssh foo`)
+    /// alongside the command text, or — for plain entries with no
+    /// timestamp — the next value from `fallback` so file order
+    /// still acts as a stable sort key.
+    private static func parseZshLine(_ line: String,
+                                      fallback: inout Double) -> (Double, String) {
+        if line.hasPrefix(":") {
+            // ":<sp>?<ts>:<dur>;<cmd>"
+            let after = line.dropFirst()
+            if let firstColon = after.firstIndex(of: ":"),
+               let semi = after.firstIndex(of: ";"),
+               firstColon < semi {
+                let tsStr = after[after.startIndex..<firstColon]
+                    .trimmingCharacters(in: .whitespaces)
+                if let ts = Double(tsStr), ts > 0 {
+                    let cmd = String(after[after.index(after: semi)...])
+                    return (ts, cmd)
+                }
+            }
+        }
+        fallback += 1
+        return (fallback, line)
+    }
+
+    private static func readFile(_ path: String) -> String? {
+        if let s = try? String(contentsOfFile: path, encoding: .utf8) {
+            return s
+        }
+        return try? String(contentsOfFile: path, encoding: .isoLatin1)
+    }
+
+    /// Returns the target host of an `ssh` invocation (`host`,
+    /// `user@host`, etc.), or nil for any other command. Skips over
+    /// flags and their arguments, so `ssh -p 22 -i ~/.ssh/k user@h`
+    /// returns `user@h`.
+    private static func extractTarget(_ command: String) -> String? {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true)
+            .map(String.init)
+        // First token must be exactly `ssh` — not `sshfs`, not `sshpass`,
+        // not `ssh-add`, etc., which would each pollute the list.
+        guard parts.first == "ssh" else { return nil }
+        var i = 1
+        while i < parts.count {
+            let p = parts[i]
+            if p.hasPrefix("-") {
+                i += flagsWithArg.contains(p) ? 2 : 1
+            } else {
+                return p
+            }
+        }
+        return nil
+    }
+}
+
 /// One entry from the user's `~/.ssh/config`. Wildcards (`Host *`,
 /// `Host *.example.com`) are excluded — only concrete aliases the
 /// user can actually type at a shell.

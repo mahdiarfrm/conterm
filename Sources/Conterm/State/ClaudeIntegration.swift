@@ -48,6 +48,10 @@ enum ClaudeIntegration {
     private static let commands: [String: String] = [
         "SessionStart":     emit("start"),
         "UserPromptSubmit": emit("prompt"),
+        // PreToolUse fires before each tool call, so the pill
+        // refreshes to "thinking" while Claude is actively working
+        // (e.g. after responding to a Notification).
+        "PreToolUse":       emit("prompt"),
         "Stop":             emit("idle"),
         "Notification":     emit("attention"),
         "SessionEnd":       emit("end"),
@@ -105,13 +109,31 @@ enum ClaudeIntegration {
         writeJSON(root)
     }
 
-    /// Called at app launch: if our hooks are present, rewrite them to
-    /// the CURRENT command. Without this, an app update that fixes the
-    /// hook (as just happened) leaves the old broken command on disk
-    /// until the user manually toggles the setting. `install()` is
-    /// idempotent — it strips the prior `# conterm` entries first.
+    /// Called at app launch. If any of our hooks are present in
+    /// `~/.claude/settings.json`, rewrites them to match the current
+    /// command set. This keeps the on-disk install in sync when
+    /// Conterm adds or changes a hook between releases, so users
+    /// never have to manually toggle the integration off and on.
     static func refreshIfInstalled() {
-        if isInstalled { install() }
+        if hasAnyHook { install() }
+    }
+
+    /// True if any hook event in the user's settings still carries
+    /// our sentinel command — used by `refreshIfInstalled` to catch
+    /// partial installs (e.g. an older release missing a hook event).
+    private static var hasAnyHook: Bool {
+        guard let root = readJSON(),
+              let hooks = root["hooks"] as? [String: Any] else { return false }
+        for (_, value) in hooks {
+            guard let groups = value as? [[String: Any]] else { continue }
+            let has = groups.contains { g in
+                (g["hooks"] as? [[String: Any]] ?? []).contains {
+                    ($0["command"] as? String)?.contains(sentinel) == true
+                }
+            }
+            if has { return true }
+        }
+        return false
     }
 
     // MARK: - JSON helpers (preserve unknown keys)
