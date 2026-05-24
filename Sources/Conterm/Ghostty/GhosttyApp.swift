@@ -342,6 +342,17 @@ extension Ghostty {
             # Conterm lastword — functional correctness only (no taste).
             shell-integration = detect
 
+            # Force `selection-word-chars` with explicit quotes so the
+            # leading whitespace survives the config parser. Without
+            # quotes the parser strips the leading space + tab and
+            # they never become separators — so double-click extends
+            # across spaces (selecting "mahdiar at x0rz in" as one
+            # "word"). The bundled `ghostty-default.conf` ships an
+            # unquoted form (a `+show-config --default` artifact);
+            # the real libghostty default uses the quoted form, which
+            # is what Ghostty.app gets at runtime. Mirror that here.
+            selection-word-chars = " \\t'\\"|:;,()[]{}<>$"
+
             \(sshBlock)
 
             # Force LEGACY (xterm-compatible) encoding for control keys
