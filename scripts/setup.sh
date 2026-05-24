@@ -44,6 +44,21 @@ if [[ -d "$GHOSTTY_RES" ]]; then
     rm -rf Resources/ghostty
     cp -R "$GHOSTTY_RES" Resources/ghostty
     echo "OK: copied shell-integration from $GHOSTTY_RES ($(du -sh Resources/ghostty | cut -f1))"
+
+    # Strip the "Setting up xterm-ghostty terminfo on <host>..." progress
+    # echo from the bundled ssh() wrappers across all five shells. The
+    # remote install still happens; we just don't announce it. Failure
+    # warnings stay (those are actionable). Conterm has its own
+    # "SSH compatibility mode" toggle that disables the wrapper entirely;
+    # this just keeps the install-path quiet so neither code path is
+    # noisy.
+    sed -i '' '/Setting up xterm-ghostty terminfo on/d' \
+        Resources/ghostty/shell-integration/bash/ghostty.bash \
+        Resources/ghostty/shell-integration/zsh/ghostty-integration \
+        Resources/ghostty/shell-integration/fish/vendor_conf.d/ghostty-shell-integration.fish \
+        Resources/ghostty/shell-integration/elvish/lib/ghostty-integration.elv \
+        Resources/ghostty/shell-integration/nushell/vendor/autoload/ghostty.nu 2>/dev/null || true
+    echo "OK: stripped 'Setting up xterm-ghostty terminfo' progress echo from wrappers"
 else
     echo "WARN: $GHOSTTY_RES not found — install the Ghostty app once so we can borrow its shell-integration scripts. Cursor & title reporting will be broken without it."
 fi

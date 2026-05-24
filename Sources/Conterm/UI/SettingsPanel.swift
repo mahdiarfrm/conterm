@@ -377,6 +377,22 @@ struct SettingsPanel: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
+                SettingsRow(title: "SSH compatibility mode",
+                            subtitle: "Use xterm-256color over SSH instead of trying to install xterm-ghostty terminfo on the remote (no more “Setting up xterm-ghostty terminfo on …” message). Also remaps Shift / Option / Ctrl + Arrow to the standard xterm CSI sequences so word/line motions work in remote vim & tmux regardless of the remote's TERM. Trade-off: locally, Shift+Arrow no longer extends libghostty's selection.") {
+                    Toggle("", isOn: Binding(
+                        get: { prefs.sshCompatMode },
+                        set: { newValue in
+                            prefs.sshCompatMode = newValue
+                            // Rewrite the lastword file + push the
+                            // new config to every live surface so
+                            // the toggle takes effect on the next
+                            // keystroke / next ssh, no relaunch.
+                            Ghostty.App.shared?.reloadConfig()
+                        }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
                 SettingsRow(title: "Claude Code integration",
                             subtitle: "Adds hooks to ~/.claude/settings.json so a running Claude shows a live status pill at the top of its pane: “Claude is Ready.” when waiting, “Claude is thinking…” with an orange glow while working, “needs you” when it wants input. Non-destructive — your other hooks are kept and the file is backed up.") {
                     Toggle("", isOn: Binding(
