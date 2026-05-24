@@ -507,31 +507,25 @@ extension Ghostty {
             keepDrawingDuringScroll()
         }
 
+        /// Forwards a mouse button event (press or release) to
+        /// libghostty. The current cursor position is already known
+        /// to libghostty from the most recent `forwardMousePos` call,
+        /// so the button event is sent alone.
         private func forwardMouseButton(_ event: NSEvent,
                                          state: ghostty_input_mouse_state_e,
                                          button: ghostty_input_mouse_button_e) {
             guard let ctrl = controller else { return }
-            // MATCH GHOSTTY: just send the button. libghostty uses the
-            // last position set via `mouse_pos`, which `forwardMousePos`
-            // keeps current on every mouseMoved / mouseDragged (no
-            // rate-limit). Calling sendMousePos here before every
-            // PRESS/RELEASE confuses libghostty's click-count + word-
-            // boundary state machine — a double-click then registered
-            // as "scan whole row" instead of "select word".
             let mods = InputMapping.mods(from: event.modifierFlags)
             ctrl.sendMouseButton(state: state, button: button, mods: mods)
         }
 
+        /// Forwards a mouse position update to libghostty. Called from
+        /// `mouseMoved` and `mouseDragged` for every event so the
+        /// position libghostty uses for click anchoring, word
+        /// boundary detection, and hover-link tracking is always
+        /// current.
         private func forwardMousePos(_ event: NSEvent) {
             guard let ctrl = controller else { return }
-            // MATCH GHOSTTY: forward every position event. We previously
-            // rate-limited to 30 Hz with a 2 pt dead-zone to save CPU
-            // on hover, but that cost us click-anchor accuracy (a click
-            // could anchor at a position dozens of ms stale, sometimes
-            // a whole cell off — invisible for a single click, fatal
-            // for double-click word-select). Position updates into
-            // libghostty are cheap; if Liquid Glass re-sample cost
-            // shows up again we'll rate-limit that specifically.
             let p = convert(event.locationInWindow, from: nil)
             ctrl.sendMousePos(x: Double(p.x), y: Double(p.y),
                               mods: InputMapping.mods(from: event.modifierFlags))

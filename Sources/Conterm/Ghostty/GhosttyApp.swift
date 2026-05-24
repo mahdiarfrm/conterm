@@ -138,11 +138,11 @@ extension Ghostty {
                 clog("conterm: seeded \(contermConfigPath)")
             }
 
-            // 4) Lastword: applied AFTER user config. Functional
-            //    correctness only — NO aesthetic opinions. Built via
-            //    `lastwordText()` so the content can react to the
-            //    "SSH compatibility mode" preference (which changes
-            //    which features + which arrow keybinds we install).
+            // 4) Lastword: applied AFTER user config. Holds
+            //    correctness-only settings (shell integration,
+            //    control-key encoding, word separators). Built via
+            //    `lastwordText()` so the content can vary with
+            //    preferences.
             App.writeAndLoadLastword(into: cfg)
             clog("conterm: applied lastword overrides")
 
@@ -271,12 +271,8 @@ extension Ghostty {
                 as? Bool ?? false
         }
 
-        /// "SSH compatibility mode" — when ON, we skip the
-        /// ssh-terminfo wrapper (so no "Setting up xterm-ghostty
-        /// terminfo on …" message on first remote connect) and
-        /// override Shift / Option / Ctrl + Arrow to emit the
-        /// standard xterm CSI modifier sequences. Read straight
-        /// from UserDefaults so the config loader stays decoupled
+        /// Whether SSH compatibility mode is enabled in Preferences.
+        /// Read from UserDefaults so the config loader stays decoupled
         /// from the Preferences object. Key matches
         /// `Preferences.K.sshCompatMode`.
         nonisolated static var sshCompatMode: Bool {
@@ -284,25 +280,21 @@ extension Ghostty {
                 as? Bool ?? false
         }
 
-        /// Build the lastword config text. Lives in one place (a
-        /// static function) because both `init?()` and
-        /// `applyConfigChain()` need to write the exact same content,
-        /// and the content can change at runtime (e.g. when the
-        /// "SSH compatibility mode" toggle flips and reloadConfig()
-        /// fires).
+        /// Builds the Conterm lastword config text — the block that
+        /// is applied AFTER any user config so a few correctness-only
+        /// settings (shell integration, control-key encoding, word
+        /// separators, etc.) always win. Lives in one place because
+        /// both `init?()` and `applyConfigChain()` write the same
+        /// content, and the content varies with user preferences.
         nonisolated static func lastwordText() -> String {
             let sshBlock: String
             if sshCompatMode {
+                // SSH compatibility mode: skip the ssh-terminfo /
+                // ssh-env shell wrappers and map Shift / Option / Ctrl
+                // + Arrow to the standard xterm CSI modifier sequences
+                // so they work in remote TUIs regardless of the
+                // remote's TERM.
                 sshBlock = """
-                # SSH compatibility mode (Settings → Config) is ON.
-                # No ssh-terminfo install attempt — the wrapper would
-                # otherwise emit "Setting up xterm-ghostty terminfo on
-                # <host>..." on every first connect — and we instead
-                # rewire Shift / Option / Ctrl + Arrow to the standard
-                # xterm CSI sequences so they work in remote vim &
-                # tmux regardless of the remote's TERM (xterm-256color,
-                # xterm-ghostty, screen, etc.). Trade-off: locally,
-                # Shift+Arrow no longer extends libghostty's selection.
                 shell-integration-features = cursor,sudo,title
 
                 keybind = shift+arrow_left=csi:1;2D
@@ -323,18 +315,12 @@ extension Ghostty {
                 keybind = shift+alt+arrow_down=csi:1;4B
                 """
             } else {
+                // Default: enable the bundled shell-integration ssh
+                // wrappers. `ssh-env` forwards COLORTERM / TERM_PROGRAM
+                // so remote apps detect true color; `ssh-terminfo`
+                // installs the xterm-ghostty terminfo on the remote on
+                // first connect.
                 sshBlock = """
-                # ssh-env       — sends COLORTERM=truecolor + TERM_PROGRAM
-                #                 so remote apps see the right color depth.
-                # ssh-terminfo  — auto-installs xterm-ghostty terminfo on
-                #                 a remote on first connect, so modified
-                #                 arrow keys / Esc / Kitty CSI-u protocol
-                #                 work in remote vim/tmux. We bundle the
-                #                 xterm-ghostty terminfo (Bridge.swift
-                #                 exports TERMINFO), so the local
-                #                 `infocmp -x xterm-ghostty` the wrapper
-                #                 uses succeeds. Disable both via
-                #                 "SSH compatibility mode" in Settings.
                 shell-integration-features = cursor,sudo,title,ssh-env,ssh-terminfo
                 """
             }
@@ -342,15 +328,10 @@ extension Ghostty {
             # Conterm lastword — functional correctness only (no taste).
             shell-integration = detect
 
-            # Force `selection-word-chars` with explicit quotes so the
-            # leading whitespace survives the config parser. Without
-            # quotes the parser strips the leading space + tab and
-            # they never become separators — so double-click extends
-            # across spaces (selecting "mahdiar at x0rz in" as one
-            # "word"). The bundled `ghostty-default.conf` ships an
-            # unquoted form (a `+show-config --default` artifact);
-            # the real libghostty default uses the quoted form, which
-            # is what Ghostty.app gets at runtime. Mirror that here.
+            # Word separators for double-click word-select. Quoted so
+            # whitespace (space + tab) is preserved through the config
+            # parser and treated as a real boundary alongside the
+            # usual shell-meta characters.
             selection-word-chars = " \\t'\\"|:;,()[]{}<>$"
 
             \(sshBlock)
@@ -393,10 +374,10 @@ extension Ghostty {
             """
         }
 
-        /// Write `lastwordText()` to the temp lastword path and
-        /// load it into the supplied config. Idempotent — overwrites
-        /// the file each call, so toggling SSH compatibility mode
-        /// then calling `reloadConfig()` produces a fresh file.
+        /// Writes the current `lastwordText()` to a temp file and
+        /// loads it into the given `ghostty_config_t`. Overwrites the
+        /// file on every call so a preference change picked up by
+        /// `reloadConfig()` produces fresh content.
         nonisolated static func writeAndLoadLastword(into cfg: ghostty_config_t) {
             let path = NSTemporaryDirectory() + "conterm-lastword.conf"
             if (try? lastwordText().write(toFile: path, atomically: true,
@@ -436,9 +417,8 @@ extension Ghostty {
                     contermConfigPath.withCString { ghostty_config_load_file(cfg, $0) }
                 }
             }
-            // 4) Lastword (cursor + Ctrl+key remapping + SSH compat
-            //    keybinds). REWRITTEN every reload so prefs that
-            //    feed into it (e.g. `sshCompatMode`) take effect.
+            // 4) Lastword: regenerated each reload so preference
+            //    changes (e.g. SSH compatibility mode) take effect.
             writeAndLoadLastword(into: cfg)
         }
 
