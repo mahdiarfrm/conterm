@@ -511,50 +511,28 @@ extension Ghostty {
                                          state: ghostty_input_mouse_state_e,
                                          button: ghostty_input_mouse_button_e) {
             guard let ctrl = controller else { return }
-            // libghostty's `mouse_button` uses whatever position was
-            // last set via `mouse_pos` — it doesn't take a position
-            // parameter. We MUST sync position to the actual click
-            // point BEFORE the PRESS/RELEASE, otherwise the click
-            // anchors at a stale position (the rate-limited / dead-
-            // zoned forwardMousePos can leave it minutes-old). Mouse
-            // coords go in POINTS — libghostty applies content_scale
-            // internally, so doubling here would send clicks off-
-            // screen and break double/triple-click entirely.
-            let p = convert(event.locationInWindow, from: nil)
+            // MATCH GHOSTTY: just send the button. libghostty uses the
+            // last position set via `mouse_pos`, which `forwardMousePos`
+            // keeps current on every mouseMoved / mouseDragged (no
+            // rate-limit). Calling sendMousePos here before every
+            // PRESS/RELEASE confuses libghostty's click-count + word-
+            // boundary state machine — a double-click then registered
+            // as "scan whole row" instead of "select word".
             let mods = InputMapping.mods(from: event.modifierFlags)
-            ctrl.sendMousePos(x: Double(p.x), y: Double(p.y), mods: mods)
-            lastForwardedMouseAt = p
-            lastForwardedMouseTime = CACurrentMediaTime()
             ctrl.sendMouseButton(state: state, button: button, mods: mods)
         }
 
-        /// Last (point, time) we forwarded to libghostty.
-        private var lastForwardedMouseAt: NSPoint = .init(x: -10000, y: -10000)
-        private var lastForwardedMouseTime: CFTimeInterval = 0
-
         private func forwardMousePos(_ event: NSEvent) {
             guard let ctrl = controller else { return }
+            // MATCH GHOSTTY: forward every position event. We previously
+            // rate-limited to 30 Hz with a 2 pt dead-zone to save CPU
+            // on hover, but that cost us click-anchor accuracy (a click
+            // could anchor at a position dozens of ms stale, sometimes
+            // a whole cell off — invisible for a single click, fatal
+            // for double-click word-select). Position updates into
+            // libghostty are cheap; if Liquid Glass re-sample cost
+            // shows up again we'll rate-limit that specifically.
             let p = convert(event.locationInWindow, from: nil)
-
-            // 30 Hz cap. macOS trackpads emit mouseMoved at 60-120 Hz
-            // and even with the position dead-zone, the energy log
-            // showed mousepos=80-100/s during normal hover — every
-            // one of those crosses into libghostty AND triggers a
-            // Liquid Glass re-sample for any pill the cursor passes
-            // over. 30 Hz is well above what's needed for hover-link
-            // / selection feel; halves to thirds the forwarded rate.
-            let now = CACurrentMediaTime()
-            if now - lastForwardedMouseTime < 1.0 / 30.0 { return }
-
-            // Position dead-zone: skip events within 2pt of the last
-            // forwarded position. Cheaper than the libghostty round-trip
-            // for sub-cell jitter.
-            let dx = p.x - lastForwardedMouseAt.x
-            let dy = p.y - lastForwardedMouseAt.y
-            if dx * dx + dy * dy < 4 { return }
-
-            lastForwardedMouseAt = p
-            lastForwardedMouseTime = now
             ctrl.sendMousePos(x: Double(p.x), y: Double(p.y),
                               mods: InputMapping.mods(from: event.modifierFlags))
         }
