@@ -223,20 +223,6 @@ extension Ghostty {
             return ghostty_surface_has_selection(h)
         }
 
-        /// Send a synthetic left-button RELEASE to libghostty. Used on
-        /// focus loss to clear any stuck "button pressed" state — if a
-        /// previous drag ended with the real mouseUp landing on another
-        /// view (e.g. the cursor left the window mid-drag), libghostty
-        /// is still in "selecting" mode and the very next position
-        /// update extends the selection. An unmatched RELEASE is a
-        /// no-op when the state is already clean.
-        func clearStuckMouseState() {
-            guard let h = handle else { return }
-            _ = ghostty_surface_mouse_button(
-                h, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT,
-                GHOSTTY_MODS_NONE)
-        }
-
         func sendMouseButton(state: ghostty_input_mouse_state_e,
                               button: ghostty_input_mouse_button_e,
                               mods: ghostty_input_mods_e) {
