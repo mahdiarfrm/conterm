@@ -138,67 +138,13 @@ extension Ghostty {
                 clog("conterm: seeded \(contermConfigPath)")
             }
 
-            // 4) Lastword: applied AFTER user config. This now contains
-            //    ONLY functional correctness — NO aesthetic opinions.
-            //    Previously it forced cursor-style=bar over even the
-            //    user's own config; that's exactly the "it's MY config"
-            //    problem. Cursor style etc. are now left to Ghostty's
-            //    genuine default (or the user's own choice in their
-            //    config). What stays here is non-negotiable correctness:
-            //    shell-integration + legacy control-key encoding.
-            let lastword = """
-            # Conterm lastword — functional correctness only (no taste).
-            shell-integration = detect
-
-            # No `ssh-terminfo` — it tries to extract `xterm-ghostty`
-            # terminfo locally via `infocmp` and emits a noisy
-            # "Could not generate terminfo data" warning when that
-            # entry isn't installed. Our SSH-host detection works
-            # off omz's command title so we don't actually need it.
-            shell-integration-features = cursor,sudo,title
-
-            # Force LEGACY (xterm-compatible) encoding for control keys
-            # AND Escape. libghostty's Kitty CSI-u keyboard protocol
-            # breaks programs that don't opt into it (Python TUIs,
-            # ncurses apps, and crucially **vim over SSH** to a server
-            # that lacks xterm-ghostty terminfo — Esc gets sent as
-            # \\e[27u, which remote vim doesn't recognise, so you can't
-            # leave insert mode to :wq). Forcing raw \\x1b makes Escape
-            # work everywhere, exactly like a classic xterm.
-            keybind = escape=text:\\x1b
-            keybind = ctrl+a=text:\\x01
-            keybind = ctrl+b=text:\\x02
-            keybind = ctrl+c=text:\\x03
-            keybind = ctrl+d=text:\\x04
-            keybind = ctrl+e=text:\\x05
-            keybind = ctrl+f=text:\\x06
-            keybind = ctrl+g=text:\\x07
-            keybind = ctrl+h=text:\\x08
-            keybind = ctrl+i=text:\\x09
-            keybind = ctrl+j=text:\\x0a
-            keybind = ctrl+k=text:\\x0b
-            keybind = ctrl+l=text:\\x0c
-            keybind = ctrl+m=text:\\x0d
-            keybind = ctrl+n=text:\\x0e
-            keybind = ctrl+o=text:\\x0f
-            keybind = ctrl+p=text:\\x10
-            keybind = ctrl+q=text:\\x11
-            keybind = ctrl+r=text:\\x12
-            keybind = ctrl+s=text:\\x13
-            keybind = ctrl+t=text:\\x14
-            keybind = ctrl+u=text:\\x15
-            keybind = ctrl+v=text:\\x16
-            keybind = ctrl+w=text:\\x17
-            keybind = ctrl+x=text:\\x18
-            keybind = ctrl+y=text:\\x19
-            keybind = ctrl+z=text:\\x1a
-            """
-            let lastwordPath = NSTemporaryDirectory() + "conterm-lastword.conf"
-            if (try? lastword.write(toFile: lastwordPath, atomically: true,
-                                     encoding: .utf8)) != nil {
-                lastwordPath.withCString { ghostty_config_load_file(cfg, $0) }
-                clog("conterm: applied lastword overrides \(lastwordPath)")
-            }
+            // 4) Lastword: applied AFTER user config. Functional
+            //    correctness only — NO aesthetic opinions. Built via
+            //    `lastwordText()` so the content can react to the
+            //    "SSH compatibility mode" preference (which changes
+            //    which features + which arrow keybinds we install).
+            App.writeAndLoadLastword(into: cfg)
+            clog("conterm: applied lastword overrides")
 
             ghostty_config_finalize(cfg)
 
@@ -325,6 +271,129 @@ extension Ghostty {
                 as? Bool ?? false
         }
 
+        /// "SSH compatibility mode" — when ON, we skip the
+        /// ssh-terminfo wrapper (so no "Setting up xterm-ghostty
+        /// terminfo on …" message on first remote connect) and
+        /// override Shift / Option / Ctrl + Arrow to emit the
+        /// standard xterm CSI modifier sequences. Read straight
+        /// from UserDefaults so the config loader stays decoupled
+        /// from the Preferences object. Key matches
+        /// `Preferences.K.sshCompatMode`.
+        nonisolated static var sshCompatMode: Bool {
+            UserDefaults.standard.object(forKey: "conterm.sshCompatMode")
+                as? Bool ?? false
+        }
+
+        /// Build the lastword config text. Lives in one place (a
+        /// static function) because both `init?()` and
+        /// `applyConfigChain()` need to write the exact same content,
+        /// and the content can change at runtime (e.g. when the
+        /// "SSH compatibility mode" toggle flips and reloadConfig()
+        /// fires).
+        nonisolated static func lastwordText() -> String {
+            let sshBlock: String
+            if sshCompatMode {
+                sshBlock = """
+                # SSH compatibility mode (Settings → Config) is ON.
+                # No ssh-terminfo install attempt — the wrapper would
+                # otherwise emit "Setting up xterm-ghostty terminfo on
+                # <host>..." on every first connect — and we instead
+                # rewire Shift / Option / Ctrl + Arrow to the standard
+                # xterm CSI sequences so they work in remote vim &
+                # tmux regardless of the remote's TERM (xterm-256color,
+                # xterm-ghostty, screen, etc.). Trade-off: locally,
+                # Shift+Arrow no longer extends libghostty's selection.
+                shell-integration-features = cursor,sudo,title
+
+                keybind = shift+arrow_left=csi:1;2D
+                keybind = shift+arrow_right=csi:1;2C
+                keybind = shift+arrow_up=csi:1;2A
+                keybind = shift+arrow_down=csi:1;2B
+                keybind = alt+arrow_left=csi:1;3D
+                keybind = alt+arrow_right=csi:1;3C
+                keybind = alt+arrow_up=csi:1;3A
+                keybind = alt+arrow_down=csi:1;3B
+                keybind = ctrl+arrow_left=csi:1;5D
+                keybind = ctrl+arrow_right=csi:1;5C
+                keybind = ctrl+arrow_up=csi:1;5A
+                keybind = ctrl+arrow_down=csi:1;5B
+                keybind = shift+alt+arrow_left=csi:1;4D
+                keybind = shift+alt+arrow_right=csi:1;4C
+                keybind = shift+alt+arrow_up=csi:1;4A
+                keybind = shift+alt+arrow_down=csi:1;4B
+                """
+            } else {
+                sshBlock = """
+                # ssh-env       — sends COLORTERM=truecolor + TERM_PROGRAM
+                #                 so remote apps see the right color depth.
+                # ssh-terminfo  — auto-installs xterm-ghostty terminfo on
+                #                 a remote on first connect, so modified
+                #                 arrow keys / Esc / Kitty CSI-u protocol
+                #                 work in remote vim/tmux. We bundle the
+                #                 xterm-ghostty terminfo (Bridge.swift
+                #                 exports TERMINFO), so the local
+                #                 `infocmp -x xterm-ghostty` the wrapper
+                #                 uses succeeds. Disable both via
+                #                 "SSH compatibility mode" in Settings.
+                shell-integration-features = cursor,sudo,title,ssh-env,ssh-terminfo
+                """
+            }
+            return """
+            # Conterm lastword — functional correctness only (no taste).
+            shell-integration = detect
+
+            \(sshBlock)
+
+            # Force LEGACY (xterm-compatible) encoding for control keys
+            # AND Escape. libghostty's Kitty CSI-u keyboard protocol
+            # breaks programs that don't opt into it (Python TUIs,
+            # ncurses apps, and crucially **vim over SSH** to a server
+            # that lacks xterm-ghostty terminfo — Esc gets sent as
+            # \\e[27u, which remote vim doesn't recognise, so you can't
+            # leave insert mode to :wq). Forcing raw \\x1b makes Escape
+            # work everywhere, exactly like a classic xterm.
+            keybind = escape=text:\\x1b
+            keybind = ctrl+a=text:\\x01
+            keybind = ctrl+b=text:\\x02
+            keybind = ctrl+c=text:\\x03
+            keybind = ctrl+d=text:\\x04
+            keybind = ctrl+e=text:\\x05
+            keybind = ctrl+f=text:\\x06
+            keybind = ctrl+g=text:\\x07
+            keybind = ctrl+h=text:\\x08
+            keybind = ctrl+i=text:\\x09
+            keybind = ctrl+j=text:\\x0a
+            keybind = ctrl+k=text:\\x0b
+            keybind = ctrl+l=text:\\x0c
+            keybind = ctrl+m=text:\\x0d
+            keybind = ctrl+n=text:\\x0e
+            keybind = ctrl+o=text:\\x0f
+            keybind = ctrl+p=text:\\x10
+            keybind = ctrl+q=text:\\x11
+            keybind = ctrl+r=text:\\x12
+            keybind = ctrl+s=text:\\x13
+            keybind = ctrl+t=text:\\x14
+            keybind = ctrl+u=text:\\x15
+            keybind = ctrl+v=text:\\x16
+            keybind = ctrl+w=text:\\x17
+            keybind = ctrl+x=text:\\x18
+            keybind = ctrl+y=text:\\x19
+            keybind = ctrl+z=text:\\x1a
+            """
+        }
+
+        /// Write `lastwordText()` to the temp lastword path and
+        /// load it into the supplied config. Idempotent — overwrites
+        /// the file each call, so toggling SSH compatibility mode
+        /// then calling `reloadConfig()` produces a fresh file.
+        nonisolated static func writeAndLoadLastword(into cfg: ghostty_config_t) {
+            let path = NSTemporaryDirectory() + "conterm-lastword.conf"
+            if (try? lastwordText().write(toFile: path, atomically: true,
+                                           encoding: .utf8)) != nil {
+                path.withCString { ghostty_config_load_file(cfg, $0) }
+            }
+        }
+
         nonisolated static func applyConfigChain(_ cfg: ghostty_config_t) {
             let fm = FileManager.default
             let home = NSHomeDirectory()
@@ -356,12 +425,10 @@ extension Ghostty {
                     contermConfigPath.withCString { ghostty_config_load_file(cfg, $0) }
                 }
             }
-            // 4) Lastword (cursor + Ctrl+key remapping). Reuse the
-            //    file written at startup if it still exists.
-            let lastwordPath = NSTemporaryDirectory() + "conterm-lastword.conf"
-            if fm.fileExists(atPath: lastwordPath) {
-                lastwordPath.withCString { ghostty_config_load_file(cfg, $0) }
-            }
+            // 4) Lastword (cursor + Ctrl+key remapping + SSH compat
+            //    keybinds). REWRITTEN every reload so prefs that
+            //    feed into it (e.g. `sshCompatMode`) take effect.
+            writeAndLoadLastword(into: cfg)
         }
 
         nonisolated(unsafe) static var shared: App?

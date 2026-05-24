@@ -94,6 +94,18 @@ final class Preferences: ObservableObject {
     @Published var batterySavingMode: Bool {
         didSet { ud.set(batterySavingMode, forKey: K.batterySavingMode) }
     }
+    /// "SSH compatibility mode". When ON: don't try to install
+    /// `xterm-ghostty` terminfo on remotes (kills the "Setting up
+    /// xterm-ghostty terminfo on …" message), and override Shift /
+    /// Option / Ctrl + Arrow to emit the standard xterm CSI modifier
+    /// sequences (`\e[1;2D` etc.) so they work in remote vim / tmux
+    /// regardless of the remote's `TERM`. Trade-off: locally,
+    /// `Shift+Arrow` no longer extends the libghostty selection.
+    @Published var sshCompatMode: Bool {
+        didSet {
+            ud.set(sshCompatMode, forKey: K.sshCompatMode)
+        }
+    }
 
     private let ud = UserDefaults.standard
 
@@ -114,6 +126,7 @@ final class Preferences: ObservableObject {
         static let useLegacyGlass   = "conterm.useLegacyGlass"
         static let useDefaultConfig = "conterm.useDefaultConfig"
         static let lightGlass       = "conterm.lightGlass"
+        static let sshCompatMode    = "conterm.sshCompatMode"
     }
 
     init() {
@@ -138,6 +151,7 @@ final class Preferences: ObservableObject {
         self.useLegacyGlass         = ud.object(forKey: K.useLegacyGlass) as? Bool ?? false
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
         self.lightGlass             = ud.object(forKey: K.lightGlass) as? Bool ?? false
+        self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? false
     }
 
     /// First launch always shows the intro so the user sees what it does.
