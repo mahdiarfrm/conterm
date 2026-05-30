@@ -138,9 +138,37 @@ extension Ghostty {
         /// surfaces and cause the "blank pane" rendering bug.
         func forceFreeSurface() {
             guard let h = handle else { return }
+            // Unregister FIRST, while `handle` is still valid —
+            // `SurfaceRegistry.unregister` reads `controller.handle`
+            // (an implicitly-unwrapped optional), so niling it before
+            // this call crashed with "found nil while implicitly
+            // unwrapping". Only after unregistering do we nil the
+            // handle as the re-entrancy guard (deinit / double-close
+            // then become no-ops and can never double-free).
             SurfaceRegistry.unregister(self)
-            ghostty_surface_free(h)
             handle = nil
+            // Pause libghostty's renderer immediately so it stops
+            // competing with other surfaces' renderers during a rapid
+            // close → re-open.
+            ghostty_surface_set_occlusion(h, true)
+            // Do NOT free synchronously, and do NOT yank the view out of
+            // the hierarchy. The pane-close collapse runs inside
+            // `withAnimation`, during which SwiftUI keeps the closing
+            // pane's view alive to animate the transition and CoreAnimation
+            // keeps committing its CAMetalLayer. Freeing the surface while
+            // that layer is still being drawn left the renderer locking an
+            // `os_unfair_lock` in freed memory → process abort
+            // (`_os_unfair_lock_corruption_abort`). Instead we keep the
+            // surface (and its view) ALIVE through the animation — the
+            // lock stays valid, so any in-flight draw is harmless — and
+            // free only after the collapse has fully settled.
+            let keepAlive = (view, hostView)
+            view = nil
+            hostView = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                ghostty_surface_free(h)
+                _ = keepAlive
+            }
         }
 
         // MARK: - View-side hooks

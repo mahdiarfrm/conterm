@@ -17,6 +17,11 @@ final class AppState: ObservableObject {
     /// event monitor on up/down; consumed by CommandPalette for rendering
     /// and by Enter to invoke the focused command.
     @Published var paletteFocusedIndex: Int = 0
+    /// While `false`, palette rows ignore `onHover` events so the
+    /// (often hidden) cursor sitting on top of a row can't snap focus
+    /// back when the user is navigating with arrow keys. Re-armed
+    /// the moment the mouse moves (see `AppDelegate` monitors).
+    @Published var paletteHoverArmed: Bool = true
     /// Bumped each time the event monitor fires Enter while the palette
     /// is open. CommandPalette watches it and runs the focused command.
     @Published var paletteRunTick: Int = 0
@@ -40,6 +45,10 @@ final class AppState: ObservableObject {
     @Published var searchOpen: Bool = false
     @Published var searchQuery: String = ""
     @Published var searchSnapshot: String = ""
+
+    /// First-run setup wizard visibility (this window only). Shown once
+    /// after the launch animation until the user completes or skips it.
+    @Published var setupWizardVisible: Bool = false
 
     /// True when this window is actually visible to the user (its Space
     /// is showing, not occluded) AND the app is active. When false, the
@@ -66,6 +75,7 @@ final class AppState: ObservableObject {
         case sessions              // browse all open panes across windows
         case shellHistory          // fuzzy-search the user's zsh/bash history
         case sshHosts              // pick an ssh host (recents first, then all)
+        case groups                // manage tab groups: rename / recolor / reorder
     }
     @Published var paletteMode: PaletteMode = .commands
 
@@ -150,7 +160,15 @@ final class AppState: ObservableObject {
     /// pinned the main thread at ~50% CPU forever. Driving the single
     /// dismissal from AppState makes it immune to view churn.
     func scheduleLaunchOverlayDismissIfNeeded() {
-        guard launchOverlayVisible, !launchDismissScheduled else { return }
+        guard launchOverlayVisible else {
+            // No launch overlay will play (animation off + already
+            // launched) — still surface the first-run wizard shortly.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                self?.maybeShowSetupWizard()
+            }
+            return
+        }
+        guard !launchDismissScheduled else { return }
         launchDismissScheduled = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { [weak self] in
             guard let self else { return }
@@ -158,7 +176,21 @@ final class AppState: ObservableObject {
                 self.launchOverlayVisible = false
             }
             self.prefs.hasLaunched = true
+            self.maybeShowSetupWizard()
         }
+    }
+
+    /// Once per app launch, in a single window, present the first-run
+    /// setup wizard if it hasn't been completed or skipped yet.
+    private static var wizardPresentedThisLaunch = false
+    func maybeShowSetupWizard() {
+        // `SETUP_WIZARD=1` in the env forces the wizard on for visual
+        // testing, bypassing the hasCompletedSetup flag.
+        let forced = ProcessInfo.processInfo.environment["SETUP_WIZARD"] != nil
+        guard (forced || !prefs.hasCompletedSetup),
+              !AppState.wizardPresentedThisLaunch else { return }
+        AppState.wizardPresentedThisLaunch = true
+        withAnimation(Theme.Spring.bouncy) { setupWizardVisible = true }
     }
 
     func dismissLaunchOverlay() {
@@ -276,10 +308,16 @@ final class AppState: ObservableObject {
         withAnimation(Theme.Spring.bouncy) {
             paletteOpen.toggle()
         }
-        // Reset to command root mode each time the palette opens.
+        // Reset to command root and disarm hover so a stationary
+        // cursor over a palette row can't steal focus from keyboard
+        // navigation. The hover flag re-arms on the first real mouse
+        // movement (see AppDelegate.mouseMovedMonitor).
         if paletteOpen {
             paletteMode = .commands
             paletteFocusedIndex = 0
+            NSCursor.setHiddenUntilMouseMoves(true)
+            paletteHoverArmed = false
+            NSApp.keyWindow?.acceptsMouseMovedEvents = true
         }
     }
 

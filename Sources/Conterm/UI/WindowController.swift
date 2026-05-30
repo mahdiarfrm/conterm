@@ -117,15 +117,19 @@ final class WindowController {
             },
         ]
 
-        // Terminal/window background blur is owned ENTIRELY by
-        // libghostty + the user's `background-blur` config. Conterm no
-        // longer drives the window's CGS blur at all — that's what
-        // fought a configured `background-blur` and changed with focus.
-        // (Default config sets no blur → zero desktop-reblur battery
-        // cost; users who set `background-blur` opt into its cost.)
+        // Background blur is owned by libghostty + the user's
+        // `background-blur` config value. `ghostty_set_window_background_blur`
+        // reads that value and applies the window-level CGS blur using
+        // libghostty's own setup (which clips to the window's rounded
+        // corners). The Settings "Desktop blur" slider edits the
+        // config value and reloads, then re-applies via this same call
+        // (see AppDelegate.reapplyWindowBlur) — Conterm never sets the
+        // CGS radius directly.
         if let app = ghostty {
             let handle = Unmanaged.passUnretained(win).toOpaque()
-            ghostty_set_window_background_blur(app.handle, handle)
+            DispatchQueue.main.async {
+                ghostty_set_window_background_blur(app.handle, handle)
+            }
         }
 
         // Pull focus to the first SurfaceView once SwiftUI has had a

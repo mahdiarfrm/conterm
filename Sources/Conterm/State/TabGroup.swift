@@ -88,6 +88,26 @@ final class TabGroupStore: ObservableObject {
         persist()
     }
 
+    /// Cycle a group's colour to the next key in `colorKeys` — used by
+    /// the palette Groups view for one-tap recolouring.
+    func cycleColor(_ id: UUID) {
+        guard let idx = groups.firstIndex(where: { $0.id == id }) else { return }
+        let keys = TabGroup.colorKeys
+        let cur = keys.firstIndex(of: groups[idx].colorKey) ?? 0
+        groups[idx].colorKey = keys[(cur + 1) % keys.count]
+        persist()
+    }
+
+    /// Move a group up (-1) or down (+1) in the ordering, which drives
+    /// the section order in the palette sessions list.
+    func move(_ id: UUID, by delta: Int) {
+        guard let i = groups.firstIndex(where: { $0.id == id }) else { return }
+        let j = i + delta
+        guard j >= 0, j < groups.count else { return }
+        groups.swapAt(i, j)
+        persist()
+    }
+
     func group(id: UUID?) -> TabGroup? {
         guard let id else { return nil }
         return groups.first(where: { $0.id == id })

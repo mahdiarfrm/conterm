@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var windows: [WindowController] = []
     private var eventMonitor: Any?
     private var titleBarClickMonitor: Any?
+    private var scrollMonitor: Any?
+    private var mouseMovedMonitor: Any?
+    private var lastPaletteScrollAt: TimeInterval = 0
 
     /// Convenience accessor for the active key window's state (or the
     /// first window's, as a fallback). Most menu actions and the
@@ -41,8 +44,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.keyWindow ?? windows.first?.window
     }
 
+    /// Reload the libghostty config (picking up an edited
+    /// `background-blur`, theme, font, …) and re-apply the window-level
+    /// background blur to every window. Used by the Settings "Desktop
+    /// blur" slider, which edits the config value rather than setting
+    /// the CGS radius directly — so libghostty owns the blur and clips
+    /// it to the window's rounded corners.
+    func reloadConfigAndReapplyBlur() {
+        Ghostty.App.shared?.reloadConfig()
+        guard let app = ghostty else { return }
+        for wc in windows {
+            let handle = Unmanaged.passUnretained(wc.window).toOpaque()
+            ghostty_set_window_background_blur(app.handle, handle)
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         prefs = Preferences()
+        // Single-source migration: if the user finished setup before
+        // Conterm switched to reading ONLY ~/.config/conterm/config
+        // and they relied on the old auto-loaded Ghostty config, add
+        // a `config-file = ...ghostty/config` include so they don't
+        // silently lose those settings under the new model.
+        if prefs?.hasCompletedSetup == true {
+            SetupAssistant.migrateToSingleSource()
+        }
         ghostty = Ghostty.App()
         notes = NotesStore()
         themes = ThemeCatalog()
@@ -194,6 +220,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Catches app-level shortcuts before they reach the SurfaceView.
     /// `nil` swallows; returning the event lets it pass through.
     private func installShortcutMonitor() {
+        // Re-arm palette hover on first mouse movement. While the
+        // palette is open hover is suppressed so a stationary cursor
+        // can't override arrow-key navigation.
+        mouseMovedMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
+            guard let self else { return event }
+            if self.state.paletteOpen, !self.state.paletteHoverArmed {
+                self.state.paletteHoverArmed = true
+            }
+            return event
+        }
+
+        // Scroll-wheel events default to the view under the cursor,
+        // which is usually a terminal pane, not the palette. While
+        // the palette is open we capture them and translate into one
+        // focus step per ~70ms (throttled so a trackpad swipe doesn't
+        // fly past several items). The event is always swallowed so
+        // the terminal underneath never scrolls.
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+            guard let self else { return event }
+            guard self.state.paletteOpen else { return event }
+            let now = Date().timeIntervalSinceReferenceDate
+            let interval: TimeInterval = 0.07
+            let dy = event.scrollingDeltaY
+            guard abs(dy) > 1.5 else { return nil }
+            if now - self.lastPaletteScrollAt > interval {
+                self.lastPaletteScrollAt = now
+                if dy > 0 { self.state.paletteFocusedIndex -= 1 }
+                else      { self.state.paletteFocusedIndex += 1 }
+            }
+            return nil
+        }
+
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self else { return event }
 
@@ -275,6 +333,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.state.splitSelected(direction: .vertical)
                 return nil
             }
+            // NB: modified Return (⌘/⌥-Return) is intentionally NOT
+            // consumed here. It's handled in SurfaceView.keyDown — we
+            // skip forwarding it to libghostty (so it doesn't print the
+            // stray ";7;13~" CSI sequence) but let it propagate through
+            // AppKit so global shortcuts (e.g. a window-tiling app's
+            // maximize) still receive it.
             // Everything else below uses plain ⌘ (no other mods).
             guard cmd, !opt, !ctrl, !shift else { return event }
             switch key {
@@ -372,25 +436,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return ours == 0
     }
 
+    /// Set once `applicationShouldTerminate` has handled the session
+    /// snapshot (saved or cleared), so `applicationWillTerminate`'s
+    /// best-effort save doesn't re-write a session the user just chose
+    /// to discard.
+    private var sessionDecisionMade = false
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        // Snapshot HERE — not in applicationWillTerminate. By the
-        // time applicationWillTerminate fires, AppKit has already
-        // started ordering our windows out, leaving `windows[]`
-        // empty (we drop on willClose) so the save was a no-op and
-        // sessions.json kept whatever snapshot was last written —
-        // causing every launch to restore the same stale state
-        // regardless of what was actually open at quit time.
-        if prefs?.rememberWindowState == true {
-            SessionStore.save(windows: windows)
+        // Snapshot HERE — not in applicationWillTerminate. By the time
+        // applicationWillTerminate fires, AppKit has already started
+        // ordering our windows out, leaving `windows[]` empty so the
+        // save would be a no-op (stale-restore bug).
+
+        // Only confirm on an EXPLICIT quit (⌘Q) — i.e. windows are
+        // still open. When the user closes the last pane/window with
+        // ⌘W, AppKit also routes through here but `windows` is already
+        // empty; that's not a "quit", so skip the dialog and just
+        // terminate (there's nothing open left to save).
+        guard !windows.isEmpty else {
+            sessionDecisionMade = true
+            return .terminateNow
         }
+
+        // No confirmation → preserve the prior behaviour (save iff the
+        // remember-state preference is on) and quit immediately.
+        guard prefs?.confirmBeforeQuit == true else {
+            if prefs?.rememberWindowState == true {
+                SessionStore.save(windows: windows)
+            }
+            sessionDecisionMade = true
+            return .terminateNow
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Quit Conterm?"
+        alert.informativeText =
+            "Running commands in your tabs will be ended."
+        alert.alertStyle = .warning
+        // Accessory checkbox: save the session for next launch. Defaults
+        // to the user's standing remember-state preference.
+        let save = NSButton(checkboxWithTitle: "Restore tabs & panes on next launch",
+                            target: nil, action: nil)
+        save.state = (prefs?.rememberWindowState == true) ? .on : .off
+        alert.accessoryView = save
+        alert.addButton(withTitle: "Quit")     // .alertFirstButtonReturn
+        alert.addButton(withTitle: "Cancel")   // .alertSecondButtonReturn
+
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else {
+            return .terminateCancel
+        }
+        if save.state == .on {
+            SessionStore.save(windows: windows)
+        } else {
+            // Fresh next launch — drop any saved snapshot.
+            SessionStore.clear()
+        }
+        sessionDecisionMade = true
         return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Best-effort second save in case applicationShouldTerminate
-        // was bypassed (e.g. uncaught signal). Harmless if windows
-        // are already gone — the save just skips them.
-        guard prefs?.rememberWindowState == true else { return }
+        // Best-effort second save in case applicationShouldTerminate was
+        // bypassed (e.g. uncaught signal). Skip if we already made the
+        // save/discard decision above, so a "don't restore" choice
+        // isn't undone here.
+        guard !sessionDecisionMade,
+              prefs?.rememberWindowState == true else { return }
         SessionStore.save(windows: windows)
     }
 }

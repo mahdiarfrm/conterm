@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Canonical design tokens. Spring presets are listed here once so every
@@ -8,21 +9,40 @@ import SwiftUI
 /// than tinting it. Surfaces are translucent whites/blacks; the system
 /// material does the heavy lifting.
 enum Theme {
+    /// A color that resolves differently in light vs dark appearance.
+    /// The window's appearance follows the Glass tint (see AppView), so
+    /// these flip text/accent to stay legible on light-tinted glass.
+    static func dynamic(light: NSColor, dark: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? dark : light
+        })
+    }
+
     // Palette — neutral, low-saturation. Lets whatever is behind the
     // window show through cleanly.
     static let bg            = Color.black.opacity(0.32)
     static let bgElevated    = Color.white.opacity(0.06)
     static let surfaceTint   = Color.white.opacity(0.03)
 
-    /// A near-white accent with the faintest cyan lean — reads as
-    /// "highlight" without painting the whole UI a color.
-    static let accent        = Color(red: 0.92, green: 0.96, blue: 1.00)
-    static let accentSoft    = Color.white.opacity(0.14)
+    /// Accent: near-white cool on dark glass, near-black cool on light
+    /// glass. Stays neutral (not a saturated blue) so it doesn't tint
+    /// the whole UI in light mode.
+    static let accent        = dynamic(
+        light: NSColor(calibratedRed: 0.10, green: 0.12, blue: 0.16, alpha: 1.0),
+        dark:  NSColor(calibratedRed: 0.92, green: 0.96, blue: 1.00, alpha: 1.0))
+    static let accentSoft    = dynamic(
+        light: NSColor(white: 0.0, alpha: 0.10),
+        dark:  NSColor(white: 1.0, alpha: 0.14))
     static let highlight     = Color(red: 0.85, green: 0.95, blue: 1.00)
     static let warning       = Color(red: 1.00, green: 0.80, blue: 0.55)
 
-    static let textPrimary   = Color.white.opacity(0.96)
-    static let textSecondary = Color.white.opacity(0.55)
+    static let textPrimary   = dynamic(
+        light: NSColor(white: 0.0, alpha: 0.88),
+        dark:  NSColor(white: 1.0, alpha: 0.96))
+    static let textSecondary = dynamic(
+        light: NSColor(white: 0.0, alpha: 0.55),
+        dark:  NSColor(white: 1.0, alpha: 0.55))
 
     static let stroke        = Color.white.opacity(0.08)
     static let strokeStrong  = Color.white.opacity(0.18)
@@ -31,8 +51,7 @@ enum Theme {
     /// "this is active" without coloring it.
     static let focusGlow     = Color.white.opacity(0.20)
 
-    // Geometry. The top bar got bumped a notch on user feedback — was
-    // too compact at 32 / 11 pt.
+    // Geometry tokens shared across the chrome.
     static let windowCorner:    CGFloat = 18
     static let paneCorner:      CGFloat = 12
     static let pillCorner:      CGFloat = 10

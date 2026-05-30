@@ -20,6 +20,11 @@ struct AppView: View {
             // terminal, below the modal overlays so palette/search
             // still cover it.
             floatingSidebar.id("overlay.sidebar")
+            // Floating glass capsule top-left holding the native
+            // traffic-light footprint + auto-hide toggle. Only present
+            // in vertical + auto-hide mode; replaces the old wide
+            // empty top strip so the panes can use the full top.
+            floatingTopLeftLightsPill.id("overlay.lights")
             // Stable explicit identities. These overlays are
             // conditionally-rendered siblings; without fixed `.id`s,
             // toggling any one of them shifts the ZStack positional
@@ -35,12 +40,14 @@ struct AppView: View {
             paletteOverlay.id("overlay.palette")
             settingsOverlay.id("overlay.settings")
             launchOverlay.id("overlay.launch")
+            setupWizardOverlay.id("overlay.setup")
         }
-        // Always dark for SwiftUI semantic colors — the chrome's text
-        // is tuned for dark. Light/Dark "mode" is expressed purely as
-        // the GLASS TINT (see LiquidGlassBackdrop), so toggling it
-        // never leaves white text on a light surface.
-        .preferredColorScheme(.dark)
+        // Color scheme follows the Glass tint: light tint → light
+        // appearance so the adaptive Theme colors flip to DARK text
+        // (legible on the light glass), dark tint → dark appearance
+        // with light text. Previously this was pinned to .dark, which
+        // left light text on the light-tinted glass (washed out).
+        .preferredColorScheme(prefs.lightGlass ? .light : .dark)
         .ignoresSafeArea()
         // Re-focus the active surface whenever something that could have
         // stolen the responder closes or rearranges the view tree.
@@ -69,9 +76,7 @@ struct AppView: View {
     /// smooth slider experience between the two looks.
     @ViewBuilder
     private var backdrop: some View {
-        if prefs.useLegacyGlass {
-            legacyBackdrop
-        } else if state.heavyGlassEnabled || !prefs.batterySavingMode {
+        if state.heavyGlassEnabled || !prefs.batterySavingMode {
             // Battery Saving Mode off → keep real Liquid Glass at all
             // times. Battery Saving Mode on (default) → swap to the
             // cheap flat fill whenever the window isn't actually
@@ -85,61 +90,6 @@ struct AppView: View {
                 ? Color(red: 0.90, green: 0.92, blue: 0.96)
                 : Color(red: 0.07, green: 0.08, blue: 0.11))
                 .opacity(0.92)
-        }
-    }
-
-    /// The previous backdrop, kept verbatim for instant rollback via
-    /// the `useLegacyGlass` preference.
-    private var legacyBackdrop: some View {
-        ZStack {
-            // Always-on liquid layers (water tint + edge sheen +
-            // diagonal corner highlight + bottom shadow).
-            liquidStack
-            // Frosted material layered on top, opacity ramped by the
-            // slider. At glassiness=0 it's invisible.
-            GlassBackground(material: .hudWindow,
-                             blending: .behindWindow,
-                             state: .followsWindowActiveState)
-                .opacity(prefs.glassiness)
-        }
-        .allowsHitTesting(false)
-    }
-
-    private var liquidStack: some View {
-        ZStack {
-            Color(red: 0.55, green: 0.70, blue: 0.95)
-                .opacity(0.05)
-                .blendMode(.plusLighter)
-
-            VStack(spacing: 0) {
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.35),
-                        Color.white.opacity(0.08),
-                        Color.clear,
-                    ],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .frame(height: 26)
-                .blendMode(.plusLighter)
-                Spacer(minLength: 0)
-            }
-
-            LinearGradient(
-                colors: [Color.white.opacity(0.10), Color.clear],
-                startPoint: .topLeading, endPoint: .center
-            )
-            .blendMode(.plusLighter)
-
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                LinearGradient(
-                    colors: [Color.clear, Color.black.opacity(0.10)],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .frame(height: 50)
-                .blendMode(.multiply)
-            }
         }
     }
 
@@ -184,16 +134,47 @@ struct AppView: View {
 
                 paneArea
                     .id("paneArea")
-                    // When the sidebar isn't inline (single-tab hide or
-                    // floating auto-hide) the pane needs its own top
-                    // clearance for the traffic lights.
+                    // Vertical-mode top clearance. With the floating
+                    // lights pill we no longer reserve a wide top strip
+                    // when the sidebar is hidden — the pill sits over
+                    // the pane and the lights live inside it. Only the
+                    // single-tab-hidden case (no sidebar AND no pill)
+                    // still needs the larger clearance.
                     .padding(.top, isVertical
-                             ? ((hideForSingleTab || sidebarFloating) ? 38 : 28)
+                             ? ((hideForSingleTab && !sidebarFloating) ? 38 : 6)
                              : 0)
             }
         }
         .animation(Theme.Spring.crisp, value: hideForSingleTab)
         .animation(Theme.Spring.soft, value: sidebarFloating)
+    }
+
+    // MARK: - Floating lights+autohide pill (auto-hide vertical only)
+
+    /// A small Liquid Glass capsule anchored to the very top-left of
+    /// the window. Contains the AppKit traffic-light footprint (so the
+    /// system buttons sit "inside" the capsule) and the auto-hide
+    /// toggle. Only rendered when the sidebar is in floating
+    /// (auto-hide) mode — that's the case where there'd otherwise be a
+    /// wide empty top strip across the pane area.
+    @ViewBuilder
+    private var floatingTopLeftLightsPill: some View {
+        let isVertical = prefs.tabOrientation == .vertical
+        // Show in BOTH auto-hide states. The pill lives at fixed
+        // window coordinates, so it stays aligned with the native
+        // traffic lights regardless of sidebar width — which the
+        // inline (sidebar-interior) version did not survive on
+        // resize.
+        if isVertical {
+            ZStack(alignment: .topLeading) {
+                FloatingLightsAutohidePill()
+                    .padding(.leading, 6)
+                    .padding(.top, 8)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .allowsHitTesting(true)
+            .transition(.opacity)
+        }
     }
 
     // MARK: - Floating vertical sidebar (auto-hide)
@@ -250,10 +231,8 @@ struct AppView: View {
     }
 
     private var floatingSidebarCard: some View {
-        ZStack {
-            GlassBackground(material: .hudWindow).opacity(0.92)
-            Color(red: 0.07, green: 0.09, blue: 0.13).opacity(0.30)
-        }
+        OverlayPanelBackground(cornerRadius: 18,
+                               tint: Color(red: 0.07, green: 0.09, blue: 0.13).opacity(0.30))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -298,6 +277,7 @@ struct AppView: View {
         .padding(.bottom, 12)
         .padding(.top, 4)
     }
+
 
     /// Palette: bouncy spring on the way in, snappier ease-out on the
     /// way out. Asymmetric transitions let us keep the playful entrance
@@ -464,6 +444,16 @@ struct AppView: View {
         if state.launchOverlayVisible {
             LaunchOverlay(playSound: prefs.launchSoundEnabled) {
                 state.dismissLaunchOverlay()
+            }
+            .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
+    private var setupWizardOverlay: some View {
+        if state.setupWizardVisible {
+            WelcomeWizard {
+                state.setupWizardVisible = false
             }
             .transition(.opacity)
         }

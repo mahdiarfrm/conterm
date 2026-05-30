@@ -77,6 +77,48 @@ struct NewTabButton: View {
     }
 }
 
+/// Full-width "New tab" row for the vertical sidebar. Unlike the bare
+/// `NewTabButton` disc (used in the horizontal bar), the entire row is
+/// one click target with a hover highlight — a clearer, larger
+/// affordance that matches the full-width tab pills above it.
+struct VerticalNewTabRow: View {
+    var action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(hovering ? Theme.textPrimary : Theme.textSecondary)
+                    .frame(width: 22, height: 22)
+                    .background(
+                        Circle().fill(hovering ? Color.white.opacity(0.10) : .clear)
+                    )
+                    .overlay(
+                        Circle().strokeBorder(
+                            hovering ? Color.white.opacity(0.35) : Theme.stroke,
+                            lineWidth: 0.5)
+                    )
+                Text("New tab")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(hovering ? Theme.textPrimary : Theme.textSecondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(hovering ? Color.white.opacity(0.06) : .clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(Theme.Spring.snappy, value: hovering)
+    }
+}
+
 private extension View {
     func pressEvents(onPress: @escaping () -> Void,
                      onRelease: @escaping () -> Void) -> some View {

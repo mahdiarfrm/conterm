@@ -258,6 +258,19 @@ extension Ghostty {
         // MARK: - Keyboard
 
         override func keyDown(with event: NSEvent) {
+            // Modified Return (⌘/⌥+Return, including ⌘⌥Return) — Conterm
+            // binds nothing to it, and libghostty would encode a stray
+            // CSI sequence that prints as ";7;13~". Swallow it silently:
+            // don't forward to the terminal (no garbage) and don't call
+            // super (which beeps via the no-responder chime). Any global
+            // shortcut (a window-tiling app's maximize, etc.) is a
+            // system-level hotkey that already fired before this. keyCode
+            // 36 = Return, 76 = numpad Enter.
+            if (event.keyCode == 36 || event.keyCode == 76),
+               event.modifierFlags.contains(.command)
+               || event.modifierFlags.contains(.option) {
+                return
+            }
             insertTextAccumulator = []
             interpretKeyEvents([event])
             let collected = insertTextAccumulator?.joined() ?? ""

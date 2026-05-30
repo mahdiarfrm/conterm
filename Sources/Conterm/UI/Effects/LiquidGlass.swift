@@ -121,28 +121,106 @@ struct LiquidGlassBackdrop: View {
 
 // MARK: - True Apple Liquid Glass (macOS 26+)
 
-/// Bridges AppKit's `NSGlassEffectView` — the real macOS 26 Liquid
-/// Glass system material (dynamic lensing, specular highlights,
-/// adaptive tint) — into SwiftUI as a full-bleed backdrop.
+/// Real macOS 26 Liquid Glass for the window backdrop.
 ///
-/// The slider maps to Apple's two glass styles plus a tint:
-///   • low  → `.clear`   (very transparent, content reads through)
-///   • high → `.regular` (standard frosted glass)
-/// A subtle dark tint whose alpha rises with the slider adds depth at
-/// the frosted end. The window-level CGS blur radius (WindowController)
-/// still rides underneath for a continuous desktop-blur ramp.
-///
-/// `NSViewType` is the base `NSView` so this file compiles against the
-/// macOS 14 deployment target; the `NSGlassEffectView` is only ever
-/// constructed/touched inside `if #available(macOS 26, *)`.
-private struct RealLiquidGlass: NSViewRepresentable {
+/// `NSGlassEffectView` exposes only two clarity styles — `.clear` (most
+/// see-through) and `.regular` (standard frosted) — and no blur-radius
+/// knob in between. To turn the Chrome glass slider into a real
+/// clarity control instead of just a tint, this view layers BOTH
+/// styles as siblings (each samples the same parent backdrop) and
+/// crossfades them by opacity:
+///   • slider 0  → only `.clear` visible (desktop reads through)
+///   • slider 1  → only `.regular` visible (frosted; tinted dark or light)
+///   • mid       → smooth blend of the two
+/// Dark vs Light flips the tint colour on both layers so the toggle
+/// is visible regardless of slider position.
+private struct RealLiquidGlass: View {
     var glassiness: Double
+    var light: Bool = false
+
+    var body: some View {
+        if #available(macOS 26, *) {
+            ZStack {
+                NativeClear(tintColor: clearTint)
+                    .opacity(1.0 - glassiness)
+                NativeRegular(tintColor: regularTint)
+                    .opacity(glassiness)
+            }
+        } else {
+            Color.clear
+        }
+    }
+
+    /// Light tint on the `.clear` (transparent-end) glass — small
+    /// floor so the Dark/Light toggle stays visible even when the
+    /// Chrome slider sits at Clear. Modest so see-through-ness wins.
+    @available(macOS 26, *)
+    private var clearTint: NSColor {
+        light
+            ? NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.96, alpha: 0.12)
+            : NSColor(calibratedRed: 0.06, green: 0.07, blue: 0.10, alpha: 0.06)
+    }
+
+    /// Heavier tint on the `.regular` (frosted-end) glass.
+    @available(macOS 26, *)
+    private var regularTint: NSColor {
+        light
+            ? NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.96, alpha: 0.28)
+            : NSColor(calibratedRed: 0.06, green: 0.07, blue: 0.10, alpha: 0.14)
+    }
+
+    @available(macOS 26, *)
+    private struct NativeClear: NSViewRepresentable {
+        var tintColor: NSColor
+
+        func makeNSView(context: Context) -> NSGlassEffectView {
+            let g = NSGlassEffectView()
+            g.style = .clear
+            // Fill the window square; the system rounds + clips the
+            // whole window (and its blur) at the system corner radius.
+            g.cornerRadius = 0
+            g.tintColor = tintColor
+            return g
+        }
+        func updateNSView(_ nsView: NSGlassEffectView, context: Context) {
+            nsView.tintColor = tintColor
+        }
+    }
+
+    @available(macOS 26, *)
+    private struct NativeRegular: NSViewRepresentable {
+        var tintColor: NSColor
+
+        func makeNSView(context: Context) -> NSGlassEffectView {
+            let g = NSGlassEffectView()
+            g.style = .regular
+            g.cornerRadius = 0
+            g.tintColor = tintColor
+            return g
+        }
+        func updateNSView(_ nsView: NSGlassEffectView, context: Context) {
+            nsView.tintColor = tintColor
+        }
+    }
+}
+
+// MARK: - Frosted Liquid Glass panel (modal overlays)
+
+/// Frosted Liquid Glass surface for modal overlay panels. Uses the
+/// same AppKit `NSGlassEffectView` the window backdrop uses, but with
+/// the `.regular` style (frosted) and a tint so the panel reads as a
+/// distinct, legible glass card over the terminal.
+struct PaneLiquidGlass: NSViewRepresentable {
+    let cornerRadius: CGFloat
+    /// 0 = clear, 1 = heaviest frost the tint can apply on `.regular`.
+    var frostiness: Double = 0.8
+    /// Follow the chrome's Glass tint setting (dark vs light).
     var light: Bool = false
 
     func makeNSView(context: Context) -> NSView {
         if #available(macOS 26, *) {
             let g = NSGlassEffectView()
-            g.cornerRadius = 0          // window already clips its corners
+            g.cornerRadius = cornerRadius
             apply(to: g)
             return g
         }
@@ -151,29 +229,46 @@ private struct RealLiquidGlass: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         if #available(macOS 26, *), let g = nsView as? NSGlassEffectView {
+            g.cornerRadius = cornerRadius
             apply(to: g)
         }
     }
 
     @available(macOS 26, *)
     private func apply(to g: NSGlassEffectView) {
-        // ONE fixed style — `.clear`, the most transparent. We do NOT
-        // switch to `.regular`: NSGlassEffectView has only two discrete
-        // styles, so flipping between them mid-slider produced a hard
-        // "clear → suddenly dark" jump. Instead the whole clear↔frosted
-        // range is driven CONTINUOUSLY by (a) the tint alpha here and
-        // (b) the window CGS blur radius (WindowController), so the
-        // slider ramps smoothly end to end.
-        g.style = .clear
-        // Smooth linear tint ramp: ~transparent at 0 → noticeably
-        // frosted/dense at 1. Dark mode tints toward cool near-black;
-        // light mode toward cool near-white. The glass itself stays
-        // clear/refractive in both — only the tint colour flips, which
-        // is exactly the "dark/light" feel without any font jank.
-        let a = glassiness * 0.5
+        g.style = .regular
+        let a = 0.12 + frostiness * 0.32
         g.tintColor = light
             ? NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.96, alpha: a)
             : NSColor(calibratedRed: 0.06, green: 0.07, blue: 0.10, alpha: a)
+    }
+}
+
+/// Backdrop for floating overlay panels (Settings, Command Palette,
+/// Search, Notifications, Rename, GroupRename, floating sidebar card).
+///
+/// Defaults to the original `NSVisualEffectView .hudWindow` vibrancy
+/// stack with a dark tint on top — the look these panels were designed
+/// against. Flipping `prefs.liquidGlassPanels` routes them to a
+/// frosted `.regular` Liquid Glass surface (macOS 26+) for a coherent
+/// look with the rest of the chrome.
+struct OverlayPanelBackground: View {
+    let cornerRadius: CGFloat
+    var tint: Color = Color(red: 0.08, green: 0.10, blue: 0.14).opacity(0.22)
+
+    @EnvironmentObject private var prefs: Preferences
+
+    var body: some View {
+        if prefs.liquidGlassPanels, #available(macOS 26, *) {
+            PaneLiquidGlass(cornerRadius: cornerRadius,
+                            frostiness: 0.8,
+                            light: prefs.lightGlass)
+        } else {
+            ZStack {
+                GlassBackground(material: .hudWindow).opacity(0.92)
+                tint
+            }
+        }
     }
 }
 
@@ -186,18 +281,58 @@ extension View {
     /// 14–15. Used for the tab pill, search, stats, and ⌘K controls so
     /// each floating control reads as liquid glass — without frosting
     /// the whole window-top band.
-    @ViewBuilder
     func glassPill(tinted: Bool = false) -> some View {
+        modifier(GlassPillModifier())
+    }
+}
+
+/// Glass-pill capsule whose tint adapts to the current colour scheme:
+/// dark tint on a dark window keeps the pill defined on bright
+/// wallpapers; white tint on a light window keeps it from going inky.
+private struct GlassPillModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        let isLight = colorScheme == .light
+        let tint = isLight ? Color.white.opacity(0.55) : Color.black.opacity(0.24)
+        let edge: [Color] = isLight
+            ? [Color.white.opacity(0.85), Color.white.opacity(0.20)]
+            : [Color.white.opacity(0.30), Color.white.opacity(0.05)]
+        let fallbackStroke = isLight
+            ? Color.black.opacity(0.10)
+            : Color.white.opacity(0.18)
+
         if #available(macOS 26, *) {
-            self.glassEffect(.regular, in: .capsule)
+            content
+                .glassEffect(.regular.tint(tint), in: .capsule)
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(colors: edge,
+                                           startPoint: .top, endPoint: .bottom),
+                            lineWidth: 0.5)
+                        .blendMode(.plusLighter)
+                        .allowsHitTesting(false)
+                )
         } else {
-            self
+            content
+                .background(Capsule(style: .continuous).fill(tint))
                 .background(Capsule(style: .continuous).fill(.ultraThinMaterial))
                 .overlay(
                     Capsule(style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                        .strokeBorder(fallbackStroke, lineWidth: 0.5)
                 )
         }
+    }
+}
+
+extension View {
+    /// Conditionally wrap in a glass pill — when `enabled` is false the
+    /// view is returned bare (used by the unified toolbar bar, which
+    /// supplies a single shared glass surface instead of one per icon).
+    @ViewBuilder
+    func glassPill(enabled: Bool) -> some View {
+        if enabled { glassPill() } else { self }
     }
 
     /// Same idea but for a rounded-rect control (the tab pill uses a
