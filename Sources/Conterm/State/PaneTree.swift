@@ -336,12 +336,12 @@ final class PaneTree: ObservableObject {
             closingPane.controller?.forceFreeSurface()
         }
         // Rapid sequential closes (≥2 within 300ms) skip the animation
-        // entirely. The animation re-resizes the surviving siblings'
-        // Metal surface every frame for the spring duration; stacking
-        // 5 of those overlapping is what spikes Activity Monitor's
-        // Energy Impact into the four digits. A single deliberate
-        // close still gets a short ease-out so the layout shift
-        // doesn't snap.
+        // entirely — stacking several overlapping spring re-layouts of
+        // the surviving Metal surfaces spikes energy use. A single
+        // deliberate close gets a short ease-out so the layout shift
+        // doesn't snap. (The freed surface is no longer torn down
+        // synchronously — see SurfaceController.forceFreeSurface — so
+        // animating the collapse is safe.)
         let now = CACurrentMediaTime()
         let rapid = (now - Self.lastCloseAt) < 0.30
         Self.lastCloseAt = now

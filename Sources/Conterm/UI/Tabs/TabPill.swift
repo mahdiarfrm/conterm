@@ -176,7 +176,8 @@ struct TabPill: View {
             if let g = group {
                 return TabGroup.color(forKey: g.colorKey)
             }
-            return isSelected ? Color.white : Color.white.opacity(0.40)
+            return isSelected ? Theme.textPrimary
+                              : Theme.textSecondary.opacity(0.7)
         }()
         return Circle()
             .fill(baseColor)

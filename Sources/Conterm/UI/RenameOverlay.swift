@@ -107,9 +107,6 @@ struct RenameOverlay: View {
     }
 
     private var panelBackground: some View {
-        ZStack {
-            GlassBackground(material: .hudWindow).opacity(0.92)
-            Color(red: 0.08, green: 0.10, blue: 0.14).opacity(0.22)
-        }
+        OverlayPanelBackground(cornerRadius: 16)
     }
 }

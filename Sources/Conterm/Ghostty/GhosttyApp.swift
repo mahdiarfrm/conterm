@@ -35,12 +35,13 @@ extension Ghostty {
                 return (NSHomeDirectory() as NSString).appendingPathComponent(".config")
             }()
 
-            // Load order (last write wins per setting):
+            // Load order (last wins). Conterm uses a SINGLE user-facing
+            // config file (~/.config/conterm/config). The user can
+            // delegate to their Ghostty config from inside that file
+            // with `config-file = ~/.config/ghostty/config`, which
+            // libghostty resolves recursively. Two-file confusion gone:
             //   1) Conterm's bundled defaults
-            //   2) User's Ghostty config (~/.config/ghostty/config) so an
-            //      existing Ghostty setup "just works"
-            //   3) User's Conterm-specific overrides (~/.config/conterm/config)
-            //      — kept separate so Conterm tweaks don't leak into Ghostty
+            //   2) ~/.config/conterm/config (the only file we name)
 
             // 1) Base = Ghostty's GENUINE default config, bundled from
             //    `ghostty +show-config --default` (scripts/setup.sh).
@@ -63,38 +64,17 @@ extension Ghostty {
                 }
             }
 
-            // 2) User's Ghostty config as a base. Ghostty's macOS app
-            //    stores config under Application Support (its bundle id),
-            //    which is where most macOS users actually have theirs;
-            //    we check that first, then the XDG location, and load
-            //    whichever is found (or both if both exist).
-            let home = NSHomeDirectory()
-            if App.useDefaultGhosttyConfig {
-                clog("conterm: safe mode — skipping external Ghostty config")
-            } else {
-                let ghosttyCandidates = [
-                    "\(home)/Library/Application Support/com.mitchellh.ghostty/config",
-                    (configHome as NSString).appendingPathComponent("ghostty/config"),
-                ]
-                var loadedAnyGhostty = false
-                for path in ghosttyCandidates where fm.fileExists(atPath: path) {
-                    path.withCString { ghostty_config_load_file(cfg, $0) }
-                    let size = (try? fm.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
-                    clog("conterm: loaded ghostty user config \(path) (\(size) bytes)")
-                    loadedAnyGhostty = true
-                }
-                if !loadedAnyGhostty {
-                    clog("conterm: no ghostty config found. Checked:")
-                    for path in ghosttyCandidates { clog("conterm:   - \(path)") }
-                }
-            }
+            // (The Ghostty config is no longer auto-loaded here — if
+            // the user wants those settings they enable them with a
+            // `config-file = ...ghostty/config` line in conterm config,
+            // which libghostty processes recursively.)
 
-            // 3) Conterm-specific user overrides (highest priority in
-            //    normal mode). In SAFE MODE (useDefaultGhosttyConfig ON)
-            //    we skip loading it entirely so a broken config can't
-            //    stop the terminal from starting — the user fixes the
-            //    file, then turns safe mode back off. The file is still
-            //    SEEDED if missing so first run gets the template.
+            // 2) Conterm-specific user overrides. In SAFE MODE
+            //    (useDefaultGhosttyConfig ON) we skip loading it
+            //    entirely so a broken config can't stop the terminal
+            //    from starting — the user fixes the file, then turns
+            //    safe mode back off. The file is still SEEDED if
+            //    missing so first run gets the template.
             let contermDir = (configHome as NSString).appendingPathComponent("conterm")
             let contermConfigPath = (contermDir as NSString).appendingPathComponent("config")
             if fm.fileExists(atPath: contermConfigPath) {
@@ -114,18 +94,14 @@ extension Ghostty {
                 // of being shadowed by stale lines baked into their file.
                 // This file is exclusively for the USER's own overrides.
                 let seed = """
-                # Conterm — your personal overrides. Ghostty config syntax.
+                # Conterm config. Ghostty syntax — full reference at
+                # https://ghostty.org/docs/config/reference
                 #
-                # Load order (last wins):
-                #   1. Conterm bundled defaults
-                #   2. ~/.config/ghostty/config   (if you also use Ghostty)
-                #   3. THIS FILE
+                # Conterm reads only THIS file (plus its bundled
+                # defaults). To also pull in your Ghostty config,
+                # uncomment the next line:
                 #
-                # Everything below is commented out — Conterm's bundled
-                # defaults already provide a sane setup. Uncomment only
-                # what you want to change.
-                #
-                # Full reference: https://ghostty.org/docs/config/reference
+                # config-file = \(NSHomeDirectory())/.config/ghostty/config
 
                 # font-family = "JetBrains Mono"
                 # font-size = 13
@@ -249,6 +225,12 @@ extension Ghostty {
             // Free the ephemeral config — both app + surfaces have
             // copied what they need internally.
             ghostty_config_free(newCfg)
+            // Let Preferences re-parse view-scoped config values that
+            // aren't directly fed back through libghostty (currently
+            // just `background-blur`, which Conterm renders per-window
+            // in the pane-area backdrop).
+            NotificationCenter.default.post(name: .contermConfigReloaded,
+                                            object: nil)
         }
 
         /// Replays the same load order as init() onto an already-allocated

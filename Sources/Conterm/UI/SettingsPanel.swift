@@ -16,7 +16,7 @@ struct SettingsPanel: View {
     @State private var themeFilter: String = ""
 
     enum Section: String, CaseIterable, Identifiable {
-        case appearance, tabs, panes, window, launch, shortcuts, config, about
+        case appearance, tabs, panes, window, launch, palette, shortcuts, config, about
         var id: String { rawValue }
         var label: String {
             switch self {
@@ -25,6 +25,7 @@ struct SettingsPanel: View {
             case .panes:      return "Panes"
             case .window:     return "Window"
             case .launch:     return "Launch"
+            case .palette:    return "Palette"
             case .shortcuts:  return "Shortcuts"
             case .config:     return "Config"
             case .about:      return "About"
@@ -37,6 +38,7 @@ struct SettingsPanel: View {
             case .panes:      return "rectangle.split.2x1.fill"
             case .window:     return "macwindow"
             case .launch:     return "sparkles"
+            case .palette:    return "command.circle"
             case .shortcuts:  return "keyboard"
             case .config:     return "doc.text"
             case .about:      return "info.circle.fill"
@@ -59,10 +61,8 @@ struct SettingsPanel: View {
             moveSelection(by: new - old)
         }
         .background(
-            ZStack {
-                GlassBackground(material: .hudWindow)
-                Color.black.opacity(0.22)
-            }
+            OverlayPanelBackground(cornerRadius: 18,
+                                   tint: Color.black.opacity(0.22))
         )
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
@@ -179,6 +179,7 @@ struct SettingsPanel: View {
                 case .panes:      panes
                 case .window:     window
                 case .launch:     launch
+                case .palette:    palette
                 case .shortcuts:  shortcuts
                 case .config:     config
                 case .about:      about
@@ -193,7 +194,7 @@ struct SettingsPanel: View {
 
     private var appearance: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionHeader("Appearance", subtitle: "Theme, font, and the window glass.")
+            sectionHeader("Appearance", subtitle: "Theme, font, and glass.")
 
             // Theme
             card {
@@ -205,10 +206,10 @@ struct SettingsPanel: View {
                 FontEditor()
             }
 
-            // Glass / opacity
+            // Glass
             card {
-                SettingsRow(title: "Chrome glass",
-                            subtitle: "Strength of Conterm's own glass (backdrop, pills, border). The terminal's own background blur is the `background-blur` option in your config.") {
+                SettingsRow(title: "Frost",
+                            subtitle: "How opaque Conterm's glass surfaces are. Does not blur the desktop.") {
                     HStack(spacing: 8) {
                         Text("Clear").subLabel().fixedSize()
                         Slider(value: $prefs.glassiness, in: 0.0...1.0).frame(width: 180)
@@ -216,8 +217,8 @@ struct SettingsPanel: View {
                     }
                     .fixedSize(horizontal: true, vertical: false)
                 }
-                SettingsRow(title: "Glass tint",
-                            subtitle: "Tint the liquid glass dark or light. The glass stays clear/refractive either way — only the tint colour changes.") {
+                SettingsRow(title: "Tint",
+                            subtitle: "Cool dark or cool light.") {
                     Picker("", selection: $prefs.lightGlass) {
                         Text("Dark").tag(false)
                         Text("Light").tag(true)
@@ -226,26 +227,17 @@ struct SettingsPanel: View {
                     .labelsHidden()
                     .frame(width: 150)
                 }
-                SettingsRow(title: "Classic backdrop",
-                            subtitle: "Use the original layered backdrop instead of the new liquid glass.") {
-                    Toggle("", isOn: $prefs.useLegacyGlass)
+                SettingsRow(title: "Liquid Glass overlays",
+                            subtitle: "Use macOS 26 glass for the palette, search, notifications, and other panels.") {
+                    Toggle("", isOn: $prefs.liquidGlassPanels)
                         .toggleStyle(.switch)
                         .labelsHidden()
                 }
-                SettingsRow(title: "Battery Saving Mode",
-                            subtitle: "Drop the live Liquid Glass to a flat fill when Conterm isn't the active window — saves GPU when you're in another app. Turn off if you want the glass to stay alive even in the background.") {
+                SettingsRow(title: "Battery saver",
+                            subtitle: "Use a flat fill when Conterm isn't in the foreground.") {
                     Toggle("", isOn: $prefs.batterySavingMode)
                         .toggleStyle(.switch)
                         .labelsHidden()
-                }
-                SettingsRow(title: "Window opacity",
-                            subtitle: "Chrome around the terminal — cells are controlled via `background-opacity` in your config.") {
-                    HStack(spacing: 8) {
-                        Slider(value: $prefs.windowOpacity, in: 0.25...0.95).frame(width: 180)
-                        Text("\(Int(prefs.windowOpacity * 100))%").monoLabel()
-                            .frame(width: 40, alignment: .trailing)
-                    }
-                    .fixedSize(horizontal: true, vertical: false)
                 }
             }
         }
@@ -260,10 +252,10 @@ struct SettingsPanel: View {
 
     private var tabs: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionHeader("Tabs", subtitle: "Position and behavior of the tab bar.")
+            sectionHeader("Tabs", subtitle: "Tab bar position and behaviour.")
             card {
                 SettingsRow(title: "Orientation",
-                            subtitle: "Horizontal across the top or vertical on the leading edge.") {
+                            subtitle: "Top bar or left sidebar.") {
                     Picker("", selection: Binding(
                         get: { prefs.tabOrientation },
                         set: { prefs.tabOrientation = $0 }
@@ -276,12 +268,12 @@ struct SettingsPanel: View {
                     .frame(width: 200)
                     .labelsHidden()
                 }
-                SettingsRow(title: "Hide tab bar when only one tab",
-                            subtitle: "Frees up some screen real estate while a single tab is open.") {
+                SettingsRow(title: "Hide tab bar with one tab",
+                            subtitle: "Frees space when only one tab is open.") {
                     Toggle("", isOn: $prefs.hideTabBarSingleTab).labelsHidden()
                 }
-                SettingsRow(title: "Live system stats",
-                            subtitle: "CPU · RAM · Network widget in the tab bar.") {
+                SettingsRow(title: "System stats",
+                            subtitle: "Show CPU, memory, and network in the tab bar.") {
                     Toggle("", isOn: $prefs.showSystemStats).labelsHidden()
                 }
             }
@@ -290,10 +282,10 @@ struct SettingsPanel: View {
 
     private var panes: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionHeader("Panes", subtitle: "Floating glass title bar and split behavior.")
+            sectionHeader("Panes", subtitle: "Pane controls and chrome.")
             card {
-                SettingsRow(title: "Show pane title bar",
-                            subtitle: "The liquid-glass pill in each pane's top-right showing dir / SSH host + the ⌥N keybind.") {
+                SettingsRow(title: "Pane title pill",
+                            subtitle: "Floating pill in each pane showing the directory or SSH host plus its ⌥N shortcut.") {
                     Toggle("", isOn: $prefs.showPaneTitleBar).labelsHidden()
                 }
             }
@@ -302,11 +294,15 @@ struct SettingsPanel: View {
 
     private var window: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionHeader("Window", subtitle: "How the window persists between launches.")
+            sectionHeader("Window", subtitle: "Window state and quit.")
             card {
-                SettingsRow(title: "Remember position & size",
-                            subtitle: "Reopens where you last left it. Disable to always center on launch.") {
+                SettingsRow(title: "Restore window state",
+                            subtitle: "Reopen at the last position and size.") {
                     Toggle("", isOn: $prefs.rememberWindowState).labelsHidden()
+                }
+                SettingsRow(title: "Confirm on quit",
+                            subtitle: "⌘Q asks first and lets you restore tabs and panes next launch.") {
+                    Toggle("", isOn: $prefs.confirmBeforeQuit).labelsHidden()
                 }
             }
         }
@@ -314,23 +310,117 @@ struct SettingsPanel: View {
 
     private var launch: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionHeader("Launch", subtitle: "What happens when Conterm opens.")
+            sectionHeader("Launch", subtitle: "What happens at startup.")
             card {
                 SettingsRow(title: "Launch animation",
-                            subtitle: "Plays the wordmark overlay each app start.") {
+                            subtitle: "Play the wordmark intro at startup.") {
                     Toggle("", isOn: $prefs.launchAnimationEnabled).labelsHidden()
                 }
                 SettingsRow(title: "Launch chime",
-                            subtitle: "A short synthesized chord during the launch animation.") {
+                            subtitle: "Short chord during the launch animation.") {
                     Toggle("", isOn: $prefs.launchSoundEnabled).labelsHidden()
                 }
-                SettingsRow(title: "Replay now",
-                            subtitle: "Preview your sound/animation settings.") {
+                SettingsRow(title: "Preview animation",
+                            subtitle: "Play the launch animation now.") {
                     Button("Play") { state.launchOverlayVisible = true }
                         .buttonStyle(.borderedProminent)
                         .tint(Theme.accent.opacity(0.7))
                 }
+                SettingsRow(title: "Run setup wizard",
+                            subtitle: "Re-run the first-run setup.") {
+                    Button("Run") {
+                        // Bypass the once-per-launch guard so the
+                        // wizard always opens from this button.
+                        state.setupWizardVisible = true
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
+        }
+    }
+
+    // MARK: - Palette (reorder)
+
+    /// Drag-free reordering of the command palette's main list. The
+    /// effective order = (user picks, in their chosen order) +
+    /// (any commands they haven't touched, in built-in order). A
+    /// "Reset" button clears the override so new releases that ship
+    /// extra commands don't have to be re-arranged manually.
+    private var palette: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader("Palette",
+                          subtitle: "Reorder the commands shown in ⌘K.")
+            card {
+                let effective = effectivePaletteOrder
+                ForEach(Array(effective.enumerated()), id: \.element.id) { idx, item in
+                    HStack(spacing: 10) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Theme.textSecondary)
+                            .frame(width: 18)
+                        Text(item.title)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(Theme.textPrimary)
+                        Spacer()
+                        Button { movePaletteItem(item.id, by: -1) } label: {
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(width: 22, height: 20)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(idx == 0)
+                        .foregroundStyle(idx == 0 ? Theme.textSecondary.opacity(0.3)
+                                                  : Theme.textSecondary)
+                        Button { movePaletteItem(item.id, by: 1) } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(width: 22, height: 20)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(idx == effective.count - 1)
+                        .foregroundStyle(idx == effective.count - 1 ? Theme.textSecondary.opacity(0.3)
+                                                                    : Theme.textSecondary)
+                    }
+                    .padding(.vertical, 3)
+                }
+                HStack {
+                    Spacer()
+                    Button("Reset to default order") {
+                        prefs.paletteCommandOrder = []
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(prefs.paletteCommandOrder.isEmpty)
+                }
+                .padding(.top, 6)
+            }
+        }
+    }
+
+    /// The currently-effective list of palette commands, in display
+    /// order. User-ordered IDs first, built-in remainder appended.
+    private var effectivePaletteOrder: [(id: String, title: String, icon: String)] {
+        let all = CommandPalette.catalog
+        let override = prefs.paletteCommandOrder
+        guard !override.isEmpty else { return all }
+        let byID = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
+        var result: [(id: String, title: String, icon: String)] = []
+        var seen = Set<String>()
+        for id in override {
+            if let item = byID[id] { result.append(item); seen.insert(id) }
+        }
+        for item in all where !seen.contains(item.id) { result.append(item) }
+        return result
+    }
+
+    private func movePaletteItem(_ id: String, by delta: Int) {
+        var order = effectivePaletteOrder.map { $0.id }
+        guard let i = order.firstIndex(of: id) else { return }
+        let j = i + delta
+        guard j >= 0, j < order.count else { return }
+        order.swapAt(i, j)
+        withAnimation(Theme.Spring.snappy) {
+            prefs.paletteCommandOrder = order
         }
     }
 
@@ -361,10 +451,23 @@ struct SettingsPanel: View {
 
     private var config: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionHeader("Config", subtitle: "Direct edit of your ~/.config/conterm/config — see Ghostty's docs for every option.")
+            sectionHeader("Config", subtitle: "Conterm reads a single file. Ghostty syntax — see the Ghostty docs.")
+            // Single source-of-truth card: shows the file Conterm
+            // actually reads, what it currently includes, and the
+            // three actions a user wants (open / reload / reset).
             card {
+                configSourceRow
+                SettingsRow(title: "Reload",
+                            subtitle: "Re-read the config file and reapply blur.") {
+                    Button("Reload") {
+                        (NSApp.delegate as? AppDelegate)?.reloadConfigAndReapplyBlur()
+                        prefs.refreshPaneBlurFromConfig()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                }
                 SettingsRow(title: "Safe mode",
-                            subtitle: "Recovery switch. Normally Conterm loads your config (~/.config/conterm/config, then ~/.config/ghostty/config). If a bad edit makes the terminal misbehave or fail to start right, turn this on: Conterm boots on Ghostty's genuine built-in defaults and ignores both files so you can open the editor below, fix it, then turn Safe mode back off. Your files are never modified.") {
+                            subtitle: "Ignore both config files and boot on Ghostty's built-in defaults. Use to recover from a bad edit; your files aren't touched.") {
                     Toggle("", isOn: Binding(
                         get: { prefs.useDefaultConfig },
                         set: { newValue in
@@ -377,8 +480,8 @@ struct SettingsPanel: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
-                SettingsRow(title: "SSH compatibility mode",
-                            subtitle: "Use xterm-256color and standard xterm modifier sequences over SSH so Shift / Option / Ctrl + Arrow work in remote vim, tmux, and similar TUIs.") {
+                SettingsRow(title: "SSH compatibility",
+                            subtitle: "Send xterm-256color over SSH so Shift / Option / Ctrl + Arrow work in remote vim, tmux, and similar.") {
                     Toggle("", isOn: Binding(
                         get: { prefs.sshCompatMode },
                         set: { newValue in
@@ -391,8 +494,8 @@ struct SettingsPanel: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
-                SettingsRow(title: "Agent pill — lite",
-                            subtitle: "Reduce animations on the agent status pill to save battery during long sessions. The pill still shows ready, thinking, and needs-you states.") {
+                SettingsRow(title: "Agent pill: low-motion",
+                            subtitle: "Reduce animations on the agent status pill. States still update.") {
                     Toggle("", isOn: Binding(
                         get: { prefs.agentPillLite },
                         set: { prefs.agentPillLite = $0 }
@@ -401,7 +504,7 @@ struct SettingsPanel: View {
                     .labelsHidden()
                 }
                 SettingsRow(title: "Claude Code integration",
-                            subtitle: "Adds hooks to ~/.claude/settings.json so a running Claude shows a live status pill at the top of its pane: “Claude is Ready.” when waiting, “Claude is thinking…” with an orange glow while working, “needs you” when it wants input. Non-destructive — your other hooks are kept and the file is backed up.") {
+                            subtitle: "Add hooks to ~/.claude/settings.json so a running Claude shows ready / thinking / needs-input in its pane. Your other hooks are preserved.") {
                     Toggle("", isOn: Binding(
                         get: { claudeIntegrationOn },
                         set: { on in
@@ -414,7 +517,7 @@ struct SettingsPanel: View {
                     .labelsHidden()
                 }
                 SettingsRow(title: "opencode integration",
-                            subtitle: "Installs a small opencode plugin (~/.config/opencode/plugin/conterm-agent.js) that drives the same status pill for opencode sessions. It's a dedicated file — your config and other plugins are untouched.") {
+                            subtitle: "Install an opencode plugin that drives the same status pill. Your config and other plugins are untouched.") {
                     Toggle("", isOn: Binding(
                         get: { openCodeIntegrationOn },
                         set: { on in
@@ -439,6 +542,58 @@ struct SettingsPanel: View {
     }
 
     // MARK: - Helpers
+
+    // MARK: - Config section helpers
+
+    /// Compact summary card at the top of Settings → Config. Names
+    /// the one file Conterm reads, shows what it currently includes
+    /// (linked to Ghostty / standalone / fresh), and exposes Open /
+    /// Reset actions. Keeps the user from having to read load-order
+    /// docs to understand what's active.
+    @ViewBuilder
+    private var configSourceRow: some View {
+        let path = "\(NSHomeDirectory())/.config/conterm/config"
+        let linked = SetupAssistant.isLinkedToGhostty()
+        let status = linked
+            ? "Includes ~/.config/ghostty/config (edits in either apply)."
+            : "Standalone — Ghostty config is not read."
+
+        SettingsRow(title: "Conterm reads",
+                    subtitle: path) {
+            HStack(spacing: 6) {
+                Button("Open") {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: path))
+                }
+                .buttonStyle(.bordered)
+                Menu {
+                    Button("Link to Ghostty config") {
+                        SetupAssistant.linkGhosttyConfig()
+                        (NSApp.delegate as? AppDelegate)?.reloadConfigAndReapplyBlur()
+                    }
+                    .disabled(!SetupAssistant.ghosttyConfigExists())
+                    Button("Reset to defaults") {
+                        SetupAssistant.writeFreshConfig()
+                        (NSApp.delegate as? AppDelegate)?.reloadConfigAndReapplyBlur()
+                    }
+                } label: { Text("More…") }
+                .menuStyle(.borderlessButton)
+                .frame(width: 70)
+            }
+        }
+        // Status line under the path so the user can see at a glance
+        // whether their Ghostty config is in play.
+        HStack(spacing: 6) {
+            Image(systemName: linked ? "link.circle.fill" : "circle")
+                .font(.system(size: 10))
+                .foregroundStyle(linked ? Theme.accent : Theme.textSecondary)
+            Text(status)
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
+    }
 
     private func sectionHeader(_ title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {

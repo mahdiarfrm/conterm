@@ -243,19 +243,39 @@ private struct KeybindChip: View {
 }
 
 /// Returns a friendly short label for `cwd`. Replaces home dir with
-/// `~`, then takes the basename (or `~/name` for one-deep dirs).
+/// `~`, preserves the `~/` (or `/`) anchor so the user can always tell
+/// which root the path is under, and shows up to the last three path
+/// segments — deeper paths are signalled with an ellipsis between the
+/// anchor and the tail (e.g. `~/…/sibche/v5-infra/services`). The
+/// 3-segment depth is a compromise between "just the basename"
+/// (too little context) and the full path (overflows the pill on
+/// narrow panes).
 @MainActor
 private func friendlyDirLabel(for cwd: String?) -> String {
     guard let cwd, !cwd.isEmpty else { return "—" }
     let home = NSHomeDirectory()
-    var path = cwd
-    if path == home { return "~" }
-    if path.hasPrefix(home + "/") {
-        path = "~" + path.dropFirst(home.count)
+    if cwd == home { return "~" }
+    if cwd == "/" { return "/" }
+
+    var rest: String
+    var anchor: String
+    if cwd.hasPrefix(home + "/") {
+        rest = String(cwd.dropFirst(home.count + 1))
+        anchor = "~/"
+    } else if cwd.hasPrefix("/") {
+        rest = String(cwd.dropFirst())
+        anchor = "/"
+    } else {
+        rest = cwd
+        anchor = ""
     }
-    let parts = path.split(separator: "/").map(String.init)
-    if parts.count <= 2 { return path }
-    return ".../" + parts.suffix(2).joined(separator: "/")
+
+    let parts = rest.split(separator: "/").map(String.init)
+    let maxTail = 3
+    if parts.count <= maxTail {
+        return anchor + parts.joined(separator: "/")
+    }
+    return anchor + "…/" + parts.suffix(maxTail).joined(separator: "/")
 }
 
 private struct PaneView: View {

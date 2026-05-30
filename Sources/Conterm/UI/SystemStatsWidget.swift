@@ -8,7 +8,9 @@ struct SystemStatsWidget: View {
     @State private var hovering = false
     @State private var showingPopover = false
 
-    private let pillHeight: CGFloat = 22
+    // Matches TabBar.toolbarPillHeight so the stats widget lines up
+    // with the bell / search / ⌘K pills in the fused toolbar blob.
+    private let pillHeight: CGFloat = 24
 
     var body: some View {
         Button(action: { showingPopover.toggle() }) {
@@ -24,30 +26,41 @@ struct SystemStatsWidget: View {
         .help("CPU · RAM · Network — click for details")
     }
 
+    @ViewBuilder
     private var pill: some View {
-        HStack(spacing: 8) {
+        let row = HStack(spacing: 8) {
             metricChip(symbol: "cpu",        value: stats.cpuPercent, history: stats.cpuHistory)
             metricChip(symbol: "memorychip", value: stats.ramPercent, history: stats.ramHistory)
             netChip
         }
         .padding(.horizontal, 9)
         .frame(height: pillHeight)
-        // Cheap static material — NOT `.glassPill()`. This pill
-        // re-renders on every stats sample; real Liquid Glass
-        // (`.glassEffect`) is GPU/layout-heavy and that recurring
-        // recomposite was the idle battery drain. The tab / search /
-        // ⌘K pills keep Liquid Glass (they don't churn).
-        .background(
-            Capsule(style: .continuous).fill(.ultraThinMaterial)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
-        )
-        .shadow(color: .black.opacity(hovering ? 0.35 : 0.20),
-                 radius: hovering ? 8 : 4,
-                 y: hovering ? 2 : 1)
-        .contentShape(Capsule())
+
+        if #available(macOS 26, *) {
+            // macOS 26: use real Liquid Glass so this widget can join
+            // the fused toolbar `GlassEffectContainer` with the bell /
+            // search / ⌘K pills. The previous `.ultraThinMaterial`
+            // avoided a recurring re-composite on stats updates; we
+            // accept the cost here in exchange for the unified Liquid
+            // Glass blob look the toolbar opts into.
+            row.glassPill()
+                .shadow(color: .black.opacity(hovering ? 0.35 : 0.20),
+                         radius: hovering ? 8 : 4,
+                         y: hovering ? 2 : 1)
+                .contentShape(Capsule())
+        } else {
+            row.background(
+                Capsule(style: .continuous).fill(.ultraThinMaterial)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+            )
+            .shadow(color: .black.opacity(hovering ? 0.35 : 0.20),
+                     radius: hovering ? 8 : 4,
+                     y: hovering ? 2 : 1)
+            .contentShape(Capsule())
+        }
     }
 
     // MARK: - Building blocks
@@ -56,13 +69,13 @@ struct SystemStatsWidget: View {
         HStack(spacing: 5) {
             Image(systemName: symbol)
                 .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.7))
+                .foregroundStyle(Theme.textSecondary)
             Sparkline(samples: history)
                 .frame(width: 18, height: 10)
-                .foregroundStyle(Color.white.opacity(0.7))
+                .foregroundStyle(Theme.textSecondary)
             Text(String(format: "%.0f%%", min(99, max(0, value))))
                 .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.9))
+                .foregroundStyle(Theme.textPrimary)
                 .monospacedDigit()
                 // FIXED width (not minWidth): "5%" vs "100%" must not
                 // change the pill's size, or every sample relayouts the
@@ -76,7 +89,7 @@ struct SystemStatsWidget: View {
         HStack(spacing: 5) {
             Image(systemName: "network")
                 .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.7))
+                .foregroundStyle(Theme.textSecondary)
             VStack(alignment: .trailing, spacing: -1) {
                 HStack(spacing: 2) {
                     Image(systemName: "arrow.down")
@@ -97,7 +110,7 @@ struct SystemStatsWidget: View {
                         .frame(width: 38, alignment: .trailing)
                 }
             }
-            .foregroundStyle(Color.white.opacity(0.85))
+            .foregroundStyle(Theme.textPrimary)
         }
     }
 

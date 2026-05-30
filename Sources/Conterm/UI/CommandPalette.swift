@@ -9,6 +9,7 @@ import SwiftUI
 /// (edit → list → commands → closed).
 struct CommandPalette: View {
     @EnvironmentObject var state: AppState
+    @EnvironmentObject var prefs: Preferences
     @State private var query: String = ""
     @FocusState private var queryFocused: Bool
     /// Flips true one runloop after the panel mounts so the result
@@ -37,6 +38,8 @@ struct CommandPalette: View {
                 shellHistoryView
             case .sshHosts:
                 sshHostsView
+            case .groups:
+                groupsView
             }
         }
         .background(paletteBackground)
@@ -106,14 +109,7 @@ struct CommandPalette: View {
     }
 
     private var paletteBackground: some View {
-        ZStack {
-            // Liquid-glass-style: a faint blue tint + the system's
-            // hudWindow material at low opacity. Less "frosted" than
-            // a full-opacity NSVisualEffectView.
-            GlassBackground(material: .hudWindow)
-                .opacity(0.92)
-            Color(red: 0.08, green: 0.10, blue: 0.14).opacity(0.22)
-        }
+        OverlayPanelBackground(cornerRadius: 16)
     }
 
     // MARK: - Esc / Enter handling
@@ -132,6 +128,8 @@ struct CommandPalette: View {
             withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
         case .sshHosts:
             withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
+        case .groups:
+            withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
         }
     }
 
@@ -143,6 +141,7 @@ struct CommandPalette: View {
         case .sessions:        jumpToFocusedSession()
         case .shellHistory:    runFocusedHistoryEntry()
         case .sshHosts:        connectFocusedSSHHost()
+        case .groups:          break  // managed via inline buttons
         }
     }
 
@@ -155,6 +154,7 @@ struct CommandPalette: View {
         case .sessions:  count = filteredSessions.count
         case .shellHistory: count = filteredShellHistory.count
         case .sshHosts:     count = filteredSSHRows.count
+        case .groups:    return
         }
         guard count > 0 else { state.paletteFocusedIndex = 0; return }
         var i = state.paletteFocusedIndex % count
@@ -185,7 +185,9 @@ struct CommandPalette: View {
                             value: appeared)
                         .onTapGesture { runCommand(command) }
                         .onHover { hovering in
-                            if hovering { state.paletteFocusedIndex = index }
+                            if hovering && state.paletteHoverArmed {
+                                state.paletteFocusedIndex = index
+                            }
                         }
                     }
                 }
@@ -208,6 +210,21 @@ struct CommandPalette: View {
 
     private var commands: [Command] {
         let list: [Command] = [
+            // Pinned-at-top quick actions for the current pane's cwd.
+            // These are the two most frequent "I want to look at this
+            // directory in another tool" operations, so they shouldn't
+            // be buried under the section navigators.
+            Command(id: "reveal_finder", icon: "folder",
+                    title: "Open in Finder",
+                    subtitle: "Open this pane's directory in Finder",
+                    shortcut: "",
+                    run: { openCurrentDir(in: .finder) }),
+            Command(id: "open_cursor", icon: "cursorarrow",
+                    assetName: "cursor-mark",
+                    title: "Open in Cursor",
+                    subtitle: "Open this pane's directory in Cursor",
+                    shortcut: "",
+                    run: { openCurrentDir(in: .cursor) }),
             Command(id: "sessions", icon: "rectangle.3.group",
                     title: "Sessions",
                     subtitle: "Jump to any pane in any window",
@@ -224,6 +241,15 @@ struct CommandPalette: View {
                     run: {
                         withAnimation(Theme.Spring.soft) {
                             state.paletteMode = .sshHosts
+                        }
+                    }),
+            Command(id: "tab_groups", icon: "square.stack.3d.up",
+                    title: "Tab Groups",
+                    subtitle: "Create, rename, recolor & reorder groups",
+                    shortcut: "",
+                    run: {
+                        withAnimation(Theme.Spring.soft) {
+                            state.paletteMode = .groups
                         }
                     }),
             Command(id: "shell_history", icon: "clock.arrow.circlepath",
@@ -271,22 +297,11 @@ struct CommandPalette: View {
             Command(id: "split_h", icon: "rectangle.split.1x2",
                     title: "Split Down", shortcut: "⌘⇧D",
                     run: { state.splitSelected(direction: .vertical) }),
-            Command(id: "reveal_finder", icon: "folder",
-                    title: "Reveal in Finder",
-                    subtitle: "Open this pane's directory in Finder",
-                    shortcut: "",
-                    run: { openCurrentDir(in: .finder) }),
-            Command(id: "open_cursor", icon: "cursorarrow",
-                    assetName: "cursor-mark",
-                    title: "Open in Cursor",
-                    subtitle: "Open this pane's directory in Cursor",
-                    shortcut: "",
-                    run: { openCurrentDir(in: .cursor) }),
             Command(id: "settings", icon: "slider.horizontal.3",
                     title: "Settings", shortcut: "⌘,",
                     run: { state.toggleSettings() }),
             Command(id: "tabs_orientation", icon: "rectangle.lefthalf.inset.filled",
-                    title: "Toggle Vertical Tabs", shortcut: "",
+                    title: "Toggle Top / Side Tab Bar", shortcut: "",
                     run: {
                         withAnimation(Theme.Spring.soft) {
                             state.prefs.tabOrientation =
@@ -300,14 +315,58 @@ struct CommandPalette: View {
                     title: "Quit Conterm", shortcut: "⌘Q",
                     run: { NSApp.terminate(nil) }),
         ]
-        return list
+        return reordered(list)
     }
+
+    /// Apply `prefs.paletteCommandOrder` to the built-in command list:
+    /// IDs the user has explicitly ordered come first (in their
+    /// chosen order); everything else follows in built-in order. New
+    /// commands shipped in later releases stay visible automatically.
+    private func reordered(_ all: [Command]) -> [Command] {
+        let order = prefs.paletteCommandOrder
+        guard !order.isEmpty else { return all }
+        let byID = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
+        var result: [Command] = []
+        var seen = Set<String>()
+        for id in order {
+            if let c = byID[id] {
+                result.append(c)
+                seen.insert(id)
+            }
+        }
+        for c in all where !seen.contains(c.id) { result.append(c) }
+        return result
+    }
+
+    /// Static metadata (id + display title + icon) for every built-in
+    /// command, used by the Settings → Palette reorder UI. Kept in
+    /// sync with the live `commands` array above by being the same
+    /// list of IDs in the same default order.
+    static let catalog: [(id: String, title: String, icon: String)] = [
+        ("reveal_finder",    "Open in Finder",              "folder"),
+        ("open_cursor",      "Open in Cursor",              "cursorarrow"),
+        ("sessions",         "Sessions",                    "rectangle.3.group"),
+        ("ssh_hosts",        "SSH",                         "network"),
+        ("tab_groups",       "Tab Groups",                  "square.stack.3d.up"),
+        ("shell_history",    "Shell History",               "clock.arrow.circlepath"),
+        ("notes",            "Notes",                       "note.text"),
+        ("new_note",         "New Note",                    "square.and.pencil"),
+        ("new_tab",          "New Tab",                     "plus.square.on.square"),
+        ("close_tab",        "Close Tab or Pane",           "xmark.square"),
+        ("rename_tab",       "Rename Tab",                  "pencil"),
+        ("split_v",          "Split Right",                 "rectangle.split.2x1"),
+        ("split_h",          "Split Down",                  "rectangle.split.1x2"),
+        ("settings",         "Settings",                    "slider.horizontal.3"),
+        ("tabs_orientation", "Toggle Top / Side Tab Bar",   "rectangle.lefthalf.inset.filled"),
+        ("toggle_palette",   "Toggle Palette",              "command"),
+        ("quit",             "Quit",                        "power"),
+    ]
 
     private func runCommand(_ command: Command) {
         // Commands that switch palette mode shouldn't close the palette.
         // Detect those by id.
         let staysOpen = ["notes", "new_note", "sessions",
-                         "shell_history", "ssh_hosts"]
+                         "shell_history", "ssh_hosts", "tab_groups"]
         if !staysOpen.contains(command.id) {
             state.togglePalette()
         }
@@ -362,7 +421,8 @@ struct CommandPalette: View {
         let id: UUID            // pane.id
         let windowIndex: Int    // 1-based
         let tabIndex: Int       // 1-based within its window
-        let paneIndex: Int      // 1-based within its tab
+        let paneIndex: Int      // 1-based within its tab (matches ⌥N)
+        let paneCount: Int      // total panes in this tab
         let tabLabel: String
         let dirLabel: String    // friendly cwd ("~/Documents/...")
         let remoteHost: String? // non-nil when SSH'd
@@ -393,6 +453,7 @@ struct CommandPalette: View {
                         windowIndex: wi + 1,
                         tabIndex: ti + 1,
                         paneIndex: pi + 1,
+                        paneCount: leaves.count,
                         tabLabel: tab.title,
                         dirLabel: friendlyDirLabel(for: pane.cwd),
                         remoteHost: pane.remoteHost,
@@ -479,8 +540,11 @@ struct CommandPalette: View {
                         .id("ses-\(index)")
                         .onTapGesture { jump(to: row) }
                         .onHover { hovering in
-                            if hovering { state.paletteFocusedIndex = index }
+                            if hovering && state.paletteHoverArmed {
+                                state.paletteFocusedIndex = index
+                            }
                         }
+                        .contextMenu { sessionGroupMenu(for: row) }
                     }
                     if rows.isEmpty {
                         Text(query.isEmpty
@@ -508,6 +572,134 @@ struct CommandPalette: View {
         rows.contains { $0.groupID != nil }
     }
 
+    // MARK: - Groups mode (manage tab groups)
+
+    @ViewBuilder private var groupsView: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "square.stack.3d.up")
+                .foregroundStyle(Theme.accent)
+                .font(.system(size: 14, weight: .medium))
+            Text("Tab Groups")
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(Theme.textPrimary)
+            Spacer()
+            Button {
+                _ = tabGroups.create()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus")
+                    Text("New")
+                }
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(Theme.accent)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(Capsule().fill(Theme.accentSoft))
+            }
+            .buttonStyle(.plain)
+            keyHint("esc")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        Divider().opacity(0.4)
+        ScrollView {
+            VStack(spacing: 6) {
+                if tabGroups.groups.isEmpty {
+                    Text("No groups yet. Tap New, or right-click a session to start one.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(24)
+                } else {
+                    ForEach(Array(tabGroups.groups.enumerated()), id: \.element.id) { index, group in
+                        GroupManageRow(
+                            group: group,
+                            tabs: tabs(inGroup: group.id),
+                            isFirst: index == 0,
+                            isLast: index == tabGroups.groups.count - 1,
+                            onRecolor: { tabGroups.cycleColor(group.id) },
+                            onRename:  { newName in tabGroups.rename(group.id, to: newName) },
+                            onMoveUp:  { withAnimation(Theme.Spring.snappy) { tabGroups.move(group.id, by: -1) } },
+                            onMoveDown:{ withAnimation(Theme.Spring.snappy) { tabGroups.move(group.id, by: 1) } },
+                            onDelete:  { withAnimation(Theme.Spring.snappy) { tabGroups.delete(group.id) } },
+                            onRemoveTab: { tab in
+                                withAnimation(Theme.Spring.snappy) {
+                                    tab.groupID = nil
+                                    tabGroups.objectWillChange.send()
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+            .padding(8)
+        }
+        .frame(maxHeight: 360)
+    }
+
+    /// Tabs (across all windows) assigned to a group, in window/tab order.
+    private func tabs(inGroup id: UUID) -> [Tab] {
+        guard let appDelegate = NSApp.delegate as? AppDelegate else { return [] }
+        var result: [Tab] = []
+        for wc in appDelegate.windows {
+            for tab in wc.state.tabs where tab.groupID == id { result.append(tab) }
+        }
+        return result
+    }
+
+    /// Right-click menu on a session row: move the row's TAB into a
+    /// group, spin off a new group, or remove it from its group. Group
+    /// membership lives on `Tab.groupID`; mutating it re-sorts the
+    /// sessions list. We nudge `tabGroups` so the palette (which
+    /// observes it) recomputes immediately.
+    @ViewBuilder
+    private func sessionGroupMenu(for row: SessionRow) -> some View {
+        if let tab = row.owningTab {
+            // Tab groups are TAB-level, not pane-level: every pane in
+            // this tab moves together. The menu says "tab" + names the
+            // tab so it's clear you're grouping the whole tab, even
+            // though you right-clicked one of its panes.
+            Menu("Tab “\(tab.title)”") {
+                Text(row.paneCount > 1
+                     ? "Grouping moves all \(row.paneCount) panes in this tab"
+                     : "Add this tab to a group")
+                Divider()
+                if !tabGroups.groups.isEmpty {
+                    ForEach(tabGroups.groups) { g in
+                        Button {
+                            tab.groupID = g.id
+                            tabGroups.objectWillChange.send()
+                        } label: {
+                            Label("Move tab to “\(g.name)”", systemImage: "circle.fill")
+                        }
+                    }
+                    Divider()
+                }
+                Button("New Group from This Tab") {
+                    let g = tabGroups.create()
+                    tab.groupID = g.id
+                }
+                if let gid = tab.groupID, let g = tabGroups.group(id: gid) {
+                    Divider()
+                    Button("Rename / Color / Delete “\(g.name)”…") {
+                        beginGroupEdit(gid)
+                    }
+                    Button("Remove Tab from Group") {
+                        tab.groupID = nil
+                        tabGroups.objectWillChange.send()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Close the palette, then open the group rename/color/delete
+    /// overlay. Deferred so the palette's dismissal doesn't fight the
+    /// overlay for first responder.
+    private func beginGroupEdit(_ gid: UUID) {
+        if state.paletteOpen { state.togglePalette() }
+        DispatchQueue.main.async { state.beginRenameGroup(gid) }
+    }
+
     @ViewBuilder
     private func sessionSectionHeader(groupID: UUID?, count: Int) -> some View {
         let group = groupID.flatMap { tabGroups.group(id: $0) }
@@ -528,10 +720,32 @@ struct CommandPalette: View {
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
             Spacer()
+            // Edit affordance — only on real groups. Opens the
+            // rename / color / delete overlay. Discoverable click
+            // target alongside the right-click menu below.
+            if let gid = groupID, group != nil {
+                Button {
+                    beginGroupEdit(gid)
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Rename, recolor, or delete this group")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.top, 10)
         .padding(.bottom, 4)
+        .contentShape(Rectangle())
+        .contextMenu {
+            if let gid = groupID, group != nil {
+                Button("Rename / Color / Delete…") { beginGroupEdit(gid) }
+            }
+        }
     }
 
     private func jumpToFocusedSession() {
@@ -601,7 +815,9 @@ struct CommandPalette: View {
                             .id("hist-\(index)")
                             .onTapGesture { runHistory(entry) }
                             .onHover { hovering in
-                                if hovering { state.paletteFocusedIndex = index }
+                                if hovering && state.paletteHoverArmed {
+                                state.paletteFocusedIndex = index
+                            }
                             }
                     }
                     if rows.isEmpty {
@@ -739,7 +955,9 @@ struct CommandPalette: View {
                                 .id("ssh-\(index)")
                                 .onTapGesture { connectToSSHHost(row.host) }
                                 .onHover { hovering in
-                                    if hovering { state.paletteFocusedIndex = index }
+                                    if hovering && state.paletteHoverArmed {
+                                state.paletteFocusedIndex = index
+                            }
                                 }
                         }
                     }
@@ -968,6 +1186,8 @@ struct CommandPalette: View {
                 keyHint("esc")
             case .sshHosts:
                 keyHint("esc")
+            case .groups:
+                keyHint("esc")
             }
         }
         .padding(.horizontal, 16)
@@ -1085,8 +1305,18 @@ private struct CommandRow: View {
         }
     }
 
+    /// Cache of loaded brand-mark images, keyed by asset name. The
+    /// value is itself optional so a known-missing asset is remembered
+    /// and never re-probed. Without this the icon was reloaded from
+    /// disk on EVERY row body re-eval (each arrow-key move re-renders
+    /// the focused/unfocused rows), minting a fresh NSImage each time
+    /// — SwiftUI then crossfaded the "new" image, which read as the
+    /// icon blinking. Main-thread only (SwiftUI body), so a plain
+    /// MainActor static is safe.
+    @MainActor private static var imageCache: [String: NSImage?] = [:]
+
     /// Load a bundled PNG as a tintable template image. Returns nil
-    /// (never crashes) if it's not present.
+    /// (never crashes) if it's not present. Cached after first load.
     ///
     /// IMPORTANT: this must not touch SwiftPM's `Bundle.module`. That
     /// accessor `fatalError()`s when it can't resolve the generated
@@ -1094,13 +1324,19 @@ private struct CommandRow: View {
     /// AirDropped / quarantined / translocated copies — it crashed the
     /// whole app the instant ⌘K rendered this row. We only ever read
     /// the flat copy in `Bundle.main` (Contents/Resources/<name>.png).
+    @MainActor
     private static func bundledTemplateImage(named name: String) -> NSImage? {
-        guard let url = Bundle.main.url(forResource: name,
-                                        withExtension: "png"),
-              let img = NSImage(contentsOf: url) else {
-            return nil
-        }
-        img.isTemplate = true
+        if let cached = imageCache[name] { return cached }
+        let img: NSImage? = {
+            guard let url = Bundle.main.url(forResource: name,
+                                            withExtension: "png"),
+                  let i = NSImage(contentsOf: url) else {
+                return nil
+            }
+            i.isTemplate = true
+            return i
+        }()
+        imageCache[name] = img
         return img
     }
 }
@@ -1189,6 +1425,131 @@ private struct NoteRow: View {
     }
 }
 
+// MARK: - Group management row
+
+private struct GroupManageRow: View {
+    let group: TabGroup
+    let tabs: [Tab]
+    let isFirst: Bool
+    let isLast: Bool
+    let onRecolor: () -> Void
+    let onRename: (String) -> Void
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
+    let onDelete: () -> Void
+    let onRemoveTab: (Tab) -> Void
+
+    @State private var hovering = false
+    @State private var name: String = ""
+    @FocusState private var nameFocused: Bool
+
+    var body: some View {
+        let color = TabGroup.color(forKey: group.colorKey)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                // Color swatch — tap to cycle through the palette.
+                Button(action: onRecolor) {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 16, height: 16)
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5))
+                        .shadow(color: color.opacity(0.5), radius: 4)
+                }
+                .buttonStyle(.plain)
+                .help("Change colour")
+
+                // Inline-editable name — commits on Enter / focus loss,
+                // WITHOUT closing the palette.
+                TextField("Group name", text: $name)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                    .focused($nameFocused)
+                    .onSubmit { commitName() }
+                    .onChange(of: nameFocused) { _, focused in
+                        if !focused { commitName() }
+                    }
+
+                Text("\(tabs.count) tab\(tabs.count == 1 ? "" : "s")")
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize()
+
+                Spacer(minLength: 4)
+
+                HStack(spacing: 2) {
+                    iconButton("chevron.up", disabled: isFirst, action: onMoveUp)
+                    iconButton("chevron.down", disabled: isLast, action: onMoveDown)
+                    iconButton("trash", danger: true, action: onDelete)
+                }
+            }
+
+            // The tabs currently in this group — each removable.
+            if tabs.isEmpty {
+                Text("No tabs — right-click a session to add one")
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary.opacity(0.7))
+                    .padding(.leading, 26)
+            } else {
+                ForEach(tabs) { tab in
+                    HStack(spacing: 6) {
+                        Image(systemName: "rectangle")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Theme.textSecondary)
+                        Text(tab.title.isEmpty ? "shell" : tab.title)
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        Button { onRemoveTab(tab) } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Theme.textSecondary.opacity(0.6))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Remove from group")
+                    }
+                    .padding(.leading, 26)
+                    .padding(.trailing, 4)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(hovering ? Color.white.opacity(0.06) : Color.white.opacity(0.02))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(color.opacity(0.35), lineWidth: 0.5)
+        )
+        .onHover { hovering = $0 }
+        .onAppear { name = group.name }
+        .onChange(of: group.name) { _, new in if !nameFocused { name = new } }
+    }
+
+    private func commitName() {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty { name = group.name }
+        else if trimmed != group.name { onRename(trimmed) }
+    }
+
+    private func iconButton(_ name: String, disabled: Bool = false,
+                            danger: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: name)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(disabled ? Theme.textSecondary.opacity(0.3)
+                                 : (danger ? Theme.warning : Theme.textSecondary))
+                .frame(width: 24, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+    }
+}
+
 // MARK: - Sessions row
 
 private struct SessionRowView: View {
@@ -1261,11 +1622,16 @@ private struct SessionRowView: View {
 
             Spacer()
 
-            // Trailing locator chips: window/tab/pane indices.
+            // Trailing locator chips: window/tab, then the pane number
+            // (its ⌥N index) shown as "pane N of M" when the tab is
+            // split, so it's clear these rows are individual panes
+            // inside a tab — grouping still operates on the whole tab.
             HStack(spacing: 4) {
                 chip("W\(row.windowIndex)")
                 chip("T\(row.tabIndex)")
-                chip("P\(row.paneIndex)")
+                chip(row.paneCount > 1
+                     ? "⌥\(row.paneIndex)·\(row.paneCount)"
+                     : "⌥\(row.paneIndex)")
             }
         }
         .padding(.horizontal, 10)

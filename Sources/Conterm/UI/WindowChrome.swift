@@ -22,13 +22,15 @@ enum WindowChrome {
         window.styleMask.insert(.fullSizeContentView)
         window.styleMask.insert(.resizable)
         // Off, intentionally. With it ON, AppKit treats any background
-        // click as a window-move drag, which swallows the top-edge
-        // resize affordance — dragging the top edge down moved the
-        // whole window instead of shrinking it. With it OFF, the
-        // window is still draggable from the title-bar strip
-        // (kept enabled by .fullSizeContentView), and resize from
-        // every edge / corner works.
-        window.isMovableByWindowBackground = false
+        // Re-enabled: with .fullSizeContentView the implicit title-bar
+        // drag strip vanishes, so without this the window can't be
+        // moved at all. The 14pt edge / 22pt corner WindowEdgeResizers
+        // below set `mouseDownCanMoveWindow = false`, which takes
+        // precedence over this flag on the edges — so resize still
+        // wins on the borders and "drag from anywhere else that
+        // doesn't consume the click" works for the terminal-empty
+        // areas (sidebar, toolbar background).
+        window.isMovableByWindowBackground = true
 
         // Hide the title bar background but keep the traffic lights — they
         // sit on top of the SwiftUI canvas in the top-left.
@@ -40,7 +42,11 @@ enum WindowChrome {
         window.isOpaque = false
         window.hasShadow = true
 
-        // Round the window's content view.
+        // Round the window's content view to our radius. libghostty now
+        // owns the background blur (`ghostty_set_window_background_blur`),
+        // and its blur composites against the content layer — so masking
+        // the content layer should clip the blur to the same rounded
+        // shape and remove the square corner notch.
         if let contentView = window.contentView {
             contentView.wantsLayer = true
             contentView.layer?.cornerRadius = Theme.windowCorner
@@ -246,11 +252,14 @@ final class WindowEdgeResizer: NSView {
 @MainActor
 enum WindowEdgeResizers {
     /// Edge thickness in points — wider than AppKit's default ~5pt
-    /// so it's easy to grab even when the rounded corners push the
-    /// effective resize zone inward.
-    static let thickness: CGFloat = 10
+    /// so the resize zone is easy to grab even at the rounded corners.
+    static let thickness: CGFloat = 14
+    /// Top edge is a thinner strip than the sides so the toolbar /
+    /// sidebar header stays a window-drag target instead of being
+    /// shadowed by resize hit-testing.
+    static let topThickness: CGFloat = 4
     /// Square corner-handle size for diagonal resize.
-    static let cornerSize: CGFloat = 16
+    static let cornerSize: CGFloat = 22
 
     static func install(in window: NSWindow) {
         guard let frameView = window.contentView?.superview else { return }
@@ -276,7 +285,8 @@ enum WindowEdgeResizers {
             v.autoresizingMask = mask
             switch edge {
             case .top:
-                v.frame = NSRect(x: c, y: bounds.height - t, width: bounds.width - 2*c, height: t)
+                let tt = WindowEdgeResizers.topThickness
+                v.frame = NSRect(x: c, y: bounds.height - tt, width: bounds.width - 2*c, height: tt)
             case .bottom:
                 v.frame = NSRect(x: c, y: 0, width: bounds.width - 2*c, height: t)
             case .left:
