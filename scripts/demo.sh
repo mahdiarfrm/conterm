@@ -42,11 +42,16 @@ p()       { sleep "$1"; }
 header()  { printf "\n\033[1;36m▶ %s\033[0m\n" "$1"; sleep 0.4; }
 
 countdown() {
+    [[ "${SUPPRESS_COUNTDOWN:-0}" == "1" ]] && return 0
     local s="${1:-3}"
     printf "  start recording — going in"
     for ((i=s; i>0; i--)); do printf " %d…" "$i"; sleep 1; done
     printf "  GO\n"
 }
+
+# Tiny breather between scenes when chained — lets the previous
+# state settle visually before the next keystroke storm.
+scene_gap() { sleep "${SCENE_GAP:-1.2}"; }
 
 ensure_running() {
     if ! pgrep -f "$APP_PATH/Contents/MacOS/Conterm" >/dev/null; then
@@ -198,7 +203,7 @@ Conterm demo runner — drives the app through each feature so you can
 just screen-record. Make sure your shell has Accessibility permission
 first (System Settings → Privacy & Security → Accessibility).
 
-  bash scripts/demo.sh all            run every scene end-to-end (~2 min)
+  bash scripts/demo.sh all            ONE-TAKE live demo (~50s, no relaunches)
   bash scripts/demo.sh splash         launch + splash animation
   bash scripts/demo.sh wizard         5-step setup wizard
   bash scripts/demo.sh palette        ⌘K palette navigation
@@ -217,15 +222,24 @@ EOF
 case "${1:-}" in
     "")             usage ;;
     all)
-        scene_splash
-        scene_wizard
-        scene_palette
-        scene_splits
-        scene_tabs
-        scene_groups
-        scene_orientation
-        scene_tint
+        # Live-app demo, one take. Skips splash + wizard because
+        # those have to quit/relaunch Conterm — disruptive in the
+        # middle of a continuous recording. Run them separately.
+        ensure_running
+        echo
+        echo "  ONE TAKE — start recording now (⌘⇧5)"
+        countdown 5
+        # Skip the per-scene countdowns for the rest of the run.
+        export SUPPRESS_COUNTDOWN=1
+        scene_palette;     scene_gap
+        scene_splits;      scene_gap
+        scene_tabs;        scene_gap
+        scene_groups;      scene_gap
+        scene_orientation; scene_gap
+        scene_tint;        scene_gap
         scene_autohide
+        echo
+        echo "  …done. Stop recording."
         ;;
     splash)         scene_splash ;;
     wizard)         scene_wizard ;;
