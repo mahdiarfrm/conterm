@@ -55,6 +55,24 @@ ensure_running() {
     fi
     osascript -e 'tell application "Conterm" to activate' 2>/dev/null || true
     p 0.4
+    frame_window "${DEMO_W:-1400}" "${DEMO_H:-900}"
+}
+
+# Resize the front Conterm window to W×H and center it on the main
+# display. Override the defaults per-shell with:
+#   DEMO_W=1600 DEMO_H=1000 bash scripts/demo.sh palette
+frame_window() {
+    local w="$1" h="$2"
+    osascript >/dev/null 2>&1 <<OSA || true
+tell application "Finder" to set sb to bounds of window of desktop
+tell application "System Events"
+    tell process "Conterm"
+        set frontmost to true
+        set size of front window to {$w, $h}
+        set position of front window to {((item 3 of sb) - $w) / 2, ((item 4 of sb) - $h) / 2}
+    end tell
+end tell
+OSA
 }
 
 quit_conterm() {
