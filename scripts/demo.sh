@@ -89,104 +89,105 @@ reset_first_launch() {
 # ---------- scenes ----------
 
 scene_splash() {
-    header "Splash animation (~5s)"
+    header "Splash animation (~4s)"
     quit_conterm
     defaults delete "$APP_BUNDLE_ID" "conterm.hasLaunched" 2>/dev/null || true
     countdown 3
     open "$APP_PATH"
-    p 5
+    p 4
 }
 
 scene_wizard() {
-    header "Setup wizard (5 steps, ~25s — clicks are yours)"
+    header "Setup wizard (you click — 6s window)"
     quit_conterm
     reset_first_launch
     countdown 3
     open "$APP_PATH"
-    p 6                    # splash plays, wizard fades in
-    echo "  …wizard is up. Click Next through the 5 steps while recording."
-    p 22                   # give recording room
+    p 4                    # splash + wizard fades in
+    frame_window "${DEMO_W:-1400}" "${DEMO_H:-900}"
+    echo "  …wizard is up. Click through quickly — 6s."
+    p 6
 }
 
 scene_palette() {
-    header "Command palette (~10s)"
+    header "Command palette (~6s)"
     ensure_running
     countdown 3
-    tap "k" "command down"; p 1.4
-    tap_code 125; p 0.7    # ↓
-    tap_code 125; p 0.7
-    tap_code 125; p 0.7
-    tap_code 126; p 0.7    # ↑
-    type_text "open";      p 1.6
+    tap "k" "command down"; p 0.9
+    tap_code 125; p 0.35    # ↓
+    tap_code 125; p 0.35
+    tap_code 125; p 0.35
+    tap_code 126; p 0.35    # ↑
+    type_text "open";      p 1.0
     tap_code 53             # esc
-    p 0.5
+    p 0.3
 }
 
 scene_splits() {
-    header "Pane splits + ⌥-jump (~12s)"
+    header "Pane splits + ⌥-jump (~6s)"
     ensure_running
     countdown 3
-    tap "d" "command down";              p 1.2  # split right
-    tap "d" "command down, shift down";  p 1.2  # split down
-    tap "1" "option down";               p 0.7
-    tap "2" "option down";               p 0.7
-    tap "3" "option down";               p 1.0
+    tap "d" "command down";              p 0.7   # split right
+    tap "d" "command down, shift down";  p 0.7   # split down
+    tap "1" "option down";               p 0.4
+    tap "2" "option down";               p 0.4
+    tap "3" "option down";               p 0.6
 }
 
 scene_tabs() {
-    header "Tabs (~10s)"
+    header "Tabs (~6s)"
     ensure_running
     countdown 3
-    tap "t" "command down"; p 1.0
-    tap "t" "command down"; p 1.0
-    tap "1" "command down"; p 0.7
-    tap "2" "command down"; p 0.7
-    tap "3" "command down"; p 1.0
+    tap "t" "command down"; p 0.6
+    tap "t" "command down"; p 0.6
+    tap "1" "command down"; p 0.4
+    tap "2" "command down"; p 0.4
+    tap "3" "command down"; p 0.6
 }
 
 scene_groups() {
-    header "Tab Groups view (~15s)"
+    header "Tab Groups view (you click — 6s window)"
     ensure_running
     countdown 3
-    tap "k" "command down"; p 1.2
-    type_text "tab groups"; p 1.2
-    tap_code 36;            p 4.0     # return → enter Groups view
-    echo "  …Groups view is up. Click New / rename / recolor while recording."
+    tap "k" "command down"; p 0.8
+    type_text "tab groups"; p 0.8
+    tap_code 36;            p 1.5     # return → enter Groups view
+    echo "  …Groups view is up. New / rename / recolor — 6s."
     p 6
     tap_code 53                       # esc
 }
 
 scene_orientation() {
-    header "Tab bar Top ⇄ Sidebar (~8s)"
+    header "Tab bar Top ⇄ Sidebar (~5s)"
     ensure_running
     countdown 3
-    tap "k" "command down"; p 1.0
-    type_text "toggle top"; p 1.2
-    tap_code 36;            p 3.0
-    tap "k" "command down"; p 1.0
-    type_text "toggle top"; p 1.2
-    tap_code 36;            p 2.0
+    tap "k" "command down"; p 0.7
+    type_text "toggle top"; p 0.8
+    tap_code 36;            p 1.5
+    tap "k" "command down"; p 0.7
+    type_text "toggle top"; p 0.8
+    tap_code 36;            p 1.0
 }
 
 scene_tint() {
-    header "Light ⇄ Dark glass (Settings → Appearance) (~10s)"
+    header "Light ⇄ Dark (Settings → Appearance) (you click — 6s window)"
     ensure_running
     countdown 3
-    tap "," "command down"; p 1.8     # open settings
-    echo "  …Settings is up on Appearance. Click Tint Light / Dark while recording."
-    p 7
+    tap "," "command down"; p 1.2     # open settings
+    echo "  …Settings → Appearance. Click Tint Light / Dark — 6s."
+    p 6
     tap_code 53                       # esc closes settings
 }
 
 scene_autohide() {
-    header "Auto-hide sidebar reveal (~10s)"
+    header "Auto-hide sidebar reveal (you hover — 6s window)"
     ensure_running
     countdown 3
-    tap "k" "command down"; p 1.0
-    type_text "toggle top"; p 1.0     # make sure sidebar mode
-    tap_code 36;            p 1.2
-    echo "  …vertical mode. Hover the LEFT EDGE of the window during recording."
-    p 8
+    tap "k" "command down"; p 0.7
+    type_text "toggle top"; p 0.8
+    tap_code 36;            p 1.0     # ensure sidebar mode
+    echo "  …vertical mode. Hover the LEFT EDGE — 6s."
+    p 6
 }
 
 # ---------- entry ----------
