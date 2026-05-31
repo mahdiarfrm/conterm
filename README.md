@@ -18,9 +18,13 @@ that runs your shell history and SSH config.
 
 ## Demo
 
-<video src="https://github.com/mahdiarfrm/conterm/raw/main/docs/assets/demo.mp4" controls muted width="100%"></video>
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="Conterm demo" width="100%" />
+</p>
 
-If the video doesn't play inline, [watch it here](https://github.com/mahdiarfrm/conterm/raw/main/docs/assets/demo.mp4).
+For the full demo (~90s with audio + controls),
+[watch the MP4](https://github.com/mahdiarfrm/conterm/raw/main/docs/assets/demo.mp4)
+or [open the landing page](https://mahdiarfrm.github.io/conterm/).
 
 ## Features
 
