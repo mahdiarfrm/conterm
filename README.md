@@ -20,12 +20,7 @@ that runs your shell history and SSH config.
 
 <video src="https://github.com/mahdiarfrm/conterm/raw/main/docs/assets/demo.mp4" controls muted width="100%"></video>
 
-> [!NOTE]
-> Screen recording can't capture macOS's live blur / liquid-glass
-> effects — they show up flat or missing in this clip. This is a rough
-> capture, not a faithful representation of the actual product. If the
-> video doesn't play inline,
-> [watch it here](https://github.com/mahdiarfrm/conterm/raw/main/docs/assets/demo.mp4).
+If the video doesn't play inline, [watch it here](https://github.com/mahdiarfrm/conterm/raw/main/docs/assets/demo.mp4).
 
 ## Features
 
@@ -45,8 +40,9 @@ that runs your shell history and SSH config.
   `exit`.
 - **Built-in notes** — quick notes saved with your config and
   searchable from `⌘K`. Capture a snippet without leaving the terminal.
-- **Tab groups** — color-coded grouping for organizing related tabs,
-  browser-style.
+- **Tab groups** — color-coded, browser-style. The palette has a
+  dedicated Groups view with inline rename, drag-reorder, and a
+  per-group list of every tab currently in it.
 - **460+ themes** — every bundled libghostty theme in a searchable
   picker with mini-previews; live font family and size controls.
 - **Live system stats** — optional CPU, RAM, and network sparklines
@@ -62,12 +58,18 @@ that runs your shell history and SSH config.
   missed.
 - **Reveal / Open** — jump to the current pane's directory in Finder
   or Cursor from `⌘K`.
-- **Per-window state save** — windows, tabs, panes, and split layouts
-  are restored across launches.
-- **Ghostty config compatible** — reads your existing
-  `~/Library/Application Support/com.mitchellh.ghostty/config` and
-  understands every Ghostty option. **Safe mode** boots on Ghostty
-  defaults if you ever break your config.
+- **Session restore** — quit confirmation with a "restore tabs and
+  panes" toggle. Relaunch puts every window, tab, pane, and split back
+  exactly where you left it.
+- **Setup wizard** — 5-step first-run flow (Welcome → Config → Look →
+  Tabs → Ready) with sliding transitions and live previews when you
+  flip tint or tab orientation. Re-runnable from Settings → Launch.
+- **One-file config** — Conterm reads only
+  `~/.config/conterm/config`. A one-line `config-file = ...` include
+  pulls in your existing Ghostty config when you want both apps in
+  sync. Every destructive write makes a timestamped backup.
+- **Reorderable palette** — drag commands into the order you actually
+  use them from Settings → Palette.
 
 ## Install
 
@@ -134,12 +136,26 @@ xattr -dr com.apple.quarantine /Applications/Conterm.app
 
 ## Customization
 
-Conterm reads config from these files, in order — each later file wins:
+Conterm reads exactly one file: `~/.config/conterm/config`. Settings →
+Config shows the path, current link status, and Open / Reload /
+Reset-to-defaults actions.
 
-1. Bundled defaults inside the `.app` (sane starting point).
-2. `~/Library/Application Support/com.mitchellh.ghostty/config` —
-   Ghostty.app's config, if you have one.
-3. `~/.config/conterm/config` — Conterm-specific overrides.
+If you also use Ghostty and want both apps to share settings, the
+wizard's "Use my Ghostty config" option writes a one-line include at
+the top of your Conterm config:
+
+```ini
+config-file = ~/.config/ghostty/config
+```
+
+Edits in either file then apply to both apps on the next reload.
+Anything you write *below* the include line overrides Ghostty's value
+for Conterm only. Every destructive write through the wizard or
+Settings → Config makes a timestamped `config.backup.YYYYMMDD-HHMMSS`
+sibling, so a mis-click can't lose hand-edited settings.
+
+**Safe mode** (Settings → Config) boots on Ghostty's built-in defaults
+and ignores the file entirely — useful for recovering from a bad edit.
 
 Common things you might want to set:
 
