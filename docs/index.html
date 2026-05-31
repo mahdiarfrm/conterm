@@ -49,18 +49,21 @@ section{position:relative;z-index:2}
 /* ---- ambient gradient field ---- */
 .field{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
 .blob{position:absolute;border-radius:50%;filter:blur(130px);opacity:.55}
-/* Retro Sunset blobs — burnt orange, marigold, teal, rust. Kept at
-   moderate opacity so the dark backdrop still anchors them. */
+/* Retro Sunset + cool counterpoints — burnt orange, marigold, teal,
+   rust, plus indigo blue and royal purple so the field doesn't read
+   entirely warm. Moderate opacity keeps the dark backdrop dominant. */
 .blob.a{width:720px;height:720px;top:-220px;left:-180px;
-  background:radial-gradient(circle,#BE5103,transparent 70%);opacity:.78}
+  background:radial-gradient(circle,#BE5103,transparent 70%);opacity:.72}
 .blob.b{width:660px;height:660px;top:-140px;right:-200px;
-  background:radial-gradient(circle,#FFCE1B,transparent 70%);opacity:.62}
+  background:radial-gradient(circle,#FFCE1B,transparent 70%);opacity:.55}
 .blob.c{width:780px;height:780px;top:820px;left:34%;
-  background:radial-gradient(circle,#069494,transparent 70%);opacity:.72}
+  background:radial-gradient(circle,#069494,transparent 70%);opacity:.68}
 .blob.d{width:600px;height:600px;bottom:-220px;right:-140px;
-  background:radial-gradient(circle,#B7410E,transparent 70%);opacity:.7}
+  background:radial-gradient(circle,#B7410E,transparent 70%);opacity:.65}
 .blob.e{width:520px;height:520px;bottom:200px;left:-160px;
-  background:radial-gradient(circle,#069494,transparent 70%);opacity:.55}
+  background:radial-gradient(circle,#3D5AFE,transparent 70%);opacity:.55}
+.blob.f{width:580px;height:580px;top:280px;right:6%;
+  background:radial-gradient(circle,#7B3FE4,transparent 70%);opacity:.5}
 
 /* film grain — bumped from .04 to .09 so the color field reads as
    a textured backdrop instead of a clean gradient */
@@ -320,6 +323,7 @@ h1,h2,h3,p,section,.sec-head,.cta-card,.grid,.feature,.window{max-width:100%}
   .blob.c{width:90vw;height:90vw;top:50%;left:-10vw}
   .blob.d{width:65vw;height:65vw;bottom:-15vw;right:-18vw}
   .blob.e{width:55vw;height:55vw;bottom:30%;left:-18vw}
+  .blob.f{width:60vw;height:60vw;top:35%;right:-15vw;left:auto}
 
   /* nav */
   .brand-logo{height:26px}
@@ -392,7 +396,7 @@ h1,h2,h3,p,section,.sec-head,.cta-card,.grid,.feature,.window{max-width:100%}
 <div class="field" aria-hidden="true">
   <div class="blob a"></div><div class="blob b"></div>
   <div class="blob c"></div><div class="blob d"></div>
-  <div class="blob e"></div>
+  <div class="blob e"></div><div class="blob f"></div>
 </div>
 
 <nav id="nav">
