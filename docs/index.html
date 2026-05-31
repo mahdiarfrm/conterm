@@ -17,33 +17,40 @@
 <meta property="og:url" content="https://mahdiarfrm.github.io/conterm/" />
 <meta name="twitter:card" content="summary_large_image" />
 
-<!-- Type pairing: Instrument Serif (editorial display italic) + JetBrains
-     Mono (terminal-flavoured accents) + SF Pro / system stack (body). The
-     two webfonts are subset to the weights and styles we use here. -->
+<!-- Two-family type system: SF Pro (system) for body + headlines, and
+     JetBrains Mono for code, keys, eyebrows AND accent italic moments.
+     Using the same mono family for both functional and editorial roles
+     keeps the page typographically coherent and unique to a terminal. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400;1,500;1,700&display=swap" rel="stylesheet">
 
 <style>
 /* ─────────────────────────────────────────────────────────────
    TOKENS
-   Restrained Chromatic Holo: a near-black violet base, three
-   sharp accent hues used only as highlights, never as wash.
+   Glass Native: a near-black base with a faint violet undertone,
+   two restrained Mac-native accents (lavender + sky blue), and a
+   layered glass system. Colour is rationed; the glass and the
+   hairlines do most of the visual work.
 ───────────────────────────────────────────────────────────── */
 :root{
-  --bg:           #070512;
-  --bg-elev:      #0E0A1E;
-  --text:         #F5F2FA;
-  --muted:        #8F89A8;
-  --hairline:     rgba(255,255,255,.07);
-  --hairline-2:   rgba(255,255,255,.14);
+  --bg:           #08070F;          /* near-black, slight violet bias  */
+  --bg-elev:      #14122A;          /* base tint for glass panels      */
+  --text:         #F2F0F8;
+  --muted:        #8A86A0;
+  --hairline:     rgba(255,255,255,.055);
+  --hairline-2:   rgba(255,255,255,.12);
+  --hairline-3:   rgba(255,255,255,.22);
 
-  --accent:       #C44FFF;  /* magenta-violet, primary accent */
-  --accent-2:     #FF3FA6;  /* hot pink, secondary highlight */
-  --accent-3:     #3DE5C5;  /* aqua teal, rare cool punch */
-  --accent-4:     #5C1AE0;  /* electric violet, gradient anchor */
+  --glass-fill:      rgba(255,255,255,.035);
+  --glass-fill-2:    rgba(255,255,255,.07);
+  --glass-highlight: rgba(255,255,255,.18);
 
-  --serif: "Instrument Serif", "Times New Roman", Georgia, serif;
+  --accent:       #B59EFF;          /* soft lavender, primary accent   */
+  --accent-2:     #7BD7FF;          /* sky blue, info / hover highlight*/
+  --accent-warm:  #FFB07A;          /* warm amber, reserved for one    */
+                                    /* atmospheric corner bleed only.  */
+
   --mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans:  -apple-system, BlinkMacSystemFont, "SF Pro Display",
             "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif;
@@ -79,31 +86,31 @@ img,video{max-width:100%;display:block}
   overflow:hidden;
 }
 .atmos::before{
-  /* Upper-left bleed: magenta → violet → fade. Off-canvas centre
-     so the gradient enters at an angle instead of sitting like a
-     spotlight. */
+  /* Upper-left bleed: lavender → violet undertone → fade. Lower
+     opacity than the previous palette so the page reads as glass
+     on near-black rather than colour-on-colour. */
   content:""; position:absolute;
-  top:-32%; left:-22%; width:96vw; height:90vh;
+  top:-30%; left:-20%; width:92vw; height:85vh;
   background:
     radial-gradient(ellipse at 30% 40%,
-      rgba(255,63,166,.45) 0%,
-      rgba(196,79,255,.32) 22%,
-      rgba(92,26,224,.18) 45%,
-      transparent 65%);
-  filter: blur(40px);
+      rgba(181,158,255,.32) 0%,
+      rgba(123,215,255,.18) 28%,
+      rgba(40,30,80,.14) 50%,
+      transparent 68%);
+  filter: blur(60px);
 }
 .atmos::after{
-  /* Lower-right counter: a cool aqua sliver. Smaller, ~half the
-     opacity of the upper bleed, so the eye reads the upper-left
-     as the dominant. */
+  /* Lower-right counter: a warm amber sliver — the only warm tone
+     on the page, used here so the cool upper-left has something
+     to lean against without the eye sliding off. */
   content:""; position:absolute;
-  bottom:-28%; right:-18%; width:70vw; height:75vh;
+  bottom:-25%; right:-15%; width:65vw; height:70vh;
   background:
     radial-gradient(ellipse at 60% 60%,
-      rgba(61,229,197,.28) 0%,
-      rgba(92,26,224,.16) 35%,
+      rgba(255,176,122,.16) 0%,
+      rgba(181,158,255,.10) 38%,
       transparent 65%);
-  filter: blur(50px);
+  filter: blur(70px);
 }
 .grain{
   position:fixed; inset:0; z-index:1; pointer-events:none;
@@ -143,22 +150,10 @@ nav.scrolled{transform:translateY(0)}
   max-width: var(--max);
   margin: 0 auto;
   padding: 14px var(--gutter);
-  display: flex; align-items: center; gap: 18px;
+  display: flex; align-items: center; gap: 6px;
 }
-.brand{display:flex; align-items:center; gap:10px}
-.brand-mark{
-  height: 22px; width: 22px;
-  border-radius: 6px;
-  box-shadow: 0 0 0 1px var(--hairline);
-}
-.brand-name{
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 22px;
-  letter-spacing: -.01em;
-  color: var(--text);
-}
-.nav-links{margin-left:auto; display:flex; align-items:center; gap: 6px}
+.nav-links{display:flex; align-items:center; gap: 6px; flex:1}
+.nav-cta{margin-left:auto}
 .nav-links a.text{
   color: var(--muted);
   padding: 8px 14px;
@@ -171,53 +166,73 @@ nav.scrolled{transform:translateY(0)}
 
 /* ─────────────────────────────────────────────────────────────
    BUTTONS
-   Two tiers. Primary is a near-white pill with a sharp inset
-   highlight — Raycast/Linear style. Ghost is hairline-only.
+   Both tiers are glass — primary is a lavender-tinted glass pill
+   with a strong inner highlight + lavender glow halo; secondary
+   is the same glass material at a fainter tint. The inset 1px
+   bright line up top is what sells "glass" on dark backgrounds.
 ───────────────────────────────────────────────────────────── */
 .btn{
   display: inline-flex; align-items: center; gap: 9px;
   padding: 13px 22px;
-  border-radius: 11px;
+  border-radius: 12px;
   font-family: var(--sans);
   font-size: 14.5px; font-weight: 600;
   letter-spacing: -.005em;
   white-space: nowrap;
   cursor: pointer;
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
   transition: transform .18s cubic-bezier(.2,.7,.2,1),
               box-shadow .22s, background .22s, border-color .22s;
 }
-.btn-sm{padding:8px 14px; font-size:13.5px; border-radius:9px}
+.btn-sm{padding:8px 14px; font-size:13.5px; border-radius:10px}
 .btn-primary{
-  background: #fff; color: #0B0716;
+  color: #fff;
+  background:
+    linear-gradient(180deg,
+      rgba(181,158,255,.32),
+      rgba(181,158,255,.16));
+  border: 1px solid rgba(181,158,255,.45);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,1),
-    inset 0 -1px 0 rgba(0,0,0,.12),
-    0 10px 30px -12px rgba(196,79,255,.55),
-    0 2px 6px rgba(0,0,0,.4);
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 rgba(0,0,0,.18),
+    0 14px 36px -14px rgba(181,158,255,.55),
+    0 2px 8px rgba(0,0,0,.4);
 }
-.btn-primary:hover{transform: translateY(-1.5px); box-shadow:
-    inset 0 1px 0 rgba(255,255,255,1),
-    inset 0 -1px 0 rgba(0,0,0,.12),
-    0 16px 38px -10px rgba(196,79,255,.7),
-    0 4px 10px rgba(0,0,0,.5);}
+.btn-primary:hover{
+  transform: translateY(-1.5px);
+  background:
+    linear-gradient(180deg,
+      rgba(181,158,255,.42),
+      rgba(181,158,255,.22));
+  border-color: rgba(181,158,255,.65);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 rgba(0,0,0,.18),
+    0 20px 46px -12px rgba(181,158,255,.7),
+    0 4px 12px rgba(0,0,0,.5);
+}
 .btn-ghost{
-  background: transparent; color: var(--text);
+  color: var(--text);
+  background: var(--glass-fill);
   border: 1px solid var(--hairline-2);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
 }
 .btn-ghost:hover{
-  background: rgba(255,255,255,.04);
-  border-color: rgba(255,255,255,.24);
+  background: var(--glass-fill-2);
+  border-color: var(--hairline-3);
   transform: translateY(-1.5px);
 }
 
 /* ─────────────────────────────────────────────────────────────
    HERO
-   Centred, declarative. The serif italic on one word is the
-   single editorial moment — does the heavy aesthetic lifting
-   so the body can stay tight system sans.
+   Centred, declarative. The brand logo (icon + wordmark) is the
+   single piece of imagery; the accent moment is a mono-italic
+   word with a blinking cursor — the strongest possible signal
+   that this is a terminal app.
 ───────────────────────────────────────────────────────────── */
 .hero{
-  padding: 152px var(--gutter) 96px;
+  padding: 140px var(--gutter) 96px;
   text-align: center;
   position: relative;
 }
@@ -230,35 +245,70 @@ nav.scrolled{transform:translateY(0)}
   padding: 6px 12px;
   border: 1px solid var(--hairline);
   border-radius: 999px;
-  background: rgba(255,255,255,.025);
+  background: var(--glass-fill);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
 }
-.hero .badge .v{color: var(--accent-3)}
+.hero .badge .v{color: var(--accent-2)}
 .hero .badge .dot{
   width: 6px; height: 6px; border-radius: 50%;
-  background: var(--accent-3);
-  box-shadow: 0 0 8px var(--accent-3);
+  background: var(--accent-2);
+  box-shadow: 0 0 8px var(--accent-2);
+}
+.hero .mark-stack{
+  margin-top: 42px;
+  display: flex; flex-direction: column; align-items: center; gap: 24px;
+}
+.hero .mark-icon{
+  width: 96px; height: 96px;
+  border-radius: 22px;
+  /* Glass-pedestal halo behind the icon so it lifts off the page
+     instead of floating raw. The icon image itself already has its
+     own rounded-square frame; this is purely the pedestal glow. */
+  box-shadow:
+    0 30px 70px -28px rgba(181,158,255,.55),
+    0 10px 24px -10px rgba(0,0,0,.6);
+}
+.hero .mark-text{
+  height: 36px; width: auto;
+  opacity: .96;
 }
 .hero h1{
-  margin: 36px auto 0;
-  max-width: 980px;
+  margin: 34px auto 0;
+  max-width: 940px;
   font-family: var(--sans);
   font-weight: 600;
-  font-size: clamp(48px, 8vw, 104px);
-  line-height: 0.96;
-  letter-spacing: -0.045em;
+  font-size: clamp(44px, 7.2vw, 92px);
+  line-height: 1.0;
+  letter-spacing: -0.04em;
 }
-.hero h1 .italic{
-  font-family: var(--serif);
+.hero h1 .mono-em{
+  display: inline-flex; align-items: baseline;
+  font-family: var(--mono);
   font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.015em;
-  /* faint hue lift so the serif word reads as a deliberate accent,
-     not a font fallback. Pair with the upper-left bleed colour. */
-  background: linear-gradient(110deg, var(--accent-2), var(--accent));
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  /* Lavender → sky-blue across the accent word so it picks up the
+     same hue family as the upper-left bleed without re-introducing
+     the loud Chromatic Holo palette. */
+  background: linear-gradient(110deg, var(--accent), var(--accent-2));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
+.hero h1 .mono-em .cur{
+  display: inline-block;
+  width: .6ch; height: .9em;
+  margin-left: 6px;
+  background: var(--accent-2);
+  -webkit-text-fill-color: var(--accent-2);
+  border-radius: 2px;
+  animation: cursorBlink 1.05s steps(2,end) infinite;
+  box-shadow: 0 0 12px var(--accent-2);
+  transform: translateY(2px);
+}
+@keyframes cursorBlink{50%{opacity:0}}
 .hero .lede{
   margin: 28px auto 0;
   max-width: 560px;
@@ -291,15 +341,18 @@ nav.scrolled{transform:translateY(0)}
 .demo-frame{
   max-width: 1080px;
   margin: 0 auto;
-  border-radius: 18px;
-  padding: 7px;
+  border-radius: 20px;
+  padding: 8px;
   background: linear-gradient(180deg,
-    rgba(255,255,255,.08),
+    rgba(255,255,255,.10),
     rgba(255,255,255,.02));
   border: 1px solid var(--hairline-2);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
   box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
     0 60px 120px -40px rgba(0,0,0,.85),
-    0 30px 80px -30px rgba(196,79,255,.18);
+    0 30px 80px -30px rgba(181,158,255,.20);
 }
 .demo-frame video{
   width: 100%;
@@ -345,10 +398,11 @@ nav.scrolled{transform:translateY(0)}
   max-width: 460px;
 }
 .feature h2 .em{
-  font-family: var(--serif);
+  font-family: var(--mono);
   font-style: italic;
-  font-weight: 400;
-  color: var(--accent-2);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--accent);
 }
 .feature p{
   margin-top: 18px;
@@ -380,27 +434,34 @@ kbd{
   color: var(--text);
 }
 
-/* Visual cards for the feature sections — flat panels with a
-   hairline border and a faint inner highlight. No backdrop-filter
-   here; the atmosphere does enough work and we want the visuals
-   to stay crisp at full opacity. */
+/* Visual cards for the feature sections — proper glass panels.
+   Backdrop blur on top of the atmospheric gradient gives each
+   visual its own frosted "window" feel; the 1px inner highlight
+   along the top edge is what reads as polished glass rather than
+   a translucent box. */
 .visual{
   position: relative;
   aspect-ratio: 4 / 3;
-  border-radius: 16px;
+  border-radius: 18px;
   border: 1px solid var(--hairline-2);
   background:
-    linear-gradient(160deg, rgba(255,255,255,.05), rgba(255,255,255,.012));
+    linear-gradient(165deg,
+      rgba(255,255,255,.08),
+      rgba(255,255,255,.02) 60%,
+      rgba(255,255,255,.01));
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
   overflow: hidden;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.06),
-    0 30px 60px -30px rgba(0,0,0,.7);
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 rgba(0,0,0,.18),
+    0 40px 80px -30px rgba(0,0,0,.75);
 }
 .visual::after{
-  /* subtle gradient lift so the panel never reads as a grey rectangle */
+  /* hue-lift in one corner so the panel never reads grey */
   content:""; position:absolute; inset:0;
   background: radial-gradient(ellipse at 80% 0%,
-    rgba(196,79,255,.16), transparent 60%);
+    rgba(181,158,255,.18), transparent 60%);
   pointer-events: none;
 }
 
@@ -426,20 +487,24 @@ kbd{
   width:7px; height:7px; border-radius:50%;
   background: rgba(255,255,255,.16); display:block;
 }
-.pane.active{box-shadow: 0 0 0 1px var(--accent-2), 0 0 24px -6px rgba(255,63,166,.45)}
+.pane.active{
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 24px -6px rgba(181,158,255,.55);
+}
 .pane .ln{color: var(--muted)}
-.pane .ln .pp{color: var(--accent-3); margin-right:6px}
+.pane .ln .pp{color: var(--accent-2); margin-right:6px}
 .pane .ln .cmd{color: var(--text)}
-.pane .ln .ok{color: var(--accent-3)}
-.pane .ln .err{color: var(--accent-2)}
+.pane .ln .ok{color: var(--accent-2)}
+.pane .ln .err{color: var(--accent)}
 .pane.a{grid-column: 1; grid-row: 1 / 3}
 .pane.b{grid-column: 2; grid-row: 1}
 .pane.c{grid-column: 2; grid-row: 2}
 .cursor{
   display:inline-block; width:7px; height:13px;
-  background: var(--accent-3); vertical-align:-2px;
+  background: var(--accent-2); vertical-align:-2px;
   animation: blink 1s steps(2,end) infinite;
-  box-shadow: 0 0 8px var(--accent-3);
+  box-shadow: 0 0 8px var(--accent-2);
 }
 @keyframes blink{50%{opacity:0}}
 
@@ -467,19 +532,19 @@ kbd{
   font-size: 12.5px;
 }
 .palette-mock .row-r.sel{
-  background: rgba(196,79,255,.14);
+  background: rgba(181,158,255,.14);
   color: var(--text);
-  box-shadow: inset 0 0 0 1px rgba(196,79,255,.32);
+  box-shadow: inset 0 0 0 1px rgba(181,158,255,.36);
 }
 .palette-mock .row-r .ic{
   width: 22px; height: 22px;
   display:grid; place-items:center;
   border-radius: 6px;
   background: rgba(255,255,255,.05);
-  color: var(--accent-3);
+  color: var(--accent-2);
 }
 .palette-mock .row-r .nm{color:var(--text); flex:1}
-.palette-mock .row-r .hi{color: var(--accent-2)}
+.palette-mock .row-r .hi{color: var(--accent)}
 .palette-mock .row-r .sh{color:var(--muted); font-size:11px}
 
 /* ── Visual C: tabs / sidebar ── */
@@ -513,9 +578,9 @@ kbd{
 .tabs-mock .side .tab .swatch{
   width:7px; height:7px; border-radius:50%;
 }
-.tabs-mock .side .tab .swatch.p{background:var(--accent-2)}
-.tabs-mock .side .tab .swatch.t{background:var(--accent-3)}
-.tabs-mock .side .tab .swatch.v{background:var(--accent)}
+.tabs-mock .side .tab .swatch.p{background:var(--accent)}
+.tabs-mock .side .tab .swatch.t{background:var(--accent-2)}
+.tabs-mock .side .tab .swatch.v{background:var(--accent-warm)}
 .tabs-mock .body{
   background: rgba(8,5,20,.86);
   border: 1px solid var(--hairline-2);
@@ -542,11 +607,11 @@ kbd{
   align-self: flex-start;
 }
 .agent-mock .bar.thinking .pulse{
-  background: var(--accent-2);
-  box-shadow: 0 0 12px var(--accent-2);
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent);
   animation: pulse 1.2s ease-in-out infinite;
 }
-.agent-mock .bar.ready .pulse{background: var(--accent-3)}
+.agent-mock .bar.ready .pulse{background: var(--accent-2)}
 .agent-mock .bar .pulse{width:7px;height:7px;border-radius:50%}
 @keyframes pulse{0%,100%{opacity:.55}50%{opacity:1}}
 .agent-mock .term{
@@ -556,7 +621,7 @@ kbd{
   padding: 14px; color: var(--muted);
   overflow:hidden;
 }
-.agent-mock .term .pp{color: var(--accent-3)}
+.agent-mock .term .pp{color: var(--accent-2)}
 .agent-mock .term .em{color: var(--text)}
 
 /* ─────────────────────────────────────────────────────────────
@@ -586,7 +651,13 @@ kbd{
   max-width: 520px;
   margin-top: 6px;
 }
-.cheat h2 .em{font-family:var(--serif); font-style:italic; font-weight:400; color:var(--accent-2)}
+.cheat h2 .em{
+  font-family: var(--mono);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -.02em;
+  color: var(--accent);
+}
 .cheat .head p{
   color: var(--muted); max-width: 380px; font-size: 16px;
 }
@@ -594,9 +665,17 @@ kbd{
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0;
-  border: 1px solid var(--hairline);
-  border-radius: 14px;
-  background: rgba(255,255,255,.018);
+  border: 1px solid var(--hairline-2);
+  border-radius: 16px;
+  background: linear-gradient(160deg,
+    rgba(255,255,255,.06),
+    rgba(255,255,255,.015) 60%,
+    rgba(255,255,255,.005));
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 40px 80px -30px rgba(0,0,0,.65);
   overflow: hidden;
 }
 .cheat .col{
@@ -632,17 +711,23 @@ kbd{
   border-top: 1px solid var(--hairline);
 }
 .philo blockquote{
-  font-family: var(--serif);
-  font-style: italic;
-  font-weight: 400;
-  font-size: clamp(28px, 3.8vw, 46px);
-  line-height: 1.16;
-  letter-spacing: -.02em;
+  /* Pull-quote in sans, not serif — the page's only typographic
+     "loud" moment lives in the hero, so the philosophy block
+     stays in-family for a calmer crescendo. */
+  font-family: var(--sans);
+  font-weight: 500;
+  font-size: clamp(28px, 3.6vw, 44px);
+  line-height: 1.18;
+  letter-spacing: -.025em;
   max-width: 880px;
   color: var(--text);
 }
 .philo blockquote .accent{
-  background: linear-gradient(100deg, var(--accent-2), var(--accent), var(--accent-3));
+  font-family: var(--mono);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -.02em;
+  background: linear-gradient(100deg, var(--accent), var(--accent-2));
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .philo cite{
@@ -653,7 +738,7 @@ kbd{
   letter-spacing: .04em;
   color: var(--muted);
 }
-.philo cite a{color: var(--accent-3); text-decoration: underline; text-underline-offset: 3px}
+.philo cite a{color: var(--accent-2); text-decoration: underline; text-underline-offset: 3px}
 
 /* ─────────────────────────────────────────────────────────────
    DOWNLOAD
@@ -680,10 +765,11 @@ kbd{
   max-width: 820px; margin-left:auto; margin-right:auto;
 }
 .download h2 .em{
-  font-family: var(--serif);
+  font-family: var(--mono);
   font-style: italic;
-  font-weight: 400;
-  background: linear-gradient(110deg, var(--accent-2), var(--accent));
+  font-weight: 500;
+  letter-spacing: -.02em;
+  background: linear-gradient(110deg, var(--accent), var(--accent-2));
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .download .lede{
@@ -734,17 +820,8 @@ footer{
   color: var(--muted);
 }
 .foot-in{
-  display: flex; justify-content: space-between; align-items: center;
-  flex-wrap: wrap; gap: 18px;
-  margin-bottom: 32px;
-}
-.foot-brand{
-  display:flex; align-items:center; gap: 12px;
-}
-.foot-brand .brand-mark{height:24px; width:24px}
-.foot-brand .brand-name{
-  font-family: var(--serif); font-style: italic;
-  font-size: 22px; color: var(--text);
+  display: flex; flex-wrap: wrap; gap: 22px;
+  margin-bottom: 28px;
 }
 .foot-links{display:flex; flex-wrap:wrap; gap: 22px}
 .foot-links a{
@@ -761,8 +838,8 @@ footer{
   max-width: 720px;
   line-height: 1.6;
 }
-.foot-note a{color: var(--accent-3); border-bottom: 1px solid transparent}
-.foot-note a:hover{border-bottom-color: var(--accent-3)}
+.foot-note a{color: var(--accent-2); border-bottom: 1px solid transparent}
+.foot-note a:hover{border-bottom-color: var(--accent-2)}
 .foot-credit{
   margin-top: 18px; font-size: 12.5px;
   font-family: var(--mono); color: var(--muted); letter-spacing: .04em;
@@ -811,18 +888,14 @@ footer{
 
 <nav id="nav">
   <div class="nav-in">
-    <a class="brand" href="#top" aria-label="Conterm">
-      <img class="brand-mark" src="assets/icon.png" alt="" />
-      <span class="brand-name">Conterm</span>
-    </a>
     <div class="nav-links">
       <a class="text" href="#splits">Splits</a>
       <a class="text" href="#palette">Palette</a>
       <a class="text" href="#cheat">Keys</a>
       <a class="text" href="https://github.com/mahdiarfrm/conterm">GitHub</a>
-      <a class="btn btn-primary btn-sm"
-         href="https://github.com/mahdiarfrm/conterm/releases/latest">Download</a>
     </div>
+    <a class="btn btn-primary btn-sm nav-cta"
+       href="https://github.com/mahdiarfrm/conterm/releases/latest">Download</a>
   </div>
 </nav>
 
@@ -836,9 +909,13 @@ footer{
       <span class="v">·</span>
       <span>shipped today</span>
     </span>
+    <div class="mark-stack">
+      <img class="mark-icon" src="assets/icon.png" alt="Conterm app icon" />
+      <img class="mark-text" src="assets/text-logo.png" alt="Conterm" />
+    </div>
     <h1>
-      A terminal,<br/>
-      <span class="italic">rethought.</span>
+      A terminal,
+      <span class="mono-em">rethought_<span class="cur"></span></span>
     </h1>
     <p class="lede">
       Conterm wraps Ghostty's GPU-accelerated core in Liquid Glass
@@ -912,7 +989,7 @@ footer{
           <div class="pane c">
             <div class="ph"><i></i><i></i><i></i></div>
             <div class="ln"><span class="pp">~ $</span> tail -f log</div>
-            <div class="ln" style="color:var(--accent-3)">[ok] ready</div>
+            <div class="ln" style="color:var(--accent-2)">[ok] ready</div>
             <div class="ln" style="color:var(--accent-2)">[wrn] slow</div>
           </div>
         </div>
@@ -1000,10 +1077,10 @@ footer{
           <div class="body">
             <div class="ph"><i></i><i></i><i></i></div>
             <div style="color:var(--muted); font-size:11px">
-              <span style="color:var(--accent-3)">~/conterm $</span> swift build<br/>
+              <span style="color:var(--accent-2)">~/conterm $</span> swift build<br/>
               <span style="color:var(--muted)">Building...</span><br/>
               <span style="color:var(--text)">Build complete!</span><br/>
-              <span style="color:var(--accent-3)">~/conterm $</span> <span class="cursor"></span>
+              <span style="color:var(--accent-2)">~/conterm $</span> <span class="cursor"></span>
             </div>
           </div>
         </div>
@@ -1040,7 +1117,7 @@ footer{
             <span class="pulse"></span>
             <span style="color:var(--text)">opencode</span>
             <span style="color:var(--muted)">·</span>
-            <span style="color:var(--accent-3)">ready</span>
+            <span style="color:var(--accent-2)">ready</span>
           </div>
           <div class="term">
             <div><span class="pp">~ $</span> claude</div>
@@ -1153,10 +1230,6 @@ footer{
 <footer>
   <div class="wrap">
     <div class="foot-in">
-      <div class="foot-brand">
-        <img class="brand-mark" src="assets/icon.png" alt="" />
-        <span class="brand-name">Conterm</span>
-      </div>
       <div class="foot-links">
         <a href="https://github.com/mahdiarfrm/conterm">GitHub</a>
         <a href="https://github.com/mahdiarfrm/conterm/releases">Releases</a>
