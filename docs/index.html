@@ -22,9 +22,11 @@
   --bg:#07060b;
   --text:#ECEAF6;
   --muted:#9C97B0;
-  --purple:#B59CFF;
-  --cyan:#7BD7FF;
-  --pink:#FF8FD4;
+  /* Retro Sunset palette — burnt orange, marigold, teal, rust. */
+  --purple:#FFCE1B;   /* legacy token — now retro yellow */
+  --cyan:#069494;     /* teal */
+  --pink:#BE5103;     /* burnt orange */
+  --rust:#B7410E;
   --glass-brd:rgba(255,255,255,.10);
   --max:1120px;
 }
@@ -47,16 +49,18 @@ section{position:relative;z-index:2}
 /* ---- ambient gradient field ---- */
 .field{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
 .blob{position:absolute;border-radius:50%;filter:blur(130px);opacity:.55}
+/* Retro Sunset blobs — burnt orange, marigold, teal, rust. Kept at
+   moderate opacity so the dark backdrop still anchors them. */
 .blob.a{width:720px;height:720px;top:-220px;left:-180px;
-  background:radial-gradient(circle,#C8A8FF,transparent 70%);opacity:.78}
+  background:radial-gradient(circle,#BE5103,transparent 70%);opacity:.78}
 .blob.b{width:660px;height:660px;top:-140px;right:-200px;
-  background:radial-gradient(circle,#FFB3D9,transparent 70%);opacity:.72}
+  background:radial-gradient(circle,#FFCE1B,transparent 70%);opacity:.62}
 .blob.c{width:780px;height:780px;top:820px;left:34%;
-  background:radial-gradient(circle,#A8DBFF,transparent 70%);opacity:.62}
+  background:radial-gradient(circle,#069494,transparent 70%);opacity:.72}
 .blob.d{width:600px;height:600px;bottom:-220px;right:-140px;
-  background:radial-gradient(circle,#B8E6CC,transparent 70%);opacity:.58}
+  background:radial-gradient(circle,#B7410E,transparent 70%);opacity:.7}
 .blob.e{width:520px;height:520px;bottom:200px;left:-160px;
-  background:radial-gradient(circle,#FFD2A3,transparent 70%);opacity:.55}
+  background:radial-gradient(circle,#069494,transparent 70%);opacity:.55}
 
 /* film grain — bumped from .04 to .09 so the color field reads as
    a textured backdrop instead of a clean gradient */
@@ -412,7 +416,7 @@ h1,h2,h3,p,section,.sec-head,.cta-card,.grid,.feature,.window{max-width:100%}
     <span class="pill"><span class="dot"></span> v1.0.0 — now available</span>
     <img class="hero-icon" src="assets/icon.png" alt="Conterm app icon" />
     <img class="hero-logo" src="assets/text-logo.png" alt="Conterm" />
-    <h1>A modern way <span class="grad">to connect</span>.</h1>
+    <h1>A modern way to <span class="grad">connect</span>.</h1>
     <p class="hero-sub">
       A terminal built on Ghostty's GPU-accelerated core, dressed in
       Liquid Glass chrome with splittable panes, tab groups, and a
