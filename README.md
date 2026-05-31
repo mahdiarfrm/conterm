@@ -8,13 +8,6 @@
   <a href="https://github.com/mahdiarfrm/conterm/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/mahdiarfrm/conterm?style=flat&color=B59CFF" /></a>
 </p>
 
-> [!WARNING]
-> **Conterm is beta software.** Expect rough edges, missing features, and
-> the occasional crash. The terminal core (libghostty) is rock-solid, but
-> the chrome around it is young — UI bugs and quirks are likely. Please
-> [file issues](https://github.com/mahdiarfrm/conterm/issues) when you
-> hit one.
-
 ## About
 
 Conterm is a modern terminal for macOS, built on
