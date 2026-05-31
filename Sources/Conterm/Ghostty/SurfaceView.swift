@@ -100,6 +100,10 @@ extension Ghostty {
 
         required init?(coder: NSCoder) { nil }
 
+        isolated deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
         // MARK: - Responder chain
 
         override var acceptsFirstResponder: Bool { true }
@@ -133,8 +137,34 @@ extension Ghostty {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            guard window != nil else { return }
+            // Re-target the screen observer onto whichever window we
+            // just landed in; without the upfront removeObserver the
+            // observation would silently double-fire after a reparent.
+            NotificationCenter.default.removeObserver(
+                self, name: NSWindow.didChangeScreenNotification, object: nil)
+            guard let win = window else { return }
             updateTrackingAreas()
+            // A window crossing into a display with a different DPI
+            // doesn't reliably trigger viewDidChangeBackingProperties
+            // on macOS — the backing-prop callback fires for scale
+            // *changes* on the same screen, not for screen swaps. Use
+            // the window-level notification as the canonical signal
+            // and funnel both into one handler.
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(windowDidChangeScreen(_:)),
+                name: NSWindow.didChangeScreenNotification,
+                object: win)
+        }
+
+        @objc private func windowDidChangeScreen(_ notif: Notification) {
+            // At notification time the window's `backingScaleFactor`
+            // still reports the previous display's value; AppKit
+            // updates it on the next runloop turn after rebinding the
+            // layer to the new screen.
+            DispatchQueue.main.async { [weak self] in
+                self?.viewDidChangeBackingProperties()
+            }
         }
 
         // (Focus transfer is now handled directly in mouseDown(with:)
@@ -150,8 +180,36 @@ extension Ghostty {
 
         override func viewDidChangeBackingProperties() {
             super.viewDidChangeBackingProperties()
-            let scale = window?.backingScaleFactor ?? 2.0
-            controller?.setContentScale(x: Double(scale), y: Double(scale))
+
+            // The Metal layer renders directly at the framebuffer's
+            // pixel density. If `contentsScale` is left at its previous
+            // value when the window crosses to a display of a different
+            // DPI, Core Animation applies a compositor scale on top of
+            // pixels that are already at the correct density — visible
+            // as a doubled or halved font on the new screen. Pinning
+            // contentsScale to the window's current backing factor
+            // keeps the compositor as a pure pass-through. The
+            // CATransaction wrap suppresses CA's implicit scale
+            // animation on the property change. See Apple's "High
+            // Resolution Guidelines for OS X" (Capturing Screen
+            // Contents).
+            if let win = window {
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                layer?.contentsScale = win.backingScaleFactor
+                CATransaction.commit()
+            }
+
+            // `convertToBacking` is the scale AppKit actually applied
+            // to the layer's own backing store; libghostty's renderer
+            // has to match that exact value. `window.backingScaleFactor`
+            // and convertToBacking briefly disagree across the
+            // notification boundary, so the latter is the source of
+            // truth here.
+            let fb = convertToBacking(bounds)
+            let sx = bounds.width  > 0 ? fb.width  / bounds.width  : 1
+            let sy = bounds.height > 0 ? fb.height / bounds.height : 1
+            controller?.setContentScale(x: Double(sx), y: Double(sy))
             forwardSize()
         }
 
@@ -174,16 +232,23 @@ extension Ghostty {
             // 80 — this only fires during transient animation
             // intermediate states.
             guard bounds.width > 40, bounds.height > 40 else { return }
-            let scale = window?.backingScaleFactor ?? 2.0
-            let w = UInt32(bounds.width * scale)
-            let h = UInt32(bounds.height * scale)
+            // Framebuffer dimensions come from `convertToBacking` for
+            // the same reason as in viewDidChangeBackingProperties: it
+            // reports the scale AppKit actually applied, which can
+            // briefly diverge from `window.backingScaleFactor` across
+            // a screen-change boundary.
+            let fb = convertToBacking(bounds)
+            let scaleX = bounds.width  > 0 ? fb.width  / bounds.width  : 1
+            let scaleY = bounds.height > 0 ? fb.height / bounds.height : 1
+            let w = UInt32(fb.width)
+            let h = UInt32(fb.height)
             // Idempotent — libghostty doesn't need to know about a
             // size that hasn't changed, and the renderer thread can
             // get pathologically slow if hammered with redundant
             // set_size calls during rapid splits/closes.
-            if lastPushedSize == (w, h, scale) { return }
-            lastPushedSize = (w, h, scale)
-            ctrl.setContentScale(x: Double(scale), y: Double(scale))
+            if lastPushedSize == (w, h, scaleX) { return }
+            lastPushedSize = (w, h, scaleX)
+            ctrl.setContentScale(x: Double(scaleX), y: Double(scaleY))
             ctrl.setSize(width: w, height: h)
         }
 
@@ -258,21 +323,63 @@ extension Ghostty {
         // MARK: - Keyboard
 
         override func keyDown(with event: NSEvent) {
-            // Modified Return (⌘/⌥+Return, including ⌘⌥Return) — Conterm
-            // binds nothing to it, and libghostty would encode a stray
-            // CSI sequence that prints as ";7;13~". Swallow it silently:
-            // don't forward to the terminal (no garbage) and don't call
-            // super (which beeps via the no-responder chime). Any global
-            // shortcut (a window-tiling app's maximize, etc.) is a
-            // system-level hotkey that already fired before this. keyCode
-            // 36 = Return, 76 = numpad Enter.
+            // Swallow ⌘+Return / ⌘+numpad-Enter: nothing in Conterm
+            // binds it, AppKit would beep through the no-responder
+            // chime, and any global tiling-app hotkey on the combo
+            // already fired upstream of this view. ⌥+Return is left
+            // alone — the translation-mods rebuild below strips Option
+            // before AppKit composes, so the C0-gate in sendKey hands
+            // libghostty a clean Alt+Enter to encode as "\e\r".
+            // keyCode 36 = Return, 76 = numpad Enter.
             if (event.keyCode == 36 || event.keyCode == 76),
-               event.modifierFlags.contains(.command)
-               || event.modifierFlags.contains(.option) {
+               event.modifierFlags.contains(.command) {
                 return
             }
+
+            // libghostty owns the `macos-option-as-alt` policy. We ask
+            // it which device mods to apply when composing the
+            // character, then rebuild an NSEvent with that reduced
+            // modifier set so AppKit's text-input system produces
+            // plain `a` rather than `å` for ⌥a. The raw event still
+            // reports Option in `mods`, so libghostty's encoder sees
+            // Alt+a and emits the ESC-prefix / kitty form. Skipping
+            // this round-trip lets NSEvent's already-composed glyph
+            // reach the PTY verbatim.
+            let originalMods = InputMapping.mods(from: event.modifierFlags)
+            let translatedFlags: NSEvent.ModifierFlags = {
+                guard let h = controller?.handle else { return event.modifierFlags }
+                let g = ghostty_surface_key_translation_mods(h, originalMods)
+                let translatedDevice = InputMapping.eventFlags(fromGhostty: g)
+                // Preserve non-device modifier bits (caps lock, etc.)
+                // on the rebuilt event — IME state machines key off
+                // them and would mis-handle e.g. a Caps Lock toggle
+                // that disappeared mid-composition.
+                let untouched = event.modifierFlags
+                    .subtracting([.shift, .control, .option, .command])
+                return translatedDevice.union(untouched)
+            }()
+
+            let translationEvent: NSEvent
+            if translatedFlags == event.modifierFlags {
+                translationEvent = event
+            } else {
+                translationEvent = NSEvent.keyEvent(
+                    with: event.type,
+                    location: event.locationInWindow,
+                    modifierFlags: translatedFlags,
+                    timestamp: event.timestamp,
+                    windowNumber: event.windowNumber,
+                    context: nil,
+                    characters: event.characters(byApplyingModifiers: translatedFlags) ?? "",
+                    charactersIgnoringModifiers: event.charactersIgnoringModifiers ?? "",
+                    isARepeat: event.isARepeat,
+                    keyCode: event.keyCode) ?? event
+            }
+
             insertTextAccumulator = []
-            interpretKeyEvents([event])
+            lastKeyDownEvent = event
+            defer { lastKeyDownEvent = nil }
+            interpretKeyEvents([translationEvent])
             let collected = insertTextAccumulator?.joined() ?? ""
             insertTextAccumulator = nil
 
@@ -285,26 +392,64 @@ extension Ghostty {
             // moving the cursor. libghostty derives the proper
             // CSI escape (`\e[A`, `\e[5~`, etc.) from `keycode` when
             // text is empty.
-            let rawChars = collected.isEmpty ? (event.characters ?? "") : collected
-            let text = stripFunctionKeyChars(rawChars)
+            let rawChars = collected.isEmpty ? (translationEvent.characters ?? "") : collected
+            let text = ghosttyText(rawChars, translationFlags: translatedFlags)
             sendKey(event,
-                    action: GHOSTTY_ACTION_PRESS,
+                    translationFlags: translatedFlags,
+                    action: event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS,
                     text: text)
         }
 
-        private func stripFunctionKeyChars(_ s: String) -> String {
-            // If the first scalar is in NSEvent's function-key
-            // private-use range, drop it entirely — the keycode +
-            // mods tell libghostty what to do.
-            if let first = s.unicodeScalars.first,
-               first.value >= 0xF700 && first.value <= 0xF8FF {
-                return ""
+        /// Normalises an AppKit-composed string for libghostty's `text`
+        /// field. Mirrors the rules in upstream Ghostty's
+        /// `NSEvent.ghosttyCharacters` helper:
+        ///
+        /// 1. Single PUA codepoint (U+F700..F8FF): drop. NSEvent uses
+        ///    that range to encode arrow / function keys; libghostty
+        ///    synthesises the right CSI from `keycode` + `mods` when
+        ///    `text` is empty, but would write the literal PUA glyph
+        ///    into the PTY otherwise.
+        /// 2. Single C0 byte (< 0x20) with Control held: return the
+        ///    character WITHOUT the Control modifier applied. The
+        ///    encoder owns C0 / CSI-u encoding and needs the printable
+        ///    base letter as input; handing it the pre-encoded byte
+        ///    locks out the active keyboard protocol's encoding choices.
+        /// 3. Otherwise: pass through unchanged.
+        private func ghosttyText(_ s: String,
+                                 translationFlags: NSEvent.ModifierFlags) -> String {
+            guard let first = s.unicodeScalars.first else { return s }
+            if s.unicodeScalars.count == 1 {
+                if first.value >= 0xF700 && first.value <= 0xF8FF {
+                    return ""
+                }
+                if first.value < 0x20,
+                   translationFlags.contains(.control) {
+                    // `characters(byApplyingModifiers:)` returns the
+                    // glyph macOS would have produced if Control had
+                    // not been held — the printable base letter the
+                    // encoder needs as input for C0 / CSI-u wrapping.
+                    if let live = lastKeyDownEvent,
+                       let unctrl = live.characters(
+                            byApplyingModifiers: translationFlags.subtracting(.control)) {
+                        return unctrl
+                    }
+                }
             }
             return s
         }
 
+        /// Captured by `keyDown` for the duration of the
+        /// `interpretKeyEvents` callback so `ghosttyText` can call
+        /// `characters(byApplyingModifiers:)` (which only valid on the
+        /// originating event) without threading the event through every
+        /// helper.
+        private var lastKeyDownEvent: NSEvent?
+
         override func keyUp(with event: NSEvent) {
-            sendKey(event, action: GHOSTTY_ACTION_RELEASE, text: "")
+            sendKey(event,
+                    translationFlags: event.modifierFlags,
+                    action: GHOSTTY_ACTION_RELEASE,
+                    text: "")
         }
 
         override func flagsChanged(with event: NSEvent) {
@@ -313,39 +458,107 @@ extension Ghostty {
             let isPress = lastModifiers.rawValue & diff.rawValue == 0
             lastModifiers = event.modifierFlags
             sendKey(event,
+                    translationFlags: event.modifierFlags,
                     action: isPress ? GHOSTTY_ACTION_PRESS : GHOSTTY_ACTION_RELEASE,
                     text: "")
         }
 
-        /// Sends a single key event with the given (possibly-empty)
-        /// text payload. Pass an empty string for events that
-        /// shouldn't generate text (key release, modifier flag
-        /// changes, etc.).
+        /// Hands one key event to libghostty. `text` is the
+        /// AppKit-composed payload (empty for releases / flagsChanged /
+        /// non-printable keys). `translationFlags` is the modifier set
+        /// AppKit used to compose `text` — which differs from
+        /// `event.modifierFlags` when `macos-option-as-alt` stripped
+        /// Option before composition. libghostty's encoder needs both:
+        /// `mods` (physical state) plus `consumed_mods` (what AppKit
+        /// already applied) to decide whether to wrap the payload in
+        /// an escape sequence.
         private func sendKey(_ event: NSEvent,
+                              translationFlags: NSEvent.ModifierFlags,
                               action: ghostty_input_action_e,
                               text: String) {
             guard let ctrl = controller else { return }
             let mods = InputMapping.mods(from: event.modifierFlags)
-            let unshifted = event.charactersIgnoringModifiers?.unicodeScalars.first?.value ?? 0
 
-            // When we hand libghostty text that NSEvent already
-            // composed (Shift→'A', Ctrl+C→'\x03', etc.), the modifiers
-            // have already been "consumed" in producing that text.
-            // Setting consumed_mods = mods tells libghostty NOT to
-            // re-encode via Kitty CSI-u protocol — without this,
-            // Ctrl+C arrives at the program as "\e[99;5u" instead of
-            // raw "\x03" and SIGINT doesn't fire.
-            let consumed: ghostty_input_mods_e = text.isEmpty
-                ? ghostty_input_mods_e(rawValue: 0)
-                : mods
+            // Conterm reports the full translation-mod set as consumed
+            // and intentionally diverges from upstream Ghostty's
+            // "subtract control + command" rule. Upstream keeps Ctrl
+            // out of `consumed_mods` so kitty-aware programs receive
+            // `\e[59;5u` for Ctrl+; and friends; Conterm's lastword
+            // overrides hard-bind `ctrl+a..z` to literal C0 bytes
+            // because target programs (Claude Code, shells without
+            // kitty opt-in, etc.) misread CSI-u. Reporting Ctrl as
+            // consumed extends the same legacy stance to every other
+            // Ctrl+printable combination that has no explicit bind.
+            // Alt is unaffected: option-as-alt has already stripped it
+            // from `translationFlags`, so the encoder still sees an
+            // un-consumed Alt and wraps Alt+letter as `\e<letter>`.
+            let consumed = InputMapping.mods(from: translationFlags)
 
-            text.withCString { textPtr in
+            // `characters(byApplyingModifiers: [])` is the key's
+            // unmodified codepoint — what it produces with NO mods
+            // applied. `charactersIgnoringModifiers` looks similar but
+            // returns the post-Control byte (e.g. `\x01` for ctrl+a)
+            // and is documented as wrong for this purpose. libghostty
+            // uses the unshifted value for keybind matching and for
+            // the kitty unshifted-codepoint protocol field. Guarded
+            // on event type because `characters(byApplyingModifiers:)`
+            // raises an exception on `.flagsChanged` events.
+            let unshifted: UInt32 = {
+                guard event.type == .keyDown || event.type == .keyUp else { return 0 }
+                return event.characters(byApplyingModifiers: [])?
+                    .unicodeScalars.first?.value ?? 0
+            }()
+
+            // Drop sub-0x20 text payloads (Tab, Enter, Esc, Ctrl+letter
+            // bytes that AppKit pre-encoded). libghostty's encoder
+            // owns C0 / CSI-u encoding and produces the right form
+            // (e.g. `\e[Z` for Shift+Tab) from `keycode` + `mods` when
+            // `text` is nil. Passing the byte through bypasses that
+            // and ships only the raw control byte.
+            let sendText: String? = {
+                guard !text.isEmpty else { return nil }
+                if let firstByte = text.utf8.first, firstByte < 0x20 { return nil }
+                return text
+            }()
+
+            if let sendText {
+                sendText.withCString { textPtr in
+                    var key = ghostty_input_key_s(
+                        action: action,
+                        mods: mods,
+                        consumed_mods: consumed,
+                        keycode: UInt32(event.keyCode),
+                        text: textPtr,
+                        unshifted_codepoint: unshifted,
+                        composing: false
+                    )
+                    // libghostty's legacy encoder unconditionally wraps
+                    // Ctrl+printable into a fixterms CSI-u sequence
+                    // (`src/input/key_encode.zig`); the path reads
+                    // `event.mods.ctrl` directly and ignores
+                    // `consumed_mods`, so the only way to suppress it
+                    // is to make Ctrl absent from `mods` entirely. We
+                    // do that only when (a) the payload is printable
+                    // and (b) no keybind claims the Ctrl-modded form —
+                    // the latter check is what keeps lastword's
+                    // `ctrl+a..z=text:\x01..\x1a` overrides matching.
+                    if mods.rawValue & GHOSTTY_MODS_CTRL.rawValue != 0
+                        && !ctrl.isBinding(key) {
+                        let withoutCtrl = ~GHOSTTY_MODS_CTRL.rawValue
+                        key.mods = ghostty_input_mods_e(
+                            rawValue: mods.rawValue & withoutCtrl)
+                        key.consumed_mods = ghostty_input_mods_e(
+                            rawValue: consumed.rawValue & withoutCtrl)
+                    }
+                    ctrl.sendKey(key)
+                }
+            } else {
                 let key = ghostty_input_key_s(
                     action: action,
                     mods: mods,
                     consumed_mods: consumed,
                     keycode: UInt32(event.keyCode),
-                    text: text.isEmpty ? nil : textPtr,
+                    text: nil,
                     unshifted_codepoint: unshifted,
                     composing: false
                 )

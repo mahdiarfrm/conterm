@@ -15,6 +15,26 @@ enum InputMapping {
         return ghostty_input_mods_e(rawValue: raw)
     }
 
+    /// Inverse of `mods(from:)` for the four device modifiers
+    /// (shift / control / option / command). The translation pipeline
+    /// in SurfaceView asks libghostty for the modifier set to apply
+    /// during character composition (`ghostty_surface_key_translation_mods`)
+    /// and rebuilds an NSEvent with the result, so AppKit composes the
+    /// character with Option stripped under `macos-option-as-alt`.
+    /// Caps Lock / Num Lock are deliberately excluded — those device-
+    /// state bits don't participate in AppKit's character composition
+    /// and round-tripping them would only desync the rebuilt event
+    /// from the modifier state IME engines expect to see.
+    static func eventFlags(fromGhostty mods: ghostty_input_mods_e) -> NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        let raw = mods.rawValue
+        if raw & GHOSTTY_MODS_SHIFT.rawValue != 0 { flags.insert(.shift) }
+        if raw & GHOSTTY_MODS_CTRL.rawValue  != 0 { flags.insert(.control) }
+        if raw & GHOSTTY_MODS_ALT.rawValue   != 0 { flags.insert(.option) }
+        if raw & GHOSTTY_MODS_SUPER.rawValue != 0 { flags.insert(.command) }
+        return flags
+    }
+
     /// Pack a scroll event into libghostty's `ghostty_input_scroll_mods_t`
     /// bitfield. Layout (per Ghostty's Zig source):
     ///   bit 0      → precision (1 = trackpad / Magic Mouse continuous)
