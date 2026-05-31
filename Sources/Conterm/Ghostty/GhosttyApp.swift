@@ -310,6 +310,17 @@ extension Ghostty {
             # Conterm lastword — functional correctness only (no taste).
             shell-integration = detect
 
+            # Treat ⌥ as Alt for terminal input on both sides.
+            # SurfaceView's translation-mods round-trip reads this value
+            # via `ghostty_surface_key_translation_mods` and strips
+            # Option from the character-composition pass while still
+            # reporting Alt as a physical modifier — so ⌥a is encoded
+            # by libghostty as ESC+a (or the kitty alt form) rather
+            # than reaching the PTY as a macOS-composed `å`. Override
+            # to `false` in user config to restore the platform glyph
+            # composition.
+            macos-option-as-alt = true
+
             # Word separators for double-click word-select. Quoted so
             # whitespace (space + tab) is preserved through the config
             # parser and treated as a real boundary alongside the

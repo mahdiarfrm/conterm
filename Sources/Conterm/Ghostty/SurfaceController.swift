@@ -222,6 +222,19 @@ extension Ghostty {
             _ = ghostty_surface_key(h, event)
         }
 
+        /// True iff `event` matches a libghostty keybind on this
+        /// surface. SurfaceView queries this before suppressing the
+        /// Ctrl modifier on a forwarded key so it can dodge libghostty's
+        /// fixterms CSI-u encoder (which fires unconditionally for
+        /// Ctrl+printable in the legacy encoder) without also masking
+        /// the explicit `ctrl+a=text:\x01 …` bindings that need to see
+        /// the Ctrl-modded form to match.
+        func isBinding(_ event: ghostty_input_key_s) -> Bool {
+            guard let h = handle else { return false }
+            var flags = ghostty_binding_flags_e(rawValue: 0)
+            return ghostty_surface_key_is_binding(h, event, &flags)
+        }
+
         func sendText(_ s: String) {
             guard let h = handle else { return }
             s.withCString { ptr in
