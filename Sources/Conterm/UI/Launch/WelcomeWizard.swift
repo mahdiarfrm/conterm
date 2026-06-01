@@ -233,7 +233,7 @@ struct WelcomeWizard: View {
     /// Ordered set of wizard steps the user moves through with Back /
     /// Next. `welcome` and `ready` bookend the substantive choices.
     private enum Step: Int, CaseIterable, Comparable {
-        case welcome, config, look, tabs, ready
+        case welcome, config, look, tabs, sound, ready
         static func < (a: Step, b: Step) -> Bool { a.rawValue < b.rawValue }
 
         var headline: String {
@@ -242,6 +242,7 @@ struct WelcomeWizard: View {
             case .config:  "CONFIG"
             case .look:    "LOOK"
             case .tabs:    "TABS"
+            case .sound:   "SOUND"
             case .ready:   "READY"
             }
         }
@@ -257,6 +258,7 @@ struct WelcomeWizard: View {
     // remaining picks below are applied only on Get Started.
     @State private var pickedLaunchAnim = true
     @State private var pickedBatterySaving = true
+    @State private var pickedSoundEffects = true
     @State private var appeared = false
 
     /// White-on-transparent wordmark loaded as a template so the
@@ -302,6 +304,7 @@ struct WelcomeWizard: View {
             liquidGlassOverlays = prefs.liquidGlassPanels
             pickedLaunchAnim    = prefs.launchAnimationEnabled
             pickedBatterySaving = prefs.batterySavingMode
+            pickedSoundEffects  = prefs.soundEffectsEnabled
         }
     }
 
@@ -381,6 +384,7 @@ struct WelcomeWizard: View {
             case .config:  configStep
             case .look:    lookStep
             case .tabs:    tabsStep
+            case .sound:   soundStep
             case .ready:   readyStep
             }
         }
@@ -400,7 +404,7 @@ struct WelcomeWizard: View {
                 .font(.system(size: 13, design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Four short steps: config source, look, tabs, then you're in.")
+            Text("Five short steps: config source, look, tabs, sound, then you're in.")
                 .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(Theme.textSecondary.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
@@ -417,7 +421,7 @@ struct WelcomeWizard: View {
             // Bound directly to prefs so the whole window flips
             // light/dark live as the user clicks — they can see
             // what they're picking instead of guessing.
-            Picker("", selection: $prefs.lightGlass) {
+            Picker("", selection: $prefs.lightGlass.withSound()) {
                 Text("Dark").tag(false)
                 Text("Light").tag(true)
             }
@@ -427,7 +431,7 @@ struct WelcomeWizard: View {
             glassSection
 
             sectionTitle("Battery saver", systemImage: "battery.75")
-            Toggle(isOn: $pickedBatterySaving) {
+            Toggle(isOn: $pickedBatterySaving.withSound()) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Use a flat fill when in the background")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -447,7 +451,7 @@ struct WelcomeWizard: View {
         VStack(alignment: .leading, spacing: 18) {
             sectionTitle("Tab bar", systemImage: "rectangle.lefthalf.inset.filled")
             // Live: switching previews the tab bar immediately.
-            Picker("", selection: $prefs.tabOrientation) {
+            Picker("", selection: $prefs.tabOrientation.withSound()) {
                 Text("Top").tag(Preferences.TabOrientation.horizontal)
                 Text("Sidebar").tag(Preferences.TabOrientation.vertical)
             }
@@ -458,7 +462,7 @@ struct WelcomeWizard: View {
                 .foregroundStyle(Theme.textSecondary)
 
             sectionTitle("Launch animation", systemImage: "sparkles")
-            Toggle(isOn: $pickedLaunchAnim) {
+            Toggle(isOn: $pickedLaunchAnim.withSound()) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Play the wordmark intro at startup")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -471,6 +475,77 @@ struct WelcomeWizard: View {
             .toggleStyle(.switch)
             .tint(Theme.accent)
         }
+    }
+
+    private var soundStep: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            sectionTitle("Sound effects", systemImage: "speaker.wave.2.fill")
+            Toggle(isOn: $pickedSoundEffects.withSound()) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Subtle clicks on panes, tabs, and the palette")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Quick synthesised tones — never speech, never loud.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+            .tint(Theme.accent)
+
+            // Preview chips — one per sound family. Each fires
+            // through the engine with the preference gate
+            // temporarily forced on so the demo is audible
+            // regardless of the toggle's current state.
+            HStack(spacing: 8) {
+                soundPreviewButton("Palette", systemImage: "command",
+                                   effect: .paletteOpen)
+                soundPreviewButton("Confirm", systemImage: "return",
+                                   effect: .paletteConfirm)
+                soundPreviewButton("Pane",    systemImage: "rectangle.split.2x1",
+                                   effect: .paneAdd)
+                soundPreviewButton("Tab",     systemImage: "rectangle.stack",
+                                   effect: .tabAdd)
+            }
+            .opacity(pickedSoundEffects ? 1 : 0.4)
+        }
+    }
+
+    /// Renders one preview chip in `soundStep`. Plays the chosen
+    /// effect once with the SFX preference forced on for the
+    /// duration of the playback, so the demo works even while the
+    /// step's main toggle sits in the off position.
+    private func soundPreviewButton(
+        _ title: String,
+        systemImage: String,
+        effect: SoundEffects.Effect
+    ) -> some View {
+        Button {
+            // Temporarily override the SFX preference, play, then
+            // restore the prior value. Avoids threading a "force"
+            // parameter through the engine just for this preview.
+            let was = UserDefaults.standard.object(forKey: "conterm.soundEffects") as? Bool
+            UserDefaults.standard.set(true, forKey: "conterm.soundEffects")
+            SoundEffects.shared.play(effect)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                if let was = was {
+                    UserDefaults.standard.set(was, forKey: "conterm.soundEffects")
+                } else {
+                    UserDefaults.standard.removeObject(forKey: "conterm.soundEffects")
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(.bordered)
     }
 
     private var readyStep: some View {
@@ -523,6 +598,7 @@ struct WelcomeWizard: View {
         let selected = configChoice == choice
         return Button {
             withAnimation(Theme.Spring.snappy) { configChoice = choice }
+            if !selected { SoundEffects.shared.play(.toggle) }
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: selected ? "largecircle.fill.circle" : "circle")
@@ -569,7 +645,7 @@ struct WelcomeWizard: View {
     private var glassSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("Overlays", systemImage: "square.on.square")
-            Toggle(isOn: $liquidGlassOverlays) {
+            Toggle(isOn: $liquidGlassOverlays.withSound()) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Liquid Glass overlays")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -602,7 +678,10 @@ struct WelcomeWizard: View {
                     .buttonStyle(.plain)
                 } else {
                     // Skip is only meaningful at the very start.
-                    Button("Skip") { finish(applyConfig: false) }
+                    Button("Skip") {
+                        SoundEffects.shared.play(.click)
+                        finish(applyConfig: false)
+                    }
                         .buttonStyle(.plain)
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
@@ -611,8 +690,15 @@ struct WelcomeWizard: View {
                 stepDots
                 Spacer()
                 Button {
-                    if step == .ready { finish(applyConfig: true) }
-                    else              { goNext() }
+                    if step == .ready {
+                        // Final commit gets `.click` — distinct
+                        // from the per-step `.toggle` so the
+                        // "you're done" event reads as heavier.
+                        SoundEffects.shared.play(.click)
+                        finish(applyConfig: true)
+                    } else {
+                        goNext()
+                    }
                 } label: {
                     Text(step == .ready ? "Get Started" : "Next")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -654,6 +740,7 @@ struct WelcomeWizard: View {
         withAnimation(Theme.Spring.soft) {
             if let next = Step(rawValue: step.rawValue + 1) { step = next }
         }
+        SoundEffects.shared.play(.toggle)
     }
 
     private func goBack() {
@@ -661,6 +748,7 @@ struct WelcomeWizard: View {
         withAnimation(Theme.Spring.soft) {
             if let prev = Step(rawValue: step.rawValue - 1) { step = prev }
         }
+        SoundEffects.shared.play(.toggle)
     }
 
     private func sectionTitle(_ text: String, systemImage: String) -> some View {
@@ -683,6 +771,7 @@ struct WelcomeWizard: View {
             // pickers write straight to prefs for live preview.
             prefs.launchAnimationEnabled = pickedLaunchAnim
             prefs.batterySavingMode     = pickedBatterySaving
+            prefs.soundEffectsEnabled   = pickedSoundEffects
             prefs.useDefaultConfig = false
 
             // Only touch the config file when the user doesn't already

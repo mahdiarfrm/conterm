@@ -77,7 +77,11 @@ struct CommandPalette: View {
             if mode == .sshHosts { refreshSSHRowsIfNeeded() }
         }
         .onChange(of: query) { _, _ in state.paletteFocusedIndex = 0 }
-        .onChange(of: state.paletteFocusedIndex) { _, _ in clampFocus() }
+        .onChange(of: state.paletteFocusedIndex) { _, _ in
+            clampFocus()
+            // Soft cursor tick when arrow-keys move the highlight.
+            SoundEffects.shared.play(.paletteMove)
+        }
         .onChange(of: state.paletteRunTick) { _, _ in handleEnter() }
         .onChange(of: state.paletteEscTick) { _, _ in handleEsc() }
         .onChange(of: state.paletteDeleteTick) { _, _ in handleDelete() }
@@ -135,12 +139,12 @@ struct CommandPalette: View {
 
     private func handleEnter() {
         switch state.paletteMode {
-        case .commands:        runFocusedCommand()
-        case .notesList:       openFocusedNote()
+        case .commands:        runFocusedCommand();       SoundEffects.shared.play(.paletteConfirm)
+        case .notesList:       openFocusedNote();         SoundEffects.shared.play(.paletteConfirm)
         case .noteEdit:        break  // Enter in editor inserts newline
-        case .sessions:        jumpToFocusedSession()
-        case .shellHistory:    runFocusedHistoryEntry()
-        case .sshHosts:        connectFocusedSSHHost()
+        case .sessions:        jumpToFocusedSession();    SoundEffects.shared.play(.paletteConfirm)
+        case .shellHistory:    runFocusedHistoryEntry();  SoundEffects.shared.play(.paletteConfirm)
+        case .sshHosts:        connectFocusedSSHHost();   SoundEffects.shared.play(.paletteConfirm)
         case .groups:          break  // managed via inline buttons
         }
     }

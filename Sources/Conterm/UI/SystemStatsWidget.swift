@@ -13,7 +13,13 @@ struct SystemStatsWidget: View {
     private let pillHeight: CGFloat = 24
 
     var body: some View {
-        Button(action: { showingPopover.toggle() }) {
+        Button(action: {
+            showingPopover.toggle()
+            // Same light click on both open and close — a small
+            // popover doesn't warrant the heavier paletteOpen
+            // bloom that overlays use.
+            SoundEffects.shared.play(.toggle)
+        }) {
             pill
         }
         .buttonStyle(.plain)
