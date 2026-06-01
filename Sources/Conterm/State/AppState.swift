@@ -200,6 +200,7 @@ final class AppState: ObservableObject {
 
     func toggleSettings() {
         withAnimation(Theme.Spring.bouncy) { settingsOpen.toggle() }
+        SoundEffects.shared.play(settingsOpen ? .paletteOpen : .paletteClose)
     }
 
     /// Open / close the scrollback-search overlay. On open, snapshots the
@@ -211,11 +212,13 @@ final class AppState: ObservableObject {
             searchQuery = ""
             searchSnapshot = ""
             focusActiveSurface()
+            SoundEffects.shared.play(.paletteClose)
         } else {
             let snap = selectedTab?.paneTree.activePane?.controller?.readScrollback() ?? ""
             searchSnapshot = snap
             searchQuery = ""
             withAnimation(Theme.Spring.bouncy) { searchOpen = true }
+            SoundEffects.shared.play(.paletteOpen)
         }
     }
 
@@ -243,6 +246,7 @@ final class AppState: ObservableObject {
             selectedID = tab.id
         }
         focusActiveSurface()
+        SoundEffects.shared.play(.tabAdd)
         return tab
     }
 
@@ -277,6 +281,7 @@ final class AppState: ObservableObject {
         if tabs.isEmpty {
             ownWindow?.performClose(nil)
         }
+        SoundEffects.shared.play(.tabRemove)
     }
 
     func select(_ id: UUID) {
@@ -308,6 +313,7 @@ final class AppState: ObservableObject {
         withAnimation(Theme.Spring.bouncy) {
             paletteOpen.toggle()
         }
+        SoundEffects.shared.play(paletteOpen ? .paletteOpen : .paletteClose)
         // Reset to command root and disarm hover so a stationary
         // cursor over a palette row can't steal focus from keyboard
         // navigation. The hover flag re-arms on the first real mouse

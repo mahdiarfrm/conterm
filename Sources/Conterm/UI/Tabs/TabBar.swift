@@ -436,6 +436,8 @@ private struct NotificationBell: View {
             withAnimation(Theme.Spring.bouncy) {
                 state.notificationsOpen.toggle()
             }
+            SoundEffects.shared.play(
+                state.notificationsOpen ? .paletteOpen : .paletteClose)
             NSApp.keyWindow?.makeFirstResponder(nil)
         } label: {
             // Count is INLINE inside the pill (not an overflowing

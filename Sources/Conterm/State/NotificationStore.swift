@@ -41,6 +41,10 @@ final class NotificationStore: ObservableObject {
         let n = AppNotification(tool: tool, title: title, message: message)
         items.insert(n, at: 0)
         if items.count > cap { items.removeLast(items.count - cap) }
+        // Soft in-app chime, separate from the macOS banner sound
+        // below (which only fires when Conterm isn't frontmost).
+        // A no-op when SFX are disabled.
+        SoundEffects.shared.play(.notify)
 
         // Banner only when the user isn't looking at Conterm — the
         // whole point is "tell me when I've stepped away from a long

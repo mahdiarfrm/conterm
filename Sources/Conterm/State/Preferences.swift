@@ -32,6 +32,13 @@ final class Preferences: ObservableObject {
     @Published var launchSoundEnabled: Bool {
         didSet { ud.set(launchSoundEnabled, forKey: K.launchSound) }
     }
+    /// Quick UI sound effects on pane / tab / palette events. The
+    /// `SoundEffects` engine reads this same UserDefaults key
+    /// directly so it doesn't need a Preferences reference on the
+    /// playback path.
+    @Published var soundEffectsEnabled: Bool {
+        didSet { ud.set(soundEffectsEnabled, forKey: K.soundEffects) }
+    }
     @Published var hasLaunched: Bool {
         didSet { ud.set(hasLaunched, forKey: K.launched) }
     }
@@ -170,6 +177,7 @@ final class Preferences: ObservableObject {
         static let liquidGlassPanels = "conterm.liquidGlassPanels"
         static let sshCompatMode    = "conterm.sshCompatMode"
         static let agentPillLite    = "conterm.agentPillLite"
+        static let soundEffects     = "conterm.soundEffects"
     }
 
     init() {
@@ -179,6 +187,7 @@ final class Preferences: ObservableObject {
         ) ?? .horizontal
         self.launchAnimationEnabled = ud.object(forKey: K.launchAnim) as? Bool ?? true
         self.launchSoundEnabled     = ud.object(forKey: K.launchSound) as? Bool ?? true
+        self.soundEffectsEnabled    = ud.object(forKey: K.soundEffects) as? Bool ?? true
         self.hasLaunched            = ud.bool(forKey: K.launched)
         // Clamp on load so a stale persisted value below the current
         // drag-handle minimum can't slip past — narrow sidebars push

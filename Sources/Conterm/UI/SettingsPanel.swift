@@ -90,6 +90,9 @@ struct SettingsPanel: View {
         guard let i = all.firstIndex(of: section) else { return }
         let next = (i + step + all.count) % all.count
         withAnimation(Theme.Spring.snappy) { section = all[next] }
+        // Same tick as the palette arrow-key navigation — short
+        // and quiet so holding the arrow doesn't machine-gun.
+        SoundEffects.shared.play(.paletteMove)
     }
 
     // MARK: - Sidebar
@@ -142,6 +145,9 @@ struct SettingsPanel: View {
         let active = section == item
         return Button {
             withAnimation(Theme.Spring.snappy) { section = item }
+            // Suppress the click sound on a re-tap of the active
+            // section — the visible state is unchanged.
+            if !active { SoundEffects.shared.play(.toggle) }
         } label: {
             HStack(spacing: 9) {
                 Image(systemName: item.icon)
@@ -219,7 +225,7 @@ struct SettingsPanel: View {
                 }
                 SettingsRow(title: "Tint",
                             subtitle: "Cool dark or cool light.") {
-                    Picker("", selection: $prefs.lightGlass) {
+                    Picker("", selection: $prefs.lightGlass.withSound()) {
                         Text("Dark").tag(false)
                         Text("Light").tag(true)
                     }
@@ -229,13 +235,13 @@ struct SettingsPanel: View {
                 }
                 SettingsRow(title: "Liquid Glass overlays",
                             subtitle: "Use macOS 26 glass for the palette, search, notifications, and other panels.") {
-                    Toggle("", isOn: $prefs.liquidGlassPanels)
+                    Toggle("", isOn: $prefs.liquidGlassPanels.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()
                 }
                 SettingsRow(title: "Battery saver",
                             subtitle: "Use a flat fill when Conterm isn't in the foreground.") {
-                    Toggle("", isOn: $prefs.batterySavingMode)
+                    Toggle("", isOn: $prefs.batterySavingMode.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()
                 }
@@ -259,7 +265,7 @@ struct SettingsPanel: View {
                     Picker("", selection: Binding(
                         get: { prefs.tabOrientation },
                         set: { prefs.tabOrientation = $0 }
-                    )) {
+                    ).withSound()) {
                         ForEach(Preferences.TabOrientation.allCases) { o in
                             Text(o.label).tag(o)
                         }
@@ -270,11 +276,11 @@ struct SettingsPanel: View {
                 }
                 SettingsRow(title: "Hide tab bar with one tab",
                             subtitle: "Frees space when only one tab is open.") {
-                    Toggle("", isOn: $prefs.hideTabBarSingleTab).labelsHidden()
+                    Toggle("", isOn: $prefs.hideTabBarSingleTab.withSound()).labelsHidden()
                 }
                 SettingsRow(title: "System stats",
                             subtitle: "Show CPU, memory, and network in the tab bar.") {
-                    Toggle("", isOn: $prefs.showSystemStats).labelsHidden()
+                    Toggle("", isOn: $prefs.showSystemStats.withSound()).labelsHidden()
                 }
             }
         }
@@ -286,7 +292,7 @@ struct SettingsPanel: View {
             card {
                 SettingsRow(title: "Pane title pill",
                             subtitle: "Floating pill in each pane showing the directory or SSH host plus its ⌥N shortcut.") {
-                    Toggle("", isOn: $prefs.showPaneTitleBar).labelsHidden()
+                    Toggle("", isOn: $prefs.showPaneTitleBar.withSound()).labelsHidden()
                 }
             }
         }
@@ -298,11 +304,11 @@ struct SettingsPanel: View {
             card {
                 SettingsRow(title: "Restore window state",
                             subtitle: "Reopen at the last position and size.") {
-                    Toggle("", isOn: $prefs.rememberWindowState).labelsHidden()
+                    Toggle("", isOn: $prefs.rememberWindowState.withSound()).labelsHidden()
                 }
                 SettingsRow(title: "Confirm on quit",
                             subtitle: "⌘Q asks first and lets you restore tabs and panes next launch.") {
-                    Toggle("", isOn: $prefs.confirmBeforeQuit).labelsHidden()
+                    Toggle("", isOn: $prefs.confirmBeforeQuit.withSound()).labelsHidden()
                 }
             }
         }
@@ -314,15 +320,38 @@ struct SettingsPanel: View {
             card {
                 SettingsRow(title: "Launch animation",
                             subtitle: "Play the wordmark intro at startup.") {
-                    Toggle("", isOn: $prefs.launchAnimationEnabled).labelsHidden()
+                    Toggle("", isOn: $prefs.launchAnimationEnabled.withSound()).labelsHidden()
                 }
                 SettingsRow(title: "Launch chime",
                             subtitle: "Short chord during the launch animation.") {
-                    Toggle("", isOn: $prefs.launchSoundEnabled).labelsHidden()
+                    Toggle("", isOn: $prefs.launchSoundEnabled.withSound()).labelsHidden()
+                }
+                SettingsRow(title: "UI sound effects",
+                            subtitle: "Subtle clicks on panes, tabs, and the command palette.") {
+                    HStack(spacing: 10) {
+                        Button {
+                            // Audible sample of the engine's
+                            // output. Disabled when SFX are off so
+                            // the affordance can't claim sound is
+                            // being played while the toggle silences
+                            // it.
+                            SoundEffects.shared.play(.paletteOpen)
+                        } label: {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Play sample")
+                        .disabled(!prefs.soundEffectsEnabled)
+                        Toggle("", isOn: $prefs.soundEffectsEnabled.withSound()).labelsHidden()
+                    }
                 }
                 SettingsRow(title: "Preview animation",
                             subtitle: "Play the launch animation now.") {
-                    Button("Play") { state.launchOverlayVisible = true }
+                    Button("Play") {
+                        SoundEffects.shared.play(.click)
+                        state.launchOverlayVisible = true
+                    }
                         .buttonStyle(.borderedProminent)
                         .tint(Theme.accent.opacity(0.7))
                 }
@@ -331,6 +360,7 @@ struct SettingsPanel: View {
                     Button("Run") {
                         // Bypass the once-per-launch guard so the
                         // wizard always opens from this button.
+                        SoundEffects.shared.play(.click)
                         state.setupWizardVisible = true
                     }
                     .buttonStyle(.bordered)
@@ -460,6 +490,7 @@ struct SettingsPanel: View {
                 SettingsRow(title: "Reload",
                             subtitle: "Re-read the config file and reapply blur.") {
                     Button("Reload") {
+                        SoundEffects.shared.play(.click)
                         (NSApp.delegate as? AppDelegate)?.reloadConfigAndReapplyBlur()
                         prefs.refreshPaneBlurFromConfig()
                     }
@@ -476,7 +507,7 @@ struct SettingsPanel: View {
                             // change applies without a relaunch.
                             Ghostty.App.shared?.reloadConfig()
                         }
-                    ))
+                    ).withSound())
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
@@ -490,7 +521,7 @@ struct SettingsPanel: View {
                             // to live panes without a relaunch.
                             Ghostty.App.shared?.reloadConfig()
                         }
-                    ))
+                    ).withSound())
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
@@ -499,7 +530,7 @@ struct SettingsPanel: View {
                     Toggle("", isOn: Binding(
                         get: { prefs.agentPillLite },
                         set: { prefs.agentPillLite = $0 }
-                    ))
+                    ).withSound())
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
@@ -512,7 +543,7 @@ struct SettingsPanel: View {
                             else  { ClaudeIntegration.uninstall() }
                             claudeIntegrationOn = ClaudeIntegration.isInstalled
                         }
-                    ))
+                    ).withSound())
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
@@ -525,7 +556,7 @@ struct SettingsPanel: View {
                             else  { OpenCodeIntegration.uninstall() }
                             openCodeIntegrationOn = OpenCodeIntegration.isInstalled
                         }
-                    ))
+                    ).withSound())
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
@@ -562,6 +593,7 @@ struct SettingsPanel: View {
                     subtitle: path) {
             HStack(spacing: 6) {
                 Button("Open") {
+                    SoundEffects.shared.play(.click)
                     NSWorkspace.shared.open(URL(fileURLWithPath: path))
                 }
                 .buttonStyle(.bordered)
@@ -725,7 +757,10 @@ private struct ConfigEditor: View {
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(.green)
                 }
-                Button("Save") { save() }
+                Button("Save") {
+                    SoundEffects.shared.play(.click)
+                    save()
+                }
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.accent.opacity(0.75))
             }

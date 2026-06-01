@@ -306,6 +306,7 @@ final class PaneTree: ObservableObject {
             activeLeafNode.firstFraction = 0.5
             self.activePaneID = newPane.id
         }
+        SoundEffects.shared.play(.paneAdd)
         return true
     }
 
@@ -358,6 +359,7 @@ final class PaneTree: ObservableObject {
         } else {
             withAnimation(.easeOut(duration: 0.16), apply)
         }
+        SoundEffects.shared.play(.paneRemove)
         return true
     }
 
