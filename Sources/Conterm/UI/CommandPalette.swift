@@ -43,14 +43,14 @@ struct CommandPalette: View {
             }
         }
         .background(paletteBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .strokeBorder(Theme.strokeStrong, lineWidth: 1)
         )
         .overlay(
             // Liquid-glass top edge highlight.
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .stroke(
                     LinearGradient(
                         colors: [Color.white.opacity(0.32), .clear],
@@ -113,7 +113,7 @@ struct CommandPalette: View {
     }
 
     private var paletteBackground: some View {
-        OverlayPanelBackground(cornerRadius: 16)
+        OverlayPanelBackground(cornerRadius: 26)
     }
 
     // MARK: - Esc / Enter handling
@@ -319,7 +319,9 @@ struct CommandPalette: View {
                     title: "Quit Conterm", shortcut: "⌘Q",
                     run: { NSApp.terminate(nil) }),
         ]
-        return reordered(list)
+        // Hidden commands (Settings → Palette) drop out of the ⌘K list;
+        // their keyboard shortcuts / menu items still work.
+        return reordered(list).filter { !prefs.hiddenPaletteCommands.contains($0.id) }
     }
 
     /// Apply `prefs.paletteCommandOrder` to the built-in command list:

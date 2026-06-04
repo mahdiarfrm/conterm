@@ -99,6 +99,13 @@ final class Preferences: ObservableObject {
     @Published var paletteCommandOrder: [String] {
         didSet { ud.set(paletteCommandOrder, forKey: K.paletteOrder) }
     }
+    /// Command IDs the user has hidden from the ⌘K palette list. The
+    /// command's keyboard shortcut / menu item still works — this only
+    /// removes the row from the palette. Stored as an array; order is
+    /// irrelevant (membership only).
+    @Published var hiddenPaletteCommands: Set<String> {
+        didSet { ud.set(Array(hiddenPaletteCommands), forKey: K.hiddenPaletteCommands) }
+    }
     /// Hide the tab bar entirely when there's only one tab open
     /// (more screen for the terminal, less chrome).
     @Published var hideTabBarSingleTab: Bool {
@@ -108,6 +115,20 @@ final class Preferences: ObservableObject {
     /// Off = no title bar, more room for terminal output.
     @Published var showPaneTitleBar: Bool {
         didSet { ud.set(showPaneTitleBar, forKey: K.showPaneTitleBar) }
+    }
+    /// Surface shell-command results (libghostty OSC 133 marks): a
+    /// transient ✓/✗ + duration badge in the pane's corner when a
+    /// command fails or runs a while, and a notification when a
+    /// long-running command finishes while you're looking elsewhere.
+    /// Needs shell integration, which Ghostty enables by default.
+    @Published var commandAlerts: Bool {
+        didSet { ud.set(commandAlerts, forKey: K.commandAlerts) }
+    }
+    /// Check GitHub for a newer release each time Conterm launches. The
+    /// check is silent — it only lights up the toolbar update pill when
+    /// something newer exists. Manual checks always work regardless.
+    @Published var autoCheckUpdates: Bool {
+        didSet { ud.set(autoCheckUpdates, forKey: K.autoCheckUpdates) }
     }
     /// Show the live system-stats widget (CPU/RAM/Net) in the tab bar.
     @Published var showSystemStats: Bool {
@@ -167,8 +188,11 @@ final class Preferences: ObservableObject {
         static let confirmBeforeQuit = "conterm.confirmBeforeQuit"
         static let hasCompletedSetup = "conterm.hasCompletedSetup"
         static let paletteOrder      = "conterm.paletteCommandOrder"
+        static let hiddenPaletteCommands = "conterm.hiddenPaletteCommands"
         static let hideTabBarSingleTab = "conterm.hideTabBarSingleTab"
         static let showPaneTitleBar = "conterm.showPaneTitleBar"
+        static let commandAlerts    = "conterm.commandAlerts"
+        static let autoCheckUpdates  = "conterm.autoCheckUpdates"
         static let showSystemStats  = "conterm.showSystemStats"
         static let autoHideSidebar  = "conterm.autoHideSidebar"
         static let batterySavingMode = "conterm.batterySavingMode"
@@ -201,8 +225,11 @@ final class Preferences: ObservableObject {
         self.confirmBeforeQuit      = ud.object(forKey: K.confirmBeforeQuit) as? Bool ?? true
         self.hasCompletedSetup      = ud.object(forKey: K.hasCompletedSetup) as? Bool ?? false
         self.paletteCommandOrder    = ud.stringArray(forKey: K.paletteOrder) ?? []
+        self.hiddenPaletteCommands  = Set(ud.stringArray(forKey: K.hiddenPaletteCommands) ?? [])
         self.hideTabBarSingleTab    = ud.object(forKey: K.hideTabBarSingleTab) as? Bool ?? false
         self.showPaneTitleBar       = ud.object(forKey: K.showPaneTitleBar) as? Bool ?? true
+        self.commandAlerts          = ud.object(forKey: K.commandAlerts) as? Bool ?? true
+        self.autoCheckUpdates       = ud.object(forKey: K.autoCheckUpdates) as? Bool ?? true
         self.showSystemStats        = ud.object(forKey: K.showSystemStats) as? Bool ?? true
         self.autoHideSidebar        = ud.object(forKey: K.autoHideSidebar) as? Bool ?? false
         self.batterySavingMode      = ud.object(forKey: K.batterySavingMode) as? Bool ?? true

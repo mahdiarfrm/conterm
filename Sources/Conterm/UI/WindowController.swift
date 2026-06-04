@@ -46,6 +46,7 @@ final class WindowController {
             .environmentObject(fonts)
             .environmentObject(notifications)
             .environmentObject(tabGroups)
+            .environmentObject(UpdateChecker.shared)
             .frame(minWidth: 700, minHeight: 460)
 
         let host = NSHostingView(rootView: root)

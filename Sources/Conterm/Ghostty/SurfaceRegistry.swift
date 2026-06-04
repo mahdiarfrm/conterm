@@ -82,6 +82,12 @@ extension Ghostty {
                 decoded = .notify(
                     title: n.title.map { String(cString: $0) } ?? "",
                     body:  n.body.map  { String(cString: $0) } ?? "")
+            case GHOSTTY_ACTION_COMMAND_FINISHED:
+                // OSC 133 command-end mark. exit_code is -1 when the
+                // shell didn't report one; duration is in nanoseconds.
+                let f = action.action.command_finished
+                decoded = .commandFinished(exitCode: Int(f.exit_code),
+                                           durationNs: f.duration)
             default:
                 decoded = nil
             }
