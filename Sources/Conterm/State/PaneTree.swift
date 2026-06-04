@@ -46,6 +46,29 @@ final class Pane: ObservableObject, Identifiable {
     /// thinks (rotating neon), `.attention` when it needs you — and
     /// only vanishes (`.idle`) when the session ends.
     @Published var agent: AgentStatus = .idle
+
+    /// Result of the most recently finished foreground command in this
+    /// pane, from libghostty's OSC 133 command-end mark. Drives the
+    /// transient result badge in the pane's bottom corner. Each finished
+    /// command produces a fresh value (the timestamp differentiates two
+    /// commands with the same exit code) so SwiftUI re-triggers the
+    /// badge even on a repeat. nil until the first command finishes.
+    @Published var lastCommand: CommandResult?
+
+    /// One OSC 133 command-end mark: how a foreground command exited and
+    /// how long it ran.
+    struct CommandResult: Equatable {
+        /// Shell exit status, or -1 when the shell didn't report one.
+        let exitCode: Int
+        /// Wall-clock run time in nanoseconds.
+        let durationNs: UInt64
+        /// When the command finished — also the identity that lets two
+        /// otherwise-identical results re-trigger the badge animation.
+        let at: Date
+
+        var failed: Bool { exitCode > 0 }
+        var durationSeconds: Double { Double(durationNs) / 1_000_000_000 }
+    }
 }
 
 /// Which agent is running — selects the pill's logo + name.
@@ -142,6 +165,23 @@ final class PaneNode: ObservableObject, Identifiable {
 
     @Published var kind: Kind
     @Published var firstFraction: Double = 0.5
+
+    /// Transient anchor for a live divider drag. Captured on the first
+    /// drag event and held until the drag ends. NOT @Published — it's
+    /// pure interaction bookkeeping and must never trigger a re-render
+    /// (a re-render mid-drag would cancel the divider's gesture). Stored
+    /// on the node (not SwiftUI @State) for the same reason.
+    var dividerDrag: DividerDrag?
+
+    struct DividerDrag {
+        /// SwiftUI gesture start location — only used to detect when a
+        /// NEW drag begins (its value is constant within one drag).
+        let startLocation: CGPoint
+        /// Global cursor position (screen coords) at drag start.
+        let anchorMouse: CGPoint
+        /// Divider fraction at drag start.
+        let anchorFraction: Double
+    }
 
     init(kind: Kind) {
         self.kind = kind

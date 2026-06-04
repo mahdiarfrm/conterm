@@ -27,7 +27,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var titleBarClickMonitor: Any?
     private var scrollMonitor: Any?
     private var mouseMovedMonitor: Any?
-    private var lastPaletteScrollAt: TimeInterval = 0
+    /// Accumulated trackpad scroll travel (points) since the last
+    /// palette focus step. A gentle two-finger scroll reports
+    /// sub-point deltas that a fixed threshold would drop, so we sum
+    /// them and step one row per `paletteScrollStep` points.
+    private var paletteScrollAccum: Double = 0
 
     /// Convenience accessor for the active key window's state (or the
     /// first window's, as a fallback). Most menu actions and the
@@ -107,6 +111,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         runLaunchScaleIn()
 
         NSApp.activate(ignoringOtherApps: true)
+
+        // CONTERM_PREVIEW_UPDATE=1 forces the toolbar update pill on
+        // (no network, no real release) so the indicator can be eyeballed
+        // during development — mirrors the SPLASH_SCREEN preview hook.
+        if ProcessInfo.processInfo.environment["CONTERM_PREVIEW_UPDATE"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                UpdateChecker.shared.showPreview()
+            }
+        } else if prefs.autoCheckUpdates {
+            // Silent OTA check shortly after launch (off the
+            // startup-animation path). Lights up the toolbar update pill
+            // if GitHub has a newer release; never interrupts.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                UpdateChecker.shared.checkInBackground()
+            }
+        }
+    }
+
+    /// Menu / manual "Check for Updates…". Always reports its result.
+    @objc func checkForUpdates(_ sender: Any?) {
+        UpdateChecker.shared.checkInBackground(announce: true)
     }
 
     /// Create another window. Called from File→New Window, Dock-menu
@@ -232,20 +257,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Scroll-wheel events default to the view under the cursor,
-        // which is usually a terminal pane, not the palette. While
-        // the palette is open we capture them and translate into one
-        // focus step per ~70ms (throttled so a trackpad swipe doesn't
-        // fly past several items). The event is always swallowed so
-        // the terminal underneath never scrolls.
+        // which is usually a terminal pane, not the palette. While the
+        // palette is open we capture them and translate into focus
+        // steps, always swallowing the event so the terminal underneath
+        // never scrolls.
+        //
+        // Two device classes need different handling:
+        //
+        //  • Trackpad / Magic Mouse (`hasPreciseScrollingDeltas`) report
+        //    a stream of small pixel deltas — a gentle two-finger scroll
+        //    can be well under a point per event, so a fixed magnitude
+        //    gate would drop them. Accumulate the deltas and step one row
+        //    per `step` points. Momentum (post-lift glide) is ignored so
+        //    the selection only tracks the fingers, never coasts.
+        //
+        //  • A notched mouse wheel reports one discrete event per detent
+        //    (often a sub-1.0 delta): one row per detent, no gate.
+        //
+        // `scrollingDeltaY` (not the deprecated `deltaY`) honors the
+        // system natural-scroll direction in both paths.
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
             guard let self else { return event }
             guard self.state.paletteOpen else { return event }
-            let now = Date().timeIntervalSinceReferenceDate
-            let interval: TimeInterval = 0.07
             let dy = event.scrollingDeltaY
-            guard abs(dy) > 1.5 else { return nil }
-            if now - self.lastPaletteScrollAt > interval {
-                self.lastPaletteScrollAt = now
+            if event.hasPreciseScrollingDeltas {
+                // Skip the inertial glide after the fingers lift.
+                guard event.momentumPhase == [] else { return nil }
+                self.paletteScrollAccum += dy
+                let step = 18.0
+                while self.paletteScrollAccum >= step {
+                    self.paletteScrollAccum -= step
+                    self.state.paletteFocusedIndex -= 1
+                }
+                while self.paletteScrollAccum <= -step {
+                    self.paletteScrollAccum += step
+                    self.state.paletteFocusedIndex += 1
+                }
+                // Don't carry a partial step into the next gesture.
+                if event.phase == .ended || event.phase == .cancelled {
+                    self.paletteScrollAccum = 0
+                }
+            } else {
+                guard dy != 0 else { return nil }
                 if dy > 0 { self.state.paletteFocusedIndex -= 1 }
                 else      { self.state.paletteFocusedIndex += 1 }
             }
@@ -306,6 +359,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let ctrl = event.modifierFlags.contains(.control)
             let shift = event.modifierFlags.contains(.shift)
             let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+
+            // ⌘↑ / ⌘↓ → jump to the previous / next shell prompt, using
+            // libghostty's OSC 133 command marks. Requires shell
+            // integration (on by default); `jump_to_prompt` is a no-op
+            // returning false when there are no marks or the action
+            // isn't supported, in which case the key falls through to
+            // the terminal untouched. 126 = ↑, 125 = ↓.
+            if cmd && !opt && !ctrl && !shift,
+               event.keyCode == 126 || event.keyCode == 125,
+               !self.state.paletteOpen, !self.state.settingsOpen,
+               !self.state.searchOpen,
+               let surface = self.state.selectedTab?.paneTree.activePane?.controller {
+                let delta = event.keyCode == 126 ? "-1" : "1"
+                if surface.performBindingAction("jump_to_prompt:\(delta)") {
+                    return nil
+                }
+            }
 
             // ⌘1..⌘9 → jump to tab N.
             if cmd && !opt && !ctrl && !shift,

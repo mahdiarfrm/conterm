@@ -294,6 +294,10 @@ struct SettingsPanel: View {
                             subtitle: "Floating pill in each pane showing the directory or SSH host plus its ⌥N shortcut.") {
                     Toggle("", isOn: $prefs.showPaneTitleBar.withSound()).labelsHidden()
                 }
+                SettingsRow(title: "Command alerts",
+                            subtitle: "Show a ✓/✗ result badge when a command fails or runs a while, and notify you when a long command finishes while you're away. ⌘↑/⌘↓ jump between prompts. Needs shell integration.") {
+                    Toggle("", isOn: $prefs.commandAlerts.withSound()).labelsHidden()
+                }
             }
         }
     }
@@ -379,10 +383,11 @@ struct SettingsPanel: View {
     private var palette: some View {
         VStack(alignment: .leading, spacing: 14) {
             sectionHeader("Palette",
-                          subtitle: "Reorder the commands shown in ⌘K.")
+                          subtitle: "Reorder the commands shown in ⌘K, or hide the ones you don't use. Hidden commands still work from their keyboard shortcut.")
             card {
                 let effective = effectivePaletteOrder
                 ForEach(Array(effective.enumerated()), id: \.element.id) { idx, item in
+                    let hidden = prefs.hiddenPaletteCommands.contains(item.id)
                     HStack(spacing: 10) {
                         Image(systemName: item.icon)
                             .font(.system(size: 12, weight: .medium))
@@ -390,8 +395,19 @@ struct SettingsPanel: View {
                             .frame(width: 18)
                         Text(item.title)
                             .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(Theme.textPrimary)
+                            .foregroundStyle(hidden ? Theme.textSecondary.opacity(0.5)
+                                                    : Theme.textPrimary)
+                            .strikethrough(hidden, color: Theme.textSecondary.opacity(0.6))
                         Spacer()
+                        // Eye toggle: show ⇄ hide this command in ⌘K.
+                        Button { togglePaletteItemHidden(item.id) } label: {
+                            Image(systemName: hidden ? "eye.slash" : "eye")
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(width: 22, height: 20)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(hidden ? Theme.accent : Theme.textSecondary)
+                        .help(hidden ? "Show in ⌘K" : "Hide from ⌘K")
                         Button { movePaletteItem(item.id, by: -1) } label: {
                             Image(systemName: "chevron.up")
                                 .font(.system(size: 11, weight: .semibold))
@@ -415,6 +431,14 @@ struct SettingsPanel: View {
                 }
                 HStack {
                     Spacer()
+                    Button("Show all hidden") {
+                        withAnimation(Theme.Spring.snappy) {
+                            prefs.hiddenPaletteCommands = []
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(prefs.hiddenPaletteCommands.isEmpty)
                     Button("Reset to default order") {
                         prefs.paletteCommandOrder = []
                     }
@@ -451,6 +475,14 @@ struct SettingsPanel: View {
         order.swapAt(i, j)
         withAnimation(Theme.Spring.snappy) {
             prefs.paletteCommandOrder = order
+        }
+    }
+
+    private func togglePaletteItemHidden(_ id: String) {
+        var hidden = prefs.hiddenPaletteCommands
+        if hidden.contains(id) { hidden.remove(id) } else { hidden.insert(id) }
+        withAnimation(Theme.Spring.snappy) {
+            prefs.hiddenPaletteCommands = hidden
         }
     }
 
@@ -559,6 +591,41 @@ struct SettingsPanel: View {
                     ).withSound())
                     .toggleStyle(.switch)
                     .labelsHidden()
+                }
+            }
+            card {
+                SettingsRow(title: "Automatic updates",
+                            subtitle: "Check GitHub for a newer release each time Conterm launches. Silent — only the toolbar pill lights up.") {
+                    Toggle("", isOn: $prefs.autoCheckUpdates.withSound()).labelsHidden()
+                }
+                SettingsRow(title: "Check now",
+                            subtitle: "You're on \(UpdateChecker.shared.currentVersion). Looks for a newer release on GitHub.") {
+                    Button("Check for Updates") {
+                        SoundEffects.shared.play(.click)
+                        UpdateChecker.shared.checkInBackground(announce: true)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                }
+            }
+            card {
+                SettingsRow(title: "Back up",
+                            subtitle: "Save your sessions, app settings, and Conterm + Ghostty config to one file.") {
+                    Button("Back Up…") {
+                        SoundEffects.shared.play(.click)
+                        BackupStore.exportWithPanel()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                }
+                SettingsRow(title: "Restore",
+                            subtitle: "Load a backup file. Conterm relaunches to apply it.") {
+                    Button("Restore…") {
+                        SoundEffects.shared.play(.click)
+                        BackupStore.restoreWithPanel()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
                 }
             }
             ConfigEditor()

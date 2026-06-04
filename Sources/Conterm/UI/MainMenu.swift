@@ -26,6 +26,9 @@ enum MainMenu {
         menu.addItem(item("About Conterm",
                           action: #selector(AppDelegate.showAboutPanel(_:)),
                           target: delegate))
+        menu.addItem(item("Check for Updates…",
+                          action: #selector(AppDelegate.checkForUpdates(_:)),
+                          target: delegate))
         menu.addItem(.separator())
         let settings = item("Settings…",
                              action: #selector(AppDelegate.openSettings(_:)),

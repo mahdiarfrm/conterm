@@ -92,6 +92,7 @@ struct TabBar: View {
                 }
                 // Bell / search / ⌘K at the bottom, in their own glass bar.
                 HStack {
+                    UpdateIndicatorButton()
                     HStack(spacing: 2) {
                         NotificationBell(bare: true)
                         SearchHintButton(bare: true)
@@ -284,6 +285,7 @@ struct TabBar: View {
                 SystemStatsWidget()
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
+            UpdateIndicatorButton()
             actionBar
         }
     }
@@ -475,6 +477,66 @@ private struct NotificationBell: View {
         .scaleEffect(hovering ? 1.12 : 1.0)
         .animation(Theme.Spring.snappy, value: hovering)
         .animation(Theme.Spring.snappy, value: notifications.unreadCount)
+    }
+}
+
+/// Toolbar pill that appears ONLY when an update is waiting (or is
+/// being installed). A neutral Liquid Glass capsule with an accent
+/// download glyph and a softly pulsing accent ring — glanceable without
+/// nagging. Click → confirm + install & relaunch.
+private struct UpdateIndicatorButton: View {
+    @EnvironmentObject var updates: UpdateChecker
+    @State private var hovering = false
+    @State private var pulse = false
+
+    private var label: String? {
+        switch updates.phase {
+        case .available:   return "Update"
+        case .downloading: return "Downloading…"
+        case .installing:  return "Installing…"
+        default:           return nil
+        }
+    }
+
+    var body: some View {
+        if let label {
+            Button {
+                if updates.phase == .available { updates.promptInstall() }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: updates.phase == .available
+                          ? "arrow.down.circle.fill"
+                          : "arrow.triangle.2.circlepath")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(label)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(Theme.accent)
+                .padding(.horizontal, 10)
+                .frame(height: TabBar.toolbarPillHeight)
+                .glassPill()
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(Theme.accent.opacity(pulse ? 0.65 : 0.28), lineWidth: 1)
+                        .allowsHitTesting(false)
+                )
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(updates.phase != .available)
+            .onHover { hovering = $0 }
+            .scaleEffect(hovering ? 1.1 : 1.0)
+            .shadow(color: Theme.accent.opacity(pulse ? 0.45 : 0.18),
+                    radius: pulse ? 7 : 3)
+            .help("A new version of Conterm is available")
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
+            .animation(Theme.Spring.snappy, value: hovering)
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        }
     }
 }
 

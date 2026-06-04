@@ -67,73 +67,113 @@ private struct SplitArea: View {
                 HStack(spacing: 0) {
                     TreeView(node: first, tree: tree)
                         .frame(width: firstSize - dividerThickness / 2)
-                    SplitDivider(axis: axis) { delta in adjust(delta, total: total) }
+                    divider(total: total)
                     TreeView(node: second, tree: tree)
                 }
             } else {
                 VStack(spacing: 0) {
                     TreeView(node: first, tree: tree)
                         .frame(height: firstSize - dividerThickness / 2)
-                    SplitDivider(axis: axis) { delta in adjust(delta, total: total) }
+                    divider(total: total)
                     TreeView(node: second, tree: tree)
                 }
             }
         }
     }
 
-    private func adjust(_ delta: CGFloat, total: CGFloat) {
-        let fractionDelta = Double(delta / max(total, 1))
-        let raw = node.firstFraction + fractionDelta
-        // Magnetic mid-snap at exactly 50 % within ±2.5 %.
-        let snapped = abs(raw - 0.5) < 0.025 ? 0.5 : raw
-        node.firstFraction = min(0.88, max(0.12, snapped))
+    private func divider(total: CGFloat) -> some View {
+        SplitDivider(
+            axis: axis,
+            onHoverChange: { hovering in
+                // The window is movable-by-background (WindowChrome) and a
+                // SwiftUI view can't opt out via `mouseDownCanMoveWindow`.
+                // Suspend background dragging while the cursor is on the
+                // divider so a resize drag isn't reinterpreted as a window
+                // move; restore on exit — but not during a drag, since a
+                // fast drag can briefly leave the thin hit area.
+                if hovering {
+                    NSApp.keyWindow?.isMovableByWindowBackground = false
+                } else if node.dividerDrag == nil {
+                    NSApp.keyWindow?.isMovableByWindowBackground = true
+                }
+            },
+            onChanged: { value in
+                // A new drag (startLocation changes) re-anchors to the live
+                // fraction + the current global cursor position.
+                if node.dividerDrag?.startLocation != value.startLocation {
+                    node.dividerDrag = PaneNode.DividerDrag(
+                        startLocation: value.startLocation,
+                        anchorMouse: NSEvent.mouseLocation,
+                        anchorFraction: node.firstFraction)
+                    NSApp.keyWindow?.isMovableByWindowBackground = false
+                }
+                guard let drag = node.dividerDrag else { return }
+                // Drive resize from the GLOBAL cursor position (screen
+                // coords): a SwiftUI drag value's location reads through the
+                // AppKit hosting y-flipped. Screen y increases upward, so a
+                // downward drag grows the top pane (positive delta);
+                // rightward grows the left pane.
+                let m = NSEvent.mouseLocation
+                let deltaPx = axis == .horizontal ? (m.x - drag.anchorMouse.x)
+                                                  : (drag.anchorMouse.y - m.y)
+                let raw = drag.anchorFraction + Double(deltaPx / max(total, 1))
+                // Magnetic mid-snap at exactly 50 % within ±2.5 %, clamped.
+                let snapped = abs(raw - 0.5) < 0.025 ? 0.5 : raw
+                node.firstFraction = min(0.88, max(0.12, snapped))
+            },
+            onEnded: {
+                node.dividerDrag = nil
+                NSApp.keyWindow?.isMovableByWindowBackground = true
+            })
     }
 }
 
 /// Hairline divider. Resting state: nearly invisible. Hover: brightens
 /// and gains a soft glow. Hit area is wider than the visual stroke so
 /// the user can grab it easily without showing a fat slab at rest.
+///
+/// Must stay pure SwiftUI with no backing NSView: an NSView sibling of
+/// the libghostty surface views perturbs the CoreAnimation commit during
+/// pane teardown and trips libghostty's surface-free-during-draw renderer
+/// abort. The drag is handled by a SwiftUI gesture reading
+/// `NSEvent.mouseLocation` (screen coords sidestep the AppKit y-flip),
+/// with drag state on the PaneNode rather than @State so a mid-drag
+/// re-render can't cancel the gesture.
 private struct SplitDivider: View {
     let axis: SplitAxis
-    let onDrag: (CGFloat) -> Void
+    let onHoverChange: (Bool) -> Void
+    let onChanged: (DragGesture.Value) -> Void
+    let onEnded: () -> Void
     @State private var hovering = false
 
     var body: some View {
         let line: CGFloat = hovering ? 1.5 : 0.8
         let hit: CGFloat = 8
-        ZStack {
-            // Visible line.
-            Rectangle()
-                .fill(hovering ? Color.white.opacity(0.55)
-                                : Color.white.opacity(0.10))
-                .frame(width: axis == .horizontal ? line : nil,
-                       height: axis == .vertical   ? line : nil)
-                .shadow(color: hovering ? Color.white.opacity(0.45) : .clear,
-                        radius: hovering ? 4 : 0)
-            // Wider invisible hit zone.
-            Rectangle()
-                .fill(Color.clear)
-                .frame(width: axis == .horizontal ? hit : nil,
-                       height: axis == .vertical   ? hit : nil)
-                .contentShape(Rectangle())
-        }
-        .frame(width: axis == .horizontal ? hit : nil,
-               height: axis == .vertical   ? hit : nil)
-        .onHover { h in
-            hovering = h
-            if h {
-                (axis == .horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).set()
-            } else {
-                NSCursor.arrow.set()
-            }
-        }
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { v in
-                    onDrag(axis == .horizontal ? v.translation.width : v.translation.height)
+        Rectangle()
+            .fill(hovering ? Color.white.opacity(0.55) : Color.white.opacity(0.10))
+            .frame(width: axis == .horizontal ? line : nil,
+                   height: axis == .vertical   ? line : nil)
+            .shadow(color: hovering ? Color.white.opacity(0.45) : .clear,
+                    radius: hovering ? 4 : 0)
+            .frame(width: axis == .horizontal ? hit : nil,
+                   height: axis == .vertical   ? hit : nil)
+            .contentShape(Rectangle())
+            .onHover { h in
+                hovering = h
+                onHoverChange(h)
+                if h {
+                    (axis == .horizontal ? NSCursor.resizeLeftRight
+                                         : NSCursor.resizeUpDown).set()
+                } else {
+                    NSCursor.arrow.set()
                 }
-        )
-        .animation(Theme.Spring.snappy, value: hovering)
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { onChanged($0) }
+                    .onEnded { _ in onEnded() }
+            )
+            .animation(Theme.Spring.snappy, value: hovering)
     }
 }
 
@@ -242,6 +282,68 @@ private struct KeybindChip: View {
     }
 }
 
+/// Small glass chip showing how the last shell command finished:
+/// a green check + duration on success, a red ✗ + exit code on
+/// failure, a neutral clock when the shell reported no exit code.
+/// Matches the title pill's glass styling so the two read as a set.
+private struct CommandBadge: View {
+    let result: Pane.CommandResult
+
+    private var unknownExit: Bool { result.exitCode < 0 }
+
+    private var tint: Color {
+        if unknownExit { return Color.white.opacity(0.6) }
+        return result.failed ? Color(red: 1.0, green: 0.42, blue: 0.42)
+                             : Color(red: 0.45, green: 0.86, blue: 0.55)
+    }
+    private var icon: String {
+        if unknownExit { return "clock" }
+        return result.failed ? "xmark.circle.fill" : "checkmark.circle.fill"
+    }
+    private var label: String {
+        let dur = formatCommandDuration(result.durationNs)
+        return result.failed ? "exit \(result.exitCode) · \(dur)" : dur
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(tint)
+            Text(label)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.9))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            ZStack {
+                Capsule(style: .continuous).fill(.ultraThinMaterial)
+                Capsule(style: .continuous)
+                    .fill(tint.opacity(0.12))
+                    .blendMode(.plusLighter)
+            }
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(tint.opacity(0.45), lineWidth: 0.6)
+        )
+    }
+}
+
+/// Human-friendly run time for a command badge / notification.
+/// < 1s → "420ms"; < 10s → "1.4s"; < 60s → "12s"; else "2m 03s".
+private func formatCommandDuration(_ ns: UInt64) -> String {
+    let seconds = Double(ns) / 1_000_000_000
+    if seconds < 1 { return "\(Int((seconds * 1000).rounded()))ms" }
+    if seconds < 10 { return String(format: "%.1fs", seconds) }
+    if seconds < 60 { return "\(Int(seconds.rounded()))s" }
+    let m = Int(seconds) / 60
+    let s = Int(seconds) % 60
+    return String(format: "%dm %02ds", m, s)
+}
+
 /// Returns a friendly short label for `cwd`. Replaces home dir with
 /// `~`, preserves the `~/` (or `/`) anchor so the user can always tell
 /// which root the path is under, and shows up to the last three path
@@ -285,6 +387,9 @@ private struct PaneView: View {
     var onFocus: () -> Void
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Preferences
+    /// Transient command-result chip, shown for a few seconds after a
+    /// command finishes (set by the `pane.lastCommand` observer below).
+    @State private var commandBadge: Pane.CommandResult?
 
     var body: some View {
         let corner = Theme.paneCorner
@@ -399,6 +504,35 @@ private struct PaneView: View {
                            alignment: .top)
                     .allowsHitTesting(false)
                     .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            // 8. Transient command-result chip — bottom-trailing, near
+            //    the prompt. Surfaces the exit status + run time of the
+            //    last command that failed or took a moment; self-dismisses
+            //    after a few seconds. Independent of the title-bar setting.
+            if let badge = commandBadge {
+                CommandBadge(result: badge)
+                    .padding(.bottom, 10)
+                    .padding(.trailing, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity,
+                           alignment: .bottomTrailing)
+                    .allowsHitTesting(false)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .onChange(of: pane.lastCommand) { _, result in
+            // Stay calm: only surface failures and commands that took a
+            // beat — sub-second successes (ls, cd, git status) shouldn't
+            // pop a chip on every prompt return.
+            guard prefs.commandAlerts, let result,
+                  result.failed || result.durationSeconds >= 2 else { return }
+            withAnimation(Theme.Spring.snappy) { commandBadge = result }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                // Only clear if no newer command has replaced it.
+                if commandBadge?.at == result.at {
+                    withAnimation(Theme.Spring.snappy) { commandBadge = nil }
+                }
             }
         }
         .animation(Theme.Spring.snappy, value: pane.agent)
@@ -638,6 +772,7 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
     let size: CGSize
     @EnvironmentObject var state: AppState
     @EnvironmentObject var notifications: NotificationStore
+    @EnvironmentObject var prefs: Preferences
 
     func makeNSView(context: Context) -> Ghostty.SurfaceHostView {
         // If this pane already has a controller (e.g. SwiftUI is
@@ -835,6 +970,37 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
                     notifications.post(tool: tool,
                                        title: "\(name) finished",
                                        message: "Task complete — back to you")
+                }
+            }
+        }
+        // OSC 133 command-end marks. Updates the pane's transient
+        // result badge, and — for commands long enough that you'd have
+        // stepped away — posts a notification when one finishes while
+        // you're NOT watching this pane (different pane / tab / window,
+        // or Conterm in the background).
+        controller.onCommandFinished = { [weak pane, weak owningTab, weak state, notifications, prefs] exitCode, durationNs in
+            DispatchQueue.main.async {
+                guard prefs.commandAlerts, let pane else { return }
+                let result = Pane.CommandResult(exitCode: exitCode,
+                                                durationNs: durationNs,
+                                                at: Date())
+                pane.lastCommand = result
+
+                guard durationNs >= 10_000_000_000 else { return }  // 10s
+                let watching = NSApp.isActive
+                    && state?.selectedID == owningTab?.id
+                    && owningTab?.paneTree.activePaneID == pane.id
+                guard !watching else { return }
+                let dir = friendlyDirLabel(for: pane.cwd)
+                let dur = formatCommandDuration(durationNs)
+                if result.failed {
+                    notifications.post(tool: .generic,
+                                       title: "Command failed",
+                                       message: "exit \(exitCode) · \(dur) · \(dir)")
+                } else {
+                    notifications.post(tool: .generic,
+                                       title: "Command finished",
+                                       message: "\(dur) · \(dir)")
                 }
             }
         }

@@ -47,6 +47,11 @@ extension Ghostty {
         var onAgentProgress: ((Int, Int) -> Void)?
         /// OSC 9/777/99 notification (title, body) — Claude needs you / done.
         var onAgentNotify:   ((String, String) -> Void)?
+        /// OSC 133 command-end mark (exitCode, durationNs). exitCode is
+        /// -1 when the shell didn't report one. Drives the per-pane
+        /// command-result badge and the away-from-keyboard "long command
+        /// finished" notification.
+        var onCommandFinished: ((Int, UInt64) -> Void)?
 
         /// Initial working directory for the shell. Set by TerminalContainer
         /// before `start(view:)` from the owning Pane's `startingDir`.
@@ -341,6 +346,9 @@ extension Ghostty {
             case progress(state: Int, percent: Int)
             /// OSC 9 / 777 / 99 desktop notification.
             case notify(title: String, body: String)
+            /// OSC 133 command end. `exitCode` is -1 when unreported;
+            /// `durationNs` is the command's wall-clock time in ns.
+            case commandFinished(exitCode: Int, durationNs: UInt64)
         }
 
         func handle(decoded: DecodedAction) {
@@ -383,6 +391,9 @@ extension Ghostty {
 
             case .notify(let t, let b):
                 onAgentNotify?(t, b)
+
+            case .commandFinished(let exitCode, let durationNs):
+                onCommandFinished?(exitCode, durationNs)
             }
         }
 
