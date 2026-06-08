@@ -105,6 +105,35 @@ final class SoundEffects {
             // that audio failed to come up.
             clog("conterm: SoundEffects engine failed to start: \(error)")
         }
+
+        // AVAudioEngine STOPS itself on any I/O configuration change —
+        // output device switch, Bluetooth (dis)connect, sample-rate
+        // change, sleep/wake — and does not restart on its own. Without
+        // this, every UI sound goes silent after the first route change
+        // until the app is relaunched. The notification is posted off
+        // the main thread; `queue: .main` lands us back where the engine
+        // is owned.
+        NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.restartEngine() }
+        }
+    }
+
+    /// Reconnect the graph and restart after a stop. The internal
+    /// connections all use the fixed 48 kHz format, so only the
+    /// hardware-facing mixer link can have gone stale; reconnecting it
+    /// is cheap insurance before `start()`.
+    private func restartEngine() {
+        guard !engine.isRunning else { return }
+        engine.connect(mixer, to: engine.mainMixerNode, format: format)
+        do {
+            try engine.start()
+        } catch {
+            clog("conterm: SoundEffects engine failed to restart: \(error)")
+        }
     }
 
     // MARK: - API
@@ -115,6 +144,9 @@ final class SoundEffects {
     /// variant was rendered for the requested effect.
     func play(_ effect: Effect) {
         guard Self.isEnabled else { return }
+        // Lazy recovery: if a config change stopped the engine and the
+        // proactive observer hasn't fired yet, bring it back here.
+        if !engine.isRunning { restartEngine() }
         guard engine.isRunning else { return }
         guard let bucket = variants[effect], let buffer = bucket.randomElement() else {
             return
