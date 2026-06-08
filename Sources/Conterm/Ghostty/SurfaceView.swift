@@ -95,6 +95,12 @@ extension Ghostty {
             // degenerate state and may never recover. Ghostty.app's
             // SurfaceView uses the same 800×600 trick.
             super.init(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+            // Accept drops of files and bitmap data. Files (Finder, IDE
+            // sidebar) come as fileURL; bitmap data (Safari image drag,
+            // CleanShot screenshot, Slack paste-then-drag) comes as
+            // png/tiff. Both get pasted as a shell-quoted absolute path
+            // so Claude Code (and any other tool) can ingest them.
+            registerForDraggedTypes([.fileURL, .png, .tiff])
         }
 
 
@@ -755,6 +761,97 @@ extension Ghostty {
             let p = convert(event.locationInWindow, from: nil)
             ctrl.sendMousePos(x: Double(p.x), y: Double(p.y),
                               mods: InputMapping.mods(from: event.modifierFlags))
+        }
+
+        // MARK: - Drag-and-drop
+
+        /// Files from Finder, images from Safari/CleanShot, screenshots
+        /// from Slack, etc. all land here. We resolve every drop to one
+        /// or more absolute paths and paste them, shell-quoted, at the
+        /// cursor. Image data without a backing file is materialized as
+        /// a PNG in the Conterm cache directory so an agent (Claude
+        /// Code, opencode) can read it from the path verbatim.
+        override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+            return dropOperation(for: sender)
+        }
+
+        override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+            return dropOperation(for: sender)
+        }
+
+        override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+            let pb = sender.draggingPasteboard
+            var paths: [String] = []
+
+            // Prefer real file URLs when present — they survive
+            // round-trips and the agent reads them directly.
+            if let urls = pb.readObjects(forClasses: [NSURL.self],
+                                         options: [.urlReadingFileURLsOnly: true])
+                            as? [URL] {
+                paths.append(contentsOf: urls.map { $0.path })
+            }
+
+            // Fall back to raw bitmap data — Safari/web drags, pasted
+            // screenshots in Slack, etc. Materialize each as PNG.
+            if paths.isEmpty {
+                if let png = pb.data(forType: .png) {
+                    if let p = Self.persistDroppedImage(png, ext: "png") {
+                        paths.append(p)
+                    }
+                } else if let tiff = pb.data(forType: .tiff),
+                          let png = Self.tiffToPNG(tiff) {
+                    if let p = Self.persistDroppedImage(png, ext: "png") {
+                        paths.append(p)
+                    }
+                }
+            }
+
+            guard !paths.isEmpty else { return false }
+            let joined = paths.map(Self.shellQuote).joined(separator: " ") + " "
+            controller?.sendText(joined)
+            return true
+        }
+
+        private func dropOperation(for sender: any NSDraggingInfo) -> NSDragOperation {
+            let pb = sender.draggingPasteboard
+            let types: Set<NSPasteboard.PasteboardType> = [.fileURL, .png, .tiff]
+            return pb.types?.contains(where: { types.contains($0) }) == true
+                ? .copy : []
+        }
+
+        /// Single-quote-wrap a path for POSIX shells; safe for spaces,
+        /// `$`, backticks, glob chars. Embedded `'` becomes `'\''`.
+        private static func shellQuote(_ s: String) -> String {
+            if s.range(of: #"[^A-Za-z0-9_/.\-]"#, options: .regularExpression) == nil {
+                return s
+            }
+            return "'" + s.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+        }
+
+        /// Writes a dropped bitmap into the Conterm cache so an agent
+        /// can read it after the drop. Filenames are timestamped so a
+        /// quick succession of drops doesn't collide.
+        private static func persistDroppedImage(_ data: Data, ext: String) -> String? {
+            let base = FileManager.default.urls(for: .cachesDirectory,
+                                                in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSTemporaryDirectory())
+            let dir = base.appendingPathComponent("conterm/dnd",
+                                                  isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir,
+                                                     withIntermediateDirectories: true)
+            let stamp = Int(Date().timeIntervalSince1970 * 1000)
+            let url = dir.appendingPathComponent("drop-\(stamp).\(ext)")
+            do {
+                try data.write(to: url, options: .atomic)
+                return url.path
+            } catch {
+                return nil
+            }
+        }
+
+        private static func tiffToPNG(_ tiff: Data) -> Data? {
+            guard let rep = NSBitmapImageRep(data: tiff) else { return nil }
+            return rep.representation(using: .png, properties: [:])
         }
     }
 }
