@@ -178,9 +178,39 @@ extension Ghostty {
 
         // MARK: - View-side hooks
 
+        /// Coalesce forced repaints to ≤60fps. libghostty emits RENDER
+        /// as fast as cell content changes — an agent's spinner or a
+        /// fast stream can fire well above the display refresh. Every
+        /// repaint forces the compositor to re-blur the Liquid Glass
+        /// overlays (pill, tab bar) sitting over this surface, so a
+        /// burst at 120fps costs twice the recomposite work of 60fps
+        /// for no visible gain. Collapsing a burst into one immediate
+        /// draw plus a single trailing draw caps that cost; the
+        /// trailing draw guarantees the burst's final frame still
+        /// lands, within one frame interval.
+        private var lastDrawAt: CFTimeInterval = 0
+        private var pendingDraw = false
+        private let minDrawInterval: CFTimeInterval = 1.0 / 60.0
+
         func draw() {
             guard let h = handle else { return }
-            ghostty_surface_draw(h)
+            let now = CACurrentMediaTime()
+            let since = now - lastDrawAt
+            if since >= minDrawInterval {
+                lastDrawAt = now
+                ghostty_surface_draw(h)
+            } else if !pendingDraw {
+                pendingDraw = true
+                DispatchQueue.main.asyncAfter(
+                    deadline: .now() + (minDrawInterval - since)
+                ) { [weak self] in
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        self.pendingDraw = false
+                        self.draw()
+                    }
+                }
+            }
         }
 
         /// Tells libghostty the surface needs a re-render on its own
