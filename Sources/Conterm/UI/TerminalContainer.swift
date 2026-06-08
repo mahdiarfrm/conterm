@@ -980,7 +980,20 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
         // or Conterm in the background).
         controller.onCommandFinished = { [weak pane, weak owningTab, weak state, notifications, prefs] exitCode, durationNs in
             DispatchQueue.main.async {
-                guard prefs.commandAlerts, let pane else { return }
+                guard let pane else { return }
+
+                // OSC 133;D fires from the outer interactive shell when
+                // its foreground command exits. If the agent's Stop /
+                // SessionEnd hook failed to land (wrapped process tree,
+                // killed mid-stream), the agent's `claude` command
+                // exiting still walks back to a shell prompt and emits
+                // 133;D. Clearing the pill here makes that the secondary
+                // safety net alongside the OSC 7 PWD path above.
+                if pane.agent.phase != .idle {
+                    pane.agent = .idle
+                }
+
+                guard prefs.commandAlerts else { return }
                 let result = Pane.CommandResult(exitCode: exitCode,
                                                 durationNs: durationNs,
                                                 at: Date())
