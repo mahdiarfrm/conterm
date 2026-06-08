@@ -106,13 +106,12 @@ final class SoundEffects {
             clog("conterm: SoundEffects engine failed to start: \(error)")
         }
 
-        // AVAudioEngine STOPS itself on any I/O configuration change —
-        // output device switch, Bluetooth (dis)connect, sample-rate
-        // change, sleep/wake — and does not restart on its own. Without
-        // this, every UI sound goes silent after the first route change
-        // until the app is relaunched. The notification is posted off
-        // the main thread; `queue: .main` lands us back where the engine
-        // is owned.
+        // AVAudioEngine stops itself on any I/O configuration change —
+        // output-device switch, Bluetooth (dis)connect, sample-rate
+        // change, sleep/wake — and does not restart on its own, so the
+        // engine must be revived explicitly to keep sound alive across a
+        // route change. The notification posts off the main thread;
+        // `queue: .main` lands the handler where the engine is owned.
         NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
             object: engine,
