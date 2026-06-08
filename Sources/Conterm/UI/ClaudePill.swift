@@ -14,11 +14,10 @@ struct AgentPill: View {
     let status: AgentStatus
     @EnvironmentObject var prefs: Preferences
 
-    /// `.key` when this view's window is the key window AND its app is
-    /// frontmost. Used to suspend the sweep/pulse the moment Conterm
-    /// drops to the background — the animation has no perceptual value
-    /// while you can't see it, but it keeps the GPU compositor warm
-    /// (visible in `powermetrics` as continuous COMPOSITOR wakes).
+    /// `.key` only when this view's window is key and its app is
+    /// frontmost. The sweep and pulse are gated on this: an animation
+    /// that isn't on screen still drives continuous compositor
+    /// recomposites, so a non-key pane must stay at zero render cost.
     @Environment(\.controlActiveState) private var activeState
 
     @State private var sweep: Double = 0
@@ -108,8 +107,8 @@ struct AgentPill: View {
                 // in its own colours.
                 .foregroundStyle(templated ? tint : Color.primary)
                 // Mark spins gently while thinking; skipped in lite
-                // mode and whenever this window isn't key so we don't
-                // burn the compositor while you're in another app.
+                // mode and whenever this window isn't key, so a non-key
+                // pane drives no compositor work.
                 .rotationEffect(.degrees(
                     (working && !prefs.agentPillLite && windowIsKey)
                         ? sweep * 360 : 0))
@@ -131,8 +130,8 @@ struct AgentPill: View {
     @ViewBuilder
     private var neonRing: some View {
         // When the window isn't key, freeze the working/attention ring
-        // on a static rim — same visual weight as ready, none of the
-        // animated cost. Comes back the instant the window is keyed.
+        // on a static rim: same visual weight as ready, none of the
+        // animated cost.
         if !windowIsKey {
             Capsule(style: .continuous)
                 .strokeBorder(glowColor.opacity(working || attention ? 0.55 : 0.16),
