@@ -66,10 +66,11 @@ struct TabBar: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Top clearance: the lights + auto-hide toggle live in
                 // a window-level floating pill (`floatingTopLeftLightsPill`
-                // in AppView). The sidebar just leaves room for it.
+                // in AppView). The sidebar leaves room for it plus a
+                // clear gap before the first tab row.
                 Rectangle()
                     .fill(Color.clear)
-                    .frame(height: 42)
+                    .frame(height: 58)
 
                 VStack(spacing: 4) {
                     ForEach(state.tabs) { tab in
@@ -85,7 +86,7 @@ struct TabBar: View {
 
                 Spacer()
                 if prefs.showSystemStats {
-                    SystemStatsWidget()
+                    SystemStatsWidget(compact: true)
                         .padding(.leading, 2)
                         .padding(.bottom, 8)
                         .transition(.opacity)
@@ -99,7 +100,7 @@ struct TabBar: View {
                         ShortcutHintButton(bare: true, compact: true)
                     }
                     .padding(.horizontal, 5)
-                    .frame(height: TabBar.toolbarPillHeight)
+                    .frame(height: TabBar.heavyPillHeight)
                     .modifier(ActionBarGlass())
                     .fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 0)
@@ -271,6 +272,11 @@ struct TabBar: View {
     /// fused Liquid Glass blob reads as one clean, uniform bar.
     static let toolbarPillHeight: CGFloat = 24
 
+    /// Height of the two heavyweight cluster members — the stats
+    /// widget and the red action bar — which deliberately stand
+    /// taller than the plain toolbar pills.
+    static let heavyPillHeight: CGFloat = 30
+
     private var shortcutHint: some View {
         ShortcutHintButton()
     }
@@ -301,7 +307,7 @@ struct TabBar: View {
             ShortcutHintButton(bare: true, compact: orientation == .vertical)
         }
         .padding(.horizontal, 5)
-        .frame(height: TabBar.toolbarPillHeight)
+        .frame(height: TabBar.heavyPillHeight)
         .modifier(ActionBarGlass())
     }
 }
@@ -310,48 +316,81 @@ struct TabBar: View {
 /// The single rounded-glass surface behind the action bar. macOS 26:
 /// real Liquid Glass capsule with a dark tint (legible on any desktop)
 /// + a hairline top-edge highlight. Pre-26: ultraThinMaterial capsule.
+/// True inside the red action cluster; the bare toolbar buttons lift
+/// their icon colors to the white family so they read on the
+/// saturated fill.
+private struct OnRedPillKey: EnvironmentKey {
+    static let defaultValue = false
+}
+private extension EnvironmentValues {
+    var onRedPill: Bool {
+        get { self[OnRedPillKey.self] }
+        set { self[OnRedPillKey.self] = newValue }
+    }
+}
+
+/// Icon color for the toolbar's bare buttons: white family on the red
+/// pill, theme grays on monochrome glass.
+@MainActor
+private func toolbarIconColor(hovering: Bool, onRed: Bool) -> Color {
+    if onRed { return hovering ? .white : .white.opacity(0.88) }
+    return hovering ? Theme.textPrimary : Theme.textSecondary
+}
+
 private struct ActionBarGlass: ViewModifier {
     @EnvironmentObject var prefs: Preferences
+    /// The traffic-lights pill shares this chrome but stays glass —
+    /// only the action cluster wears the red.
+    var redAllowed: Bool = true
 
     func body(content: Content) -> some View {
-        // The action cluster is the one deliberate color break in the
-        // otherwise monochrome chrome: a deep signal-red block, the
-        // way hi-fi gear carries a single red control on a black
-        // faceplate. Kept matte (low-opacity wash over glass, warm
-        // edge light) so it reads anodized rather than neon; the
-        // white icons on top stay the monochrome part.
-        let tint = prefs.lightGlass
-            ? Color(red: 0.80, green: 0.16, blue: 0.16).opacity(0.42)
-            : Color(red: 0.46, green: 0.05, blue: 0.07).opacity(0.55)
-        let topEdge: [Color] = prefs.lightGlass
-            ? [Color(red: 1.0, green: 0.62, blue: 0.58).opacity(0.85),
-               Color(red: 1.0, green: 0.62, blue: 0.58).opacity(0.20)]
-            : [Color(red: 1.0, green: 0.45, blue: 0.42).opacity(0.38),
-               Color(red: 1.0, green: 0.45, blue: 0.42).opacity(0.06)]
-        let fallbackStroke = prefs.lightGlass
-            ? Color(red: 0.60, green: 0.10, blue: 0.10).opacity(0.25)
-            : Color(red: 1.0, green: 0.50, blue: 0.46).opacity(0.22)
-
-        if #available(macOS 26, *) {
+        if prefs.redActionBar && redAllowed {
+            // Conterm red (#ff2e2e): flat and opaque — no gradient,
+            // shadow, or glass treatment. The one saturated control on
+            // an otherwise monochrome chrome; a translucent or shaded
+            // red sinks into the Liquid Glass around it.
             content
-                .glassEffect(.regular.tint(tint), in: .capsule)
-                .overlay(
+                .environment(\.onRedPill, true)
+                .background(
                     Capsule(style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(colors: topEdge,
-                                           startPoint: .top, endPoint: .bottom),
-                            lineWidth: 0.5)
-                        .blendMode(.plusLighter)
-                        .allowsHitTesting(false)
+                        .fill(Color(red: 1.0, green: 0.18, blue: 0.18))
                 )
         } else {
-            content
-                .background(Capsule(style: .continuous).fill(tint))
-                .background(Capsule(style: .continuous).fill(.ultraThinMaterial))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(fallbackStroke, lineWidth: 0.5)
-                )
+            // Monochrome glass. Light-mode tints with white (keeps
+            // the capsule legible on light desktops and lets dark
+            // icons sit on a bright bed); dark-mode keeps the deep
+            // tint that pops on any desktop.
+            let tint = prefs.lightGlass
+                ? Color.white.opacity(0.55)
+                : Color.black.opacity(0.24)
+            let topEdge: [Color] = prefs.lightGlass
+                ? [Color.white.opacity(0.85), Color.white.opacity(0.20)]
+                : [Color.white.opacity(0.28), Color.white.opacity(0.05)]
+            let fallbackStroke = prefs.lightGlass
+                ? Color.black.opacity(0.10)
+                : Color.white.opacity(0.16)
+
+            if #available(macOS 26, *) {
+                content
+                    .glassEffect(.regular.tint(tint), in: .capsule)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(colors: topEdge,
+                                               startPoint: .top, endPoint: .bottom),
+                                lineWidth: 0.5)
+                            .blendMode(.plusLighter)
+                            .allowsHitTesting(false)
+                    )
+            } else {
+                content
+                    .background(Capsule(style: .continuous).fill(tint))
+                    .background(Capsule(style: .continuous).fill(.ultraThinMaterial))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(fallbackStroke, lineWidth: 0.5)
+                    )
+            }
         }
     }
 }
@@ -361,6 +400,7 @@ private struct ActionBarGlass: ViewModifier {
 /// reads as an interactive control.
 private struct ShortcutHintButton: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.onRedPill) private var onRedPill
     @State private var hovering = false
     /// When inside the unified toolbar bar, the bar supplies the glass
     /// surface — the button renders bare (no own pill, no hover scale).
@@ -385,7 +425,7 @@ private struct ShortcutHintButton: View {
                         .font(.system(size: 11, design: .rounded))
                 }
             }
-            .foregroundStyle(hovering ? Theme.textPrimary : Theme.textSecondary)
+            .foregroundStyle(toolbarIconColor(hovering: hovering, onRed: onRedPill))
             .padding(.horizontal, bare ? 6 : 11)
             .frame(height: TabBar.toolbarPillHeight)
             .glassPill(enabled: !bare)
@@ -403,6 +443,7 @@ private struct ShortcutHintButton: View {
 /// the two read as a paired control. Mouse-clickable; ⌘F also works.
 private struct SearchHintButton: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.onRedPill) private var onRedPill
     @State private var hovering = false
     var bare: Bool = false
 
@@ -416,7 +457,7 @@ private struct SearchHintButton: View {
         } label: {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(hovering ? Theme.textPrimary : Theme.textSecondary)
+                .foregroundStyle(toolbarIconColor(hovering: hovering, onRed: onRedPill))
                 .padding(.horizontal, bare ? 6 : 9)
                 .frame(height: TabBar.toolbarPillHeight)
                 .glassPill(enabled: !bare)
@@ -435,6 +476,7 @@ private struct SearchHintButton: View {
 private struct NotificationBell: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var notifications: NotificationStore
+    @Environment(\.onRedPill) private var onRedPill
     @State private var hovering = false
     var bare: Bool = false
 
@@ -469,8 +511,8 @@ private struct NotificationBell: View {
                 }
             }
             .foregroundStyle(notifications.unreadCount > 0
-                ? Theme.accent
-                : (hovering ? Theme.textPrimary : Theme.textSecondary))
+                ? (onRedPill ? Color.white : Theme.accent)
+                : toolbarIconColor(hovering: hovering, onRed: onRedPill))
             .padding(.horizontal, bare ? 6 : 9)
             .frame(height: TabBar.toolbarPillHeight)
             .glassPill(enabled: !bare)
@@ -551,6 +593,7 @@ private struct UpdateIndicatorButton: View {
 /// cluster so it only ever renders in vertical mode.
 private struct AutoHideToggleButton: View {
     @EnvironmentObject var prefs: Preferences
+    @Environment(\.onRedPill) private var onRedPill
     @State private var hovering = false
     var bare: Bool = false
 
@@ -564,8 +607,8 @@ private struct AutoHideToggleButton: View {
                   ? "sidebar.leading" : "sidebar.left")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(prefs.autoHideSidebar
-                    ? Theme.accent
-                    : (hovering ? Theme.textPrimary : Theme.textSecondary))
+                    ? (onRedPill ? Color.white : Theme.accent)
+                    : toolbarIconColor(hovering: hovering, onRed: onRedPill))
                 .padding(.horizontal, bare ? 6 : 8)
                 .frame(height: TabBar.toolbarPillHeight)
                 .glassPill(enabled: !bare)
@@ -600,7 +643,7 @@ struct FloatingLightsAutohidePill: View {
         }
         .padding(.horizontal, 8)
         .frame(height: 32)
-        .modifier(ActionBarGlass())
+        .modifier(ActionBarGlass(redAllowed: false))
         // Never let the pill compress — a narrow sidebar would
         // otherwise push the auto-hide icon on top of the native
         // traffic lights (the lights' x is fixed at the window edge).

@@ -167,6 +167,12 @@ final class Preferences: ObservableObject {
     @Published var agentPillLite: Bool {
         didSet { ud.set(agentPillLite, forKey: K.agentPillLite) }
     }
+
+    /// The bell / search / ⌘K cluster wears the flat Conterm-red fill;
+    /// off returns it to the monochrome glass capsule.
+    @Published var redActionBar: Bool {
+        didSet { ud.set(redActionBar, forKey: K.redActionBar) }
+    }
     /// Window background-blur radius. Initialised from the user's
     /// libghostty `background-blur` config value and kept in sync by
     /// the live Background blur slider (which also writes it back to
@@ -201,6 +207,7 @@ final class Preferences: ObservableObject {
         static let liquidGlassPanels = "conterm.liquidGlassPanels"
         static let sshCompatMode    = "conterm.sshCompatMode"
         static let agentPillLite    = "conterm.agentPillLite"
+        static let redActionBar     = "conterm.redActionBar"
         static let soundEffects     = "conterm.soundEffects"
     }
 
@@ -250,6 +257,7 @@ final class Preferences: ObservableObject {
         self.liquidGlassPanels      = ud.object(forKey: K.liquidGlassPanels) as? Bool ?? false
         self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? false
         self.agentPillLite          = ud.object(forKey: K.agentPillLite) as? Bool ?? false
+        self.redActionBar           = ud.object(forKey: K.redActionBar) as? Bool ?? true
         refreshPaneBlurFromConfig()
         NotificationCenter.default.addObserver(
             forName: .contermConfigReloaded,
