@@ -8,9 +8,11 @@ struct SystemStatsWidget: View {
     @State private var hovering = false
     @State private var showingPopover = false
 
-    // Matches TabBar.toolbarPillHeight so the stats widget lines up
-    // with the bell / search / ⌘K pills in the fused toolbar blob.
-    private let pillHeight: CGFloat = 24
+    // Deliberately taller than TabBar.toolbarPillHeight: the stats
+    // widget is information, not an action button, and the extra
+    // height gives the sparklines + values room to read at a glance.
+    // It centers against the action bar in the toolbar cluster.
+    private let pillHeight: CGFloat = 30
 
     var body: some View {
         Button(action: {
@@ -34,13 +36,21 @@ struct SystemStatsWidget: View {
 
     @ViewBuilder
     private var pill: some View {
-        let row = HStack(spacing: 8) {
-            metricChip(symbol: "cpu",        value: stats.cpuPercent, history: stats.cpuHistory)
-            metricChip(symbol: "memorychip", value: stats.ramPercent, history: stats.ramHistory)
+        let row = HStack(spacing: 9) {
+            metricChip(symbol: "cpu", value: stats.cpuPercent,
+                       history: stats.cpuHistory, warn: 70, hi: 90)
+            chipDivider
+            metricChip(symbol: "memorychip", value: stats.ramPercent,
+                       history: stats.ramHistory, warn: 75, hi: 92)
+            chipDivider
             netChip
         }
-        .padding(.horizontal, 9)
+        .padding(.horizontal, 12)
         .frame(height: pillHeight)
+        // Dark wash over the glass so the widget reads as a heavier,
+        // darker bar than the action pills beside it (same treatment
+        // as the palette's input bubble).
+        .background(Capsule(style: .continuous).fill(Color.black.opacity(0.16)))
 
         if #available(macOS 26, *) {
             // macOS 26: use real Liquid Glass so this widget can join
@@ -71,49 +81,59 @@ struct SystemStatsWidget: View {
 
     // MARK: - Building blocks
 
-    private func metricChip(symbol: String, value: Double, history: [Double]) -> some View {
-        HStack(spacing: 5) {
+    private var chipDivider: some View {
+        RoundedRectangle(cornerRadius: 0.5)
+            .fill(Color.white.opacity(0.10))
+            .frame(width: 1, height: 14)
+    }
+
+    private func metricChip(symbol: String, value: Double, history: [Double],
+                            warn: Double, hi: Double) -> some View {
+        let hot = value >= warn
+        return HStack(spacing: 6) {
             Image(systemName: symbol)
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
             Sparkline(samples: history)
-                .frame(width: 18, height: 10)
-                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 24, height: 13)
+                .foregroundStyle(loadTint(value, warn: warn, hi: hi)
+                                    .opacity(hot ? 0.95 : 0.65))
             Text(String(format: "%.0f%%", min(99, max(0, value))))
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(hot ? loadTint(value, warn: warn, hi: hi)
+                                     : Theme.textPrimary)
                 .monospacedDigit()
                 // FIXED width (not minWidth): "5%" vs "100%" must not
                 // change the pill's size, or every sample relayouts the
                 // whole tab-bar HStack (a real idle-CPU cost seen in
                 // the sample).
-                .frame(width: 30, alignment: .trailing)
+                .frame(width: 33, alignment: .trailing)
         }
     }
 
     private var netChip: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 6) {
             Image(systemName: "network")
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
-            VStack(alignment: .trailing, spacing: -1) {
+            VStack(alignment: .trailing, spacing: 0) {
                 HStack(spacing: 2) {
                     Image(systemName: "arrow.down")
-                        .font(.system(size: 6, weight: .bold))
+                        .font(.system(size: 7, weight: .bold))
                     Text(formatRate(stats.netDownKBps))
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         // Fixed width so a rate change can't resize the
                         // pill (→ no tab-bar relayout per sample).
-                        .frame(width: 38, alignment: .trailing)
+                        .frame(width: 40, alignment: .trailing)
                 }
                 HStack(spacing: 2) {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 6, weight: .bold))
+                        .font(.system(size: 7, weight: .bold))
                     Text(formatRate(stats.netUpKBps))
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .monospacedDigit()
-                        .frame(width: 38, alignment: .trailing)
+                        .frame(width: 40, alignment: .trailing)
                 }
             }
             .foregroundStyle(Theme.textPrimary)
@@ -125,6 +145,15 @@ struct SystemStatsWidget: View {
         // is published iff this string changes.
         SystemStats.rateLabel(kbps)
     }
+}
+
+/// Load color shared by the pill's sparklines and the popover's
+/// graphs: calm cyan below `warn`, orange between `warn` and `hi`,
+/// red above.
+private func loadTint(_ v: Double, warn: Double, hi: Double) -> Color {
+    if v >= hi   { return Color.red.opacity(0.95) }
+    if v >= warn { return Color.orange.opacity(0.95) }
+    return Color(red: 0.45, green: 0.85, blue: 1.0)
 }
 
 // MARK: - Sparkline
@@ -235,8 +264,6 @@ private struct SystemStatsPopover: View {
     }
 
     private func tint(for v: Double, warn: Double, hi: Double) -> Color {
-        if v >= hi   { return Color.red.opacity(0.95) }
-        if v >= warn { return Color.orange.opacity(0.95) }
-        return Color(red: 0.45, green: 0.85, blue: 1.0)  // soft cyan
+        loadTint(v, warn: warn, hi: hi)
     }
 }
