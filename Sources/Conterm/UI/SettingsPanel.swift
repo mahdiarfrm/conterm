@@ -47,12 +47,15 @@ struct SettingsPanel: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
+        // Two detached glass bubbles — the section list and its
+        // content — mirroring the command palette's split surfaces.
+        HStack(spacing: 10) {
             sidebar
-            Divider().opacity(0.35)
+                .modifier(SettingsBubble())
             content
+                .modifier(SettingsBubble())
         }
-        .frame(width: 860, height: 540)
+        .frame(width: 870, height: 540)
         // Keyboard nav: ↑/↓/Tab in sidebar. AppState.settingsNavDelta
         // is bumped by Main.swift's event monitor whenever those keys
         // fire while the panel is open (we can't use .onKeyPress alone
@@ -60,28 +63,6 @@ struct SettingsPanel: View {
         .onChange(of: state.settingsNavDelta) { old, new in
             moveSelection(by: new - old)
         }
-        .background(
-            OverlayPanelBackground(cornerRadius: 18,
-                                   tint: Color.black.opacity(0.22))
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Theme.strokeStrong, lineWidth: 1)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.28), .clear],
-                        startPoint: .top, endPoint: .center
-                    ),
-                    lineWidth: 1
-                )
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
-        )
-        .shadow(color: .black.opacity(0.45), radius: 36, x: 0, y: 14)
         .onExitCommand { state.toggleSettings() }
     }
 
@@ -138,7 +119,7 @@ struct SettingsPanel: View {
             .buttonStyle(.plain)
             .padding(14)
         }
-        .frame(width: 192)
+        .frame(width: 204)
     }
 
     private func sidebarItem(_ item: Section) -> some View {
@@ -149,18 +130,18 @@ struct SettingsPanel: View {
             // section — the visible state is unchanged.
             if !active { SoundEffects.shared.play(.toggle) }
         } label: {
-            HStack(spacing: 9) {
+            HStack(spacing: 10) {
                 Image(systemName: item.icon)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(active ? Color.white : Theme.textSecondary)
-                    .frame(width: 16)
+                    .frame(width: 19)
                 Text(item.label)
-                    .font(.system(size: 12, weight: active ? .semibold : .medium, design: .rounded))
+                    .font(.system(size: 13.5, weight: active ? .semibold : .medium, design: .rounded))
                     .foregroundStyle(active ? Color.white : Theme.textPrimary)
                 Spacer()
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.vertical, 9)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(active ? Theme.accent.opacity(0.30) : Color.clear)
@@ -191,7 +172,7 @@ struct SettingsPanel: View {
                 case .about:      about
                 }
             }
-            .padding(20)
+            .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -242,6 +223,12 @@ struct SettingsPanel: View {
                 SettingsRow(title: "Battery saver",
                             subtitle: "Use a flat fill when Conterm isn't in the foreground.") {
                     Toggle("", isOn: $prefs.batterySavingMode.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+                SettingsRow(title: "Red action pill",
+                            subtitle: "The bell / search / ⌘K cluster wears Conterm red. Off returns it to monochrome glass.") {
+                    Toggle("", isOn: $prefs.redActionBar.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()
                 }
@@ -389,10 +376,16 @@ struct SettingsPanel: View {
                 ForEach(Array(effective.enumerated()), id: \.element.id) { idx, item in
                     let hidden = prefs.hiddenPaletteCommands.contains(item.id)
                     HStack(spacing: 10) {
-                        Image(systemName: item.icon)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Theme.textSecondary)
-                            .frame(width: 18)
+                        Group {
+                            if item.icon == RobotGlyph.iconName {
+                                RobotGlyph(color: Theme.textSecondary, size: 14)
+                            } else {
+                                Image(systemName: item.icon)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Theme.textSecondary)
+                            }
+                        }
+                        .frame(width: 18)
                         Text(item.title)
                             .font(.system(size: 12, weight: .medium, design: .rounded))
                             .foregroundStyle(hidden ? Theme.textSecondary.opacity(0.5)
@@ -695,9 +688,12 @@ struct SettingsPanel: View {
     }
 
     private func sectionHeader(_ title: String, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        // Plain San Francisco in its bold cut — the system display
+        // face, unrounded, so section titles read as headers against
+        // the rounded body type.
+        VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: 21, weight: .bold))
             Text(subtitle)
                 .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
@@ -705,18 +701,48 @@ struct SettingsPanel: View {
     }
 
     private func card<C: View>(@ViewBuilder _ content: () -> C) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 6) {
             content()
         }
-        .padding(14)
+        .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.white.opacity(0.045))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Theme.stroke, lineWidth: 1)
         )
+    }
+}
+
+/// Shared chrome for the settings panel's two floating glass bubbles
+/// (section list + content) — same vocabulary as the palette's.
+private struct SettingsBubble: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(
+                OverlayPanelBackground(cornerRadius: 20,
+                                       tint: Color.black.opacity(0.22))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(Theme.strokeStrong, lineWidth: 1)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.28), .clear],
+                            startPoint: .top, endPoint: .center
+                        ),
+                        lineWidth: 1
+                    )
+                    .blendMode(.plusLighter)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: .black.opacity(0.45), radius: 30, x: 0, y: 12)
     }
 }
 
@@ -729,7 +755,7 @@ private struct SettingsRow<Trailing: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
@@ -742,7 +768,7 @@ private struct SettingsRow<Trailing: View>: View {
             Spacer()
             trailing
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
     }
 }
 
