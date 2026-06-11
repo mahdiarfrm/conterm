@@ -8,11 +8,16 @@ struct SystemStatsWidget: View {
     @State private var hovering = false
     @State private var showingPopover = false
 
-    // Deliberately taller than TabBar.toolbarPillHeight: the stats
-    // widget is information, not an action button, and the extra
-    // height gives the sparklines + values room to read at a glance.
-    // It centers against the action bar in the toolbar cluster.
-    private let pillHeight: CGFloat = 30
+    /// Compact fits the vertical sidebar at its narrowest width;
+    /// the full size is for the horizontal toolbar cluster.
+    var compact: Bool = false
+
+    // Shares TabBar.heavyPillHeight with the red action bar — the
+    // two heavyweight cluster members stand taller than the plain
+    // toolbar pills so sparklines + values read at a glance.
+    private var pillHeight: CGFloat {
+        compact ? 26 : TabBar.heavyPillHeight
+    }
 
     var body: some View {
         Button(action: {
@@ -36,16 +41,16 @@ struct SystemStatsWidget: View {
 
     @ViewBuilder
     private var pill: some View {
-        let row = HStack(spacing: 9) {
+        let row = HStack(spacing: compact ? 7 : 9) {
             metricChip(symbol: "cpu", value: stats.cpuPercent,
-                       history: stats.cpuHistory, warn: 70, hi: 90)
+                       history: stats.cpuHistory)
             chipDivider
             metricChip(symbol: "memorychip", value: stats.ramPercent,
-                       history: stats.ramHistory, warn: 75, hi: 92)
+                       history: stats.ramHistory)
             chipDivider
             netChip
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, compact ? 9 : 12)
         .frame(height: pillHeight)
         // Dark wash over the glass so the widget reads as a heavier,
         // darker bar than the action pills beside it (same treatment
@@ -87,53 +92,55 @@ struct SystemStatsWidget: View {
             .frame(width: 1, height: 14)
     }
 
-    private func metricChip(symbol: String, value: Double, history: [Double],
-                            warn: Double, hi: Double) -> some View {
-        let hot = value >= warn
-        return HStack(spacing: 6) {
+    // Monochrome on the bar — the widget is ambient chrome; the load
+    // colors live in the popover's detail graphs.
+    private func metricChip(symbol: String, value: Double,
+                            history: [Double]) -> some View {
+        HStack(spacing: compact ? 5 : 6) {
             Image(systemName: symbol)
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: compact ? 9 : 10, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
             Sparkline(samples: history)
-                .frame(width: 24, height: 13)
-                .foregroundStyle(loadTint(value, warn: warn, hi: hi)
-                                    .opacity(hot ? 0.95 : 0.65))
+                .frame(width: compact ? 18 : 24, height: compact ? 10 : 13)
+                .foregroundStyle(Theme.textSecondary)
             Text(String(format: "%.0f%%", min(99, max(0, value))))
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(hot ? loadTint(value, warn: warn, hi: hi)
-                                     : Theme.textPrimary)
+                .font(.system(size: compact ? 11 : 12, weight: .semibold,
+                              design: .rounded))
+                .foregroundStyle(Theme.textPrimary)
                 .monospacedDigit()
                 // FIXED width (not minWidth): "5%" vs "100%" must not
                 // change the pill's size, or every sample relayouts the
                 // whole tab-bar HStack (a real idle-CPU cost seen in
                 // the sample).
-                .frame(width: 33, alignment: .trailing)
+                .frame(width: compact ? 30 : 33, alignment: .trailing)
         }
     }
 
     private var netChip: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: compact ? 5 : 6) {
             Image(systemName: "network")
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: compact ? 9 : 10, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
             VStack(alignment: .trailing, spacing: 0) {
                 HStack(spacing: 2) {
                     Image(systemName: "arrow.down")
-                        .font(.system(size: 7, weight: .bold))
+                        .font(.system(size: compact ? 6.5 : 7, weight: .bold))
                     Text(formatRate(stats.netDownKBps))
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .font(.system(size: compact ? 9 : 10, weight: .semibold,
+                                      design: .rounded))
                         .monospacedDigit()
                         // Fixed width so a rate change can't resize the
                         // pill (→ no tab-bar relayout per sample).
-                        .frame(width: 40, alignment: .trailing)
+                        .frame(width: compact ? 36 : 40, alignment: .trailing)
                 }
                 HStack(spacing: 2) {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 7, weight: .bold))
+                        .font(.system(size: compact ? 6.5 : 7, weight: .bold))
                     Text(formatRate(stats.netUpKBps))
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .font(.system(size: compact ? 9 : 10, weight: .semibold,
+                                      design: .rounded))
                         .monospacedDigit()
-                        .frame(width: 40, alignment: .trailing)
+                        .frame(width: compact ? 36 : 40, alignment: .trailing)
                 }
             }
             .foregroundStyle(Theme.textPrimary)
@@ -147,9 +154,8 @@ struct SystemStatsWidget: View {
     }
 }
 
-/// Load color shared by the pill's sparklines and the popover's
-/// graphs: calm cyan below `warn`, orange between `warn` and `hi`,
-/// red above.
+/// Load color for the popover's detail graphs: calm cyan below
+/// `warn`, orange between `warn` and `hi`, red above.
 private func loadTint(_ v: Double, warn: Double, hi: Double) -> Color {
     if v >= hi   { return Color.red.opacity(0.95) }
     if v >= warn { return Color.orange.opacity(0.95) }
