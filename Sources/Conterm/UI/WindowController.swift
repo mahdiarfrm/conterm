@@ -101,6 +101,12 @@ final class WindowController {
                     state.heavyGlassEnabled = wanted
                 }
             }
+            // Pause libghostty renderers too: a covered / minimized /
+            // other-Space window with streaming content otherwise keeps
+            // drawing frames nobody can see. Keyed to occlusion only
+            // (not app-active) — a visible window should keep rendering
+            // while the user watches it from another app.
+            state.syncSurfaceOcclusion()
         }
         let nc = NotificationCenter.default
         glassObservers = [

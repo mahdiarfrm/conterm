@@ -8,7 +8,9 @@ import SwiftUI
 @MainActor
 final class AppState: ObservableObject {
     @Published var tabs: [Tab] = []
-    @Published var selectedID: UUID?
+    @Published var selectedID: UUID? {
+        didSet { syncSurfaceOcclusion() }
+    }
     @Published var paletteOpen: Bool = false
     @Published var settingsOpen: Bool = false
     @Published var launchOverlayVisible: Bool = false
@@ -282,6 +284,25 @@ final class AppState: ObservableObject {
             ownWindow?.performClose(nil)
         }
         SoundEffects.shared.play(.tabRemove)
+    }
+
+    /// Push real visibility into every pane's renderer: a surface
+    /// renders only while its tab is selected AND the window is at
+    /// least partially on screen. All tabs stay mounted (their shells,
+    /// ptys, and OSC callbacks keep running), but a hidden pane with
+    /// streaming content — an agent mid-turn, a build, htop — would
+    /// otherwise keep libghostty's Metal renderer and the compositor's
+    /// glass re-blur busy at up to 60fps for pixels nobody can see.
+    /// Driven by selectedID's didSet, WindowController's occlusion
+    /// observer, and surface creation.
+    func syncSurfaceOcclusion() {
+        let windowVisible = ownWindow?.occlusionState.contains(.visible) ?? true
+        for tab in tabs {
+            let visible = windowVisible && tab.id == selectedID
+            for pane in tab.paneTree.root.leaves() {
+                pane.controller?.setVisible(visible)
+            }
+        }
     }
 
     func select(_ id: UUID) {

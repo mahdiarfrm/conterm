@@ -1020,6 +1020,10 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
 
         _ = controller.start(view: view)
         pane.startingDir = nil
+        // A surface born into a non-selected tab (session restore
+        // mounts every tab's panes at once) must start with its
+        // renderer paused, not wait for the next tab switch.
+        state.syncSurfaceOcclusion()
 
         return host
     }

@@ -154,8 +154,9 @@ extension Ghostty {
             handle = nil
             // Pause libghostty's renderer immediately so it stops
             // competing with other surfaces' renderers during a rapid
-            // close → re-open.
-            ghostty_surface_set_occlusion(h, true)
+            // close → re-open. The bool is `visible`, not `occluded`
+            // (see apprt/embedded.zig) — false pauses.
+            ghostty_surface_set_occlusion(h, false)
             // Do NOT free synchronously, and do NOT yank the view out of
             // the hierarchy. The pane-close collapse runs inside
             // `withAnimation`, during which SwiftUI keeps the closing
@@ -191,9 +192,21 @@ extension Ghostty {
         private var lastDrawAt: CFTimeInterval = 0
         private var pendingDraw = false
         private let minDrawInterval: CFTimeInterval = 1.0 / 60.0
+        /// Last visibility pushed to libghostty. Forced draws are
+        /// pointless Metal + compositor work while the surface is
+        /// hidden (non-selected tab, covered/minimized window), so
+        /// `draw()` defers them; the flag below replays one draw when
+        /// the surface becomes visible again so the final frame of
+        /// whatever streamed while hidden still lands.
+        private(set) var isVisible = true
+        private var drawDeferredWhileHidden = false
 
         func draw() {
             guard let h = handle else { return }
+            if !isVisible {
+                drawDeferredWhileHidden = true
+                return
+            }
             let now = CACurrentMediaTime()
             let since = now - lastDrawAt
             if since >= minDrawInterval {
@@ -228,16 +241,22 @@ extension Ghostty {
         }
 
         /// Tells libghostty whether this surface is currently
-        /// visible. When marked occluded (true), the renderer
-        /// thread pauses to save CPU; when uncovered (false), it
-        /// resumes. SwiftUI tree restructures during a split can
-        /// leave libghostty thinking the surface is occluded long
-        /// after AppKit re-mounts the view — calling this with
-        /// `false` after every reparent is what actually unblocks
-        /// the "blank pane" bug.
-        func setOcclusion(_ occluded: Bool) {
+        /// visible. While hidden the renderer thread pauses to save
+        /// CPU; on re-show it resumes and the deferred draw replays.
+        /// AppState.syncSurfaceOcclusion drives this from tab
+        /// selection + window occlusion — the pty and OSC callbacks
+        /// keep flowing either way, only rendering stops. NOTE:
+        /// `ghostty_surface_set_occlusion`'s bool parameter is
+        /// `visible` (see apprt/embedded.zig), despite the name.
+        func setVisible(_ visible: Bool) {
             guard let h = handle else { return }
-            ghostty_surface_set_occlusion(h, occluded)
+            guard visible != isVisible else { return }
+            isVisible = visible
+            ghostty_surface_set_occlusion(h, visible)
+            if visible, drawDeferredWhileHidden {
+                drawDeferredWhileHidden = false
+                draw()
+            }
         }
 
         func setSize(width: UInt32, height: UInt32) {
