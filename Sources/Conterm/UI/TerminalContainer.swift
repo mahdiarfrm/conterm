@@ -890,6 +890,12 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
         controller.onActivate = { [weak pane, weak owningTab] in
             DispatchQueue.main.async {
                 guard let pane, let tab = owningTab else { return }
+                // Tick only on a real focus change — onActivate also
+                // re-fires for the already-active pane (app activation,
+                // overlay dismiss refocus), which must stay silent.
+                if tab.paneTree.activePaneID != pane.id {
+                    SoundEffects.shared.play(.paneSwitch)
+                }
                 tab.paneTree.focus(pane)
             }
         }
