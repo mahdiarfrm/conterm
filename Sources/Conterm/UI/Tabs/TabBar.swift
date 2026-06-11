@@ -107,7 +107,10 @@ struct TabBar: View {
                 }
             }
             .animation(Theme.Spring.snappy, value: prefs.showSystemStats)
-            .padding(.horizontal, 10)
+            // Deeper leading inset so the tab pills sit clear of the
+            // window's left edge.
+            .padding(.leading, 14)
+            .padding(.trailing, 10)
             .padding(.bottom, 12)
             .frame(width: prefs.sidebarWidth)
 
