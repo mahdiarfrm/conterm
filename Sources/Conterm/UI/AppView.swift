@@ -143,6 +143,9 @@ struct AppView: View {
                     .padding(.top, isVertical
                              ? ((hideForSingleTab && !sidebarFloating) ? 38 : 6)
                              : 0)
+                    // Breathing room between the sidebar (or, when it
+                    // auto-hides, the window edge) and the first pane.
+                    .padding(.leading, isVertical ? 10 : 0)
             }
         }
         .animation(Theme.Spring.crisp, value: hideForSingleTab)
@@ -296,16 +299,18 @@ struct AppView: View {
                 VStack {
                     CommandPalette()
                         .padding(.top, 70)
-                        // Open: subtle spring scale-in. Close: pure
-                        // ease-out fade — combining scale/move/fade
-                        // on close felt clunky.
+                        // Open: subtle spring scale-in. Close: the
+                        // mirror image — a gentle shrink-and-fade back
+                        // toward the top, so dismissal reads as the
+                        // palette receding rather than vanishing.
                         .transition(.asymmetric(
                             insertion: .scale(scale: 0.96, anchor: .top)
                                 .combined(with: .opacity)
                                 .animation(.spring(response: 0.40,
                                                     dampingFraction: 0.78)),
-                            removal: .opacity
-                                .animation(.easeOut(duration: 0.15))
+                            removal: .scale(scale: 0.96, anchor: .top)
+                                .combined(with: .opacity)
+                                .animation(.easeIn(duration: 0.18))
                         ))
                     Spacer()
                 }

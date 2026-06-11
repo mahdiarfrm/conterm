@@ -97,8 +97,7 @@ struct CommandPalette: View {
         case .sessions:
             barBubble("Filter sessions by tab, dir, or host…", "rectangle.3.group")
         case .agents:
-            barBubble("Filter agents by tool, tab, or dir…",
-                      "antenna.radiowaves.left.and.right")
+            barBubble("Filter agents by tool, tab, or dir…", RobotGlyph.iconName)
         case .shellHistory:
             barBubble("Fuzzy-search your shell history…", "clock.arrow.circlepath")
         case .sshHosts:
@@ -290,7 +289,7 @@ struct CommandPalette: View {
                             state.paletteMode = .shellHistory
                         }
                     }),
-            Command(id: "agents", icon: "antenna.radiowaves.left.and.right",
+            Command(id: "agents", icon: RobotGlyph.iconName,
                     title: "Agents",
                     subtitle: "Jump to any running agent",
                     shortcut: "",
@@ -389,7 +388,7 @@ struct CommandPalette: View {
         ("ssh_hosts",        "SSH",                         "network"),
         ("tab_groups",       "Tab Groups",                  "square.stack.3d.up"),
         ("shell_history",    "Shell History",               "clock.arrow.circlepath"),
-        ("agents",           "Agents",                      "antenna.radiowaves.left.and.right"),
+        ("agents",           "Agents",                      RobotGlyph.iconName),
         ("notes",            "Notes",                       "note.text"),
         ("new_note",         "New Note",                    "square.and.pencil"),
         ("new_tab",          "New Tab",                     "plus.square.on.square"),
@@ -1289,9 +1288,13 @@ struct CommandPalette: View {
 
     private func searchBar(placeholder: String, icon: String) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: icon)
-                .foregroundStyle(Theme.textSecondary)
-                .font(.system(size: 15, weight: .medium))
+            if icon == RobotGlyph.iconName {
+                RobotGlyph(color: Theme.textSecondary, size: 17)
+            } else {
+                Image(systemName: icon)
+                    .foregroundStyle(Theme.textSecondary)
+                    .font(.system(size: 15, weight: .medium))
+            }
             TextField(placeholder, text: $query)
                 .textFieldStyle(.plain)
                 .focused($queryFocused)
@@ -1435,11 +1438,11 @@ private struct CommandRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(isFocused ? Theme.accentSoft : .clear)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
                               lineWidth: 0.5)
         )
@@ -1464,6 +1467,9 @@ private struct CommandRow: View {
                 .interpolation(.high)
                 .frame(width: 16, height: 16)
                 .foregroundStyle(isFocused ? Theme.accent : Theme.textSecondary)
+        } else if command.icon == RobotGlyph.iconName {
+            RobotGlyph(color: isFocused ? Theme.accent : Theme.textSecondary,
+                       size: 16)
         } else {
             // Always-safe fallback: the SF Symbol. We reach here when
             // the asset can't be loaded — which must NEVER crash.
@@ -1530,7 +1536,7 @@ private struct NewNoteRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(isFocused ? Theme.accentSoft : .clear)
         )
         .contentShape(Rectangle())
@@ -1568,11 +1574,11 @@ private struct NoteRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(isFocused ? Theme.accentSoft : .clear)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
                               lineWidth: 0.5)
         )
@@ -1684,11 +1690,11 @@ private struct GroupManageRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(hovering ? Color.white.opacity(0.06) : Color.white.opacity(0.02))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(color.opacity(0.35), lineWidth: 0.5)
         )
         .onHover { hovering = $0 }
@@ -1804,11 +1810,11 @@ private struct SessionRowView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(isFocused ? Theme.accentSoft : .clear)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
                               lineWidth: 0.5)
         )
@@ -1903,11 +1909,11 @@ private struct AgentRowView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(isFocused ? Theme.accentSoft : .clear)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
                               lineWidth: 0.5)
         )
