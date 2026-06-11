@@ -33,14 +33,20 @@ struct AppView: View {
             // and the intro animation restarting forever (a permanent
             // ~50% CPU redraw storm that read as a frozen "loading
             // animation").
-            searchOverlay.id("overlay.search")
-            notificationsOverlay.id("overlay.notifications")
-            renameOverlay.id("overlay.rename")
-            groupRenameOverlay.id("overlay.groupRename")
-            paletteOverlay.id("overlay.palette")
-            settingsOverlay.id("overlay.settings")
-            launchOverlay.id("overlay.launch")
-            setupWizardOverlay.id("overlay.setup")
+            // Explicit zIndex on every modal overlay: a ZStack child
+            // being REMOVED falls back to z 0, which puts its exit
+            // transition underneath the opaque terminal content — the
+            // close animation plays invisibly and reads as an instant
+            // pop. Pinning each overlay above the content keeps the
+            // exit on screen.
+            searchOverlay.id("overlay.search").zIndex(10)
+            notificationsOverlay.id("overlay.notifications").zIndex(11)
+            renameOverlay.id("overlay.rename").zIndex(12)
+            groupRenameOverlay.id("overlay.groupRename").zIndex(13)
+            paletteOverlay.id("overlay.palette").zIndex(20)
+            settingsOverlay.id("overlay.settings").zIndex(21)
+            launchOverlay.id("overlay.launch").zIndex(30)
+            setupWizardOverlay.id("overlay.setup").zIndex(31)
         }
         // Color scheme follows the Glass tint: light tint → light
         // appearance so the adaptive Theme colors flip to DARK text
@@ -143,9 +149,6 @@ struct AppView: View {
                     .padding(.top, isVertical
                              ? ((hideForSingleTab && !sidebarFloating) ? 38 : 6)
                              : 0)
-                    // Breathing room between the sidebar (or, when it
-                    // auto-hides, the window edge) and the first pane.
-                    .padding(.leading, isVertical ? 10 : 0)
             }
         }
         .animation(Theme.Spring.crisp, value: hideForSingleTab)
@@ -436,10 +439,20 @@ struct AppView: View {
                     .onTapGesture { state.toggleSettings() }
                 SettingsPanel()
                     .padding(.top, 70)
-                    .transition(.scale(scale: 0.96).combined(with: .opacity))
+                    // Same receding close as the palette: shrink-and-
+                    // fade toward where it came from.
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.96)
+                            .combined(with: .opacity)
+                            .animation(.spring(response: 0.40,
+                                                dampingFraction: 0.78)),
+                        removal: .scale(scale: 0.96)
+                            .combined(with: .opacity)
+                            .animation(.easeIn(duration: 0.18))
+                    ))
                     .frame(maxHeight: .infinity, alignment: .top)
             }
-            .transition(.opacity)
+            .transition(.opacity.animation(.easeInOut(duration: 0.18)))
         }
     }
 
