@@ -75,6 +75,7 @@ final class AppState: ObservableObject {
         case notesList             // browse + filter notes
         case noteEdit(noteID: UUID) // edit a single note's content
         case sessions              // browse all open panes across windows
+        case agents                // panes with a live agent, needs-you first
         case shellHistory          // fuzzy-search the user's zsh/bash history
         case sshHosts              // pick an ssh host (recents first, then all)
         case groups                // manage tab groups: rename / recolor / reorder

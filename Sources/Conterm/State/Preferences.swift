@@ -224,7 +224,19 @@ final class Preferences: ObservableObject {
         self.rememberWindowState    = ud.object(forKey: K.windowSaveState) as? Bool ?? true
         self.confirmBeforeQuit      = ud.object(forKey: K.confirmBeforeQuit) as? Bool ?? true
         self.hasCompletedSetup      = ud.object(forKey: K.hasCompletedSetup) as? Bool ?? false
-        self.paletteCommandOrder    = ud.stringArray(forKey: K.paletteOrder) ?? []
+        var storedOrder             = ud.stringArray(forKey: K.paletteOrder) ?? []
+        // A saved custom order that predates a built-in command would
+        // push it to the bottom of the palette (reordered() appends
+        // unknown IDs last). Splice late additions into their default
+        // slot instead.
+        if !storedOrder.isEmpty, !storedOrder.contains("agents") {
+            let anchor = storedOrder.firstIndex(of: "shell_history")
+                      ?? storedOrder.firstIndex(of: "sessions")
+            storedOrder.insert("agents",
+                               at: anchor.map { $0 + 1 } ?? storedOrder.endIndex)
+            ud.set(storedOrder, forKey: K.paletteOrder)
+        }
+        self.paletteCommandOrder    = storedOrder
         self.hiddenPaletteCommands  = Set(ud.stringArray(forKey: K.hiddenPaletteCommands) ?? [])
         self.hideTabBarSingleTab    = ud.object(forKey: K.hideTabBarSingleTab) as? Bool ?? false
         self.showPaneTitleBar       = ud.object(forKey: K.showPaneTitleBar) as? Bool ?? true
