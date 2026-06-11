@@ -34,8 +34,10 @@ final class SoundEffects {
     enum Effect: String, CaseIterable {
         case paneAdd
         case paneRemove
+        case paneSwitch           // focus moved to a different existing pane
         case tabAdd
         case tabRemove
+        case tabSwitch            // selection moved to a different existing tab
         case paletteOpen          // also reused for Settings / Search open
         case paletteClose         // also reused for Settings / Search close
         case paletteMove          // arrow-key cursor through palette rows
@@ -389,6 +391,14 @@ private struct Sound {
                 cleanThunk($0, decay: 0.026, gain: 0.28)
             }
 
+        // Switching focus between existing panes: the lightest member
+        // of the pane family — shorter and quieter than add/remove so
+        // rapid cycling stays unobtrusive.
+        case .paneSwitch:
+            return [172, 180, 165].map {
+                cleanThunk($0, decay: 0.014, gain: 0.16, body: 0.24)
+            }
+
         // Tabs: higher and tighter than panes so simultaneous
         // pane + tab events stay distinguishable.
         case .tabAdd:
@@ -399,6 +409,13 @@ private struct Sound {
         case .tabRemove:
             return [180, 168, 192].map {
                 cleanThunk($0, decay: 0.018, gain: 0.22, body: 0.24)
+            }
+
+        // Tab switch: tab-family tick, lighter than add/remove for
+        // the same reason as paneSwitch.
+        case .tabSwitch:
+            return [208, 216, 200].map {
+                cleanThunk($0, decay: 0.012, gain: 0.13, body: 0.20)
             }
 
         // Palette / Settings / Search overlay open + close. Longest

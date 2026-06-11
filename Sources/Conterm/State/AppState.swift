@@ -306,10 +306,14 @@ final class AppState: ObservableObject {
     }
 
     func select(_ id: UUID) {
+        let changed = id != selectedID
         withAnimation(Theme.Spring.snappy) {
             selectedID = id
         }
         focusActiveSurface()
+        // Only an actual switch ticks — re-selecting the current tab
+        // (and flows that select before acting, like split) stays silent.
+        if changed { SoundEffects.shared.play(.tabSwitch) }
     }
 
     /// Jump to a tab by its 1-based index. No-op when out of range. Hooked
@@ -326,6 +330,9 @@ final class AppState: ObservableObject {
         guard let tab = selectedTab else { return }
         let leaves = tab.paneTree.root.leaves()
         guard n >= 1, n <= leaves.count else { return }
+        if tab.paneTree.activePaneID != leaves[n - 1].id {
+            SoundEffects.shared.play(.paneSwitch)
+        }
         tab.paneTree.focus(leaves[n - 1])
         focusActiveSurface()
     }
