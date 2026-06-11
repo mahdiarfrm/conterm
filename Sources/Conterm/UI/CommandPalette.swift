@@ -24,44 +24,13 @@ struct CommandPalette: View {
     @State private var cachedAllSSHRows: [SSHRow] = []
 
     var body: some View {
-        VStack(spacing: 0) {
-            switch state.paletteMode {
-            case .commands:
-                commandsView
-            case .notesList:
-                notesListView
-            case .noteEdit(let id):
-                noteEditView(id: id)
-            case .sessions:
-                sessionsView
-            case .shellHistory:
-                shellHistoryView
-            case .sshHosts:
-                sshHostsView
-            case .groups:
-                groupsView
-            }
+        // Two detached glass bubbles: a thick input bar on top and
+        // the results panel below, separated by a gap rather than an
+        // in-panel divider.
+        VStack(spacing: 10) {
+            topBar
+            contentPanel
         }
-        .background(paletteBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .strokeBorder(Theme.strokeStrong, lineWidth: 1)
-        )
-        .overlay(
-            // Liquid-glass top edge highlight.
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.32), .clear],
-                        startPoint: .top, endPoint: .center
-                    ),
-                    lineWidth: 1
-                )
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
-        )
-        .shadow(color: .black.opacity(0.45), radius: 30, x: 0, y: 12)
         .frame(maxWidth: 600)
         .onAppear {
             queryFocused = true; query = ""; state.paletteFocusedIndex = 0
@@ -112,8 +81,57 @@ struct CommandPalette: View {
         }
     }
 
-    private var paletteBackground: some View {
-        OverlayPanelBackground(cornerRadius: 26)
+    /// Bar bubble. Carries the mode's input field (or the groups
+    /// header); note-edit has no bar — the editor is a single bubble.
+    @ViewBuilder private var topBar: some View {
+        switch state.paletteMode {
+        case .noteEdit:
+            EmptyView()
+        case .groups:
+            groupsHeader
+                .modifier(PaletteBubble(cornerRadius: 27, darken: 0.14))
+        case .commands:
+            barBubble("Type a command…", "magnifyingglass")
+        case .notesList:
+            barBubble("Search notes…", "note.text")
+        case .sessions:
+            barBubble("Filter sessions by tab, dir, or host…", "rectangle.3.group")
+        case .shellHistory:
+            barBubble("Fuzzy-search your shell history…", "clock.arrow.circlepath")
+        case .sshHosts:
+            barBubble("Filter SSH hosts…", "network")
+        }
+    }
+
+    private func barBubble(_ placeholder: String, _ icon: String) -> some View {
+        searchBar(placeholder: placeholder, icon: icon)
+            .modifier(PaletteBubble(cornerRadius: 27, darken: 0.14))
+    }
+
+    /// Results bubble. In commands mode an unmatched query collapses
+    /// it entirely, leaving the bar floating alone.
+    @ViewBuilder private var contentPanel: some View {
+        if !(state.paletteMode == .commands && filteredCommands.isEmpty) {
+            VStack(spacing: 0) {
+                switch state.paletteMode {
+                case .commands:
+                    commandsView
+                case .notesList:
+                    notesListView
+                case .noteEdit(let id):
+                    noteEditView(id: id)
+                case .sessions:
+                    sessionsView
+                case .shellHistory:
+                    shellHistoryView
+                case .sshHosts:
+                    sshHostsView
+                case .groups:
+                    groupsView
+                }
+            }
+            .modifier(PaletteBubble(cornerRadius: 26))
+        }
     }
 
     // MARK: - Esc / Enter handling
@@ -169,8 +187,6 @@ struct CommandPalette: View {
     // MARK: - Commands mode
 
     @ViewBuilder private var commandsView: some View {
-        searchBar(placeholder: "Type a command…", icon: "magnifyingglass")
-        Divider().opacity(0.4)
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 2) {
@@ -510,9 +526,6 @@ struct CommandPalette: View {
     }
 
     @ViewBuilder private var sessionsView: some View {
-        searchBar(placeholder: "Filter sessions by tab, dir, or host…",
-                  icon: "rectangle.3.group")
-        Divider().opacity(0.4)
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 2) {
@@ -580,7 +593,7 @@ struct CommandPalette: View {
 
     // MARK: - Groups mode (manage tab groups)
 
-    @ViewBuilder private var groupsView: some View {
+    private var groupsHeader: some View {
         HStack(spacing: 10) {
             Image(systemName: "square.stack.3d.up")
                 .foregroundStyle(Theme.accent)
@@ -605,8 +618,10 @@ struct CommandPalette: View {
             keyHint("esc")
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        Divider().opacity(0.4)
+        .padding(.vertical, 15)
+    }
+
+    @ViewBuilder private var groupsView: some View {
         ScrollView {
             VStack(spacing: 6) {
                 if tabGroups.groups.isEmpty {
@@ -808,9 +823,6 @@ struct CommandPalette: View {
     }
 
     @ViewBuilder private var shellHistoryView: some View {
-        searchBar(placeholder: "Fuzzy-search your shell history…",
-                  icon: "clock.arrow.circlepath")
-        Divider().opacity(0.4)
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 2) {
@@ -933,8 +945,6 @@ struct CommandPalette: View {
     }
 
     @ViewBuilder private var sshHostsView: some View {
-        searchBar(placeholder: "Filter SSH hosts…", icon: "network")
-        Divider().opacity(0.4)
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 0) {
@@ -1074,8 +1084,6 @@ struct CommandPalette: View {
     }
 
     @ViewBuilder private var notesListView: some View {
-        searchBar(placeholder: "Search notes…", icon: "note.text")
-        Divider().opacity(0.4)
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 2) {
@@ -1169,11 +1177,11 @@ struct CommandPalette: View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .foregroundStyle(Theme.textSecondary)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 15, weight: .medium))
             TextField(placeholder, text: $query)
                 .textFieldStyle(.plain)
                 .focused($queryFocused)
-                .font(.system(size: 15, design: .rounded))
+                .font(.system(size: 16, design: .rounded))
                 .foregroundStyle(Theme.textPrimary)
             Spacer()
             switch state.paletteMode {
@@ -1196,8 +1204,8 @@ struct CommandPalette: View {
                 keyHint("esc")
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
     }
 
     private func keyHint(_ s: String) -> some View {
@@ -1206,6 +1214,43 @@ struct CommandPalette: View {
             .foregroundStyle(Theme.textSecondary)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(Capsule().fill(Theme.stroke))
+    }
+}
+
+/// Shared chrome for the palette's floating glass bubbles: panel
+/// background, clip, border, liquid-glass top-edge highlight, drop
+/// shadow. `darken` lays an extra wash over the glass so the input
+/// bar reads heavier than the results panel.
+private struct PaletteBubble: ViewModifier {
+    let cornerRadius: CGFloat
+    var darken: Double = 0
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                ZStack {
+                    OverlayPanelBackground(cornerRadius: cornerRadius)
+                    if darken > 0 { Color.black.opacity(darken) }
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Theme.strokeStrong, lineWidth: 1)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.32), .clear],
+                            startPoint: .top, endPoint: .center
+                        ),
+                        lineWidth: 1
+                    )
+                    .blendMode(.plusLighter)
+                    .allowsHitTesting(false)
+            )
+            .shadow(color: .black.opacity(0.45), radius: 30, x: 0, y: 12)
     }
 }
 
