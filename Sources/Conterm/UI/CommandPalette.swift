@@ -96,6 +96,9 @@ struct CommandPalette: View {
             barBubble("Search notes…", "note.text")
         case .sessions:
             barBubble("Filter sessions by tab, dir, or host…", "rectangle.3.group")
+        case .agents:
+            barBubble("Filter agents by tool, tab, or dir…",
+                      "antenna.radiowaves.left.and.right")
         case .shellHistory:
             barBubble("Fuzzy-search your shell history…", "clock.arrow.circlepath")
         case .sshHosts:
@@ -122,6 +125,8 @@ struct CommandPalette: View {
                     noteEditView(id: id)
                 case .sessions:
                     sessionsView
+                case .agents:
+                    agentsView
                 case .shellHistory:
                     shellHistoryView
                 case .sshHosts:
@@ -146,6 +151,8 @@ struct CommandPalette: View {
             withAnimation(Theme.Spring.snappy) { state.paletteMode = .notesList }
         case .sessions:
             withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
+        case .agents:
+            withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
         case .shellHistory:
             withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
         case .sshHosts:
@@ -161,6 +168,7 @@ struct CommandPalette: View {
         case .notesList:       openFocusedNote();         SoundEffects.shared.play(.paletteConfirm)
         case .noteEdit:        break  // Enter in editor inserts newline
         case .sessions:        jumpToFocusedSession();    SoundEffects.shared.play(.paletteConfirm)
+        case .agents:          jumpToFocusedAgent();      SoundEffects.shared.play(.paletteConfirm)
         case .shellHistory:    runFocusedHistoryEntry();  SoundEffects.shared.play(.paletteConfirm)
         case .sshHosts:        connectFocusedSSHHost();   SoundEffects.shared.play(.paletteConfirm)
         case .groups:          break  // managed via inline buttons
@@ -174,6 +182,7 @@ struct CommandPalette: View {
         case .notesList: count = filteredNotes.count + 1  // +1 for "new note"
         case .noteEdit:  return
         case .sessions:  count = filteredSessions.count
+        case .agents:    count = filteredAgents.count
         case .shellHistory: count = filteredShellHistory.count
         case .sshHosts:     count = filteredSSHRows.count
         case .groups:    return
@@ -281,6 +290,15 @@ struct CommandPalette: View {
                             state.paletteMode = .shellHistory
                         }
                     }),
+            Command(id: "agents", icon: "antenna.radiowaves.left.and.right",
+                    title: "Agents",
+                    subtitle: "Jump to any running agent",
+                    shortcut: "",
+                    run: {
+                        withAnimation(Theme.Spring.soft) {
+                            state.paletteMode = .agents
+                        }
+                    }),
             Command(id: "notes", icon: "note.text",
                     title: "Notes",
                     subtitle: "Browse and edit your saved notes",
@@ -371,6 +389,7 @@ struct CommandPalette: View {
         ("ssh_hosts",        "SSH",                         "network"),
         ("tab_groups",       "Tab Groups",                  "square.stack.3d.up"),
         ("shell_history",    "Shell History",               "clock.arrow.circlepath"),
+        ("agents",           "Agents",                      "antenna.radiowaves.left.and.right"),
         ("notes",            "Notes",                       "note.text"),
         ("new_note",         "New Note",                    "square.and.pencil"),
         ("new_tab",          "New Tab",                     "plus.square.on.square"),
@@ -387,7 +406,7 @@ struct CommandPalette: View {
     private func runCommand(_ command: Command) {
         // Commands that switch palette mode shouldn't close the palette.
         // Detect those by id.
-        let staysOpen = ["notes", "new_note", "sessions",
+        let staysOpen = ["notes", "new_note", "sessions", "agents",
                          "shell_history", "ssh_hosts", "tab_groups"]
         if !staysOpen.contains(command.id) {
             state.togglePalette()
@@ -589,6 +608,101 @@ struct CommandPalette: View {
         // Show section headers if at least one row has a group.
         // A single-section "Ungrouped" header is just noise.
         rows.contains { $0.groupID != nil }
+    }
+
+    // MARK: - Agents mode (fleet view)
+
+    /// Every pane with a live agent, across all windows. Sorted so
+    /// the agents that need a human come first, then the ones still
+    /// working, then the ones sitting ready; within a phase, stable
+    /// window → tab → pane order.
+    private var allAgents: [SessionRow] {
+        allSessions
+            .filter { ($0.pane?.agent.phase ?? .idle) != .idle }
+            .sorted { a, b in
+                let pa = phaseRank(a.pane?.agent.phase ?? .idle)
+                let pb = phaseRank(b.pane?.agent.phase ?? .idle)
+                if pa != pb { return pa < pb }
+                if a.windowIndex != b.windowIndex { return a.windowIndex < b.windowIndex }
+                if a.tabIndex    != b.tabIndex    { return a.tabIndex < b.tabIndex }
+                return a.paneIndex < b.paneIndex
+            }
+    }
+
+    private func phaseRank(_ p: AgentStatus.Phase) -> Int {
+        switch p {
+        case .attention: return 0
+        case .working:   return 1
+        case .ready:     return 2
+        case .idle:      return 3
+        }
+    }
+
+    private var filteredAgents: [SessionRow] {
+        let rows = allAgents
+        guard !query.isEmpty else { return rows }
+        let q = query.lowercased()
+        return rows.filter { row in
+            row.tabLabel.lowercased().contains(q)
+            || row.dirLabel.lowercased().contains(q)
+            || (row.remoteHost?.lowercased().contains(q) ?? false)
+            || (row.pane?.agent.tool.displayName.lowercased().contains(q) ?? false)
+        }
+    }
+
+    @ViewBuilder private var agentsView: some View {
+        let rows = filteredAgents
+        if rows.isEmpty {
+            // Outside the ScrollView: a greedy scroll container would
+            // stretch the bubble to its 360pt cap for one line of
+            // text. Full width keeps the bubble from shrinking to a
+            // sliver; content-hugging height keeps it shallow.
+            Text(query.isEmpty
+                 ? "No agents running."
+                 : "Nothing matches “\(query)”.")
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 26)
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 2) {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                            if let pane = row.pane {
+                                AgentRowView(
+                                    pane: pane,
+                                    row: row,
+                                    isFocused: index == state.paletteFocusedIndex
+                                )
+                                .id("agent-\(index)")
+                                .onTapGesture { jump(to: row) }
+                                .onHover { hovering in
+                                    if hovering && state.paletteHoverArmed {
+                                        state.paletteFocusedIndex = index
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(8)
+                }
+                .frame(maxHeight: 360)
+                .onChange(of: state.paletteFocusedIndex) { _, i in
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        proxy.scrollTo("agent-\(i)", anchor: .center)
+                    }
+                }
+            }
+        }
+    }
+
+    private func jumpToFocusedAgent() {
+        let rows = filteredAgents
+        guard !rows.isEmpty else { return }
+        var i = state.paletteFocusedIndex % rows.count
+        if i < 0 { i += rows.count }
+        jump(to: rows[i])
     }
 
     // MARK: - Groups mode (manage tab groups)
@@ -1196,6 +1310,8 @@ struct CommandPalette: View {
                 EmptyView()
             case .sessions:
                 keyHint("esc")
+            case .agents:
+                keyHint("esc")
             case .shellHistory:
                 keyHint("esc")
             case .sshHosts:
@@ -1712,6 +1828,117 @@ private struct SessionRowView: View {
 
     private var iconFg: Color {
         isFocused ? Theme.accent : Theme.textSecondary
+    }
+
+    @ViewBuilder
+    private func chip(_ s: String) -> some View {
+        Text(s)
+            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .foregroundStyle(Theme.textSecondary)
+            .padding(.horizontal, 5).padding(.vertical, 2)
+            .background(Capsule().fill(Theme.stroke))
+    }
+}
+
+// MARK: - Agent row (agents mode)
+
+/// One running agent. Observes its Pane directly so a phase change
+/// while the palette is open (working → needs you) re-renders the
+/// row without reopening.
+private struct AgentRowView: View {
+    @ObservedObject var pane: Pane
+    let row: CommandPalette.SessionRow
+    let isFocused: Bool
+
+    var body: some View {
+        let status = pane.agent
+        let accent = status.tool.glowColor
+        HStack(alignment: .center, spacing: 10) {
+            // Agent mark in a tinted halo; the halo carries the
+            // per-tool accent so the list scans by color.
+            ZStack {
+                Circle()
+                    .fill(accent.opacity(isFocused ? 0.26 : 0.14))
+                    .frame(width: 28, height: 28)
+                Image(systemName: status.tool.fallbackSymbol)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(accent)
+            }
+            .scaleEffect(isFocused ? 1.06 : 1.0)
+            .shadow(color: isFocused ? accent.opacity(0.45) : .clear,
+                    radius: isFocused ? 8 : 0)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(status.label)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(row.tabLabel)
+                    Text("·")
+                    if let host = row.remoteHost {
+                        Image(systemName: "network").font(.system(size: 9))
+                        Text(host)
+                    } else {
+                        Text(row.dirLabel)
+                    }
+                }
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+            }
+
+            Spacer()
+
+            phaseBadge(status.phase, accent: accent)
+
+            HStack(spacing: 4) {
+                chip("W\(row.windowIndex)")
+                chip("T\(row.tabIndex)")
+                chip(row.paneCount > 1
+                     ? "⌥\(row.paneIndex)·\(row.paneCount)"
+                     : "⌥\(row.paneIndex)")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isFocused ? Theme.accentSoft : .clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
+                              lineWidth: 0.5)
+        )
+        .contentShape(Rectangle())
+        .animation(Theme.Spring.snappy, value: isFocused)
+    }
+
+    @ViewBuilder
+    private func phaseBadge(_ phase: AgentStatus.Phase, accent: Color) -> some View {
+        switch phase {
+        case .attention:
+            Text("needs you")
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(accent)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Capsule().fill(accent.opacity(0.18)))
+        case .working:
+            Text("working")
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Capsule().fill(Color.white.opacity(0.07)))
+        case .ready:
+            Text("ready")
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Capsule().fill(Color.white.opacity(0.07)))
+        case .idle:
+            EmptyView()
+        }
     }
 
     @ViewBuilder
