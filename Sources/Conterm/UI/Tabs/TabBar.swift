@@ -314,18 +314,23 @@ private struct ActionBarGlass: ViewModifier {
     @EnvironmentObject var prefs: Preferences
 
     func body(content: Content) -> some View {
-        // Light-mode glass tints with white (keeps the capsule legible
-        // on light desktops and lets dark icons sit on a bright bed);
-        // dark-mode keeps the deep tint that pops on any desktop.
+        // The action cluster is the one deliberate color break in the
+        // otherwise monochrome chrome: a deep signal-red block, the
+        // way hi-fi gear carries a single red control on a black
+        // faceplate. Kept matte (low-opacity wash over glass, warm
+        // edge light) so it reads anodized rather than neon; the
+        // white icons on top stay the monochrome part.
         let tint = prefs.lightGlass
-            ? Color.white.opacity(0.55)
-            : Color.black.opacity(0.24)
+            ? Color(red: 0.80, green: 0.16, blue: 0.16).opacity(0.42)
+            : Color(red: 0.46, green: 0.05, blue: 0.07).opacity(0.55)
         let topEdge: [Color] = prefs.lightGlass
-            ? [Color.white.opacity(0.85), Color.white.opacity(0.20)]
-            : [Color.white.opacity(0.28), Color.white.opacity(0.05)]
+            ? [Color(red: 1.0, green: 0.62, blue: 0.58).opacity(0.85),
+               Color(red: 1.0, green: 0.62, blue: 0.58).opacity(0.20)]
+            : [Color(red: 1.0, green: 0.45, blue: 0.42).opacity(0.38),
+               Color(red: 1.0, green: 0.45, blue: 0.42).opacity(0.06)]
         let fallbackStroke = prefs.lightGlass
-            ? Color.black.opacity(0.10)
-            : Color.white.opacity(0.16)
+            ? Color(red: 0.60, green: 0.10, blue: 0.10).opacity(0.25)
+            : Color(red: 1.0, green: 0.50, blue: 0.46).opacity(0.22)
 
         if #available(macOS 26, *) {
             content
