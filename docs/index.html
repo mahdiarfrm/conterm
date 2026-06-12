@@ -31,8 +31,9 @@
    Near-black base with warm cream text. Hairlines and glass
    fills carry a faint warm tint so the page reads as paper-on-
    ink rather than steel. One chromatic accent only: the app's
-   action-pill red, used in small doses — hero dot, section
-   numbers, cursors, selection, the thinking pill.
+   action-pill red, used in small doses — hero dot, number chips,
+   search highlights, cursors, selection, the thinking pill, and
+   the accent-word glass.
 ───────────────────────────────────────────────────────────── */
 :root{
   --bg:           #0A0A0E;
@@ -42,7 +43,7 @@
   --muted-2:      #5C5A55;
 
   --red:          #FF2E2E;            /* the app's action-pill red */
-  --red-glow:     rgba(255,46,46,.55);
+  --red-glow:     rgba(255,46,46,.65);
 
   --hairline:     rgba(255,248,230,.055);
   --hairline-2:   rgba(255,248,230,.12);
@@ -58,6 +59,11 @@
 
   --max: 1180px;
   --gutter: 28px;
+}
+/* Wide-gamut displays render the pill red at full chroma — sRGB
+   clips it duller than the app draws it. */
+@supports (color: color(display-p3 1 0 0)){
+  :root{ --red: color(display-p3 1 .14 .13) }
 }
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -304,15 +310,15 @@ nav.scrolled{transform:translateY(0)}
 .hero .meta span + span:before{content:" · "; opacity:.4; margin:0 4px}
 
 /* The frosted-glass pill that lifts the accent word out of the
-   headline. White-on-glass — no chromatic colour. This is the
-   page's only "highlight" treatment besides the hero CTA. */
+   headline. Red-tinted glass — dark enough that cream text stays
+   the subject and the red reads as an undertone, not a fill. */
 .grad{
   display: inline-block;
   padding: .06em .34em;
   border-radius: .3em;
   color: var(--text);
-  background: rgba(255,248,230,.08);
-  border: 1px solid var(--hairline-2);
+  background: rgba(255,46,46,.13);
+  border: 1px solid rgba(255,46,46,.30);
   backdrop-filter: blur(18px) saturate(180%);
   -webkit-backdrop-filter: blur(18px) saturate(180%);
   box-shadow:
@@ -369,10 +375,24 @@ nav.scrolled{transform:translateY(0)}
   font-family: var(--mono);
   font-size: 12.5px;
   letter-spacing: .12em;
-  color: var(--red);
+  color: var(--text);
   text-transform: uppercase;
 }
-.num .slash{color: var(--muted-2); margin:0 6px}
+/* The number sits in a miniature of the app's action pill — opaque
+   red capsule, white digits. Red never appears as bare small text;
+   it reads muddy on the near-black ground. */
+.num .chip{
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 3px 9px;
+  margin-right: 9px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  box-shadow: 0 4px 14px -4px var(--red-glow);
+}
 .feature h2{
   margin-top: 18px;
   font-family: var(--sans);
@@ -517,8 +537,11 @@ kbd{
   background: rgba(255,248,230,.05);
   color: var(--text);
 }
+/* The selected row's icon takes the action-pill treatment; matched
+   query letters carry the same red so the eye tracks the search. */
+.palette-mock .row-r.sel .ic{background: var(--red); color: #fff}
 .palette-mock .row-r .nm{color:var(--text); flex:1}
-.palette-mock .row-r .hi{color: var(--text); font-weight: 700}
+.palette-mock .row-r .hi{color: var(--red); font-weight: 700}
 .palette-mock .row-r .sh{color:var(--muted); font-size:11px}
 
 /* ── Visual C: tabs / sidebar ── */
@@ -618,7 +641,7 @@ kbd{
 .cheat .num{
   font-family: var(--mono);
   font-size: 12.5px; letter-spacing:.12em;
-  color: var(--red); text-transform:uppercase;
+  color: var(--text); text-transform:uppercase;
 }
 .cheat h2{
   font-family: var(--sans);
@@ -694,8 +717,8 @@ kbd{
   padding: .04em .26em;
   border-radius: .25em;
   color: var(--text);
-  background: rgba(255,248,230,.08);
-  border: 1px solid var(--hairline-2);
+  background: rgba(255,46,46,.13);
+  border: 1px solid rgba(255,46,46,.30);
   box-shadow:
     inset 0 1px 0 var(--glass-highlight),
     inset 0 -1px 0 rgba(0,0,0,.06);
@@ -728,7 +751,7 @@ kbd{
 .download .num{
   font-family: var(--mono);
   font-size: 12.5px; letter-spacing: .12em;
-  color: var(--red); text-transform: uppercase;
+  color: var(--text); text-transform: uppercase;
 }
 .download h2{
   margin-top: 12px;
@@ -934,7 +957,7 @@ footer{
   <section class="feature wrap" id="features">
     <div class="row">
       <div class="copy reveal">
-        <div class="num">01 <span class="slash">/</span> Splits</div>
+        <div class="num"><span class="chip">01</span> Splits</div>
         <h2>Recursive splits.</h2>
         <p>
           <kbd>⌘D</kbd> splits right, <kbd>⌘⇧D</kbd> splits down,
@@ -976,7 +999,7 @@ footer{
   <section class="feature wrap reverse" id="palette">
     <div class="row">
       <div class="copy reveal">
-        <div class="num">02 <span class="slash">/</span> Palette</div>
+        <div class="num"><span class="chip">02</span> Palette</div>
         <h2>Command palette.</h2>
         <p>
           One launcher for commands, sessions across every window,
@@ -1024,7 +1047,7 @@ footer{
   <section class="feature wrap" id="tabs">
     <div class="row">
       <div class="copy reveal">
-        <div class="num">03 <span class="slash">/</span> Tabs</div>
+        <div class="num"><span class="chip">03</span> Tabs</div>
         <h2>Top or sidebar tabs.</h2>
         <p>
           Flip orientation any time. The sidebar can auto-hide and
@@ -1066,7 +1089,7 @@ footer{
   <section class="feature wrap reverse" id="agents">
     <div class="row">
       <div class="copy reveal">
-        <div class="num">04 <span class="slash">/</span> Agents</div>
+        <div class="num"><span class="chip">04</span> Agents</div>
         <h2>Agent status pills.</h2>
         <p>
           Claude Code and opencode are detected per-pane and show a
@@ -1108,7 +1131,7 @@ footer{
   <section class="cheat wrap" id="cheat">
     <div class="head reveal">
       <div>
-        <div class="num">05 <span class="slash">/</span> Keys</div>
+        <div class="num"><span class="chip">05</span> Keys</div>
         <h2>The whole app in one card.</h2>
       </div>
       <p>
@@ -1165,7 +1188,7 @@ footer{
 
   <!-- ============ DOWNLOAD ============ -->
   <section class="download wrap" id="download">
-    <div class="num">06 <span class="slash">/</span> Get it</div>
+    <div class="num"><span class="chip">06</span> Get it</div>
     <h2>Ready to <span class="grad">try Conterm</span>?</h2>
     <p class="lede">
       Download the latest release, drag it to Applications, and
