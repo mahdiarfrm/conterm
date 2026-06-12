@@ -31,9 +31,9 @@
    Near-black base with warm cream text. Hairlines and glass
    fills carry a faint warm tint so the page reads as paper-on-
    ink rather than steel. One chromatic accent only: the app's
-   action-pill red, used in small doses — hero dot, number chips,
-   search highlights, cursors, selection, the thinking pill, and
-   the accent-word glass.
+   action-pill red, used in small doses — the atmosphere field,
+   hero dot, number chips, search highlights, cursors, selection,
+   and the thinking pill.
 ───────────────────────────────────────────────────────────── */
 :root{
   --bg:           #0A0A0E;
@@ -84,43 +84,63 @@ img,video{max-width:100%;display:block}
 
 /* ─────────────────────────────────────────────────────────────
    ATMOSPHERE
-   Two extremely soft wash spots — warm white, with a breath of
-   the accent red in the upper-left. The page is mostly clean
-   negative space — glass and hairlines do all the visual work.
+   Abstract colour field behind everything, echoing the banner:
+   black ground, a deep-red blob upper-left and a grey counter-
+   blob lower-right, both drifting very slowly. The grain overlay
+   on top makes the gradients read as texture instead of vignette.
+   Opacities stay low enough that body text never loses contrast.
 ───────────────────────────────────────────────────────────── */
 .atmos{
   position:fixed; inset:0; z-index:0; pointer-events:none;
   overflow:hidden;
+  /* Faint grey base lift in the lower half so the black isn't flat. */
+  background:
+    radial-gradient(120vw 90vh ellipse at 80% 115%,
+      #16161B 0%, transparent 60%),
+    var(--bg);
 }
 .atmos::before{
-  /* Upper-left wash — warm white with a faint red ember inside.
-     Red opacity must stay well under .08 so the page still reads
-     as mono at a glance. */
+  /* Red field — the banner's crimson corner. Oversized and blurred
+     so only the inner falloff is ever on screen. */
   content:""; position:absolute;
-  top:-25%; left:-18%; width:80vw; height:75vh;
+  top:-30%; left:-25%; width:95vw; height:100vh;
   background:
-    radial-gradient(ellipse at 22% 28%,
-      rgba(255,46,46,.055) 0%,
-      transparent 55%),
-    radial-gradient(ellipse at 35% 40%,
-      rgba(255,248,230,.07) 0%,
-      rgba(255,248,230,.03) 38%,
-      transparent 65%);
-  filter: blur(40px);
+    radial-gradient(closest-side at 38% 42%,
+      rgba(255,46,46,.17) 0%,
+      rgba(170,28,40,.08) 45%,
+      transparent 72%);
+  filter: blur(60px);
+  animation: drift-a 46s ease-in-out infinite alternate;
 }
 .atmos::after{
-  /* Lower-right counter, even fainter, keeps the eye from sliding off. */
+  /* Grey counter-field, lower-right. */
   content:""; position:absolute;
-  bottom:-25%; right:-15%; width:65vw; height:65vh;
+  bottom:-30%; right:-22%; width:85vw; height:95vh;
   background:
-    radial-gradient(ellipse at 60% 60%,
-      rgba(255,248,230,.05) 0%,
-      transparent 60%);
-  filter: blur(50px);
+    radial-gradient(closest-side at 55% 55%,
+      rgba(168,170,182,.11) 0%,
+      rgba(120,122,134,.045) 50%,
+      transparent 75%);
+  filter: blur(70px);
+  animation: drift-b 58s ease-in-out infinite alternate;
+}
+/* Mismatched periods keep the two fields from ever syncing, so the
+   composition never visibly repeats. Transform-only animation — the
+   blur renders once and the layer just moves. */
+@keyframes drift-a{
+  from{transform: translate3d(0,0,0) scale(1)}
+  to  {transform: translate3d(7vw,9vh,0) scale(1.14)}
+}
+@keyframes drift-b{
+  from{transform: translate3d(0,0,0) scale(1.1)}
+  to  {transform: translate3d(-6vw,-8vh,0) scale(1)}
+}
+@media (prefers-reduced-motion: reduce){
+  .atmos::before,.atmos::after{animation:none}
 }
 .grain{
   position:fixed; inset:0; z-index:1; pointer-events:none;
-  opacity:.05; mix-blend-mode:overlay;
+  opacity:.07; mix-blend-mode:overlay;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.9'/%3E%3C/svg%3E");
 }
 
@@ -310,15 +330,15 @@ nav.scrolled{transform:translateY(0)}
 .hero .meta span + span:before{content:" · "; opacity:.4; margin:0 4px}
 
 /* The frosted-glass pill that lifts the accent word out of the
-   headline. Red-tinted glass — dark enough that cream text stays
-   the subject and the red reads as an undertone, not a fill. */
+   headline. White-on-glass — neutral; the red lives in the
+   atmosphere and the pill chips, never in the headline. */
 .grad{
   display: inline-block;
   padding: .06em .34em;
   border-radius: .3em;
   color: var(--text);
-  background: rgba(255,46,46,.13);
-  border: 1px solid rgba(255,46,46,.30);
+  background: rgba(255,248,230,.08);
+  border: 1px solid var(--hairline-2);
   backdrop-filter: blur(18px) saturate(180%);
   -webkit-backdrop-filter: blur(18px) saturate(180%);
   box-shadow:
@@ -717,8 +737,8 @@ kbd{
   padding: .04em .26em;
   border-radius: .25em;
   color: var(--text);
-  background: rgba(255,46,46,.13);
-  border: 1px solid rgba(255,46,46,.30);
+  background: rgba(255,248,230,.08);
+  border: 1px solid var(--hairline-2);
   box-shadow:
     inset 0 1px 0 var(--glass-highlight),
     inset 0 -1px 0 rgba(0,0,0,.06);
