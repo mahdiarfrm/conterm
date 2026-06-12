@@ -27,12 +27,12 @@
 
 <style>
 /* ─────────────────────────────────────────────────────────────
-   TOKENS — Pure Mono
+   TOKENS — Mono + one red
    Near-black base with warm cream text. Hairlines and glass
    fills carry a faint warm tint so the page reads as paper-on-
-   ink rather than steel. No bright accent colour anywhere; the
-   only "colour" the user sees is the glass treatment around the
-   accent words.
+   ink rather than steel. One chromatic accent only: the app's
+   action-pill red, used in small doses — hero dot, section
+   numbers, cursors, selection, the thinking pill.
 ───────────────────────────────────────────────────────────── */
 :root{
   --bg:           #0A0A0E;
@@ -40,6 +40,9 @@
   --text:         #F4F2EC;            /* warm cream */
   --muted:        #8A8780;            /* warm muted */
   --muted-2:      #5C5A55;
+
+  --red:          #FF2E2E;            /* the app's action-pill red */
+  --red-glow:     rgba(255,46,46,.55);
 
   --hairline:     rgba(255,248,230,.055);
   --hairline-2:   rgba(255,248,230,.12);
@@ -71,23 +74,28 @@ body{
 }
 a{color:inherit;text-decoration:none}
 img,video{max-width:100%;display:block}
-::selection{background: var(--text); color: var(--bg)}
+::selection{background: var(--red); color: #fff}
 
 /* ─────────────────────────────────────────────────────────────
    ATMOSPHERE
-   Two extremely soft warm-white wash spots; no chromatic colour.
-   The page is mostly clean negative space — glass and hairlines
-   do all the visual work.
+   Two extremely soft wash spots — warm white, with a breath of
+   the accent red in the upper-left. The page is mostly clean
+   negative space — glass and hairlines do all the visual work.
 ───────────────────────────────────────────────────────────── */
 .atmos{
   position:fixed; inset:0; z-index:0; pointer-events:none;
   overflow:hidden;
 }
 .atmos::before{
-  /* Upper-left warm wash — neutral warm white, low opacity. */
+  /* Upper-left wash — warm white with a faint red ember inside.
+     Red opacity must stay well under .08 so the page still reads
+     as mono at a glance. */
   content:""; position:absolute;
   top:-25%; left:-18%; width:80vw; height:75vh;
   background:
+    radial-gradient(ellipse at 22% 28%,
+      rgba(255,46,46,.055) 0%,
+      transparent 55%),
     radial-gradient(ellipse at 35% 40%,
       rgba(255,248,230,.07) 0%,
       rgba(255,248,230,.03) 38%,
@@ -251,8 +259,8 @@ nav.scrolled{transform:translateY(0)}
 }
 .pill .dot{
   width: 6px; height: 6px; border-radius: 50%;
-  background: var(--text);
-  box-shadow: 0 0 8px rgba(244,242,236,.65);
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red-glow);
 }
 .hero-icon{
   width: 120px; height: 120px;
@@ -361,10 +369,10 @@ nav.scrolled{transform:translateY(0)}
   font-family: var(--mono);
   font-size: 12.5px;
   letter-spacing: .12em;
-  color: var(--text);
+  color: var(--red);
   text-transform: uppercase;
 }
-.feature .num .slash{color: var(--muted-2); margin:0 6px}
+.num .slash{color: var(--muted-2); margin:0 6px}
 .feature h2{
   margin-top: 18px;
   font-family: var(--sans);
@@ -468,9 +476,9 @@ kbd{
 .pane.c{grid-column: 2; grid-row: 2}
 .cursor{
   display:inline-block; width:7px; height:13px;
-  background: var(--text); vertical-align:-2px;
+  background: var(--red); vertical-align:-2px;
   animation: blink 1s steps(2,end) infinite;
-  box-shadow: 0 0 8px rgba(255,248,230,.4);
+  box-shadow: 0 0 8px var(--red-glow);
 }
 @keyframes blink{50%{opacity:0}}
 
@@ -570,9 +578,15 @@ kbd{
   border-radius: 999px;
   align-self: flex-start;
 }
+.agent-mock .bar.thinking{
+  /* Mirrors the app's action pill: fully opaque red so it pops on
+     the monochrome glass around it. */
+  background: var(--red);
+  border-color: rgba(255,255,255,.22);
+}
 .agent-mock .bar.thinking .pulse{
-  background: var(--text);
-  box-shadow: 0 0 10px rgba(255,248,230,.5);
+  background: #fff;
+  box-shadow: 0 0 10px rgba(255,255,255,.8);
   animation: pulse 1.2s ease-in-out infinite;
 }
 .agent-mock .bar.ready .pulse{
@@ -604,7 +618,7 @@ kbd{
 .cheat .num{
   font-family: var(--mono);
   font-size: 12.5px; letter-spacing:.12em;
-  color: var(--text); text-transform:uppercase;
+  color: var(--red); text-transform:uppercase;
 }
 .cheat h2{
   font-family: var(--sans);
@@ -714,7 +728,7 @@ kbd{
 .download .num{
   font-family: var(--mono);
   font-size: 12.5px; letter-spacing: .12em;
-  color: var(--text); text-transform: uppercase;
+  color: var(--red); text-transform: uppercase;
 }
 .download h2{
   margin-top: 12px;
@@ -1069,9 +1083,9 @@ footer{
         <div class="agent-mock">
           <div class="bar thinking">
             <span class="pulse"></span>
-            <span style="color:var(--text)">Claude</span>
-            <span style="color:var(--muted-2)">·</span>
-            <span style="color:var(--text)">thinking…</span>
+            <span style="color:#fff">Claude</span>
+            <span style="color:rgba(255,255,255,.6)">·</span>
+            <span style="color:#fff">thinking…</span>
           </div>
           <div class="bar ready">
             <span class="pulse"></span>
@@ -1094,7 +1108,7 @@ footer{
   <section class="cheat wrap" id="cheat">
     <div class="head reveal">
       <div>
-        <div class="num">05 / Keys</div>
+        <div class="num">05 <span class="slash">/</span> Keys</div>
         <h2>The whole app in one card.</h2>
       </div>
       <p>
@@ -1151,7 +1165,7 @@ footer{
 
   <!-- ============ DOWNLOAD ============ -->
   <section class="download wrap" id="download">
-    <div class="num">06 / Get it</div>
+    <div class="num">06 <span class="slash">/</span> Get it</div>
     <h2>Ready to <span class="grad">try Conterm</span>?</h2>
     <p class="lede">
       Download the latest release, drag it to Applications, and
