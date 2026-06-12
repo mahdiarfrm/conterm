@@ -55,6 +55,7 @@ struct CommandPalette: View {
             if state.paletteMode == .sshHosts { refreshSSHRowsIfNeeded() }
             // Commands mode searches across hosts + cwd files too.
             if state.paletteMode == .commands { refreshOmniSources() }
+            syncTrayState(focusTray: true)
         }
         .onChange(of: state.paletteMode) { _, mode in
             // Mode change resets query + focus.
@@ -66,11 +67,23 @@ struct CommandPalette: View {
             }
             if mode == .sshHosts { refreshSSHRowsIfNeeded() }
             if mode == .commands { refreshOmniSources() }
+            syncTrayState(focusTray: mode == .commands)
         }
-        .onChange(of: query) { _, _ in state.paletteFocusedIndex = 0 }
+        .onChange(of: query) { _, _ in
+            state.paletteFocusedIndex = 0
+            // Typing hides the tray; clearing brings it back unfocused
+            // (↑ from the list's top row climbs back in).
+            syncTrayState(focusTray: false)
+        }
         .onChange(of: state.paletteFocusedIndex) { _, _ in
             clampFocus()
             // Soft cursor tick when arrow-keys move the highlight.
+            SoundEffects.shared.play(.paletteMove)
+        }
+        .onChange(of: state.paletteTrayIndex) { _, _ in
+            SoundEffects.shared.play(.paletteMove)
+        }
+        .onChange(of: state.paletteTrayFocused) { _, _ in
             SoundEffects.shared.play(.paletteMove)
         }
         .onChange(of: state.paletteRunTick) { _, _ in handleEnter() }
@@ -199,7 +212,7 @@ struct CommandPalette: View {
     private func clampFocus() {
         let count: Int
         switch state.paletteMode {
-        case .commands:  count = filteredCommands.count + suggestionOffset
+        case .commands:  count = filteredCommands.count
         case .notesList: count = filteredNotes.count + 1  // +1 for "new note"
         case .noteEdit:  return
         case .sessions:  count = filteredSessions.count
@@ -217,9 +230,6 @@ struct CommandPalette: View {
     // MARK: - Commands mode
 
     @ViewBuilder private var commandsView: some View {
-        // The suggestion tray owns focus indices 0..<offset; list rows
-        // continue from there so ↑/↓ flow through both.
-        let offset = suggestionOffset
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 2) {
@@ -227,7 +237,8 @@ struct CommandPalette: View {
                         CommandRow(
                             command: command,
                             index: index,
-                            isFocused: index + offset == state.paletteFocusedIndex
+                            isFocused: !state.paletteTrayFocused
+                                && index == state.paletteFocusedIndex
                         )
                         .id("cmd-\(index)")
                         .opacity(appeared ? 1 : 0)
@@ -239,7 +250,8 @@ struct CommandPalette: View {
                         .onTapGesture { runCommand(command) }
                         .onHover { hovering in
                             if hovering && state.paletteHoverArmed {
-                                state.paletteFocusedIndex = index + offset
+                                state.paletteTrayFocused = false
+                                state.paletteFocusedIndex = index
                             }
                         }
                     }
@@ -248,10 +260,8 @@ struct CommandPalette: View {
             }
             .frame(maxHeight: 360)
             .onChange(of: state.paletteFocusedIndex) { _, i in
-                let local = i - offset
-                guard local >= 0 else { return }
                 withAnimation(.easeOut(duration: 0.12)) {
-                    proxy.scrollTo("cmd-\(local)", anchor: .center)
+                    proxy.scrollTo("cmd-\(i)", anchor: .center)
                 }
             }
         }
@@ -443,20 +453,29 @@ struct CommandPalette: View {
         return rows
     }
 
-    /// Strip items occupy focus indices 0..<offset; the command list
-    /// continues after them, so ↑/↓ walk the tray and the list as one
-    /// sequence.
-    private var suggestionOffset: Int {
-        (state.paletteMode == .commands && query.isEmpty)
-            ? suggestionRows().count : 0
+    /// Mirror the tray's visibility into AppState so the event
+    /// monitor can route ↑/↓/←/→ between the two zones.
+    private func syncTrayState(focusTray: Bool) {
+        let visible = state.paletteMode == .commands && query.isEmpty
+        state.paletteTrayCount = visible ? suggestionRows().count : 0
+        if state.paletteTrayCount == 0 {
+            state.paletteTrayFocused = false
+        } else if focusTray {
+            state.paletteTrayFocused = true
+            state.paletteTrayIndex = 0
+        }
+        if state.paletteTrayIndex >= max(state.paletteTrayCount, 1) {
+            state.paletteTrayIndex = 0
+        }
     }
 
     /// One glass tray of the five learned picks, sitting between the
-    /// search bar and the results panel.
+    /// search bar and the results panel. ←/→ walk its segments; ↓
+    /// drops into the list.
     @ViewBuilder private var suggestionStrip: some View {
         let rows = suggestionRows()
         if !rows.isEmpty {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 7) {
                 HStack(spacing: 5) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 9, weight: .semibold))
@@ -471,13 +490,15 @@ struct CommandPalette: View {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, cmd in
                         SuggestionSegment(
                             command: cmd,
-                            isFocused: state.paletteFocusedIndex == i
+                            isFocused: state.paletteTrayFocused
+                                && state.paletteTrayIndex == i
                         ) {
                             runCommand(cmd)
                         }
                         .onHover { hovering in
                             if hovering && state.paletteHoverArmed {
-                                state.paletteFocusedIndex = i
+                                state.paletteTrayFocused = true
+                                state.paletteTrayIndex = i
                             }
                         }
                     }
@@ -708,16 +729,15 @@ struct CommandPalette: View {
     }
 
     private func runFocusedCommand() {
-        let offset = suggestionOffset
-        if offset > 0, state.paletteFocusedIndex < offset {
+        if state.paletteTrayCount > 0, state.paletteTrayFocused {
             let rows = suggestionRows()
-            guard state.paletteFocusedIndex < rows.count else { return }
-            runCommand(rows[state.paletteFocusedIndex])
+            guard !rows.isEmpty else { return }
+            runCommand(rows[min(state.paletteTrayIndex, rows.count - 1)])
             return
         }
         let list = filteredCommands
         guard !list.isEmpty else { return }
-        var i = (state.paletteFocusedIndex - offset) % list.count
+        var i = state.paletteFocusedIndex % list.count
         if i < 0 { i += list.count }
         runCommand(list[i])
     }

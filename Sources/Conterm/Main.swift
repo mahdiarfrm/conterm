@@ -287,11 +287,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let step = 18.0
                 while self.paletteScrollAccum >= step {
                     self.paletteScrollAccum -= step
-                    self.state.paletteFocusedIndex -= 1
+                    self.state.paletteMoveVertical(-1)
                 }
                 while self.paletteScrollAccum <= -step {
                     self.paletteScrollAccum += step
-                    self.state.paletteFocusedIndex += 1
+                    self.state.paletteMoveVertical(1)
                 }
                 // Don't carry a partial step into the next gesture.
                 if event.phase == .ended || event.phase == .cancelled {
@@ -299,8 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             } else {
                 guard dy != 0 else { return nil }
-                if dy > 0 { self.state.paletteFocusedIndex -= 1 }
-                else      { self.state.paletteFocusedIndex += 1 }
+                self.state.paletteMoveVertical(dy > 0 ? -1 : 1)
             }
             return nil
         }
@@ -333,8 +332,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     return nil
                 }
                 switch event.keyCode {
-                case 126: self.state.paletteFocusedIndex -= 1; return nil
-                case 125: self.state.paletteFocusedIndex += 1; return nil
+                case 126: self.state.paletteMoveVertical(-1); return nil
+                case 125: self.state.paletteMoveVertical(1);  return nil
+                // ←/→ walk the suggestion tray when it has focus;
+                // otherwise they stay with the text field's caret.
+                case 123: if self.state.paletteMoveHorizontal(-1) { return nil }
+                case 124: if self.state.paletteMoveHorizontal(1)  { return nil }
                 case 36:  self.state.paletteRunTick &+= 1;     return nil
                 default: break
                 }
