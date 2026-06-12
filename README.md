@@ -57,17 +57,24 @@ opencode.
   live list of every tab in each group.
 - **Session restore** — every window, tab, pane, split, and working directory
   comes back exactly where you left it on relaunch.
+- **File drops** — drag a file or image onto a pane to insert its shell-quoted
+  path at the cursor.
 
 ### Command palette (`⌘K`)
 
-One launcher over many sources:
+One search over everything:
 
-- App commands, **shell history** (re-run any zsh/bash command), your
-  `~/.ssh/config` hosts (with `Include` support), and **every open pane across
-  every window**.
-- Built-in **notes**, **tab-group** management, and quick **"open this
-  directory in Finder / Cursor"**.
-- **Reorder or hide** the commands you don't use, from *Settings → Palette*.
+- A single query reaches app commands, **shell history** (re-run any zsh/bash
+  command), your `~/.ssh/config` hosts (with `Include` support), the active
+  pane's **recently modified files**, built-in **notes**, and **every open
+  pane across every window**.
+- A **live calculator** in the search bar — arithmetic, `0x`/`0b`/`0o`
+  literals, re-basing (`255 in hex`), and unit conversions across data sizes,
+  time, length, mass, volume, and temperature.
+- A **suggestion tray** under the search bar: five picks ranked by how often
+  and how recently you use them.
+- **Tab-group** management, quick **"open this directory in Finder /
+  Cursor"**, and **reorder or hide** commands from *Settings → Palette*.
 
 ### Agent-aware
 
@@ -76,6 +83,8 @@ One launcher over many sources:
   [opencode](https://opencode.ai) is *ready*, *thinking*, or *needs you*, with
   a notification center for what finished while you were away. Hooks are
   installed non-destructively.
+- **Agents mode** — the palette lists every running agent across all windows,
+  *needs you* first; pick one to jump straight to its pane.
 - **Command markers** *(shell integration)* — a ✓ / ✗ chip with the run time
   when a command fails or takes a while, a notification when a long command
   finishes while you've stepped away, and `⌘↑` / `⌘↓` to jump between prompts.
