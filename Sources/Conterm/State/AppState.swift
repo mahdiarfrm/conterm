@@ -19,6 +19,44 @@ final class AppState: ObservableObject {
     /// event monitor on up/down; consumed by CommandPalette for rendering
     /// and by Enter to invoke the focused command.
     @Published var paletteFocusedIndex: Int = 0
+
+    /// Suggestion-tray keyboard state. The tray is a horizontal zone
+    /// above the command list: ←/→ move within it, ↓ drops into the
+    /// list, ↑ from the list's top row climbs back in. Lives here
+    /// (not palette-local) because arrow keys arrive via the
+    /// AppDelegate event monitor.
+    @Published var paletteTrayFocused: Bool = false
+    @Published var paletteTrayIndex: Int = 0
+    /// Number of tray items currently visible; 0 hides the zone
+    /// (non-commands mode or a non-empty query). Kept in sync by
+    /// CommandPalette.
+    var paletteTrayCount: Int = 0
+
+    /// One ↑/↓ step across the palette's two zones.
+    func paletteMoveVertical(_ delta: Int) {
+        if paletteTrayCount > 0, paletteTrayFocused {
+            // Leaving the tray: ↓ lands on the list's first row, ↑
+            // wraps to its last (clampFocus resolves the -1).
+            paletteTrayFocused = false
+            paletteFocusedIndex = delta > 0 ? 0 : -1
+            return
+        }
+        if paletteTrayCount > 0, delta < 0, paletteFocusedIndex == 0 {
+            paletteTrayFocused = true
+            return
+        }
+        paletteFocusedIndex += delta
+    }
+
+    /// ←/→ within the tray. Returns false when the tray isn't focused
+    /// so the event falls through to the text field's caret.
+    func paletteMoveHorizontal(_ delta: Int) -> Bool {
+        guard paletteTrayCount > 0, paletteTrayFocused else { return false }
+        var i = (paletteTrayIndex + delta) % paletteTrayCount
+        if i < 0 { i += paletteTrayCount }
+        paletteTrayIndex = i
+        return true
+    }
     /// While `false`, palette rows ignore `onHover` events so the
     /// (often hidden) cursor sitting on top of a row can't snap focus
     /// back when the user is navigating with arrow keys. Re-armed
