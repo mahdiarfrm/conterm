@@ -26,9 +26,15 @@ struct CommandPalette: View {
     var body: some View {
         // Two detached glass bubbles: a thick input bar on top and
         // the results panel below, separated by a gap rather than an
-        // in-panel divider.
+        // in-panel divider. At rest, a strip of learned suggestion
+        // bubbles floats between them.
         VStack(spacing: 10) {
             topBar
+            if state.paletteMode == .commands && query.isEmpty {
+                suggestionStrip
+                    .padding(.vertical, 2)
+                    .transition(.opacity)
+            }
             contentPanel
         }
         .frame(maxWidth: 600)
@@ -240,11 +246,9 @@ struct CommandPalette: View {
     /// query is arithmetic. Everything is synthesized into `Command`
     /// rows so focus, Enter, and rendering need no special cases.
     private var filteredCommands: [Command] {
-        guard !query.isEmpty else {
-            let suggested = suggestionRows()
-            let shown = Set(suggested.map(\.id))
-            return suggested + commands.filter { !shown.contains($0.id) }
-        }
+        // Empty query keeps the command list in its configured order —
+        // learned picks live in the suggestion strip above, not here.
+        guard !query.isEmpty else { return commands }
         return omniResults(for: query)
     }
 
@@ -292,25 +296,27 @@ struct CommandPalette: View {
 
         rows += commands.filter { $0.title.lowercased().contains(ql) }
 
+        // SSH hosts are a small set — show every match. History and
+        // files can be huge, so those stay capped (the list scrolls,
+        // but a thousand-row dump would bury the other sources).
         rows += cachedAllSSHRows
             .filter {
                 $0.host.alias.lowercased().contains(ql)
                 || ($0.host.hostname?.lowercased().contains(ql) ?? false)
             }
-            .prefix(4)
             .map { sshResultRow($0.host) }
 
         rows += cachedCwdFiles
             .filter { $0.name.lowercased().contains(ql) }
-            .prefix(5)
+            .prefix(8)
             .map(fileResultRow)
 
         rows += Self.history
             .filter { $0.command.lowercased().contains(ql) }
-            .prefix(4)
+            .prefix(8)
             .map(historyResultRow)
 
-        rows += state.notes.filtered(q).prefix(3).map(noteResultRow)
+        rows += state.notes.filtered(q).prefix(5).map(noteResultRow)
 
         // Learned ordering: anything the user keeps picking floats up;
         // untouched rows keep their source order (stable sort).
@@ -324,15 +330,18 @@ struct CommandPalette: View {
         // The calculator answer always leads — it's the one result
         // the user can read without selecting anything.
         if let v = QuickMath.evaluate(q) {
-            return [calcResultRow(v)] + ranked
+            return [calcResultRow(expression: q, value: v)] + ranked
         }
         return ranked
     }
 
-    private func calcResultRow(_ value: Double) -> Command {
+    private func calcResultRow(expression: String, value: Double) -> Command {
         let s = QuickMath.format(value)
+        let expr = expression.trimmingCharacters(in: .whitespaces)
+        // Title carries "expr = answer"; CommandRow renders the
+        // expression dim and light, the answer prominent.
         return Command(id: "calc", icon: "equal.circle",
-                       title: "= \(s)",
+                       title: "\(expr) = \(s)",
                        subtitle: "Calculator · ↩ types the result into the terminal",
                        shortcut: "",
                        run: { [weak state] in
@@ -391,15 +400,47 @@ struct CommandPalette: View {
         return f
     }()
 
-    /// Empty-query suggestions: the strongest frecency keys, resolved
-    /// back into rows. Keys whose target no longer exists resolve to
-    /// nil and drop out naturally.
+    /// The suggestion strip's five picks: the strongest frecency keys,
+    /// resolved back into rows; keys whose target no longer exists
+    /// resolve to nil and drop out. Until the learned picks fill all
+    /// five slots, the core destinations pad the strip.
     private func suggestionRows() -> [Command] {
         var rows: [Command] = []
-        for key in FrecencyStore.shared.top(20) where rows.count < 4 {
-            if let row = resolveSuggestion(key) { rows.append(row) }
+        var seen = Set<String>()
+        for key in FrecencyStore.shared.top(20) where rows.count < 5 {
+            if let row = resolveSuggestion(key),
+               seen.insert(row.id).inserted {
+                rows.append(row)
+            }
+        }
+        for id in ["sessions", "agents", "ssh_hosts", "shell_history", "settings"]
+        where rows.count < 5 {
+            if !seen.contains(id),
+               let c = commands.first(where: { $0.id == id }) {
+                seen.insert(id)
+                rows.append(c)
+            }
         }
         return rows
+    }
+
+    /// Round glass suggestion bubbles between the search bar and the
+    /// results panel. Mouse-driven shortcuts only — they deliberately
+    /// stay out of the arrow-key focus cycle so the list below keeps
+    /// its stable order.
+    @ViewBuilder private var suggestionStrip: some View {
+        let rows = suggestionRows()
+        if !rows.isEmpty {
+            HStack(alignment: .top, spacing: 18) {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { i, cmd in
+                    SuggestionBubble(command: cmd, index: i,
+                                     appeared: appeared) {
+                        runCommand(cmd)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
     }
 
     private func resolveSuggestion(_ key: String) -> Command? {
@@ -1586,6 +1627,76 @@ private struct PaletteBubble: ViewModifier {
     }
 }
 
+// MARK: - Suggestion bubble
+
+/// One round pick in the strip under the search bar: a glass circle
+/// with the result's icon and a small label beneath. Hover lifts and
+/// brightens; click runs the result.
+private struct SuggestionBubble: View {
+    let command: Command
+    let index: Int
+    let appeared: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(hovering ? 0.16 : 0.08))
+                    Circle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(hovering ? 0.40 : 0.22),
+                                         Color.white.opacity(0.04)],
+                                startPoint: .top, endPoint: .bottom),
+                            lineWidth: 1)
+                    bubbleIcon
+                }
+                .frame(width: 46, height: 46)
+                .shadow(color: .black.opacity(0.35),
+                        radius: hovering ? 9 : 5, y: 3)
+                Text(command.title)
+                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(hovering ? Theme.textPrimary
+                                              : Theme.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: 72)
+            }
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(hovering ? 1.08 : 1.0)
+        .animation(Theme.Spring.snappy, value: hovering)
+        .help(command.subtitle ?? command.title)
+        // Staggered pop-in alongside the row entrance animation.
+        .opacity(appeared ? 1 : 0)
+        .scaleEffect(appeared ? 1 : 0.7, anchor: .center)
+        .animation(.spring(response: 0.40, dampingFraction: 0.74)
+                       .delay(Double(index) * 0.04),
+                   value: appeared)
+    }
+
+    @ViewBuilder
+    private var bubbleIcon: some View {
+        if let asset = command.assetName,
+           let templated = CommandRow.bundledTemplateImage(named: asset) {
+            Image(nsImage: templated)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 18, height: 18)
+                .foregroundStyle(Theme.textPrimary)
+        } else if command.icon == RobotGlyph.iconName {
+            RobotGlyph(color: Theme.textPrimary, size: 19)
+        } else {
+            Image(systemName: command.icon)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(Theme.textPrimary)
+        }
+    }
+}
+
 // MARK: - Row primitives
 
 private struct Command: Identifiable {
@@ -1629,9 +1740,7 @@ private struct CommandRow: View {
                 .frame(width: 22)
                 .scaleEffect(isFocused ? 1.1 : 1.0)
             VStack(alignment: .leading, spacing: 1) {
-                Text(command.title)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
+                titleText
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if let sub = command.subtitle, !sub.isEmpty {
@@ -1669,6 +1778,32 @@ private struct CommandRow: View {
             try? await Task.sleep(nanoseconds: UInt64(index) * 16_000_000)
             withAnimation(Theme.Spring.soft) { entered = true }
         }
+    }
+
+    /// The calculator row reads as "your input → result": equation
+    /// dim and light, answer prominent. Everything else is the plain
+    /// rounded title.
+    @ViewBuilder
+    private var titleText: some View {
+        if command.id == "calc",
+           let r = command.title.range(of: " = ", options: .backwards) {
+            Text(calcTitle(expr: String(command.title[..<r.lowerBound]),
+                           answer: String(command.title[r.upperBound...])))
+        } else {
+            Text(command.title)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(Theme.textPrimary)
+        }
+    }
+
+    private func calcTitle(expr: String, answer: String) -> AttributedString {
+        var e = AttributedString(expr + " = ")
+        e.font = .system(size: 14, weight: .light, design: .rounded)
+        e.foregroundColor = Theme.textSecondary.opacity(0.85)
+        var a = AttributedString(answer)
+        a.font = .system(size: 15, weight: .semibold, design: .rounded)
+        a.foregroundColor = Theme.textPrimary
+        return e + a
     }
 
     @ViewBuilder
@@ -1713,7 +1848,7 @@ private struct CommandRow: View {
     /// whole app the instant ⌘K rendered this row. We only ever read
     /// the flat copy in `Bundle.main` (Contents/Resources/<name>.png).
     @MainActor
-    private static func bundledTemplateImage(named name: String) -> NSImage? {
+    fileprivate static func bundledTemplateImage(named name: String) -> NSImage? {
         if let cached = imageCache[name] { return cached }
         let img: NSImage? = {
             guard let url = Bundle.main.url(forResource: name,
