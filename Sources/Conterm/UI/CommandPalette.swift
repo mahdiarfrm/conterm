@@ -37,6 +37,8 @@ struct CommandPalette: View {
             appeared = false
             DispatchQueue.main.async { appeared = true }
             if state.paletteMode == .sshHosts { refreshSSHRowsIfNeeded() }
+            // Commands mode searches across hosts + cwd files too.
+            if state.paletteMode == .commands { refreshOmniSources() }
         }
         .onChange(of: state.paletteMode) { _, mode in
             // Mode change resets query + focus.
@@ -44,6 +46,7 @@ struct CommandPalette: View {
             state.paletteFocusedIndex = 0
             DispatchQueue.main.async { queryFocused = true }
             if mode == .sshHosts { refreshSSHRowsIfNeeded() }
+            if mode == .commands { refreshOmniSources() }
         }
         .onChange(of: query) { _, _ in state.paletteFocusedIndex = 0 }
         .onChange(of: state.paletteFocusedIndex) { _, _ in
@@ -91,7 +94,7 @@ struct CommandPalette: View {
             groupsHeader
                 .modifier(PaletteBubble(cornerRadius: 27, darken: 0.14))
         case .commands:
-            barBubble("Type a command…", "magnifyingglass")
+            barBubble("Search commands, files, hosts, history… or math", "magnifyingglass")
         case .notesList:
             barBubble("Search notes…", "note.text")
         case .sessions:
@@ -230,10 +233,200 @@ struct CommandPalette: View {
         }
     }
 
+    /// What the default ⌘K view shows. Empty query: learned top picks
+    /// first, then the command list. Any query: a unified search
+    /// across commands, SSH hosts, recent files in the pane's cwd,
+    /// shell history, and notes — plus a live calculator row when the
+    /// query is arithmetic. Everything is synthesized into `Command`
+    /// rows so focus, Enter, and rendering need no special cases.
     private var filteredCommands: [Command] {
-        guard !query.isEmpty else { return commands }
-        let q = query.lowercased()
-        return commands.filter { $0.title.lowercased().contains(q) }
+        guard !query.isEmpty else {
+            let suggested = suggestionRows()
+            let shown = Set(suggested.map(\.id))
+            return suggested + commands.filter { !shown.contains($0.id) }
+        }
+        return omniResults(for: query)
+    }
+
+    // MARK: - Omni search
+
+    private struct CwdFile {
+        let name: String
+        let path: String
+        let mtime: Date
+    }
+
+    /// Refreshed each time the palette opens: SSH rows (history +
+    /// ~/.ssh/config) and the active pane's directory listing, newest
+    /// first. Cached so per-keystroke filtering never touches disk.
+    @State private var cachedCwdFiles: [CwdFile] = []
+
+    private func refreshOmniSources() {
+        refreshSSHRowsIfNeeded()
+        cachedCwdFiles = Self.loadRecentFiles(
+            in: state.selectedTab?.paneTree.activePane?.cwd)
+    }
+
+    private static func loadRecentFiles(in cwd: String?) -> [CwdFile] {
+        guard let cwd, !cwd.isEmpty else { return [] }
+        guard let items = try? FileManager.default.contentsOfDirectory(
+            at: URL(fileURLWithPath: cwd),
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]) else { return [] }
+        return items
+            .compactMap { url -> CwdFile? in
+                guard let m = (try? url.resourceValues(
+                    forKeys: [.contentModificationDateKey]))?
+                    .contentModificationDate else { return nil }
+                return CwdFile(name: url.lastPathComponent,
+                               path: url.path, mtime: m)
+            }
+            .sorted { $0.mtime > $1.mtime }
+            .prefix(200)
+            .map { $0 }
+    }
+
+    private func omniResults(for q: String) -> [Command] {
+        let ql = q.lowercased()
+        var rows: [Command] = []
+
+        rows += commands.filter { $0.title.lowercased().contains(ql) }
+
+        rows += cachedAllSSHRows
+            .filter {
+                $0.host.alias.lowercased().contains(ql)
+                || ($0.host.hostname?.lowercased().contains(ql) ?? false)
+            }
+            .prefix(4)
+            .map { sshResultRow($0.host) }
+
+        rows += cachedCwdFiles
+            .filter { $0.name.lowercased().contains(ql) }
+            .prefix(5)
+            .map(fileResultRow)
+
+        rows += Self.history
+            .filter { $0.command.lowercased().contains(ql) }
+            .prefix(4)
+            .map(historyResultRow)
+
+        rows += state.notes.filtered(q).prefix(3).map(noteResultRow)
+
+        // Learned ordering: anything the user keeps picking floats up;
+        // untouched rows keep their source order (stable sort).
+        let ranked = rows.enumerated().sorted { a, b in
+            let sa = FrecencyStore.shared.score(a.element.id)
+            let sb = FrecencyStore.shared.score(b.element.id)
+            if sa != sb { return sa > sb }
+            return a.offset < b.offset
+        }.map(\.element)
+
+        // The calculator answer always leads — it's the one result
+        // the user can read without selecting anything.
+        if let v = QuickMath.evaluate(q) {
+            return [calcResultRow(v)] + ranked
+        }
+        return ranked
+    }
+
+    private func calcResultRow(_ value: Double) -> Command {
+        let s = QuickMath.format(value)
+        return Command(id: "calc", icon: "equal.circle",
+                       title: "= \(s)",
+                       subtitle: "Calculator · ↩ types the result into the terminal",
+                       shortcut: "",
+                       run: { [weak state] in
+                           guard let state else { return }
+                           Self.insertInActivePane(state: state, text: s)
+                       })
+    }
+
+    private func sshResultRow(_ host: SSHHost) -> Command {
+        Command(id: "ssh.\(host.alias)", icon: "network",
+                title: host.alias,
+                subtitle: "SSH · \(host.hostname ?? "connect in a new tab")",
+                shortcut: "",
+                run: { connectToSSHHost(host) })
+    }
+
+    private func fileResultRow(_ f: CwdFile) -> Command {
+        Command(id: "file.\(f.path)", icon: "doc",
+                title: f.name,
+                subtitle: "File · \(Self.ageFormatter.localizedString(for: f.mtime, relativeTo: Date())) · ↩ types the path",
+                shortcut: "",
+                run: { [weak state] in
+                    guard let state else { return }
+                    Self.insertInActivePane(state: state,
+                                            text: shellQuote(f.path))
+                })
+    }
+
+    private func historyResultRow(_ entry: HistoryEntry) -> Command {
+        Command(id: "hist.\(entry.command)", icon: "clock.arrow.circlepath",
+                title: entry.command,
+                subtitle: "History · run in this pane",
+                shortcut: "",
+                run: { runHistory(entry) })
+    }
+
+    private func noteResultRow(_ note: Note) -> Command {
+        let firstLine = note.content
+            .split(separator: "\n", maxSplits: 1).first
+            .map(String.init)?
+            .trimmingCharacters(in: .whitespaces) ?? ""
+        return Command(id: "note.\(note.id.uuidString)", icon: "note.text",
+                       title: firstLine.isEmpty ? "Untitled note" : firstLine,
+                       subtitle: "Note · open in editor",
+                       shortcut: "",
+                       run: {
+                           withAnimation(Theme.Spring.soft) {
+                               state.paletteMode = .noteEdit(noteID: note.id)
+                           }
+                       })
+    }
+
+    private static let ageFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
+
+    /// Empty-query suggestions: the strongest frecency keys, resolved
+    /// back into rows. Keys whose target no longer exists resolve to
+    /// nil and drop out naturally.
+    private func suggestionRows() -> [Command] {
+        var rows: [Command] = []
+        for key in FrecencyStore.shared.top(20) where rows.count < 4 {
+            if let row = resolveSuggestion(key) { rows.append(row) }
+        }
+        return rows
+    }
+
+    private func resolveSuggestion(_ key: String) -> Command? {
+        if key == "calc" { return nil }
+        if key.hasPrefix("ssh.") {
+            let alias = String(key.dropFirst(4))
+            let host = cachedAllSSHRows.first { $0.host.alias == alias }?.host
+                ?? SSHHost(alias: alias, hostname: nil)
+            return sshResultRow(host)
+        }
+        if key.hasPrefix("hist.") {
+            let cmd = String(key.dropFirst(5))
+            return historyResultRow(HistoryEntry(command: cmd))
+        }
+        if key.hasPrefix("file.") {
+            let path = String(key.dropFirst(5))
+            guard let f = cachedCwdFiles.first(where: { $0.path == path })
+            else { return nil }   // only suggest files from the current cwd
+            return fileResultRow(f)
+        }
+        if key.hasPrefix("note.") {
+            guard let id = UUID(uuidString: String(key.dropFirst(5))),
+                  let note = state.notes.notes.first(where: { $0.id == id })
+            else { return nil }
+            return noteResultRow(note)
+        }
+        return commands.first { $0.id == key }
     }
 
     private var commands: [Command] {
@@ -403,12 +596,22 @@ struct CommandPalette: View {
     ]
 
     private func runCommand(_ command: Command) {
-        // Commands that switch palette mode shouldn't close the palette.
-        // Detect those by id.
+        // Commands that switch palette mode shouldn't close the
+        // palette; omni rows whose run manages palette state itself
+        // (ssh/history close it via runInNewTab/runHistory, notes
+        // switch mode) must not be double-toggled.
         let staysOpen = ["notes", "new_note", "sessions", "agents",
                          "shell_history", "ssh_hosts", "tab_groups"]
-        if !staysOpen.contains(command.id) {
+        let managesPalette = command.id.hasPrefix("ssh.")
+            || command.id.hasPrefix("hist.")
+            || command.id.hasPrefix("note.")
+        if !staysOpen.contains(command.id) && !managesPalette {
             state.togglePalette()
+        }
+        // Selection feeds the frecency ranking (skip the calculator —
+        // its row isn't resolvable as a suggestion).
+        if command.id != "calc" {
+            FrecencyStore.shared.bump(command.id)
         }
         command.run()
     }
@@ -1190,6 +1393,16 @@ struct CommandPalette: View {
         ctrl.sendText(command + "\n")
     }
 
+    /// Type `text` into the active pane WITHOUT a newline — used by
+    /// results that compose into the prompt (calculator answers,
+    /// file paths) rather than execute.
+    @MainActor
+    static func insertInActivePane(state: AppState, text: String) {
+        guard let pane = state.selectedTab?.paneTree.activePane,
+              let ctrl = pane.controller else { return }
+        ctrl.sendText(text)
+    }
+
     // MARK: - Notes-list mode
 
     private var filteredNotes: [Note] {
@@ -1419,6 +1632,8 @@ private struct CommandRow: View {
                 Text(command.title)
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 if let sub = command.subtitle, !sub.isEmpty {
                     Text(sub)
                         .font(.system(size: 11, design: .rounded))
