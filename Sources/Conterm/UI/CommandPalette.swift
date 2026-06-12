@@ -470,21 +470,26 @@ struct CommandPalette: View {
     }
 
     /// One glass tray of the five learned picks, sitting between the
-    /// search bar and the results panel. ←/→ walk its segments; ↓
-    /// drops into the list.
+    /// search bar and the results panel. The caption is a left-hand
+    /// cell rather than a header row, so the tray stays exactly one
+    /// segment tall. ←/→ walk the segments; ↓ drops into the list.
     @ViewBuilder private var suggestionStrip: some View {
         let rows = suggestionRows()
         if !rows.isEmpty {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 5) {
+            HStack(spacing: 9) {
+                VStack(spacing: 3) {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                     Text("Suggestions")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .font(.system(size: 9, weight: .semibold, design: .rounded))
                 }
                 .foregroundStyle(Theme.textSecondary)
-                .padding(.leading, 11)
-                .padding(.top, 8)
+                .padding(.leading, 13)
+                .fixedSize()
+
+                RoundedRectangle(cornerRadius: 0.5)
+                    .fill(Color.white.opacity(0.10))
+                    .frame(width: 1, height: 28)
 
                 HStack(spacing: 2) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, cmd in
