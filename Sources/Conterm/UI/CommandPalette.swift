@@ -39,9 +39,19 @@ struct CommandPalette: View {
         }
         .frame(maxWidth: 600)
         .onAppear {
-            queryFocused = true; query = ""; state.paletteFocusedIndex = 0
+            query = ""; state.paletteFocusedIndex = 0
             appeared = false
-            DispatchQueue.main.async { appeared = true }
+            // Focus the field on the next runloop turn — claiming it
+            // synchronously races the field's mount and loses, leaving
+            // the bar deaf until clicked. The delayed retry covers the
+            // slower first present of the panel.
+            DispatchQueue.main.async {
+                appeared = true
+                queryFocused = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                queryFocused = true
+            }
             if state.paletteMode == .sshHosts { refreshSSHRowsIfNeeded() }
             // Commands mode searches across hosts + cwd files too.
             if state.paletteMode == .commands { refreshOmniSources() }
@@ -51,6 +61,9 @@ struct CommandPalette: View {
             query = ""
             state.paletteFocusedIndex = 0
             DispatchQueue.main.async { queryFocused = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                queryFocused = true
+            }
             if mode == .sshHosts { refreshSSHRowsIfNeeded() }
             if mode == .commands { refreshOmniSources() }
         }
@@ -186,7 +199,7 @@ struct CommandPalette: View {
     private func clampFocus() {
         let count: Int
         switch state.paletteMode {
-        case .commands:  count = filteredCommands.count
+        case .commands:  count = filteredCommands.count + suggestionOffset
         case .notesList: count = filteredNotes.count + 1  // +1 for "new note"
         case .noteEdit:  return
         case .sessions:  count = filteredSessions.count
@@ -204,6 +217,9 @@ struct CommandPalette: View {
     // MARK: - Commands mode
 
     @ViewBuilder private var commandsView: some View {
+        // The suggestion tray owns focus indices 0..<offset; list rows
+        // continue from there so ↑/↓ flow through both.
+        let offset = suggestionOffset
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 2) {
@@ -211,7 +227,7 @@ struct CommandPalette: View {
                         CommandRow(
                             command: command,
                             index: index,
-                            isFocused: index == state.paletteFocusedIndex
+                            isFocused: index + offset == state.paletteFocusedIndex
                         )
                         .id("cmd-\(index)")
                         .opacity(appeared ? 1 : 0)
@@ -223,7 +239,7 @@ struct CommandPalette: View {
                         .onTapGesture { runCommand(command) }
                         .onHover { hovering in
                             if hovering && state.paletteHoverArmed {
-                                state.paletteFocusedIndex = index
+                                state.paletteFocusedIndex = index + offset
                             }
                         }
                     }
@@ -232,8 +248,10 @@ struct CommandPalette: View {
             }
             .frame(maxHeight: 360)
             .onChange(of: state.paletteFocusedIndex) { _, i in
+                let local = i - offset
+                guard local >= 0 else { return }
                 withAnimation(.easeOut(duration: 0.12)) {
-                    proxy.scrollTo("cmd-\(i)", anchor: .center)
+                    proxy.scrollTo("cmd-\(local)", anchor: .center)
                 }
             }
         }
@@ -327,26 +345,27 @@ struct CommandPalette: View {
             return a.offset < b.offset
         }.map(\.element)
 
-        // The calculator answer always leads — it's the one result
-        // the user can read without selecting anything.
-        if let v = QuickMath.evaluate(q) {
-            return [calcResultRow(expression: q, value: v)] + ranked
+        // The calculator/converter answer always leads — it's the one
+        // result the user can read without selecting anything.
+        if let a = QuickMath.answer(q) {
+            return [calcResultRow(expression: q, answer: a)] + ranked
         }
         return ranked
     }
 
-    private func calcResultRow(expression: String, value: Double) -> Command {
-        let s = QuickMath.format(value)
+    private func calcResultRow(expression: String,
+                               answer: (display: String, insert: String)) -> Command {
         let expr = expression.trimmingCharacters(in: .whitespaces)
         // Title carries "expr = answer"; CommandRow renders the
         // expression dim and light, the answer prominent.
         return Command(id: "calc", icon: "equal.circle",
-                       title: "\(expr) = \(s)",
+                       title: "\(expr) = \(answer.display)",
                        subtitle: "Calculator · ↩ types the result into the terminal",
                        shortcut: "",
                        run: { [weak state] in
                            guard let state else { return }
-                           Self.insertInActivePane(state: state, text: s)
+                           Self.insertInActivePane(state: state,
+                                                   text: answer.insert)
                        })
     }
 
@@ -424,22 +443,41 @@ struct CommandPalette: View {
         return rows
     }
 
-    /// Round glass suggestion bubbles between the search bar and the
-    /// results panel. Mouse-driven shortcuts only — they deliberately
-    /// stay out of the arrow-key focus cycle so the list below keeps
-    /// its stable order.
+    /// Strip items occupy focus indices 0..<offset; the command list
+    /// continues after them, so ↑/↓ walk the tray and the list as one
+    /// sequence.
+    private var suggestionOffset: Int {
+        (state.paletteMode == .commands && query.isEmpty)
+            ? suggestionRows().count : 0
+    }
+
+    /// One glass tray of the five learned picks, sitting between the
+    /// search bar and the results panel.
     @ViewBuilder private var suggestionStrip: some View {
         let rows = suggestionRows()
         if !rows.isEmpty {
-            HStack(alignment: .top, spacing: 18) {
+            HStack(spacing: 2) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { i, cmd in
-                    SuggestionBubble(command: cmd, index: i,
-                                     appeared: appeared) {
+                    SuggestionSegment(
+                        command: cmd,
+                        isFocused: state.paletteFocusedIndex == i
+                    ) {
                         runCommand(cmd)
+                    }
+                    .onHover { hovering in
+                        if hovering && state.paletteHoverArmed {
+                            state.paletteFocusedIndex = i
+                        }
                     }
                 }
             }
-            .frame(maxWidth: .infinity)
+            .padding(5)
+            .modifier(PaletteBubble(cornerRadius: 24))
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared ? 0 : 8)
+            .animation(.spring(response: 0.40, dampingFraction: 0.80)
+                           .delay(0.05),
+                       value: appeared)
         }
     }
 
@@ -658,9 +696,16 @@ struct CommandPalette: View {
     }
 
     private func runFocusedCommand() {
+        let offset = suggestionOffset
+        if offset > 0, state.paletteFocusedIndex < offset {
+            let rows = suggestionRows()
+            guard state.paletteFocusedIndex < rows.count else { return }
+            runCommand(rows[state.paletteFocusedIndex])
+            return
+        }
         let list = filteredCommands
         guard !list.isEmpty else { return }
-        var i = state.paletteFocusedIndex % list.count
+        var i = (state.paletteFocusedIndex - offset) % list.count
         if i < 0 { i += list.count }
         runCommand(list[i])
     }
@@ -1627,72 +1672,63 @@ private struct PaletteBubble: ViewModifier {
     }
 }
 
-// MARK: - Suggestion bubble
+// MARK: - Suggestion segment
 
-/// One round pick in the strip under the search bar: a glass circle
-/// with the result's icon and a small label beneath. Hover lifts and
-/// brightens; click runs the result.
-private struct SuggestionBubble: View {
+/// One pick inside the suggestion tray: icon over a small label,
+/// highlighted like a list row when focused (keyboard or hover).
+private struct SuggestionSegment: View {
     let command: Command
-    let index: Int
-    let appeared: Bool
+    let isFocused: Bool
     let action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 6) {
-                ZStack {
-                    Circle()
-                        .fill(Color.white.opacity(hovering ? 0.16 : 0.08))
-                    Circle()
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [Color.white.opacity(hovering ? 0.40 : 0.22),
-                                         Color.white.opacity(0.04)],
-                                startPoint: .top, endPoint: .bottom),
-                            lineWidth: 1)
-                    bubbleIcon
-                }
-                .frame(width: 46, height: 46)
-                .shadow(color: .black.opacity(0.35),
-                        radius: hovering ? 9 : 5, y: 3)
+            VStack(spacing: 4) {
+                segmentIcon
+                    .frame(height: 20)
                 Text(command.title)
-                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                    .foregroundStyle(hovering ? Theme.textPrimary
-                                              : Theme.textSecondary)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(isFocused ? Theme.textPrimary
+                                               : Theme.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .frame(maxWidth: 72)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+            .padding(.horizontal, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 19, style: .continuous)
+                    .fill(isFocused ? Theme.accentSoft : .clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 19, style: .continuous)
+                    .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
+                                  lineWidth: 0.5)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
         }
         .buttonStyle(.plain)
-        .scaleEffect(hovering ? 1.08 : 1.0)
-        .animation(Theme.Spring.snappy, value: hovering)
+        .focusable(false)
         .help(command.subtitle ?? command.title)
-        // Staggered pop-in alongside the row entrance animation.
-        .opacity(appeared ? 1 : 0)
-        .scaleEffect(appeared ? 1 : 0.7, anchor: .center)
-        .animation(.spring(response: 0.40, dampingFraction: 0.74)
-                       .delay(Double(index) * 0.04),
-                   value: appeared)
+        .animation(Theme.Spring.snappy, value: isFocused)
     }
 
     @ViewBuilder
-    private var bubbleIcon: some View {
+    private var segmentIcon: some View {
+        let tint = isFocused ? Theme.accent : Theme.textSecondary
         if let asset = command.assetName,
            let templated = CommandRow.bundledTemplateImage(named: asset) {
             Image(nsImage: templated)
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 18, height: 18)
-                .foregroundStyle(Theme.textPrimary)
+                .frame(width: 17, height: 17)
+                .foregroundStyle(tint)
         } else if command.icon == RobotGlyph.iconName {
-            RobotGlyph(color: Theme.textPrimary, size: 19)
+            RobotGlyph(color: tint, size: 18)
         } else {
             Image(systemName: command.icon)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Theme.textPrimary)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(tint)
         }
     }
 }
