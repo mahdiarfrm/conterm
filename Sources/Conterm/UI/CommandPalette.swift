@@ -456,23 +456,35 @@ struct CommandPalette: View {
     @ViewBuilder private var suggestionStrip: some View {
         let rows = suggestionRows()
         if !rows.isEmpty {
-            HStack(spacing: 2) {
-                ForEach(Array(rows.enumerated()), id: \.element.id) { i, cmd in
-                    SuggestionSegment(
-                        command: cmd,
-                        isFocused: state.paletteFocusedIndex == i
-                    ) {
-                        runCommand(cmd)
-                    }
-                    .onHover { hovering in
-                        if hovering && state.paletteHoverArmed {
-                            state.paletteFocusedIndex = i
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 9, weight: .semibold))
+                    Text("Suggestions")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                }
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.leading, 11)
+                .padding(.top, 8)
+
+                HStack(spacing: 2) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { i, cmd in
+                        SuggestionSegment(
+                            command: cmd,
+                            isFocused: state.paletteFocusedIndex == i
+                        ) {
+                            runCommand(cmd)
+                        }
+                        .onHover { hovering in
+                            if hovering && state.paletteHoverArmed {
+                                state.paletteFocusedIndex = i
+                            }
                         }
                     }
                 }
             }
             .padding(5)
-            .modifier(PaletteBubble(cornerRadius: 24))
+            .modifier(PaletteBubble(cornerRadius: 28))
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared ? 0 : 8)
             .animation(.spring(response: 0.40, dampingFraction: 0.80)
@@ -1697,15 +1709,15 @@ private struct SuggestionSegment: View {
             .padding(.vertical, 9)
             .padding(.horizontal, 6)
             .background(
-                RoundedRectangle(cornerRadius: 19, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(isFocused ? Theme.accentSoft : .clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 19, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
                                   lineWidth: 0.5)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
         .buttonStyle(.plain)
         .focusable(false)
