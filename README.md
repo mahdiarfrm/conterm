@@ -3,10 +3,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mahdiarfrm/conterm/releases/latest"><img alt="Latest release" src="https://badgen.net/github/tag/mahdiarfrm/conterm?color=B59CFF&label=release" /></a>
-  <a href="https://github.com/mahdiarfrm/conterm/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7BD7FF" /></a>
-  <a href="https://github.com/mahdiarfrm/conterm/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/mahdiarfrm/conterm?style=flat&color=B59CFF" /></a>
-  <img alt="Platform" src="https://img.shields.io/badge/macOS-14%2B-7BD7FF" />
+  <a href="https://github.com/mahdiarfrm/conterm/releases/latest"><img alt="Latest release" src="https://badgen.net/github/tag/mahdiarfrm/conterm?color=FF2E2E&label=release" /></a>
+  <a href="https://github.com/mahdiarfrm/conterm/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-555555" /></a>
+  <a href="https://github.com/mahdiarfrm/conterm/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/mahdiarfrm/conterm?style=flat&color=FF2E2E" /></a>
+  <img alt="Platform" src="https://img.shields.io/badge/macOS-14%2B-555555" />
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@ opencode.
 </p>
 
 <p align="center">
-  <sub>Full demo: <a href="https://github.com/mahdiarfrm/conterm/raw/main/docs/assets/demo.mp4">90s MP4 with audio</a> · <a href="https://mahdiarfrm.github.io/conterm/">landing page</a></sub>
+  <sub><a href="https://github.com/mahdiarfrm/conterm/raw/main/docs/assets/demo.mp4">MP4 version</a></sub>
 </p>
 
 ## Contents
