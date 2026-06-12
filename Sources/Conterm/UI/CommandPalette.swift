@@ -476,7 +476,8 @@ struct CommandPalette: View {
     @ViewBuilder private var suggestionStrip: some View {
         let rows = suggestionRows()
         if !rows.isEmpty {
-            HStack(spacing: 9) {
+            HStack(spacing: 8) {
+                // Caption in its own small bubble beside the tray.
                 VStack(spacing: 3) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 11, weight: .semibold))
@@ -484,12 +485,9 @@ struct CommandPalette: View {
                         .font(.system(size: 9, weight: .semibold, design: .rounded))
                 }
                 .foregroundStyle(Theme.textSecondary)
-                .padding(.leading, 13)
-                .fixedSize()
-
-                RoundedRectangle(cornerRadius: 0.5)
-                    .fill(Color.white.opacity(0.10))
-                    .frame(width: 1, height: 28)
+                .padding(.horizontal, 13)
+                .frame(maxHeight: .infinity)
+                .modifier(PaletteBubble(cornerRadius: 28, darken: 0.14))
 
                 HStack(spacing: 2) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, cmd in
@@ -508,9 +506,10 @@ struct CommandPalette: View {
                         }
                     }
                 }
+                .padding(5)
+                .modifier(PaletteBubble(cornerRadius: 28))
             }
-            .padding(5)
-            .modifier(PaletteBubble(cornerRadius: 28))
+            .fixedSize(horizontal: false, vertical: true)
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared ? 0 : 8)
             .animation(.spring(response: 0.40, dampingFraction: 0.80)
