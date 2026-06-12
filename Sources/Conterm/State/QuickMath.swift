@@ -92,8 +92,9 @@ enum QuickMath {
 
     // MARK: - Unit conversion
 
-    /// Power-of-1024 data sizes (the terminal convention) and wall
-    /// time, each normalized to a base unit.
+    /// Each table normalizes its family to one base unit; a
+    /// conversion is valid only when both units share a table.
+    /// Data sizes are power-of-1024, the terminal convention.
     private static let dataUnits: [String: Double] = [
         "b": 1, "byte": 1, "bytes": 1,
         "kb": 1024, "mb": 1048576, "gb": 1073741824,
@@ -104,10 +105,32 @@ enum QuickMath {
         "min": 60, "mins": 60, "minute": 60, "minutes": 60,
         "h": 3600, "hr": 3600, "hour": 3600, "hours": 3600,
         "d": 86400, "day": 86400, "days": 86400,
+        "w": 604800, "week": 604800, "weeks": 604800,
+    ]
+    private static let lengthUnits: [String: Double] = [
+        "mm": 0.001, "cm": 0.01, "m": 1, "meter": 1, "meters": 1,
+        "km": 1000,
+        "in": 0.0254, "inch": 0.0254, "inches": 0.0254,
+        "ft": 0.3048, "foot": 0.3048, "feet": 0.3048,
+        "yd": 0.9144, "yard": 0.9144, "yards": 0.9144,
+        "mi": 1609.344, "mile": 1609.344, "miles": 1609.344,
+    ]
+    private static let massUnits: [String: Double] = [
+        "mg": 0.001, "g": 1, "gram": 1, "grams": 1,
+        "kg": 1000, "t": 1_000_000, "ton": 1_000_000, "tons": 1_000_000,
+        "oz": 28.349523125, "lb": 453.59237, "lbs": 453.59237,
+        "pound": 453.59237, "pounds": 453.59237,
+    ]
+    private static let volumeUnits: [String: Double] = [
+        "ml": 0.001, "l": 1, "liter": 1, "liters": 1, "litre": 1, "litres": 1,
+        "gal": 3.785411784, "gallon": 3.785411784, "gallons": 3.785411784,
+        "cup": 0.2365882365, "cups": 0.2365882365,
+    ]
+    private static let allTables: [[String: Double]] = [
+        dataUnits, timeUnits, lengthUnits, massUnits, volumeUnits,
     ]
 
-    /// "16gb" → mb, "2 h" → min, … Both units must come from the
-    /// same table.
+    /// "16gb" → mb, "2m" → cm, "12kg" → g, "100f" → c, …
     private static func convertUnits(_ lhs: String,
                                      to target: String) -> (String, String)? {
         let t = lhs.trimmingCharacters(in: .whitespaces)
@@ -115,13 +138,43 @@ enum QuickMath {
         let unitPart = String(t.dropFirst(numPart.count))
             .trimmingCharacters(in: .whitespaces)
         guard let value = Double(numPart), !unitPart.isEmpty else { return nil }
-        for table in [dataUnits, timeUnits] {
+        if let temp = convertTemperature(value, from: unitPart, to: target) {
+            return temp
+        }
+        for table in allTables {
             if let from = table[unitPart], let to = table[target] {
                 let out = format(value * from / to)
                 return ("\(out) \(target)", out)
             }
         }
         return nil
+    }
+
+    /// Temperature is affine, not multiplicative — converted through
+    /// a celsius pivot rather than the factor tables.
+    private static let tempNames: [String: String] = [
+        "c": "c", "celsius": "c",
+        "f": "f", "fahrenheit": "f",
+        "k": "k", "kelvin": "k",
+    ]
+
+    private static func convertTemperature(_ v: Double, from: String,
+                                           to: String) -> (String, String)? {
+        guard let f = tempNames[from], let t = tempNames[to] else { return nil }
+        let celsius: Double
+        switch f {
+        case "c": celsius = v
+        case "f": celsius = (v - 32) * 5 / 9
+        default:  celsius = v - 273.15
+        }
+        let out: Double
+        switch t {
+        case "c": out = celsius
+        case "f": out = celsius * 9 / 5 + 32
+        default:  out = celsius + 273.15
+        }
+        let s = format(out)
+        return ("\(s)°\(t.uppercased())", s)
     }
 
     /// Plain decimal output: integers without a fraction, everything
