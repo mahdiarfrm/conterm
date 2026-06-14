@@ -41,7 +41,7 @@ struct AgentPill: View {
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 9)
-        .glassPill()
+        .glassPill(lowPower: prefs.lowPowerGlass)
         // Phase-keyed identity so the ring (a different shape per
         // phase) crossfades on transition instead of popping.
         .overlay {
