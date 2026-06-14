@@ -253,6 +253,7 @@ struct WelcomeWizard: View {
 
     @State private var configChoice: ConfigChoice = .useDirectly
     @State private var liquidGlassOverlays = true
+    @State private var pickedLowPowerGlass = true
     // Tab orientation + light/dark are now bound directly to prefs
     // for live preview, so they have no local @State mirror. The two
     // remaining picks below are applied only on Get Started.
@@ -302,6 +303,7 @@ struct WelcomeWizard: View {
             // default to a clean start.
             if !ghosttyPresent { configChoice = .fresh }
             liquidGlassOverlays = prefs.liquidGlassPanels
+            pickedLowPowerGlass = prefs.lowPowerGlass
             pickedLaunchAnim    = prefs.launchAnimationEnabled
             pickedBatterySaving = prefs.batterySavingMode
             pickedSoundEffects  = prefs.soundEffectsEnabled
@@ -658,6 +660,31 @@ struct WelcomeWizard: View {
             }
             .toggleStyle(.switch)
             .tint(Theme.accent)
+            // Low-power glass forces the static path, so this knob has
+            // no effect while it's on.
+            .disabled(pickedLowPowerGlass)
+            .opacity(pickedLowPowerGlass ? 0.4 : 1)
+
+            if pickedLowPowerGlass {
+                Text("Overridden while Low-power glass is on.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Toggle(isOn: $pickedLowPowerGlass.withSound()) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Low-power glass")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Flat dark pill and panels instead of live glass. Cooler and lighter on battery.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+            .tint(Theme.accent)
         }
     }
 
@@ -767,6 +794,7 @@ struct WelcomeWizard: View {
     private func finish(applyConfig: Bool) {
         if applyConfig {
             prefs.liquidGlassPanels     = liquidGlassOverlays
+            prefs.lowPowerGlass         = pickedLowPowerGlass
             // tabOrientation + lightGlass are already current — both
             // pickers write straight to prefs for live preview.
             prefs.launchAnimationEnabled = pickedLaunchAnim
