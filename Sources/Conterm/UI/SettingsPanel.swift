@@ -220,9 +220,24 @@ struct SettingsPanel: View {
                         .toggleStyle(.switch)
                         .labelsHidden()
                 }
+                // Low-power glass forces the static path, so this knob
+                // has no effect while it's on.
+                .disabled(prefs.lowPowerGlass)
+                .opacity(prefs.lowPowerGlass ? 0.4 : 1)
+                if prefs.lowPowerGlass {
+                    Text("Overridden while Low-power glass is on.")
+                        .subLabel()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 SettingsRow(title: "Battery saver",
                             subtitle: "Use a flat fill when Conterm isn't in the foreground.") {
                     Toggle("", isOn: $prefs.batterySavingMode.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+                SettingsRow(title: "Low-power glass",
+                            subtitle: "Flat dark fill for the agent pill and overlay panels instead of live Liquid Glass. Cooler and lighter on battery.") {
+                    Toggle("", isOn: $prefs.lowPowerGlass.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()
                 }
