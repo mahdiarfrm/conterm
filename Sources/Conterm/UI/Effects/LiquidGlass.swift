@@ -259,15 +259,35 @@ struct OverlayPanelBackground: View {
     @EnvironmentObject private var prefs: Preferences
 
     var body: some View {
-        if prefs.liquidGlassPanels, #available(macOS 26, *) {
+        if prefs.liquidGlassPanels, !prefs.lowPowerGlass, #available(macOS 26, *) {
+            // Live Liquid Glass: frosted + refractive, but `NSGlassEffectView`
+            // re-lenses the terminal behind an open panel every frame.
             PaneLiquidGlass(cornerRadius: cornerRadius,
                             frostiness: 0.8,
                             light: prefs.lightGlass)
+        } else if prefs.lowPowerGlass {
+            // Static frosted card. No vibrancy view, so it never samples
+            // (and reveals) the desktop behind the window the way a
+            // `.behindWindow` material does — and costs nothing per frame.
+            staticFrost
         } else {
+            // Behind-window vibrancy: blurs the desktop through the window.
             ZStack {
                 GlassBackground(material: .hudWindow).opacity(0.92)
                 tint
             }
+        }
+    }
+
+    /// Flat opaque-enough dark (or light) surface — keeps the wallpaper
+    /// out and samples nothing. No sheen: a single even tone.
+    private var staticFrost: some View {
+        ZStack {
+            (prefs.lightGlass
+                ? Color(red: 0.92, green: 0.94, blue: 0.97)
+                : Color(red: 0.09, green: 0.10, blue: 0.13))
+                .opacity(0.93)
+            tint
         }
     }
 }
@@ -284,6 +304,16 @@ extension View {
     func glassPill(tinted: Bool = false) -> some View {
         modifier(GlassPillModifier())
     }
+
+    /// Glass pill that drops to a static frosted fill when `lowPower`
+    /// is set. Used by chrome that floats over the live terminal (the
+    /// agent pill): Apple's Liquid Glass re-lenses its backdrop on every
+    /// change, so over a streaming pane it re-blurs up to 60×/s for the
+    /// whole agent run. The static fill reads as the same capsule at
+    /// zero per-frame cost.
+    func glassPill(lowPower: Bool) -> some View {
+        modifier(GlassPillModifier(lowPower: lowPower))
+    }
 }
 
 /// Glass-pill capsule whose tint adapts to the current colour scheme:
@@ -291,6 +321,10 @@ extension View {
 /// wallpapers; white tint on a light window keeps it from going inky.
 private struct GlassPillModifier: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
+    /// Skip Apple's live-sampling Liquid Glass and paint a static
+    /// frosted capsule instead, so terminal repaints behind the pill
+    /// cost nothing.
+    var lowPower: Bool = false
 
     func body(content: Content) -> some View {
         let isLight = colorScheme == .light
@@ -302,7 +336,36 @@ private struct GlassPillModifier: ViewModifier {
             ? Color.black.opacity(0.10)
             : Color.white.opacity(0.18)
 
-        if #available(macOS 26, *) {
+        if lowPower {
+            // Opaque enough to obscure terminal text behind the small
+            // capsule without sampling it: a translucent fill is a flat
+            // alpha blend, not the gaussian re-blur Liquid Glass costs.
+            let frost = isLight
+                ? Color.white.opacity(0.62)
+                : Color(red: 0.10, green: 0.11, blue: 0.14).opacity(0.72)
+            content
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(frost)
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .fill(LinearGradient(
+                                    colors: [Color.white.opacity(isLight ? 0.22 : 0.12),
+                                             .clear],
+                                    startPoint: .top, endPoint: .center))
+                                .blendMode(.plusLighter)
+                        )
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(colors: edge,
+                                           startPoint: .top, endPoint: .bottom),
+                            lineWidth: 0.5)
+                        .blendMode(.plusLighter)
+                        .allowsHitTesting(false)
+                )
+        } else if #available(macOS 26, *) {
             content
                 .glassEffect(.regular.tint(tint), in: .capsule)
                 .overlay(

@@ -65,6 +65,17 @@ final class Preferences: ObservableObject {
     @Published var liquidGlassPanels: Bool {
         didSet { ud.set(liquidGlassPanels, forKey: K.liquidGlassPanels) }
     }
+    /// Over-terminal chrome (the agent pill and the overlay panels) uses
+    /// a STATIC frosted fill instead of live-sampling Liquid Glass.
+    /// Apple's Liquid Glass re-lenses its backdrop on every change;
+    /// layered over a streaming terminal that means a GPU re-blur up to
+    /// 60×/s for the whole agent run — the dominant heat source on
+    /// fanless laptops, invisible to CPU graphs. The static fill reads
+    /// as the same frosted capsule but costs nothing per frame. ON by
+    /// default; OFF restores live Liquid Glass.
+    @Published var lowPowerGlass: Bool {
+        didSet { ud.set(lowPowerGlass, forKey: K.lowPowerGlass) }
+    }
     /// "Safe mode" recovery switch. OFF by default: Conterm uses your
     /// config (~/.config/conterm/config has top priority). Turn ON to
     /// boot on Ghostty's genuine defaults and ignore your config —
@@ -205,6 +216,7 @@ final class Preferences: ObservableObject {
         static let useDefaultConfig = "conterm.useDefaultConfig"
         static let lightGlass       = "conterm.lightGlass"
         static let liquidGlassPanels = "conterm.liquidGlassPanels"
+        static let lowPowerGlass     = "conterm.lowPowerGlass"
         static let sshCompatMode    = "conterm.sshCompatMode"
         static let agentPillLite    = "conterm.agentPillLite"
         static let redActionBar     = "conterm.redActionBar"
@@ -255,6 +267,7 @@ final class Preferences: ObservableObject {
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
         self.lightGlass             = ud.object(forKey: K.lightGlass) as? Bool ?? false
         self.liquidGlassPanels      = ud.object(forKey: K.liquidGlassPanels) as? Bool ?? false
+        self.lowPowerGlass          = ud.object(forKey: K.lowPowerGlass) as? Bool ?? true
         self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? false
         self.agentPillLite          = ud.object(forKey: K.agentPillLite) as? Bool ?? false
         self.redActionBar           = ud.object(forKey: K.redActionBar) as? Bool ?? true
