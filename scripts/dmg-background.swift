@@ -20,8 +20,8 @@ let logoPath = args[2]
 // and icon positions set in scripts/release.sh. The bitmap is twice
 // that in pixels; setting rep.size makes the graphics context map
 // point coordinates → pixels at 2x automatically (crisp on Retina).
-let W: CGFloat = 740
-let H: CGFloat = 580
+let W: CGFloat = 620
+let H: CGFloat = 620
 
 guard let rep = NSBitmapImageRep(
     bitmapDataPlanes: nil,
@@ -44,29 +44,29 @@ NSColor.white.setFill()
 NSRect(x: 0, y: 0, width: W, height: H).fill()
 
 // Subtle drag arrow between the icon slots. The icon row sits at
-// Finder y=175 (top-left origin) → point y = H - 175.
-let arrowY = H - 175
+// Finder y=200 (top-left origin) → point y = H - 200.
+let arrowY = H - 200
 let arrow = NSBezierPath()
 arrow.lineWidth = 3
 arrow.lineCapStyle = .round
 arrow.lineJoinStyle = .round
-arrow.move(to: NSPoint(x: 320, y: arrowY))
-arrow.line(to: NSPoint(x: 425, y: arrowY))
-arrow.move(to: NSPoint(x: 407, y: arrowY + 13))
-arrow.line(to: NSPoint(x: 425, y: arrowY))
-arrow.line(to: NSPoint(x: 407, y: arrowY - 13))
+arrow.move(to: NSPoint(x: 285, y: arrowY))
+arrow.line(to: NSPoint(x: 335, y: arrowY))
+arrow.move(to: NSPoint(x: 320, y: arrowY + 13))
+arrow.line(to: NSPoint(x: 335, y: arrowY))
+arrow.line(to: NSPoint(x: 320, y: arrowY - 13))
 NSColor(white: 0, alpha: 0.32).setStroke()
 arrow.stroke()
 
 // Paint the Applications folder icon into the background, exactly
-// under the "Applications" symlink slot (Finder {495,175}). macOS 26
+// under the "Applications" symlink slot (Finder {405,200}). macOS 26
 // fails to render a symlink's resolved icon inside DMG windows, so we
 // bake the icon here; the (icon-less) symlink still sits on top as
 // the live drop target and supplies the "Applications" text label.
 let appsIcon = NSWorkspace.shared.icon(forFile: "/Applications")
 let iconSize: CGFloat = 112
-appsIcon.draw(in: NSRect(x: 495 - iconSize / 2,
-                         y: (H - 175) - iconSize / 2,
+appsIcon.draw(in: NSRect(x: 405 - iconSize / 2,
+                         y: (H - 200) - iconSize / 2,
                          width: iconSize, height: iconSize),
               from: NSRect(origin: .zero, size: appsIcon.size),
               operation: .sourceOver, fraction: 1.0)
@@ -83,9 +83,12 @@ if let logo = NSImage(contentsOfFile: logoPath), logo.size.width > 0 {
     full.fill(using: .sourceIn)  // recolor opaque pixels, keep alpha
     blackLogo.unlockFocus()
 
-    let logoW: CGFloat = 250
+    // Lower third, centered: its vertical center sits at Finder y≈515
+    // (point y = H - 515), below the README slot at Finder y=360.
+    let logoW: CGFloat = 270
     let logoH = logoW * logo.size.height / logo.size.width
-    blackLogo.draw(in: NSRect(x: (W - logoW) / 2, y: 42,
+    blackLogo.draw(in: NSRect(x: (W - logoW) / 2,
+                              y: (H - 515) - logoH / 2,
                               width: logoW, height: logoH),
                    from: full, operation: .sourceOver, fraction: 1.0)
 } else {
