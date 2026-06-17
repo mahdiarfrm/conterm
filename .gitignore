@@ -16,3 +16,10 @@ ICONS_FINAL.prev/
 .claude/
 promo/
 conterm_video/
+
+# Local perf diagnostics + AI-facing docs (not for the public repo)
+/scripts/conterm-monitor.sh
+/scripts/diag-wakeups.sh
+/docs/HEAT-AND-BATTERY.md
+/docs/GLASS-REDESIGN.md
+conterm-monitor-*.log
