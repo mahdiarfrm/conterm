@@ -67,5 +67,17 @@ final class LaunchChime {
 
         player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
         player.play()
+
+        // Stop the engine once the chime has rung out. A running
+        // AVAudioEngine keeps CoreAudio's HAL I/O thread awake at the
+        // buffer-callback rate for the whole session — a continuous
+        // idle-wakeup drain for a one-shot launch sound.
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.3) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.player.stop()
+                if self.engine.isRunning { self.engine.stop() }
+            }
+        }
     }
 }

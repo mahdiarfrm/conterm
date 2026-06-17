@@ -78,6 +78,17 @@ final class SoundEffects {
     private let sampleRate: Double = 48_000
     private let format: AVAudioFormat
 
+    /// A running `AVAudioEngine` keeps CoreAudio's HAL I/O thread awake
+    /// at the buffer-callback rate forever, even in silence — ~1k idle
+    /// wakeups/s across its helper threads, which on a fanless Mac is
+    /// battery drain and package heat for no audio. So the engine runs
+    /// only around actual playback: `play()` starts it and re-arms an
+    /// idle timer that pauses it again after this much silence.
+    private let idleStopDelay: TimeInterval = 2.5
+    /// Monotonic token: a re-armed idle timer supersedes earlier ones
+    /// without tracking `DispatchWorkItem`s.
+    private var idleStopGeneration = 0
+
     private init() {
         format = AVAudioFormat(standardFormatWithSampleRate: sampleRate,
                                 channels: 2)!
@@ -99,28 +110,12 @@ final class SoundEffects {
         }
 
         for e in Effect.allCases { renderVariants(for: e) }
-
-        do {
-            try engine.start()
-        } catch {
-            // Silently degrade — the rest of the app shouldn't care
-            // that audio failed to come up.
-            clog("conterm: SoundEffects engine failed to start: \(error)")
-        }
-
-        // AVAudioEngine stops itself on any I/O configuration change —
-        // output-device switch, Bluetooth (dis)connect, sample-rate
-        // change, sleep/wake — and does not restart on its own, so the
-        // engine must be revived explicitly to keep sound alive across a
-        // route change. The notification posts off the main thread;
-        // `queue: .main` lands the handler where the engine is owned.
-        NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: engine,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.restartEngine() }
-        }
+        // The engine is deliberately NOT started here. `play()` brings it
+        // up on demand and `armIdleStop()` parks it again, so an idle app
+        // holds no live audio I/O thread. AVAudioEngine also stops itself
+        // on any I/O route change (device switch, Bluetooth, sleep/wake);
+        // the next `play()` revives it the same way, so no separate
+        // configuration-change observer is needed.
     }
 
     /// Reconnect the graph and restart after a stop. The internal
@@ -160,6 +155,26 @@ final class SoundEffects {
         player.scheduleBuffer(buffer, at: nil, options: .interrupts,
                               completionHandler: nil)
         if !player.isPlaying { player.play() }
+
+        armIdleStop()
+    }
+
+    /// (Re)start the countdown to pausing the engine. Re-armed on every
+    /// play, so rapid-fire UI sounds keep it warm (no per-sound restart
+    /// latency) and only sustained silence parks the I/O thread.
+    private func armIdleStop() {
+        idleStopGeneration &+= 1
+        let gen = idleStopGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + idleStopDelay) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.idleStopGeneration == gen else { return }
+                for p in self.pool where p.isPlaying { p.stop() }
+                // stop() (not pause()) fully releases the output audio
+                // unit's IOProc, so the HAL I/O thread parks instead of
+                // idling — the difference between ~1k wakeups/s and zero.
+                if self.engine.isRunning { self.engine.stop() }
+            }
+        }
     }
 
     // MARK: - Synthesis
