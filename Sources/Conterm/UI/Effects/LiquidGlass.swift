@@ -140,11 +140,19 @@ private struct RealLiquidGlass: View {
 
     var body: some View {
         if #available(macOS 26, *) {
+            // Only mount the layer(s) actually needed. Each NSGlassEffectView
+            // is a live material that composites continuously, so a fully
+            // transparent second layer still burns GPU. At the default clear
+            // setting only `.clear` mounts — half the glass cost.
             ZStack {
-                NativeClear(tintColor: clearTint)
-                    .opacity(1.0 - glassiness)
-                NativeRegular(tintColor: regularTint)
-                    .opacity(glassiness)
+                if glassiness < 0.999 {
+                    NativeClear(tintColor: clearTint)
+                        .opacity(1.0 - glassiness)
+                }
+                if glassiness > 0.001 {
+                    NativeRegular(tintColor: regularTint)
+                        .opacity(glassiness)
+                }
             }
         } else {
             Color.clear
@@ -204,17 +212,17 @@ private struct RealLiquidGlass: View {
     }
 }
 
-// MARK: - Frosted Liquid Glass panel (modal overlays)
+// MARK: - Frosted Liquid Glass panel (live overlay glass)
 
-/// Frosted Liquid Glass surface for modal overlay panels. Uses the
-/// same AppKit `NSGlassEffectView` the window backdrop uses, but with
-/// the `.regular` style (frosted) and a tint so the panel reads as a
-/// distinct, legible glass card over the terminal.
+/// Real macOS 26 Liquid Glass surface for overlay panels — a frosted,
+/// refractive `.regular` `NSGlassEffectView` with a tint so the panel reads
+/// as a distinct glass card. Used only when `Glass panels` is on; it
+/// re-lenses the terminal behind the open panel every frame, so it's opt-in.
 struct PaneLiquidGlass: NSViewRepresentable {
     let cornerRadius: CGFloat
-    /// 0 = clear, 1 = heaviest frost the tint can apply on `.regular`.
+    /// 0 = clear, 1 = heaviest frost the tint applies.
     var frostiness: Double = 0.8
-    /// Follow the chrome's Glass tint setting (dark vs light).
+    /// Follow the chrome's dark/light tint.
     var light: Bool = false
 
     func makeNSView(context: Context) -> NSView {
@@ -244,175 +252,96 @@ struct PaneLiquidGlass: NSViewRepresentable {
     }
 }
 
-/// Backdrop for floating overlay panels (Settings, Command Palette,
-/// Search, Notifications, Rename, GroupRename, floating sidebar card).
+// MARK: - Overlay panel backdrop (modal panels over the terminal)
+
+/// Backdrop for floating overlay panels (Settings, Search, Notifications,
+/// Rename, GroupRename, floating sidebar card).
 ///
-/// Defaults to the original `NSVisualEffectView .hudWindow` vibrancy
-/// stack with a dark tint on top — the look these panels were designed
-/// against. Flipping `prefs.liquidGlassPanels` routes them to a
-/// frosted `.regular` Liquid Glass surface (macOS 26+) for a coherent
-/// look with the rest of the chrome.
+/// `Glass panels` off (default): a solid card — cheaper, since these panels
+/// cover the streaming terminal, the one place live glass re-lenses every
+/// frame. On: real frosted Liquid Glass (macOS 26+).
 struct OverlayPanelBackground: View {
     let cornerRadius: CGFloat
-    var tint: Color = Color(red: 0.08, green: 0.10, blue: 0.14).opacity(0.22)
+    /// Frost density for the live-glass variant.
+    var frostiness: Double = 0.8
 
     @EnvironmentObject private var prefs: Preferences
 
     var body: some View {
-        if prefs.liquidGlassPanels, !prefs.lowPowerGlass, #available(macOS 26, *) {
-            // Live Liquid Glass: frosted + refractive, but `NSGlassEffectView`
-            // re-lenses the terminal behind an open panel every frame.
+        if prefs.liquidGlassPanels, #available(macOS 26, *) {
             PaneLiquidGlass(cornerRadius: cornerRadius,
-                            frostiness: 0.8,
+                            frostiness: frostiness,
                             light: prefs.lightGlass)
-        } else if prefs.lowPowerGlass {
-            // Static frosted card. No vibrancy view, so it never samples
-            // (and reveals) the desktop behind the window the way a
-            // `.behindWindow` material does — and costs nothing per frame.
-            staticFrost
         } else {
-            // Behind-window vibrancy: blurs the desktop through the window.
-            ZStack {
-                GlassBackground(material: .hudWindow).opacity(0.92)
-                tint
-            }
-        }
-    }
-
-    /// Flat opaque-enough dark (or light) surface — keeps the wallpaper
-    /// out and samples nothing. No sheen: a single even tone.
-    private var staticFrost: some View {
-        ZStack {
             (prefs.lightGlass
-                ? Color(red: 0.92, green: 0.94, blue: 0.97)
-                : Color(red: 0.09, green: 0.10, blue: 0.13))
-                .opacity(0.93)
-            tint
+                ? Color(red: 0.96, green: 0.97, blue: 0.98)
+                : Color(red: 0.05, green: 0.05, blue: 0.06))
         }
     }
 }
 
-// MARK: - Liquid-glass pill (individual chrome controls)
+// MARK: - Chrome capsules (flat lenses on the glass sheet)
+
+// Every chrome control — tab pills, action clusters, pane badges, the
+// agent-pill bed — is a flat translucent fill, NEVER `NSGlassEffectView` /
+// `.glassEffect`. The window already carries one sheet of real Liquid Glass
+// (`LiquidGlassBackdrop`); a second glass view nested inside it both pays a
+// per-frame re-lens AND draws the black-line artifacts AppKit produces when
+// glass stacks on glass. A flat tint instead reads as a lens *on* the sheet:
+// over the top bar the desktop shows through it, over a pane it's a clean
+// dark capsule — and it costs nothing per frame.
+
+/// Translucent capsule/rect fill for a chrome control. `selected` lifts it
+/// a touch so an active control reads as more present without changing the
+/// material.
+@MainActor
+func chromeFill(_ prefs: Preferences, selected: Bool = false) -> Color {
+    if prefs.lightGlass {
+        return Color.white.opacity(selected ? 0.58 : 0.40)
+    }
+    return Color.black.opacity(selected ? 0.32 : 0.20)
+}
+
+/// Hairline top-edge highlight for a chrome capsule — the "wet" light that
+/// catches the rim. Used with `.blendMode(.plusLighter)` so it only ever
+/// brightens.
+@MainActor
+func chromeEdge(_ prefs: Preferences) -> [Color] {
+    prefs.lightGlass
+        ? [Color.white.opacity(0.85), Color.white.opacity(0.20)]
+        : [Color.white.opacity(0.30), Color.white.opacity(0.06)]
+}
 
 extension View {
-    /// Wrap a pill/capsule control in real Apple Liquid Glass on
-    /// macOS 26+ (Apple auto-handles Reduce Transparency / light-dark),
-    /// falling back to the prior `.ultraThinMaterial` capsule on macOS
-    /// 14–15. Used for the tab pill, search, stats, and ⌘K controls so
-    /// each floating control reads as liquid glass — without frosting
-    /// the whole window-top band.
-    func glassPill(tinted: Bool = false) -> some View {
+    /// Wrap a pill/capsule control in the flat chrome capsule.
+    func glassPill() -> some View {
         modifier(GlassPillModifier())
     }
 
-    /// Glass pill that drops to a static frosted fill when `lowPower`
-    /// is set. Used by chrome that floats over the live terminal (the
-    /// agent pill): Apple's Liquid Glass re-lenses its backdrop on every
-    /// change, so over a streaming pane it re-blurs up to 60×/s for the
-    /// whole agent run. The static fill reads as the same capsule at
-    /// zero per-frame cost.
-    func glassPill(lowPower: Bool) -> some View {
-        modifier(GlassPillModifier(lowPower: lowPower))
-    }
-}
-
-/// Glass-pill capsule whose tint adapts to the current colour scheme:
-/// dark tint on a dark window keeps the pill defined on bright
-/// wallpapers; white tint on a light window keeps it from going inky.
-private struct GlassPillModifier: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
-    /// Skip Apple's live-sampling Liquid Glass and paint a static
-    /// frosted capsule instead, so terminal repaints behind the pill
-    /// cost nothing.
-    var lowPower: Bool = false
-
-    func body(content: Content) -> some View {
-        let isLight = colorScheme == .light
-        let tint = isLight ? Color.white.opacity(0.55) : Color.black.opacity(0.24)
-        let edge: [Color] = isLight
-            ? [Color.white.opacity(0.85), Color.white.opacity(0.20)]
-            : [Color.white.opacity(0.30), Color.white.opacity(0.05)]
-        let fallbackStroke = isLight
-            ? Color.black.opacity(0.10)
-            : Color.white.opacity(0.18)
-
-        if lowPower {
-            // Opaque enough to obscure terminal text behind the small
-            // capsule without sampling it: a translucent fill is a flat
-            // alpha blend, not the gaussian re-blur Liquid Glass costs.
-            let frost = isLight
-                ? Color.white.opacity(0.62)
-                : Color(red: 0.10, green: 0.11, blue: 0.14).opacity(0.72)
-            content
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(frost)
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .fill(LinearGradient(
-                                    colors: [Color.white.opacity(isLight ? 0.22 : 0.12),
-                                             .clear],
-                                    startPoint: .top, endPoint: .center))
-                                .blendMode(.plusLighter)
-                        )
-                )
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(colors: edge,
-                                           startPoint: .top, endPoint: .bottom),
-                            lineWidth: 0.5)
-                        .blendMode(.plusLighter)
-                        .allowsHitTesting(false)
-                )
-        } else if #available(macOS 26, *) {
-            content
-                .glassEffect(.regular.tint(tint), in: .capsule)
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(colors: edge,
-                                           startPoint: .top, endPoint: .bottom),
-                            lineWidth: 0.5)
-                        .blendMode(.plusLighter)
-                        .allowsHitTesting(false)
-                )
-        } else {
-            content
-                .background(Capsule(style: .continuous).fill(tint))
-                .background(Capsule(style: .continuous).fill(.ultraThinMaterial))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(fallbackStroke, lineWidth: 0.5)
-                )
-        }
-    }
-}
-
-extension View {
     /// Conditionally wrap in a glass pill — when `enabled` is false the
     /// view is returned bare (used by the unified toolbar bar, which
-    /// supplies a single shared glass surface instead of one per icon).
+    /// supplies a single shared surface instead of one per icon).
     @ViewBuilder
     func glassPill(enabled: Bool) -> some View {
         if enabled { glassPill() } else { self }
     }
+}
 
-    /// Same idea but for a rounded-rect control (the tab pill uses a
-    /// continuous rounded rectangle, not a true capsule).
-    @ViewBuilder
-    func glassRoundedRect(cornerRadius: CGFloat) -> some View {
-        if #available(macOS 26, *) {
-            self.glassEffect(.regular,
-                             in: .rect(cornerRadius: cornerRadius,
-                                       style: .continuous))
-        } else {
-            self
-                .background(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                )
-        }
+private struct GlassPillModifier: ViewModifier {
+    @EnvironmentObject private var prefs: Preferences
+
+    func body(content: Content) -> some View {
+        content
+            .background(Capsule(style: .continuous).fill(chromeFill(prefs)))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(colors: chromeEdge(prefs),
+                                       startPoint: .top, endPoint: .bottom),
+                        lineWidth: 0.5)
+                    .blendMode(.plusLighter)
+                    .allowsHitTesting(false)
+            )
     }
 }
 

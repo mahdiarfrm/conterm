@@ -27,6 +27,11 @@ struct AgentPill: View {
     private var attention: Bool { status.phase == .attention }
     private var windowIsKey: Bool { activeState == .key }
 
+    /// Reduce-motion request: drop the sweep, per-frame blur halo, mark
+    /// spin and glow shadow — the dominant GPU cost over a long working
+    /// session — keeping only the flat bed + a static rim.
+    private var lite: Bool { prefs.agentPillLite }
+
     var body: some View {
         HStack(spacing: 9) {
             mark
@@ -41,37 +46,56 @@ struct AgentPill: View {
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 9)
-        .glassPill(lowPower: prefs.lowPowerGlass)
+        // Flat black bed: the pill floats over the opaque terminal, and its
+        // sweep/glow/ring animation is the beauty here — a flat opaque bed
+        // is cheapest (no per-frame glass re-lens) and makes the animation
+        // pop against the dark cells.
+        .background(flatPillBackground)
         // Phase-keyed identity so the ring (a different shape per
         // phase) crossfades on transition instead of popping.
         .overlay {
-            if prefs.agentPillLite {
+            if lite {
                 liteRing
             } else {
                 neonRing.id(status.phase).transition(.opacity)
             }
         }
         .shadow(color: glowColor.opacity(
-                    prefs.agentPillLite
+                    lite
                         ? 0
                         : (working ? 0.55 : (attention ? 0.45 : 0.15))),
-                radius: prefs.agentPillLite
+                radius: lite
                     ? 0
                     : (working ? 12 : (attention ? 9 : 5)))
-        // Spring (not ease) the whole morph: the capsule width
-        // tracks the label length, the mark tint and glow ramp,
-        // all on one buttery physical curve.
-        .animation(Theme.Spring.snappy, value: status)
+        // Spring (not ease) the morph: the capsule width tracks the
+        // label length, the mark tint and glow ramp, all on one buttery
+        // physical curve. Keyed on `phase` (not the whole status) so a
+        // streaming progress percent doesn't re-trigger the spring +
+        // capsule relayout on every OSC update — that overlapping-spring
+        // storm drove a continuous AppKit layout / CA-commit load.
+        .animation(Theme.Spring.snappy, value: status.phase)
         .onAppear { startAnimations() }
         .onChange(of: status.phase) { _, _ in startAnimations() }
-        .onChange(of: prefs.agentPillLite) { _, _ in startAnimations() }
+        .onChange(of: lite) { _, _ in startAnimations() }
         .onChange(of: windowIsKey) { _, _ in startAnimations() }
     }
 
-    /// Low-animation overlay used when `agentPillLite` is on. A flat
-    /// colored border replaces the gradient sweep / blur halo; only
-    /// the attention state still pulses so a needs-you is still
-    /// noticeable from a glance.
+    /// Flat near-black capsule bed — opaque so the streaming terminal
+    /// behind costs nothing, with a hairline rim for definition when the
+    /// animated ring is quiet.
+    private var flatPillBackground: some View {
+        Capsule(style: .continuous)
+            .fill(Color(red: 0.05, green: 0.055, blue: 0.07))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+            )
+    }
+
+    /// Low-animation overlay used whenever the pill is `lite` (the
+    /// lite-pill or low-power-glass preference). A flat colored border
+    /// replaces the gradient sweep / blur halo; only the attention
+    /// state still pulses so a needs-you is still noticeable.
     @ViewBuilder
     private var liteRing: some View {
         let color: Color = (working || attention) ? glowColor
@@ -110,14 +134,14 @@ struct AgentPill: View {
                 // mode and whenever this window isn't key, so a non-key
                 // pane drives no compositor work.
                 .rotationEffect(.degrees(
-                    (working && !prefs.agentPillLite && windowIsKey)
+                    (working && !lite && windowIsKey)
                         ? sweep * 360 : 0))
         } else {
             Image(systemName: status.tool.fallbackSymbol)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(tint)
                 .rotationEffect(.degrees(
-                    (working && !prefs.agentPillLite && windowIsKey)
+                    (working && !lite && windowIsKey)
                         ? sweep * 360 : 0))
         }
     }
@@ -196,7 +220,7 @@ struct AgentPill: View {
             pulse = false
             return
         }
-        if prefs.agentPillLite {
+        if lite {
             // Lite mode: no sweep, no working-state animation. Only
             // attention pulses, so a needs-you is still noticeable.
             sweep = 0

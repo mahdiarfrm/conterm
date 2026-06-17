@@ -90,14 +90,12 @@ final class AppState: ObservableObject {
     /// after the launch animation until the user completes or skips it.
     @Published var setupWizardVisible: Bool = false
 
-    /// True when this window is actually visible to the user (its Space
-    /// is showing, not occluded) AND the app is active. When false, the
-    /// expensive live Liquid Glass backdrop is swapped for a cheap
-    /// static fill — there's no point GPU-compositing fancy glass for a
-    /// window you can't see, and that extra layer (which Ghostty has no
-    /// equivalent of) is what made Spaces/Mission Control switches
-    /// janky. WindowController drives this from occlusion + app-active
-    /// notifications.
+    /// True while this window is on screen (its Space is showing, not
+    /// occluded) AND the app is active. With Battery saving on, the live
+    /// glass backdrop drops to a solid fill when this is false — so
+    /// switching Spaces, Mission Control, hiding Conterm, or another app
+    /// covering it all stop compositing the glass sheet. WindowController
+    /// drives it from occlusion + app-active notifications.
     @Published var heavyGlassEnabled: Bool = true
 
     /// Signed deltas from arrow-key navigation in the settings panel.

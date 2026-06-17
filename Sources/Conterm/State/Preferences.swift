@@ -23,6 +23,29 @@ final class Preferences: ObservableObject {
         var label: String { rawValue.capitalized }
     }
 
+    /// Accent for the action cluster (bell / search / ⌘K) and the new-tab
+    /// `+`. `mono` returns both to plain glass; a colour gives the cluster a
+    /// saturated fill and lights the `+` in its yellow. Colours are kept
+    /// dark/saturated enough for white glyphs.
+    enum ActionAccent: String, CaseIterable, Identifiable {
+        case mono, red, orange, green, blue, purple, pink
+        var id: String { rawValue }
+        var isColored: Bool { self != .mono }
+        var label: String { self == .mono ? "Mono" : rawValue.capitalized }
+        /// Saturated fill for the action cluster; nil = monochrome glass.
+        var fill: Color? {
+            switch self {
+            case .mono:   return nil
+            case .red:    return Color(red: 1.00, green: 0.18, blue: 0.18)
+            case .orange: return Color(red: 1.00, green: 0.50, blue: 0.16)
+            case .green:  return Color(red: 0.26, green: 0.74, blue: 0.40)
+            case .blue:   return Color(red: 0.24, green: 0.52, blue: 1.00)
+            case .purple: return Color(red: 0.58, green: 0.40, blue: 1.00)
+            case .pink:   return Color(red: 0.97, green: 0.34, blue: 0.62)
+            }
+        }
+    }
+
     @Published var tabOrientation: TabOrientation {
         didSet { ud.set(tabOrientation.rawValue, forKey: K.orientation) }
     }
@@ -45,36 +68,33 @@ final class Preferences: ObservableObject {
     @Published var sidebarWidth: Double {
         didSet { ud.set(sidebarWidth, forKey: K.sidebar) }
     }
-    /// Glass clarity, 0…1. In the new liquid-glass backdrop this drives
-    /// the REAL CGS background-blur radius: 0 ≈ clear glass (light
-    /// blur), 1 ≈ heavy frost. (In the legacy backdrop it instead
-    /// cross-faded a dark material's opacity.)
+    /// Glass frost, 0…1. The window is one sheet of Liquid Glass over the
+    /// desktop (panes sit on top as opaque tiles), so this only changes how
+    /// the glass *looks*, never its cost: 0 ≈ clear (the desktop reads
+    /// through), 1 ≈ heavy frost. Clear and frosted both composite once
+    /// over the static desktop. Does not touch libghostty's desktop blur.
     @Published var glassiness: Double {
         didSet { ud.set(glassiness, forKey: K.glassiness) }
     }
-    /// Light vs dark Liquid Glass. OFF (default) = dark glass, which
-    /// the chrome's text colors are tuned for. ON = light-appearance
-    /// glass (the macOS 26 material + vibrancy render lighter).
+    /// Light vs dark glass tint. OFF (default) = dark glass, which the
+    /// chrome's text colors are tuned for. ON = a light tint.
     @Published var lightGlass: Bool {
         didSet { ud.set(lightGlass, forKey: K.lightGlass) }
     }
-    /// Use frosted Liquid Glass (macOS 26 `NSGlassEffectView`) for the
-    /// modal overlay panels — Settings, Command Palette, Search,
-    /// Notifications, Rename, GroupRename, floating sidebar. OFF
-    /// (default) keeps them on the original `hudWindow` vibrancy.
+    /// Solid mode: opaque window, no glass anywhere — flat dark chrome and
+    /// a solid backdrop. The single escape hatch from the glass look (for
+    /// taste or to shave the last bit of compositor work). OFF by default
+    /// (glass on). Drives the window's opacity in `WindowController`.
+    @Published var solidGlass: Bool {
+        didSet { ud.set(solidGlass, forKey: K.solidGlass) }
+    }
+    /// Use real Liquid Glass (macOS 26 `NSGlassEffectView`) for the modal
+    /// overlay panels — Command Palette, Search, Settings, Notifications,
+    /// Rename, the floating sidebar card. OFF (default) paints them as solid
+    /// cards: cheaper, since these panels cover the streaming terminal — the
+    /// one place live glass re-lenses every frame.
     @Published var liquidGlassPanels: Bool {
         didSet { ud.set(liquidGlassPanels, forKey: K.liquidGlassPanels) }
-    }
-    /// Over-terminal chrome (the agent pill and the overlay panels) uses
-    /// a STATIC frosted fill instead of live-sampling Liquid Glass.
-    /// Apple's Liquid Glass re-lenses its backdrop on every change;
-    /// layered over a streaming terminal that means a GPU re-blur up to
-    /// 60×/s for the whole agent run — the dominant heat source on
-    /// fanless laptops, invisible to CPU graphs. The static fill reads
-    /// as the same frosted capsule but costs nothing per frame. ON by
-    /// default; OFF restores live Liquid Glass.
-    @Published var lowPowerGlass: Bool {
-        didSet { ud.set(lowPowerGlass, forKey: K.lowPowerGlass) }
     }
     /// "Safe mode" recovery switch. OFF by default: Conterm uses your
     /// config (~/.config/conterm/config has top priority). Turn ON to
@@ -159,6 +179,19 @@ final class Preferences: ObservableObject {
     @Published var batterySavingMode: Bool {
         didSet { ud.set(batterySavingMode, forKey: K.batterySavingMode) }
     }
+    /// Stop libghostty presenting the terminal on every display refresh
+    /// (`window-vsync = false`). Conterm's window is non-opaque so the
+    /// glass backdrop shows through; every surface present then makes
+    /// WindowServer re-composite the whole translucent window, so a
+    /// foreground pane pulls a continuous slice of a WindowServer core
+    /// even while idle. With vsync off the renderer presents only when
+    /// content actually changes, so an idle pane costs the compositor
+    /// nothing. Trade-off: fast scroll / streaming can tear slightly.
+    /// Injected into the libghostty config chain via `lastwordText()`;
+    /// a relaunch guarantees the renderer's display link is rebuilt.
+    @Published var lowPowerRendering: Bool {
+        didSet { ud.set(lowPowerRendering, forKey: K.lowPowerRendering) }
+    }
     /// Use a broadly-compatible TERM (`xterm-256color`) and standard
     /// xterm modifier sequences for `Shift`/`Option`/`Ctrl + Arrow`
     /// over SSH, so word- and line-motions work in remote vim, tmux,
@@ -179,10 +212,18 @@ final class Preferences: ObservableObject {
         didSet { ud.set(agentPillLite, forKey: K.agentPillLite) }
     }
 
-    /// The bell / search / ⌘K cluster wears the flat Conterm-red fill;
-    /// off returns it to the monochrome glass capsule.
-    @Published var redActionBar: Bool {
-        didSet { ud.set(redActionBar, forKey: K.redActionBar) }
+    /// Accent for the action cluster + new-tab `+`. `mono` = plain glass;
+    /// a colour fills the cluster and lights the `+` yellow.
+    @Published var actionAccent: ActionAccent {
+        didSet { ud.set(actionAccent.rawValue, forKey: K.actionAccent) }
+    }
+
+    /// Paint each pane on a solid opaque backing instead of letting a
+    /// translucent terminal reveal the glass behind it. The desktop never
+    /// re-composites under a streaming pane, so this is markedly cooler on
+    /// fanless Macs — ON by default.
+    @Published var opaquePanes: Bool {
+        didSet { ud.set(opaquePanes, forKey: K.opaquePanes) }
     }
     /// Window background-blur radius. Initialised from the user's
     /// libghostty `background-blur` config value and kept in sync by
@@ -213,13 +254,15 @@ final class Preferences: ObservableObject {
         static let showSystemStats  = "conterm.showSystemStats"
         static let autoHideSidebar  = "conterm.autoHideSidebar"
         static let batterySavingMode = "conterm.batterySavingMode"
+        static let lowPowerRendering = "conterm.lowPowerRendering"
         static let useDefaultConfig = "conterm.useDefaultConfig"
         static let lightGlass       = "conterm.lightGlass"
+        static let solidGlass        = "conterm.solidGlass"
         static let liquidGlassPanels = "conterm.liquidGlassPanels"
-        static let lowPowerGlass     = "conterm.lowPowerGlass"
         static let sshCompatMode    = "conterm.sshCompatMode"
         static let agentPillLite    = "conterm.agentPillLite"
-        static let redActionBar     = "conterm.redActionBar"
+        static let actionAccent     = "conterm.actionAccent"
+        static let opaquePanes      = "conterm.opaquePanes"
         static let soundEffects     = "conterm.soundEffects"
     }
 
@@ -237,9 +280,9 @@ final class Preferences: ObservableObject {
         // the auto-hide icon over the native traffic lights.
         let storedWidth = ud.object(forKey: K.sidebar) as? Double ?? 180
         self.sidebarWidth           = max(260, min(360, storedWidth))
-        // Default 0.25 = mostly liquid with a hint of frost. Users
-        // who liked the old chrome can crank to 1.0.
-        self.glassiness             = ud.object(forKey: K.glassiness) as? Double ?? 0.25
+        // Default clear: the desktop reads through the glass. Frost up
+        // toward 1.0 for more privacy / legibility on busy wallpapers.
+        self.glassiness             = ud.object(forKey: K.glassiness) as? Double ?? 0.0
         self.rememberWindowState    = ud.object(forKey: K.windowSaveState) as? Bool ?? true
         self.confirmBeforeQuit      = ud.object(forKey: K.confirmBeforeQuit) as? Bool ?? true
         self.hasCompletedSetup      = ud.object(forKey: K.hasCompletedSetup) as? Bool ?? false
@@ -264,13 +307,17 @@ final class Preferences: ObservableObject {
         self.showSystemStats        = ud.object(forKey: K.showSystemStats) as? Bool ?? true
         self.autoHideSidebar        = ud.object(forKey: K.autoHideSidebar) as? Bool ?? false
         self.batterySavingMode      = ud.object(forKey: K.batterySavingMode) as? Bool ?? true
+        self.lowPowerRendering      = ud.object(forKey: K.lowPowerRendering) as? Bool ?? true
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
         self.lightGlass             = ud.object(forKey: K.lightGlass) as? Bool ?? false
+        self.solidGlass             = ud.object(forKey: K.solidGlass) as? Bool ?? false
         self.liquidGlassPanels      = ud.object(forKey: K.liquidGlassPanels) as? Bool ?? false
-        self.lowPowerGlass          = ud.object(forKey: K.lowPowerGlass) as? Bool ?? true
         self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? false
         self.agentPillLite          = ud.object(forKey: K.agentPillLite) as? Bool ?? false
-        self.redActionBar           = ud.object(forKey: K.redActionBar) as? Bool ?? true
+        self.actionAccent           = ActionAccent(
+            rawValue: ud.string(forKey: K.actionAccent) ?? ActionAccent.red.rawValue
+        ) ?? .red
+        self.opaquePanes            = ud.object(forKey: K.opaquePanes) as? Bool ?? true
         refreshPaneBlurFromConfig()
         NotificationCenter.default.addObserver(
             forName: .contermConfigReloaded,
