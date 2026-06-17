@@ -121,7 +121,8 @@ extension Ghostty {
             // next runloop turn, by which point the first layout pass
             // has run on the now-mounted view.
             DispatchQueue.main.async { [weak self] in
-                guard let self, let view = self.view, let window = view.window else { return }
+                guard let self, let view = self.view else { return }
+                guard let window = view.window else { return }
                 view.pushSizeToSurface()
                 if window.isKeyWindow {
                     window.makeFirstResponder(view)
@@ -151,6 +152,7 @@ extension Ghostty {
             // handle as the re-entrancy guard (deinit / double-close
             // then become no-ops and can never double-free).
             SurfaceRegistry.unregister(self)
+            GlassLoad.shared.set(false, for: self)
             handle = nil
             // Pause libghostty's renderer immediately so it stops
             // competing with other surfaces' renderers during a rapid
@@ -181,17 +183,22 @@ extension Ghostty {
 
         /// Coalesce forced repaints to ≤60fps. libghostty emits RENDER
         /// as fast as cell content changes — an agent's spinner or a
-        /// fast stream can fire well above the display refresh. Every
-        /// repaint forces the compositor to re-blur the Liquid Glass
-        /// overlays (pill, tab bar) sitting over this surface, so a
-        /// burst at 120fps costs twice the recomposite work of 60fps
-        /// for no visible gain. Collapsing a burst into one immediate
-        /// draw plus a single trailing draw caps that cost; the
-        /// trailing draw guarantees the burst's final frame still
-        /// lands, within one frame interval.
+        /// fast stream can fire well above the display refresh. A burst
+        /// at 120fps costs twice the present/composite work of 60fps for
+        /// no visible gain. Collapsing a burst into one immediate draw
+        /// plus a single trailing draw caps that cost; the trailing draw
+        /// guarantees the burst's final frame still lands, within one
+        /// frame interval.
         private var lastDrawAt: CFTimeInterval = 0
         private var pendingDraw = false
         private let minDrawInterval: CFTimeInterval = 1.0 / 60.0
+        /// Tracks a *continuous* run of fast draws. Only sustained output
+        /// (≥ 1s without a gap) counts as streaming and flips `GlassLoad`; a
+        /// brief scroll or flick never accrues enough, so it leaves the glass
+        /// untouched.
+        private var streamStart: CFTimeInterval = 0
+        private var lastStreamDraw: CFTimeInterval = 0
+        private var streamClearGen = 0
         /// Last visibility pushed to libghostty. Forced draws are
         /// pointless Metal + compositor work while the surface is
         /// hidden (non-selected tab, covered/minimized window), so
@@ -212,6 +219,7 @@ extension Ghostty {
             if since >= minDrawInterval {
                 lastDrawAt = now
                 ghostty_surface_draw(h)
+                noteStreaming(now)
             } else if !pendingDraw {
                 pendingDraw = true
                 DispatchQueue.main.asyncAfter(
@@ -222,6 +230,27 @@ extension Ghostty {
                         self.pendingDraw = false
                         self.draw()
                     }
+                }
+            }
+        }
+
+        /// Flags `GlassLoad` while this pane repaints fast (≥ ~20fps over a
+        /// 0.5s window) and drops the flag 1.2s after the burst ends, so the
+        /// glass backdrop flattens to solid only for the streaming burst.
+        private func noteStreaming(_ now: CFTimeInterval) {
+            guard isVisible else { return }
+            // A gap > 0.25s restarts the run, so only genuinely continuous
+            // output (a build log, `yes`, a stream) reaches the 1s mark.
+            if now - lastStreamDraw > 0.25 { streamStart = now }
+            lastStreamDraw = now
+            guard now - streamStart >= 1.0 else { return }
+            GlassLoad.shared.set(true, for: self)
+            streamClearGen &+= 1
+            let gen = streamClearGen
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.streamClearGen == gen else { return }
+                    GlassLoad.shared.set(false, for: self)
                 }
             }
         }
@@ -253,6 +282,8 @@ extension Ghostty {
             guard visible != isVisible else { return }
             isVisible = visible
             ghostty_surface_set_occlusion(h, visible)
+            // A hidden pane can't drive visible glass; release its claim.
+            if !visible { GlassLoad.shared.set(false, for: self) }
             if visible, drawDeferredWhileHidden {
                 drawDeferredWhileHidden = false
                 draw()
@@ -411,6 +442,10 @@ extension Ghostty {
             // here, but it's actually the title most of the time. Be
             // strict.
             case .pwd(let s):
+                // tmux and many prompts re-emit the same OSC 7 on every
+                // redraw; a redundant @Published write still re-renders
+                // every view bound to pwd. Drop no-op updates.
+                guard pwd != s else { return }
                 pwd = s
                 // Accept tilde-shortened paths too. The user's
                 // shell emits bare `~` after `cd ~`, with no
@@ -432,6 +467,10 @@ extension Ghostty {
                 }
 
             case .title(let s):
+                // Same as pwd: tmux/programs re-emit the title on every
+                // redraw. Skip identical writes so the title bar + tab
+                // name don't re-render on a stream that changes nothing.
+                guard title != s else { return }
                 title = s
                 onTitleChange?(s)
 

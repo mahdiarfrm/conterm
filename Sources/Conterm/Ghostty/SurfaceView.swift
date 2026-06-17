@@ -68,9 +68,12 @@ extension Ghostty {
         }
     }
 
-    /// The NSView that hosts a libghostty surface. libghostty installs its
-    /// own CAMetalLayer onto this view and drives rendering; we just forward
-    /// keyboard, mouse, and size events to the C side.
+    /// The NSView that hosts a libghostty surface. libghostty makes this a
+    /// layer-hosting view: it renders Metal into an IOSurface and assigns
+    /// it as the `contents` of its own animation-disabled `CALayer`
+    /// (`IOSurfaceLayer`) — there is no presenting `CAMetalLayer` on the
+    /// on-screen surface. We just forward keyboard, mouse, and size events
+    /// to the C side.
     @MainActor
     final class SurfaceView: NSView, @MainActor NSTextInputClient {
         weak var controller: SurfaceController?

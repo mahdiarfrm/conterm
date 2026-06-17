@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import GhosttyKit
+import os
 
 // clog() now lives in Diag/Clog.swift so the rest of the app can use it.
 
@@ -11,6 +12,16 @@ extension Ghostty {
     final class App {
         private(set) var handle: ghostty_app_t!
         let config: ghostty_config_t
+
+        /// Coalesces libghostty wakeups into one queued tick. `wakeup_cb`
+        /// fires far faster than the main runloop drains — and a tick can
+        /// itself schedule the next wakeup — so posting one `app.tick()`
+        /// per wakeup lets the queue self-amplify into thousands of
+        /// main-thread wakeups/s even for idle surfaces. A single
+        /// `ghostty_app_tick` drains ALL pending work, so at most one tick
+        /// ever needs to be in flight. Lives off the main actor because
+        /// `cbWakeup` runs on a libghostty thread.
+        nonisolated let tickPending = OSAllocatedUnfairLock(initialState: false)
 
         /// Neutral embedded fallback used ONLY if the bundled
         /// `ghostty-default.conf` can't be found at runtime (it always
@@ -200,6 +211,25 @@ extension Ghostty {
         }
 
         func tick() { ghostty_app_tick(handle) }
+
+        /// Enqueue a single `tick()` on the main queue, collapsing any
+        /// number of concurrent wakeups into one. The pending flag clears
+        /// BEFORE the tick runs, so a wakeup arriving during the tick
+        /// (including re-entrant ones libghostty raises while ticking)
+        /// schedules the next tick instead of being dropped.
+        nonisolated func requestTick() {
+            let alreadyPending = tickPending.withLock { pending -> Bool in
+                if pending { return true }
+                pending = true
+                return false
+            }
+            if alreadyPending { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.tickPending.withLock { $0 = false }
+                self.tick()
+            }
+        }
         func setFocus(_ focused: Bool) { ghostty_app_set_focus(handle, focused) }
         func setColorScheme(_ s: ghostty_color_scheme_e) {
             ghostty_app_set_color_scheme(handle, s)
@@ -262,6 +292,18 @@ extension Ghostty {
                 as? Bool ?? false
         }
 
+        /// Whether low-power rendering is enabled in Preferences. Read
+        /// from UserDefaults so the config loader stays decoupled from
+        /// the Preferences object. Key matches
+        /// `Preferences.K.lowPowerRendering`. ON injects
+        /// `window-vsync = false` so an idle terminal stops presenting
+        /// on every display refresh — the dominant WindowServer cost on
+        /// Conterm's non-opaque glass window.
+        nonisolated static var lowPowerRendering: Bool {
+            UserDefaults.standard.object(forKey: "conterm.lowPowerRendering")
+                as? Bool ?? true
+        }
+
         /// Builds the Conterm lastword config text — the block that
         /// is applied AFTER any user config so a few correctness-only
         /// settings (shell integration, control-key encoding, word
@@ -306,6 +348,18 @@ extension Ghostty {
                 shell-integration-features = cursor,sudo,title,ssh-env,ssh-terminfo
                 """
             }
+            // Power: with vsync off, the renderer stops presenting on
+            // every display refresh and presents only when the terminal
+            // content changes. Conterm's window is non-opaque (the glass
+            // backdrop shows through), so each present forces WindowServer
+            // to re-composite the whole translucent window — a continuous
+            // foreground cost even on an idle pane. Empty when the
+            // preference is off so libghostty keeps its `window-vsync`
+            // default (on).
+            let vsyncBlock = lowPowerRendering ? """
+
+            window-vsync = false
+            """ : ""
             return """
             # Conterm lastword — functional correctness only (no taste).
             shell-integration = detect
@@ -328,6 +382,7 @@ extension Ghostty {
             selection-word-chars = " \\t'\\"|:;,()[]{}<>$"
 
             \(sshBlock)
+            \(vsyncBlock)
 
             # Force LEGACY (xterm-compatible) encoding for control keys
             # AND Escape. libghostty's Kitty CSI-u keyboard protocol
@@ -452,7 +507,7 @@ extension Ghostty {
         private static let cbWakeup: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ud in
             guard let ud else { return }
             let app = Unmanaged<App>.fromOpaque(ud).takeUnretainedValue()
-            DispatchQueue.main.async { app.tick() }
+            app.requestTick()
         }
 
         // Action callback dispatches to surface controllers via the registry.
