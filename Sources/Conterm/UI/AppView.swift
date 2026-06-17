@@ -6,6 +6,7 @@ import SwiftUI
 struct AppView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Preferences
+    @EnvironmentObject var glassLoad: GlassLoad
     @EnvironmentObject var notifications: NotificationStore
 
     /// Vertical auto-hide: is the floating sidebar currently slid in?
@@ -71,33 +72,53 @@ struct AppView: View {
 
     // MARK: - Layers
 
-    /// Layered glass backdrop. `.hudWindow` blur + a soft-light wash for
-    /// depth. No tint — neutral liquid glass.
-    /// Backdrop blending between **liquid** (clear refractive sheen,
-    /// no NSVisualEffectView) and **frosted** (full hudWindow blur on
-    /// top) based on `prefs.glassiness` (0…1).
-    ///   • 0.0 → pure liquid stack only
-    ///   • 1.0 → frosted material at full opacity over liquid stack
-    /// Intermediate values fade the material's opacity, giving a
-    /// smooth slider experience between the two looks.
+    /// The single window glass sheet. One sheet of real Liquid Glass over
+    /// the desktop fills the whole window; the panes sit on top as opaque
+    /// tiles, so glass only ever shows where there's no terminal under it
+    /// (the top bar + the gaps between panes). It samples the *static*
+    /// desktop — never the streaming terminal — so it composites once and
+    /// stays free, clear or frosted (`prefs.glassiness`). `solidGlass`
+    /// swaps it for a plain opaque backdrop.
     @ViewBuilder
     private var backdrop: some View {
-        if state.heavyGlassEnabled || !prefs.batterySavingMode {
-            // Battery Saving Mode off → keep real Liquid Glass at all
-            // times. Battery Saving Mode on (default) → swap to the
-            // cheap flat fill whenever the window isn't actually
-            // visible / app is inactive (occluded, different Space,
-            // background app), which removes the Spaces / Mission
-            // Control / Dock compositor jank.
-            LiquidGlassBackdrop(glassiness: prefs.glassiness,
-                                light: prefs.lightGlass)
+        if prefs.solidGlass {
+            solidBackdrop
         } else {
-            (prefs.lightGlass
-                ? Color(red: 0.90, green: 0.92, blue: 0.96)
-                : Color(red: 0.07, green: 0.08, blue: 0.11))
-                .opacity(0.92)
+            // Crossfade between live glass and the solid fill rather than
+            // hard-swapping, so when Battery saving flattens (window hidden,
+            // or a pane streaming) and restores, the backdrop dissolves
+            // instead of snapping. Only one of the two ever stays mounted, so
+            // the glass is genuinely dropped (not just covered) while flat.
+            ZStack {
+                if backdropFlattened {
+                    solidBackdrop.transition(.opacity)
+                } else {
+                    LiquidGlassBackdrop(glassiness: prefs.glassiness,
+                                        light: prefs.lightGlass)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.4), value: backdropFlattened)
         }
     }
+
+    /// Battery saving drops the live glass to solid when the window is
+    /// occluded / inactive / on another Space, OR while a visible pane is
+    /// actively streaming — the live Liquid Glass material composites
+    /// continuously, so dropping it for those cases is what keeps a fanless
+    /// Mac cool.
+    private var backdropFlattened: Bool {
+        prefs.batterySavingMode && (!state.heavyGlassEnabled || glassLoad.streaming)
+    }
+
+    private var solidBackdrop: some View {
+        (prefs.lightGlass
+            ? Color(red: 0.90, green: 0.92, blue: 0.96)
+            : Color(red: 0.07, green: 0.08, blue: 0.11))
+            .opacity(0.92)
+            .ignoresSafeArea()
+    }
+
 
     /// Single stable layout for both tab-bar orientations.
     ///
@@ -137,6 +158,12 @@ struct AppView: View {
                     .opacity((!isVertical && !hideForSingleTab) ? 1 : 0)
                     .allowsHitTesting(!isVertical && !hideForSingleTab)
                     .clipped()
+                    // The gap that floats the bar clear of the panes. Tuned
+                    // so the toolbar pills sit the same distance below the
+                    // window top as above the pane: top = 6 pad + 4 centering
+                    // = 10; bottom = 4 centering + 2 here + 4 paneArea inset
+                    // = 10.
+                    .padding(.bottom, isVertical ? 0 : 2)
 
                 paneArea
                     .id("paneArea")
@@ -237,8 +264,7 @@ struct AppView: View {
     }
 
     private var floatingSidebarCard: some View {
-        OverlayPanelBackground(cornerRadius: 18,
-                               tint: Color(red: 0.07, green: 0.09, blue: 0.13).opacity(0.30))
+        OverlayPanelBackground(cornerRadius: 18)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)

@@ -20,6 +20,7 @@ struct TabPill: View {
 
     @EnvironmentObject var tabGroups: TabGroupStore
     @EnvironmentObject var state: AppState
+    @EnvironmentObject var prefs: Preferences
     @State private var hovering = false
     @State private var hoveringClose = false
 
@@ -95,34 +96,20 @@ struct TabPill: View {
 
     // MARK: - Background (three visible layers)
 
-    /// macOS 26: a REAL Liquid Glass slab for the pill (Apple's
-    /// `.glassEffect`), with the selected-accent wash + edge trim on
-    /// top. macOS 14–15: the prior hand-built `.ultraThinMaterial`
-    /// stack, unchanged.
-    @ViewBuilder
+    /// Horizontal: a flat tinted lens on the window glass sheet (the desktop
+    /// reads through it). Vertical: a solid bed — the sidebar is a wider
+    /// expanse where translucent pills over the desktop read as noise, so
+    /// the pills go opaque. Either way the travelling accent glow (TabBar)
+    /// and `pillTrim` supply the selection cue on top.
     private var pillBackground: some View {
         let corner = Theme.pillCorner
-        if #available(macOS 26, *) {
-            ZStack {
-                // Faint dark base keeps contrast on bright desktops.
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .fill(Color.black.opacity(isSelected ? 0.16 : 0.05))
-                // Real Liquid Glass — brighter for the active tab,
-                // gently present for the rest.
-                Color.clear
-                    .glassRoundedRect(cornerRadius: corner)
-                    .opacity(isSelected ? 1.0 : (hovering ? 0.9 : 0.55))
-                pillTrim
-            }
-        } else {
-            ZStack {
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .fill(Color.black.opacity(isSelected ? 0.25 : 0.08))
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .opacity(isSelected ? 1.0 : (hovering ? 0.6 : 0.0))
-                pillTrim
-            }
+        let vertical = prefs.tabOrientation == .vertical
+        return ZStack {
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .fill(vertical ? Theme.paneTitleBar
+                               : chromeFill(prefs, selected: isSelected))
+                .opacity(vertical ? 1.0 : (isSelected ? 1.0 : (hovering ? 0.9 : 0.7)))
+            pillTrim
         }
     }
 
@@ -246,7 +233,7 @@ struct TabPill: View {
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(
                     ZStack {
-                        Capsule().fill(.ultraThinMaterial)
+                        Capsule().fill(chromeFill(prefs))
                         Capsule().stroke(Color.white.opacity(0.15), lineWidth: 0.5)
                     }
                 )

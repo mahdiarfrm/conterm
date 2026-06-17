@@ -190,6 +190,11 @@ private struct PaneTitleBar: View {
     let remoteHost: String?
     let index: Int
     let isActive: Bool
+    @EnvironmentObject var prefs: Preferences
+    /// Collapsed: a small light capsule showing only the logo (status dot
+    /// or ssh glyph) + the ⌥N keybind. Click the pill to toggle. Per-pane,
+    /// transient — not persisted.
+    @State private var collapsed = false
 
     private var labelText: String {
         remoteHost ?? dirLabel
@@ -210,39 +215,47 @@ private struct PaneTitleBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 9) {
-            Circle()
-                .fill(dotColor)
-                .frame(width: 8, height: 8)
-                .shadow(color: isActive ? dotColor.opacity(0.7) : .clear, radius: 4)
+        HStack(spacing: collapsed ? 7 : 9) {
+            // Logo: ssh glyph when remote, otherwise the status dot.
             if let icon = labelIcon {
                 Image(systemName: icon)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.7))
+                    .foregroundStyle(collapsed
+                        ? Color(red: 0.10, green: 0.50, blue: 0.95)
+                        : (isActive ? Color.white : Color.white.opacity(0.7)))
+            } else {
+                Circle()
+                    .fill(collapsed ? collapsedDot : dotColor)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: (!collapsed && isActive) ? dotColor.opacity(0.7) : .clear,
+                            radius: 4)
             }
-            Text(labelText)
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.6))
-                .lineLimit(1)
-                .truncationMode(.head)
+            if !collapsed {
+                Text(labelText)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.6))
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
             if index >= 1 && index <= 9 {
-                KeybindChip(label: "⌥\(index)", isActive: isActive)
+                KeybindChip(label: "⌥\(index)", isActive: isActive, light: collapsed)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, collapsed ? 9 : 12)
         .padding(.vertical, 6)
         .background(
             ZStack {
-                // Liquid glass: blurred backdrop + subtle white sheen.
-                // The battery-test toggle swaps the vibrancy
-                // (NSVisualEffectView per pane, continuously samples
-                // the libghostty Metal layer behind it) for a flat
-                // fill — primary suspect for the ~80 wkups/pane scaling.
-                Capsule(style: .continuous)
-                    .fill(.ultraThinMaterial)
-                Capsule(style: .continuous)
-                    .fill(Color.white.opacity(isActive ? 0.12 : 0.04))
-                    .blendMode(.plusLighter)
+                if collapsed {
+                    // Light, solid capsule — the compact state.
+                    Capsule(style: .continuous).fill(Color.white.opacity(0.92))
+                } else {
+                    // Solid (opaque) bed: the pill floats over the opaque
+                    // terminal, so it reads as a solid chip, not glass.
+                    Capsule(style: .continuous).fill(Theme.paneTitleBar)
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(isActive ? 0.10 : 0.0))
+                        .blendMode(.plusLighter)
+                }
             }
         )
         // Flat strokeBorder (solid colour) — a LinearGradient stroke
@@ -251,10 +264,22 @@ private struct PaneTitleBar: View {
         .overlay(
             Capsule(style: .continuous)
                 .strokeBorder(
-                    Color.white.opacity(isActive ? 0.30 : 0.10),
+                    collapsed ? Color.black.opacity(0.12)
+                              : Color.white.opacity(isActive ? 0.30 : 0.10),
                     lineWidth: 0.6
                 )
         )
+        // Collapsed pill is a bright light capsule, so it must dim on an
+        // inactive pane the way the expanded pill does through its colours
+        // — otherwise an unfocused pane still looks lit.
+        .opacity(collapsed && !isActive ? 0.5 : 1)
+        // Tap toggles the compact state. contentShape makes the whole
+        // capsule the hit target; the surrounding overlay frame stays
+        // empty so clicks elsewhere fall through to the terminal.
+        .contentShape(Capsule(style: .continuous))
+        .onTapGesture {
+            withAnimation(Theme.Spring.snappy) { collapsed.toggle() }
+        }
         // .shadow() removed: per-pane shadows are CIFilters that
         // the compositor re-evaluates every frame; with many panes
         // they were the dominant lag cost. The strokeBorder above
@@ -262,22 +287,37 @@ private struct PaneTitleBar: View {
         .animation(Theme.Spring.snappy, value: isActive)
         .animation(Theme.Spring.snappy, value: dirLabel)
         .animation(Theme.Spring.snappy, value: remoteHost)
+        .animation(Theme.Spring.snappy, value: collapsed)
+    }
+
+    /// Status dot colour in the collapsed (light) capsule — must read on
+    /// the light bed, so darker than the expanded variant.
+    private var collapsedDot: Color {
+        remoteHost != nil
+            ? Color(red: 0.10, green: 0.50, blue: 0.95)
+            : Color.black.opacity(0.55)
     }
 }
 
 private struct KeybindChip: View {
     let label: String
     let isActive: Bool
+    /// Dark-on-light styling for the collapsed (light) title pill.
+    var light: Bool = false
 
     var body: some View {
         Text(label)
             .font(.system(size: 11, weight: .semibold, design: .rounded))
-            .foregroundStyle(isActive ? Theme.accent : Color.white.opacity(0.55))
+            .foregroundStyle(light
+                ? Color.black.opacity(0.7)
+                : (isActive ? Theme.accent : Color.white.opacity(0.55)))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
                 Capsule(style: .continuous)
-                    .fill(Color.white.opacity(isActive ? 0.18 : 0.06))
+                    .fill(light
+                        ? Color.black.opacity(0.08)
+                        : Color.white.opacity(isActive ? 0.18 : 0.06))
             )
     }
 }
@@ -288,6 +328,7 @@ private struct KeybindChip: View {
 /// Matches the title pill's glass styling so the two read as a set.
 private struct CommandBadge: View {
     let result: Pane.CommandResult
+    @EnvironmentObject var prefs: Preferences
 
     private var unknownExit: Bool { result.exitCode < 0 }
 
@@ -319,9 +360,9 @@ private struct CommandBadge: View {
         .padding(.vertical, 5)
         .background(
             ZStack {
-                Capsule(style: .continuous).fill(.ultraThinMaterial)
+                Capsule(style: .continuous).fill(Theme.paneTitleBar)
                 Capsule(style: .continuous)
-                    .fill(tint.opacity(0.12))
+                    .fill(tint.opacity(0.16))
                     .blendMode(.plusLighter)
             }
         )
@@ -390,14 +431,23 @@ private struct PaneView: View {
     /// Transient command-result chip, shown for a few seconds after a
     /// command finishes (set by the `pane.lastCommand` observer below).
     @State private var commandBadge: Pane.CommandResult?
+    /// Generation token for the "needs you" auto-dismiss timer, so a new
+    /// attention restarts the 30s clock instead of an old timer clearing it.
+    @State private var attentionGen = 0
 
     var body: some View {
         let corner = Theme.paneCorner
         return ZStack {
-            // 1. Background fill — solid pane color behind the Metal
-            //    surface so the rounded silhouette is opaque.
+            // 1. Background fill. Solid panes (default): an OPAQUE tile, so
+            //    glass only ever shows where there's no terminal under it
+            //    (top bar + gaps) and the streaming region never blends
+            //    against the desktop — markedly cooler on fanless Macs.
+            //    When off, the backing is clear so a translucent terminal
+            //    (its own background-opacity / blur) reveals the glass
+            //    behind the cells — lusher, but the desktop re-composites
+            //    under the stream.
             RoundedRectangle(cornerRadius: corner, style: .continuous)
-                .fill(Theme.bg.opacity(0.10))
+                .fill(prefs.opaquePanes ? Theme.paneTile : Color.clear)
 
             // 2. The terminal itself. We previously wrapped this in
             //    compositingGroup() for anti-aliased corners, but
@@ -490,7 +540,9 @@ private struct PaneView: View {
                 .padding(.trailing, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity,
                        alignment: .topTrailing)
-                .allowsHitTesting(false)
+                // Hit-testable so the pill's click-to-collapse works; the
+                // surrounding frame is empty (no background), so clicks
+                // elsewhere fall through to the terminal.
                 .transition(.opacity)
             }
 
@@ -554,7 +606,27 @@ private struct PaneView: View {
         .id(pane.id)
         .onAppear { if isActive { pullKeyboardFocus() } }
         .onChange(of: isActive) { _, now in
-            if now { pullKeyboardFocus() }
+            if now {
+                pullKeyboardFocus()
+                // Focusing the pane acknowledges a "needs you": stop the
+                // attention pulse (its continuous render) — you're looking
+                // at it now. The notification in the center stays.
+                if pane.agent.phase == .attention { pane.agent = .idle }
+            }
+        }
+        // "needs you" auto-clears after 30s even unfocused, so a pill you
+        // never return to can't pulse (and drain) forever. The notification
+        // already posted remains, so you still know the agent finished.
+        .onChange(of: pane.agent.phase) { _, phase in
+            guard phase == .attention else { return }
+            attentionGen &+= 1
+            let gen = attentionGen
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                if attentionGen == gen, pane.agent.phase == .attention {
+                    pane.agent = .idle
+                }
+            }
         }
         .animation(Theme.Spring.soft, value: isActive)
     }
@@ -925,7 +997,13 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
             DispatchQueue.main.async {
                 guard let pane, pane.agent.phase == .working else { return }
                 if state == 1, percent >= 0 {
-                    var s = pane.agent; s.progress = percent; pane.agent = s
+                    // Bucket to 5% steps: an agent can emit progress many
+                    // times a second, and each distinct value rewrites the
+                    // pill label (which carries the percent) and re-renders
+                    // it. Only publish when the displayed step changes.
+                    let bucket = min(100, (percent / 5) * 5)
+                    guard pane.agent.progress != bucket else { return }
+                    var s = pane.agent; s.progress = bucket; pane.agent = s
                 }
             }
         }

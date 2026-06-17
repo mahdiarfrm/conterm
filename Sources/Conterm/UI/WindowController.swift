@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import GhosttyKit
 import SwiftUI
 
@@ -12,6 +13,7 @@ final class WindowController {
     let window: NSWindow
     let state: AppState
     private var glassObservers: [NSObjectProtocol] = []
+    private var glassCancellables = Set<AnyCancellable>()
     // Two SEPARATE blur concerns, deliberately decoupled:
     //   • Terminal/window background blur  → owned ENTIRELY by
     //     libghostty via the user's `background-blur` config (set up
@@ -42,6 +44,7 @@ final class WindowController {
         let root = AppView()
             .environmentObject(state)
             .environmentObject(prefs)
+            .environmentObject(GlassLoad.shared)
             .environmentObject(themes)
             .environmentObject(fonts)
             .environmentObject(notifications)
@@ -80,32 +83,37 @@ final class WindowController {
             win.center()
         }
         WindowChrome.apply(to: win)
+        // The window is non-opaque so the glass sheet shows the desktop in
+        // the top bar + gaps; the panes are opaque tiles, so the streaming
+        // terminal never drags the window through a per-frame desktop
+        // recomposite. Solid mode makes the whole window opaque (no glass).
+        prefs.$solidGlass
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak win] solid in
+                if let win { WindowChrome.setOpaque(solid, on: win) }
+            }
+            .store(in: &glassCancellables)
         win.makeKeyAndOrderFront(nil)
         self.window = win
 
         // Back-link so AppState.closeTab can close THIS window.
         state.ownWindow = win
 
-        // Pause the expensive live Liquid Glass when this window isn't
-        // actually on screen (other Space / occluded) or the app is
-        // inactive. That extra GPU-composited glass layer — which
-        // Ghostty has no equivalent of — stacked on libghostty's
-        // background blur is what made Spaces / Mission Control / Dock
-        // animations janky. Recompute on occlusion + app-active changes.
+        // Battery saving: drop the live glass backdrop to a solid fill when
+        // this window isn't actually on screen (other Space / occluded) or
+        // the app is inactive — no glass compositing during Mission Control,
+        // Space switches, or while Conterm is hidden. Also pause libghostty
+        // renderers when occluded: streaming content otherwise keeps drawing
+        // frames nobody can see. Recompute on occlusion + app-active changes.
         let recompute: () -> Void = { [weak win, weak state] in
             guard let win, let state else { return }
-            let visible = win.occlusionState.contains(.visible)
-            let wanted = visible && NSApp.isActive
+            let wanted = win.occlusionState.contains(.visible) && NSApp.isActive
             if state.heavyGlassEnabled != wanted {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     state.heavyGlassEnabled = wanted
                 }
             }
-            // Pause libghostty renderers too: a covered / minimized /
-            // other-Space window with streaming content otherwise keeps
-            // drawing frames nobody can see. Keyed to occlusion only
-            // (not app-active) — a visible window should keep rendering
-            // while the user watches it from another app.
             state.syncSurfaceOcclusion()
         }
         let nc = NotificationCenter.default

@@ -19,11 +19,18 @@ enum Theme {
         })
     }
 
-    // Palette — neutral, low-saturation. Lets whatever is behind the
-    // window show through cleanly.
-    static let bg            = Color.black.opacity(0.32)
-    static let bgElevated    = Color.white.opacity(0.06)
-    static let surfaceTint   = Color.white.opacity(0.03)
+    // Palette — neutral, low-saturation.
+
+    /// Opaque backing for a terminal pane. Each pane is a solid tile laid
+    /// on the window glass sheet — opaque so the glass shows only in the
+    /// top bar + gaps, and so the streaming region never blends against the
+    /// desktop. Near-black to frame the terminal cells at the rounded edge.
+    static let paneTile      = Color(red: 0.05, green: 0.055, blue: 0.075)
+
+    /// Solid bed for the pane-floating chips (the dir/title pill, the
+    /// command-result badge). Opaque so they read as solid chips over the
+    /// terminal, a step lighter than `paneTile` for separation.
+    static let paneTitleBar  = Color(red: 0.12, green: 0.13, blue: 0.16)
 
     /// Accent: near-white cool on dark glass, near-black cool on light
     /// glass. Stays neutral (not a saturated blue) so it doesn't tint
@@ -47,16 +54,11 @@ enum Theme {
     static let stroke        = Color.white.opacity(0.08)
     static let strokeStrong  = Color.white.opacity(0.18)
 
-    /// A neutral, very faint white glow under the focused pane. Reads as
-    /// "this is active" without coloring it.
-    static let focusGlow     = Color.white.opacity(0.20)
-
     // Geometry tokens shared across the chrome.
     static let windowCorner:    CGFloat = 18
     static let paneCorner:      CGFloat = 12
     static let pillCorner:      CGFloat = 10
     static let tabBarHeight:    CGFloat = 38
-    static let tabSidebarWidth: CGFloat = 138
 
     // Springs — three flavors that get reused everywhere.
     enum Spring {

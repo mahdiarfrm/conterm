@@ -3,20 +3,33 @@ import SwiftUI
 /// Glass + on a sweeping highlight when hovered. Compact (22 pt) so it
 /// matches the slimmer tab bar.
 struct NewTabButton: View {
+    /// #e6d40e — the new-tab disc's signature yellow.
+    static let discYellow = Color(red: 0.902, green: 0.831, blue: 0.055)
+
     var action: () -> Void
+    @EnvironmentObject private var prefs: Preferences
     @State private var hovering = false
     @State private var pressed = false
     @State private var shimmer = false
 
+    /// Lit yellow when the action accent is a colour; plain glass in mono
+    /// (paired with the action cluster).
+    private var colored: Bool { prefs.actionAccent.isColored }
+
     var body: some View {
         Button(action: action) {
             ZStack {
-                // Glass disc.
+                // Yellow disc (#e6d40e) when colored, else a glass disc.
+                // Keeps the glassy top highlight + hover sweep below.
                 Circle()
-                    .fill(hovering ? Color.white.opacity(0.10) : .clear)
+                    .fill(colored
+                        ? Self.discYellow.opacity(hovering ? 1.0 : 0.92)
+                        : (hovering ? Color.white.opacity(0.10) : .clear))
                     .overlay(
                         Circle().strokeBorder(
-                            hovering ? Color.white.opacity(0.35) : Theme.stroke,
+                            colored
+                                ? (hovering ? Color.white.opacity(0.45) : Color.black.opacity(0.18))
+                                : (hovering ? Color.white.opacity(0.35) : Theme.stroke),
                             lineWidth: 0.5
                         )
                     )
@@ -56,9 +69,9 @@ struct NewTabButton: View {
 
                 Image(systemName: "plus")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(
-                        hovering ? Theme.textPrimary : Theme.textSecondary
-                    )
+                    .foregroundStyle(colored
+                        ? Color.black
+                        : (hovering ? Theme.textPrimary : Theme.textSecondary))
             }
             .frame(width: 26, height: 26)
             .scaleEffect(pressed ? 0.85 : (hovering ? 1.08 : 1.0))

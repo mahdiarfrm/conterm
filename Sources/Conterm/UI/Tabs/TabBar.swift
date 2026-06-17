@@ -343,57 +343,38 @@ private func toolbarIconColor(hovering: Bool, onRed: Bool) -> Color {
 private struct ActionBarGlass: ViewModifier {
     @EnvironmentObject var prefs: Preferences
     /// The traffic-lights pill shares this chrome but stays glass —
-    /// only the action cluster wears the red.
+    /// only the action cluster wears the accent.
     var redAllowed: Bool = true
+    /// Opaque bed instead of a translucent lens. Used by the floating
+    /// lights pill, which sits over the terminal (not the desktop), so a
+    /// see-through capsule there reads as washed-out.
+    var solid: Bool = false
 
     func body(content: Content) -> some View {
-        if prefs.redActionBar && redAllowed {
-            // Conterm red (#ff2e2e): flat and opaque — no gradient,
-            // shadow, or glass treatment. The one saturated control on
-            // an otherwise monochrome chrome; a translucent or shaded
-            // red sinks into the Liquid Glass around it.
+        if let accent = prefs.actionAccent.fill, redAllowed {
+            // Flat, opaque accent fill — no gradient, shadow, or glass: the
+            // one saturated control on an otherwise monochrome chrome; a
+            // translucent or shaded accent sinks into the glass around it.
             content
                 .environment(\.onRedPill, true)
                 .background(
-                    Capsule(style: .continuous)
-                        .fill(Color(red: 1.0, green: 0.18, blue: 0.18))
+                    Capsule(style: .continuous).fill(accent)
                 )
         } else {
-            // Monochrome glass. Light-mode tints with white (keeps
-            // the capsule legible on light desktops and lets dark
-            // icons sit on a bright bed); dark-mode keeps the deep
-            // tint that pops on any desktop.
-            let tint = prefs.lightGlass
-                ? Color.white.opacity(0.55)
-                : Color.black.opacity(0.24)
-            let topEdge: [Color] = prefs.lightGlass
-                ? [Color.white.opacity(0.85), Color.white.opacity(0.20)]
-                : [Color.white.opacity(0.28), Color.white.opacity(0.05)]
-            let fallbackStroke = prefs.lightGlass
-                ? Color.black.opacity(0.10)
-                : Color.white.opacity(0.16)
-
-            if #available(macOS 26, *) {
-                content
-                    .glassEffect(.regular.tint(tint), in: .capsule)
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(
-                                LinearGradient(colors: topEdge,
-                                               startPoint: .top, endPoint: .bottom),
-                                lineWidth: 0.5)
-                            .blendMode(.plusLighter)
-                            .allowsHitTesting(false)
-                    )
-            } else {
-                content
-                    .background(Capsule(style: .continuous).fill(tint))
-                    .background(Capsule(style: .continuous).fill(.ultraThinMaterial))
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(fallbackStroke, lineWidth: 0.5)
-                    )
-            }
+            // Flat capsule — a solid bed, or a tinted lens on the window
+            // glass sheet (see LiquidGlass `chromeFill`). Never its own glass.
+            content
+                .background(Capsule(style: .continuous)
+                    .fill(solid ? Theme.paneTitleBar : chromeFill(prefs)))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(colors: chromeEdge(prefs),
+                                           startPoint: .top, endPoint: .bottom),
+                            lineWidth: 0.5)
+                        .blendMode(.plusLighter)
+                        .allowsHitTesting(false)
+                )
         }
     }
 }
@@ -646,7 +627,7 @@ struct FloatingLightsAutohidePill: View {
         }
         .padding(.horizontal, 8)
         .frame(height: 32)
-        .modifier(ActionBarGlass(redAllowed: false))
+        .modifier(ActionBarGlass(redAllowed: false, solid: true))
         // Never let the pill compress — a narrow sidebar would
         // otherwise push the auto-hide icon on top of the native
         // traffic lights (the lights' x is fixed at the window edge).

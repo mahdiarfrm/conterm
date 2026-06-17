@@ -70,6 +70,21 @@ enum WindowChrome {
         // resize handles much easier to grab.
         WindowEdgeResizers.install(in: window)
     }
+
+    /// Translucent (glass shows the desktop/blur through it) vs fully
+    /// opaque. A non-opaque window forces WindowServer to re-blend the
+    /// whole window against whatever's behind it on every terminal update
+    /// — the dominant compositor cost during active output, and why a
+    /// translucent window warms up under heavy work where an opaque one
+    /// (bare Ghostty) stays cool. The content view stays rounded-clipped;
+    /// in opaque mode the corner gaps fill with the solid backing. Wired
+    /// to the "Off" Liquid Glass mode.
+    static func setOpaque(_ opaque: Bool, on window: NSWindow) {
+        window.isOpaque = opaque
+        window.backgroundColor = opaque
+            ? NSColor(red: 0.05, green: 0.055, blue: 0.075, alpha: 1)
+            : .clear
+    }
 }
 
 /// Reposition the three traffic-light buttons by yOffset (points
