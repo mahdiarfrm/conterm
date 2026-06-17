@@ -195,14 +195,24 @@ struct SettingsPanel: View {
 
             // Glass
             card {
-                SettingsRow(title: "Frost",
-                            subtitle: "How opaque Conterm's glass surfaces are. Does not blur the desktop.") {
-                    HStack(spacing: 8) {
-                        Text("Clear").subLabel().fixedSize()
-                        Slider(value: $prefs.glassiness, in: 0.0...1.0).frame(width: 180)
-                        Text("Frosted").subLabel().fixedSize()
+                SettingsRow(title: "Glass",
+                            subtitle: "The window is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Solid turns it off for an opaque window.") {
+                    Picker("", selection: Binding(
+                        get: { prefs.solidGlass },
+                        set: { prefs.solidGlass = $0 }
+                    ).withSound()) {
+                        Text("Glass").tag(false)
+                        Text("Solid").tag(true)
                     }
-                    .fixedSize(horizontal: true, vertical: false)
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 150)
+                }
+                SettingsRow(title: "Solid panes",
+                            subtitle: "Paint panes on solid black instead of letting the glass show through the cells. Far cooler on fanless Macs — the desktop never re-composites under a streaming pane — so it's on by default. Off lets a translucent terminal reveal the glass behind it.") {
+                    Toggle("", isOn: $prefs.opaquePanes.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
                 }
                 SettingsRow(title: "Tint",
                             subtitle: "Cool dark or cool light.") {
@@ -214,38 +224,62 @@ struct SettingsPanel: View {
                     .labelsHidden()
                     .frame(width: 150)
                 }
-                SettingsRow(title: "Liquid Glass overlays",
-                            subtitle: "Use macOS 26 glass for the palette, search, notifications, and other panels.") {
+                SettingsRow(title: "Frost",
+                            subtitle: "How clear the glass reads. Clear shows the desktop through the top bar and gaps; frost it up for more privacy on a busy wallpaper. Does not change its cost.") {
+                    HStack(spacing: 8) {
+                        Text("Clear").subLabel().fixedSize()
+                        Slider(value: $prefs.glassiness, in: 0.0...1.0).frame(width: 180)
+                        Text("Frosted").subLabel().fixedSize()
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+                SettingsRow(title: "Glass panels",
+                            subtitle: "Use real Liquid Glass for overlay panels — Command Palette, Search, Settings, Notifications. Off (default) paints them as solid cards, which is cheaper since they cover the terminal.") {
                     Toggle("", isOn: $prefs.liquidGlassPanels.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()
                 }
-                // Low-power glass forces the static path, so this knob
-                // has no effect while it's on.
-                .disabled(prefs.lowPowerGlass)
-                .opacity(prefs.lowPowerGlass ? 0.4 : 1)
-                if prefs.lowPowerGlass {
-                    Text("Overridden while Low-power glass is on.")
-                        .subLabel()
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                SettingsRow(title: "Action pill",
+                            subtitle: "The bell / search / ⌘K cluster and the new-tab + wear an accent. Monochrome returns both to plain glass.") {
+                    HStack(spacing: 7) {
+                        ForEach(Preferences.ActionAccent.allCases) { accent in
+                            AccentSwatch(accent: accent,
+                                         selected: prefs.actionAccent == accent) {
+                                prefs.actionAccent = accent
+                            }
+                        }
+                    }
                 }
-                SettingsRow(title: "Battery saver",
-                            subtitle: "Use a flat fill when Conterm isn't in the foreground.") {
+                SettingsRow(title: "Reduce agent-pill motion",
+                            subtitle: "Calm the agent status pill — no sweeping glow or mark spin. Its states still update.") {
+                    Toggle("", isOn: Binding(
+                        get: { prefs.agentPillLite },
+                        set: { prefs.agentPillLite = $0 }
+                    ).withSound())
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+                SettingsRow(title: "Battery saving",
+                            subtitle: "Drop the window glass to solid while Conterm is hidden, inactive, or on another Space — so Mission Control and desktop switches don't composite the glass sheet.") {
                     Toggle("", isOn: $prefs.batterySavingMode.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()
                 }
-                SettingsRow(title: "Low-power glass",
-                            subtitle: "Flat dark fill for the agent pill and overlay panels instead of live Liquid Glass. Cooler and lighter on battery.") {
-                    Toggle("", isOn: $prefs.lowPowerGlass.withSound())
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                }
-                SettingsRow(title: "Red action pill",
-                            subtitle: "The bell / search / ⌘K cluster wears Conterm red. Off returns it to monochrome glass.") {
-                    Toggle("", isOn: $prefs.redActionBar.withSound())
-                        .toggleStyle(.switch)
-                        .labelsHidden()
+                SettingsRow(title: "Efficient rendering",
+                            subtitle: "Redraw the terminal only when its output changes, not on every screen refresh — the biggest battery saver, especially with glass on. Fast scrolling may tear slightly. Relaunch to fully apply.") {
+                    Toggle("", isOn: Binding(
+                        get: { prefs.lowPowerRendering },
+                        set: { newValue in
+                            prefs.lowPowerRendering = newValue
+                            // Rebuild the config chain so the new
+                            // window-vsync value lands; a relaunch
+                            // guarantees the renderer's display link is
+                            // recreated if libghostty doesn't swap it live.
+                            Ghostty.App.shared?.reloadConfig()
+                        }
+                    ).withSound())
+                    .toggleStyle(.switch)
+                    .labelsHidden()
                 }
             }
         }
@@ -565,15 +599,6 @@ struct SettingsPanel: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
-                SettingsRow(title: "Agent pill: low-motion",
-                            subtitle: "Reduce animations on the agent status pill. States still update.") {
-                    Toggle("", isOn: Binding(
-                        get: { prefs.agentPillLite },
-                        set: { prefs.agentPillLite = $0 }
-                    ).withSound())
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                }
                 SettingsRow(title: "Claude Code integration",
                             subtitle: "Add hooks to ~/.claude/settings.json so a running Claude shows ready / thinking / needs-input in its pane. Your other hooks are preserved.") {
                     Toggle("", isOn: Binding(
@@ -737,8 +762,7 @@ private struct SettingsBubble: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
-                OverlayPanelBackground(cornerRadius: 20,
-                                       tint: Color.black.opacity(0.22))
+                OverlayPanelBackground(cornerRadius: 20)
             )
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
@@ -1119,6 +1143,45 @@ private struct ThemeSwatch: View {
         .animation(Theme.Spring.snappy, value: hovering)
         .animation(Theme.Spring.snappy, value: isSelected)
         .onHover { hovering = $0 }
+    }
+}
+
+/// One colour dot in the action-pill accent picker. `mono` shows a
+/// half-filled glyph on a faint disc; the rest are saturated circles.
+private struct AccentSwatch: View {
+    let accent: Preferences.ActionAccent
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(accent.fill ?? Color.white.opacity(0.10))
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        Circle().strokeBorder(Color.white.opacity(0.22), lineWidth: 0.5)
+                    )
+                if accent == .mono {
+                    Image(systemName: "circle.lefthalf.filled")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+            .overlay(
+                Circle()
+                    .strokeBorder(selected ? Theme.textPrimary : .clear, lineWidth: 2)
+                    .padding(-3)
+            )
+            .scaleEffect(hovering ? 1.12 : 1.0)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(accent.label)
+        .onHover { hovering = $0 }
+        .animation(Theme.Spring.snappy, value: hovering)
+        .animation(Theme.Spring.snappy, value: selected)
     }
 }
 

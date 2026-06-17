@@ -252,8 +252,10 @@ struct WelcomeWizard: View {
     @State private var navDirection: Int = 1   // +1 forward, -1 back
 
     @State private var configChoice: ConfigChoice = .useDirectly
-    @State private var liquidGlassOverlays = true
-    @State private var pickedLowPowerGlass = true
+    @State private var pickedSolidGlass = false
+    @State private var pickedOpaquePanes = true
+    @State private var pickedGlassPanels = false
+    @State private var pickedEfficientRendering = true
     // Tab orientation + light/dark are now bound directly to prefs
     // for live preview, so they have no local @State mirror. The two
     // remaining picks below are applied only on Get Started.
@@ -302,8 +304,10 @@ struct WelcomeWizard: View {
             // If Ghostty isn't installed, importing isn't an option —
             // default to a clean start.
             if !ghosttyPresent { configChoice = .fresh }
-            liquidGlassOverlays = prefs.liquidGlassPanels
-            pickedLowPowerGlass = prefs.lowPowerGlass
+            pickedSolidGlass = prefs.solidGlass
+            pickedOpaquePanes = prefs.opaquePanes
+            pickedGlassPanels = prefs.liquidGlassPanels
+            pickedEfficientRendering = prefs.lowPowerRendering
             pickedLaunchAnim    = prefs.launchAnimationEnabled
             pickedBatterySaving = prefs.batterySavingMode
             pickedSoundEffects  = prefs.soundEffectsEnabled
@@ -322,7 +326,7 @@ struct WelcomeWizard: View {
             footer
         }
         .background(
-            OverlayPanelBackground(cornerRadius: 24, tint: Color.black.opacity(0.32))
+            OverlayPanelBackground(cornerRadius: 24)
         )
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         // Wet-glass top-edge highlight + an accent glow rim.
@@ -645,14 +649,38 @@ struct WelcomeWizard: View {
     // MARK: - Glass
 
     private var glassSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("Overlays", systemImage: "square.on.square")
-            Toggle(isOn: $liquidGlassOverlays.withSound()) {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Glass", systemImage: "square.on.square")
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Glass")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                Picker("", selection: $pickedSolidGlass.withSound()) {
+                    Text("Glass").tag(false)
+                    Text("Solid").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                Text("The window is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Solid turns it off for an opaque window.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Toggle(isOn: $pickedOpaquePanes.withSound()) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Liquid Glass overlays")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("Use macOS 26 glass for the palette, search, and other panels. Off uses classic vibrancy.")
+                    HStack(spacing: 6) {
+                        Text("Solid panes")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text("RECOMMENDED")
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .foregroundStyle(Theme.accent)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Capsule().fill(Theme.accent.opacity(0.16)))
+                    }
+                    Text("Each pane rides on solid black instead of letting the glass show through the cells. The desktop never re-composites under a streaming terminal, so it runs much cooler — the right default on a fanless Mac. Turn off for see-through panes if you prefer the look and have the headroom.")
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -660,24 +688,27 @@ struct WelcomeWizard: View {
             }
             .toggleStyle(.switch)
             .tint(Theme.accent)
-            // Low-power glass forces the static path, so this knob has
-            // no effect while it's on.
-            .disabled(pickedLowPowerGlass)
-            .opacity(pickedLowPowerGlass ? 0.4 : 1)
 
-            if pickedLowPowerGlass {
-                Text("Overridden while Low-power glass is on.")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            Toggle(isOn: $pickedLowPowerGlass.withSound()) {
+            Toggle(isOn: $pickedGlassPanels.withSound()) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Low-power glass")
+                    Text("Glass panels")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("Flat dark pill and panels instead of live glass. Cooler and lighter on battery.")
+                    Text("Use real Liquid Glass for overlay panels — Command Palette, Search, Settings. Off (default) paints them as solid cards, which is cheaper since they cover the terminal.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+            .tint(Theme.accent)
+
+            Toggle(isOn: $pickedEfficientRendering.withSound()) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Efficient rendering")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Redraw only when the terminal changes, not every screen refresh — the biggest battery saver. Fast scrolling may tear slightly.")
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -793,8 +824,10 @@ struct WelcomeWizard: View {
 
     private func finish(applyConfig: Bool) {
         if applyConfig {
-            prefs.liquidGlassPanels     = liquidGlassOverlays
-            prefs.lowPowerGlass         = pickedLowPowerGlass
+            prefs.solidGlass            = pickedSolidGlass
+            prefs.opaquePanes           = pickedOpaquePanes
+            prefs.liquidGlassPanels     = pickedGlassPanels
+            prefs.lowPowerRendering     = pickedEfficientRendering
             // tabOrientation + lightGlass are already current — both
             // pickers write straight to prefs for live preview.
             prefs.launchAnimationEnabled = pickedLaunchAnim
