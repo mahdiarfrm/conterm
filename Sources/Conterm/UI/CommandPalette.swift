@@ -487,7 +487,7 @@ struct CommandPalette: View {
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.horizontal, 13)
                 .frame(maxHeight: .infinity)
-                .modifier(PaletteBubble(cornerRadius: 28, darken: 0.14))
+                .modifier(PaletteBubble(cornerRadius: 38, darken: 0.14))
 
                 HStack(spacing: 2) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, cmd in
@@ -507,7 +507,7 @@ struct CommandPalette: View {
                     }
                 }
                 .padding(5)
-                .modifier(PaletteBubble(cornerRadius: 28))
+                .modifier(PaletteBubble(cornerRadius: 38))
             }
             .fixedSize(horizontal: false, vertical: true)
             .opacity(appeared ? 1 : 0)
@@ -552,6 +552,7 @@ struct CommandPalette: View {
             // directory in another tool" operations, so they shouldn't
             // be buried under the section navigators.
             Command(id: "reveal_finder", icon: "folder",
+                    assetName: "finder",
                     title: "Open in Finder",
                     subtitle: "Open this pane's directory in Finder",
                     shortcut: "",
@@ -1678,12 +1679,23 @@ struct CommandPalette: View {
 private struct PaletteBubble: ViewModifier {
     let cornerRadius: CGFloat
     var darken: Double = 0
+    @EnvironmentObject private var prefs: Preferences
 
     func body(content: Content) -> some View {
         content
             .background(
                 ZStack {
-                    OverlayPanelBackground(cornerRadius: cornerRadius)
+                    // `Glass panels` on → real frosted Liquid Glass. Off
+                    // (default) → a solid black panel: an opaque sheet that
+                    // doesn't sample the terminal behind it. `darken` sinks
+                    // the input bar a touch below the results either way.
+                    if prefs.liquidGlassPanels, #available(macOS 26, *) {
+                        PaneLiquidGlass(cornerRadius: cornerRadius,
+                                        frostiness: 0.85,
+                                        light: prefs.lightGlass)
+                    } else {
+                        Color(red: 0.04, green: 0.04, blue: 0.05)
+                    }
                     if darken > 0 { Color.black.opacity(darken) }
                 }
             )
@@ -1721,7 +1733,7 @@ private struct SuggestionSegment: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 segmentIcon
-                    .frame(height: 20)
+                    .frame(height: 26)
                 Text(command.title)
                     .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundStyle(isFocused ? Theme.textPrimary
@@ -1733,15 +1745,15 @@ private struct SuggestionSegment: View {
             .padding(.vertical, 9)
             .padding(.horizontal, 6)
             .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(isFocused ? Theme.accentSoft : .clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
                                   lineWidth: 0.5)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         }
         .buttonStyle(.plain)
         .focusable(false)
@@ -1757,13 +1769,13 @@ private struct SuggestionSegment: View {
             Image(nsImage: templated)
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 17, height: 17)
+                .frame(width: 23, height: 23)
                 .foregroundStyle(tint)
         } else if command.icon == RobotGlyph.iconName {
-            RobotGlyph(color: tint, size: 18)
+            RobotGlyph(color: tint, size: 24)
         } else {
             Image(systemName: command.icon)
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(tint)
         }
     }
@@ -1834,11 +1846,11 @@ private struct CommandRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(isFocused ? Theme.accentSoft : .clear)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
                               lineWidth: 0.5)
         )
@@ -1958,7 +1970,7 @@ private struct NewNoteRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(isFocused ? Theme.accentSoft : .clear)
         )
         .contentShape(Rectangle())
@@ -1996,11 +2008,11 @@ private struct NoteRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(isFocused ? Theme.accentSoft : .clear)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
                               lineWidth: 0.5)
         )
@@ -2112,11 +2124,11 @@ private struct GroupManageRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(hovering ? Color.white.opacity(0.06) : Color.white.opacity(0.02))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(color.opacity(0.35), lineWidth: 0.5)
         )
         .onHover { hovering = $0 }
@@ -2232,11 +2244,11 @@ private struct SessionRowView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(isFocused ? Theme.accentSoft : .clear)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
                               lineWidth: 0.5)
         )
@@ -2331,11 +2343,11 @@ private struct AgentRowView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(isFocused ? Theme.accentSoft : .clear)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
                               lineWidth: 0.5)
         )
