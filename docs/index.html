@@ -102,8 +102,8 @@ img,video{max-width:100%;display:block}
   overflow:hidden;
   /* Faint grey base lift in the lower half so the black isn't flat. */
   background:
-    radial-gradient(60vw 50vh ellipse at 10% 96%,
-      rgba(241,213,0,.05) 0%, transparent 55%),
+    radial-gradient(66vw 54vh ellipse at 8% 98%,
+      rgba(241,213,0,.13) 0%, transparent 58%),
     radial-gradient(120vw 90vh ellipse at 80% 115%,
       #16161B 0%, transparent 60%),
     var(--bg);
@@ -301,8 +301,16 @@ nav.scrolled{transform:translateY(0)}
   width: 120px; height: 120px;
   margin: 30px auto 6px;
   border-radius: 27px;
-  filter: drop-shadow(0 24px 60px rgba(0,0,0,.55))
-          drop-shadow(0 8px 18px rgba(0,0,0,.4));
+  /* The icon is near-black, so on the dark page it needs lifting: a
+     crisp warm edge plus two soft colour halos placed like the icon's
+     own marks — red upper-right (the pill), yellow lower-left (the +
+     disc) — over the usual depth shadow. */
+  filter:
+    drop-shadow(0 0 .5px rgba(255,248,230,.45))
+    drop-shadow(11px -9px 34px rgba(255,46,46,.28))
+    drop-shadow(-13px 11px 38px rgba(241,213,0,.24))
+    drop-shadow(0 22px 54px rgba(0,0,0,.5))
+    drop-shadow(0 8px 16px rgba(0,0,0,.38));
 }
 .hero-logo{
   width: min(340px, 72vw);
@@ -604,6 +612,18 @@ kbd{
 .tabs-mock .side .tab .swatch{
   width: 7px; height: 7px; border-radius: 50%;
   background: var(--text); opacity: .55;
+}
+/* New-tab row pinned to the bottom of the sidebar — the + disc wears
+   the app's yellow (the new-tab accent), the one spot yellow leads. */
+.tabs-mock .side .newtab{
+  display:flex; align-items:center; gap:7px;
+  margin-top:auto; padding:7px 8px; color:var(--muted);
+}
+.tabs-mock .side .newtab .plus{
+  width:14px; height:14px; border-radius:50%;
+  background: var(--yellow); color:#000;
+  font-weight:800; font-size:11px; line-height:14px; text-align:center;
+  box-shadow: 0 0 9px var(--yellow-glow);
 }
 .tabs-mock .body{
   background: rgba(10,10,14,.86);
@@ -1100,6 +1120,7 @@ footer{
             <div class="tab"><span class="swatch"></span> staging</div>
             <div class="grp">Notes</div>
             <div class="tab"><span class="swatch"></span> scratch</div>
+            <div class="newtab"><span class="plus">+</span> new tab</div>
           </div>
           <div class="body">
             <div class="ph"><i></i><i></i><i></i></div>
