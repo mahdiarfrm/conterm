@@ -3,8 +3,8 @@ import SwiftUI
 /// Glass + on a sweeping highlight when hovered. Compact (22 pt) so it
 /// matches the slimmer tab bar.
 struct NewTabButton: View {
-    /// #e6d40e — the new-tab disc's signature yellow.
-    static let discYellow = Color(red: 0.902, green: 0.831, blue: 0.055)
+    /// #F1D500 — the new-tab disc's signature yellow.
+    static let discYellow = Color(red: 0.945, green: 0.835, blue: 0.0)
 
     var action: () -> Void
     @EnvironmentObject private var prefs: Preferences
@@ -12,18 +12,20 @@ struct NewTabButton: View {
     @State private var pressed = false
     @State private var shimmer = false
 
-    /// Lit yellow when the action accent is a colour; plain glass in mono
-    /// (paired with the action cluster).
-    private var colored: Bool { prefs.actionAccent.isColored }
+    /// Lit in the chosen accent when colored; plain glass in mono. Picked
+    /// independently of the action cluster via `newTabAccent`.
+    private var colored: Bool { prefs.newTabAccent.isColored }
+    /// The disc's fill color (falls back to the signature yellow).
+    private var discColor: Color { prefs.newTabAccent.fill ?? Self.discYellow }
 
     var body: some View {
         Button(action: action) {
             ZStack {
-                // Yellow disc (#e6d40e) when colored, else a glass disc.
-                // Keeps the glassy top highlight + hover sweep below.
+                // Accent disc when colored, else a glass disc. Keeps the
+                // glassy top highlight + hover sweep below.
                 Circle()
                     .fill(colored
-                        ? Self.discYellow.opacity(hovering ? 1.0 : 0.92)
+                        ? discColor.opacity(hovering ? 1.0 : 0.92)
                         : (hovering ? Color.white.opacity(0.10) : .clear))
                     .overlay(
                         Circle().strokeBorder(

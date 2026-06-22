@@ -260,7 +260,6 @@ struct WelcomeWizard: View {
     // for live preview, so they have no local @State mirror. The two
     // remaining picks below are applied only on Get Started.
     @State private var pickedLaunchAnim = true
-    @State private var pickedBatterySaving = true
     @State private var pickedSoundEffects = true
     @State private var appeared = false
 
@@ -309,7 +308,6 @@ struct WelcomeWizard: View {
             pickedGlassPanels = prefs.liquidGlassPanels
             pickedEfficientRendering = prefs.lowPowerRendering
             pickedLaunchAnim    = prefs.launchAnimationEnabled
-            pickedBatterySaving = prefs.batterySavingMode
             pickedSoundEffects  = prefs.soundEffectsEnabled
         }
     }
@@ -435,21 +433,6 @@ struct WelcomeWizard: View {
             .labelsHidden()
 
             glassSection
-
-            sectionTitle("Battery saver", systemImage: "battery.75")
-            Toggle(isOn: $pickedBatterySaving.withSound()) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Use a flat fill when in the background")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("Recommended on laptops.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .toggleStyle(.switch)
-            .tint(Theme.accent)
         }
     }
 
@@ -653,7 +636,7 @@ struct WelcomeWizard: View {
             sectionTitle("Glass", systemImage: "square.on.square")
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Glass")
+                Text("Window")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                 Picker("", selection: $pickedSolidGlass.withSound()) {
@@ -708,7 +691,7 @@ struct WelcomeWizard: View {
                     Text("Efficient rendering")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("Redraw only when the terminal changes, not every screen refresh — the biggest battery saver. Fast scrolling may tear slightly.")
+                    Text("Redraw only when the terminal changes, not every screen refresh — a big battery saver. Fast scrolling may tear slightly.")
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -831,7 +814,6 @@ struct WelcomeWizard: View {
             // tabOrientation + lightGlass are already current — both
             // pickers write straight to prefs for live preview.
             prefs.launchAnimationEnabled = pickedLaunchAnim
-            prefs.batterySavingMode     = pickedBatterySaving
             prefs.soundEffectsEnabled   = pickedSoundEffects
             prefs.useDefaultConfig = false
 
