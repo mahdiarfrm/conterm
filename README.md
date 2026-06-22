@@ -101,9 +101,9 @@ One search over everything:
 ### Appearance
 
 - **Liquid Glass chrome** *(macOS 26)* — refractive glass behind every surface
-  with a Clear↔Frosted slider and light/dark tint, plus a battery-saving flat
-  fill when the window is inactive. On macOS 14–15 the app runs fully with
-  plain (non-glass) chrome.
+  with a Clear↔Frosted slider and light/dark tint, plus an opaque Solid mode
+  when you want it. On macOS 14–15 the app runs fully with plain (non-glass)
+  chrome.
 - **Live system stats** — optional CPU / RAM / network sparklines in the tab
   bar, with a popover for detailed graphs.
 - **Scrollback search** (`⌘F`), **SSH-host detection** in the pane chrome, and

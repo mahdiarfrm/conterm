@@ -45,6 +45,9 @@
   --red:          #FF2E2E;            /* the app's action-pill red */
   --red-glow:     rgba(255,46,46,.65);
 
+  --yellow:       #F1D500;            /* the icon's new-tab + disc */
+  --yellow-glow:  rgba(241,213,0,.55);
+
   --hairline:     rgba(255,248,230,.055);
   --hairline-2:   rgba(255,248,230,.12);
   --hairline-3:   rgba(255,248,230,.22);
@@ -63,7 +66,10 @@
 /* Wide-gamut displays render the pill red at full chroma — sRGB
    clips it duller than the app draws it. */
 @supports (color: color(display-p3 1 0 0)){
-  :root{ --red: color(display-p3 1 .14 .13) }
+  :root{
+    --red: color(display-p3 1 .14 .13);
+    --yellow: color(display-p3 .95 .84 0);
+  }
 }
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -84,10 +90,11 @@ img,video{max-width:100%;display:block}
 
 /* ─────────────────────────────────────────────────────────────
    ATMOSPHERE
-   Abstract colour field behind everything, echoing the banner:
-   black ground, a deep-red blob upper-left and a grey counter-
-   blob lower-right, both drifting very slowly. The grain overlay
-   on top makes the gradients read as texture instead of vignette.
+   Abstract colour field behind everything, echoing the icon:
+   black ground, a deep-red blob upper-left, a grey counter-blob
+   lower-right, and a faint yellow wash lower-left (the icon's
+   + disc), all drifting very slowly. The grain overlay on top
+   makes the gradients read as texture instead of vignette.
    Opacities stay low enough that body text never loses contrast.
 ───────────────────────────────────────────────────────────── */
 .atmos{
@@ -95,6 +102,8 @@ img,video{max-width:100%;display:block}
   overflow:hidden;
   /* Faint grey base lift in the lower half so the black isn't flat. */
   background:
+    radial-gradient(60vw 50vh ellipse at 10% 96%,
+      rgba(241,213,0,.05) 0%, transparent 55%),
     radial-gradient(120vw 90vh ellipse at 80% 115%,
       #16161B 0%, transparent 60%),
     var(--bg);
@@ -934,7 +943,7 @@ footer{
 
   <!-- ============ HERO ============ -->
   <section class="hero">
-    <span class="pill"><span class="dot"></span> v2.2.0 — now available</span>
+    <span class="pill"><span class="dot"></span> v2.3.0 — now available</span>
     <img class="hero-icon" src="assets/icon.png" alt="Conterm app icon" />
     <img class="hero-logo" src="assets/text-logo.png" alt="Conterm" />
     <h1>A modern way to <span class="grad">connect</span>.</h1>
