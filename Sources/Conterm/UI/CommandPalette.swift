@@ -956,10 +956,11 @@ struct CommandPalette: View {
 
     private func phaseRank(_ p: AgentStatus.Phase) -> Int {
         switch p {
-        case .attention: return 0
-        case .working:   return 1
-        case .ready:     return 2
-        case .idle:      return 3
+        case .attention:   return 0
+        case .working:     return 1
+        case .interrupted: return 2
+        case .ready:       return 3
+        case .idle:        return 4
         }
     }
 
@@ -2365,13 +2366,19 @@ private struct AgentRowView: View {
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(Capsule().fill(accent.opacity(0.18)))
         case .working:
-            Text("working")
+            Text("thinking")
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(Capsule().fill(Color.white.opacity(0.07)))
         case .ready:
             Text("ready")
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Capsule().fill(Color.white.opacity(0.07)))
+        case .interrupted:
+            Text("interrupted")
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
                 .padding(.horizontal, 6).padding(.vertical, 2)

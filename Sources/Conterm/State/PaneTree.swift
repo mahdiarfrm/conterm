@@ -124,7 +124,7 @@ enum AgentTool: String, Equatable {
 
 /// What an AI agent is doing in a pane.
 struct AgentStatus: Equatable {
-    enum Phase: Equatable { case idle, ready, working, attention }
+    enum Phase: Equatable { case idle, ready, working, attention, interrupted }
     var phase: Phase = .idle
     var tool: AgentTool = .claude
     /// 0…100 when a determinate progress was reported, else nil.
@@ -137,11 +137,12 @@ struct AgentStatus: Equatable {
         let name = tool.displayName
         switch phase {
         case .idle:      return name
-        case .ready:     return "\(name) is Ready."
+        case .ready:     return "\(name) is ready"
         case .working:
             if let p = progress { return "\(name) is thinking… \(p)%" }
             return "\(name) is thinking…"
         case .attention: return "\(name) needs you"
+        case .interrupted: return "\(name) interrupted"
         }
     }
 }

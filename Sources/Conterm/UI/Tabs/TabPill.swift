@@ -63,9 +63,8 @@ struct TabPill: View {
         // AppKit-level click handling — no double-click disambiguation
         // delay. Single click selects; double click renames. Trailing
         // ~24 pt zone (where the close X sits when hovering) fires the
-        // close action instead of select — fixes the bug where the
-        // catcher absorbed hover events so the close button could
-        // never become hit-testable.
+        // close action instead of select, so the close button stays
+        // hit-testable rather than being swallowed by the hover catcher.
         .overlay {
             ClickCatcher(
                 // Single-click selects. Double-click is a no-op (it
@@ -166,12 +165,24 @@ struct TabPill: View {
             return isSelected ? Theme.textPrimary
                               : Theme.textSecondary.opacity(0.7)
         }()
+        // An agent running in any of this tab's panes overrides the dot so
+        // a background "needs you" / "thinking" is visible from the bar.
+        let agentColor: Color? = {
+            switch tab.agentPhase {
+            case .attention: return Color(red: 0.93, green: 0.49, blue: 0.20)
+            case .working:   return Color(red: 0.93, green: 0.49, blue: 0.20).opacity(0.85)
+            default:         return nil
+            }
+        }()
+        let color = agentColor ?? baseColor
+        let lit = tab.agentPhase == .attention || isSelected
         return Circle()
-            .fill(baseColor)
+            .fill(color)
             .frame(width: 6, height: 6)
-            .shadow(color: isSelected ? baseColor.opacity(0.55) : .clear,
-                    radius: isSelected ? 3 : 0)
+            .shadow(color: lit ? color.opacity(0.6) : .clear,
+                    radius: lit ? 3 : 0)
             .animation(Theme.Spring.snappy, value: isSelected)
+            .animation(Theme.Spring.snappy, value: tab.agentPhase)
     }
 
     /// Right-click submenu for browser-style tab groups.

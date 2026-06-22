@@ -30,6 +30,21 @@ final class Tab: ObservableObject, Identifiable {
     /// SessionStore.
     @Published var groupID: UUID? = nil
 
+    /// Most attention-worthy agent phase across this tab's panes, so the
+    /// tab pill can show a glanceable dot for an agent running in a
+    /// non-visible tab. Pane agents are nested ObservableObjects, so a
+    /// pane change doesn't republish the Tab on its own —
+    /// `recomputeAgentPhase()` (called from the agent callbacks that
+    /// mutate `pane.agent`) keeps this in sync.
+    @Published var agentPhase: AgentStatus.Phase = .idle
+
+    /// Collapse all panes' agent phases to the single most important one.
+    func recomputeAgentPhase() {
+        let phases = paneTree.root.leaves().map { $0.agent.phase }
+        let priority: [AgentStatus.Phase] = [.attention, .working, .interrupted, .ready]
+        agentPhase = priority.first(where: phases.contains) ?? .idle
+    }
+
     init(indexLabel: String = "Terminal", customTitle: String? = nil) {
         self.indexLabel = indexLabel
         self.title = customTitle ?? indexLabel
