@@ -177,9 +177,44 @@ extension Ghostty {
             let keepAlive = (view, hostView)
             view = nil
             hostView = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            // Free only once the view has actually left the window. A
+            // fixed delay can't guarantee that — it may fire while the
+            // collapse is still animating and a CoreAnimation commit is
+            // still driving this surface's layer. Polling `window == nil`
+            // ties the free to SwiftUI unmounting the view, so no CA
+            // transaction can touch the surface after it's freed.
+            Self.freeWhenDetached(h, keepAlive: keepAlive, attempt: 0)
+        }
+
+        /// Polls until the closing pane's view is out of the window
+        /// hierarchy (CoreAnimation no longer commits its layer), then
+        /// frees the libghostty surface. ~2s ceiling so a view that never
+        /// unmounts still frees rather than leaking — and at the ceiling
+        /// it force-detaches first so the free still can't race a commit.
+        private static func freeWhenDetached(
+            _ h: ghostty_surface_t,
+            keepAlive: (SurfaceView?, SurfaceHostView?),
+            attempt: Int
+        ) {
+            let mounted = keepAlive.0?.window != nil || keepAlive.1?.window != nil
+            if !mounted {
                 ghostty_surface_free(h)
                 _ = keepAlive
+                return
+            }
+            if attempt >= 20 {
+                keepAlive.1?.removeFromSuperview()
+                keepAlive.0?.removeFromSuperview()
+                DispatchQueue.main.async {
+                    ghostty_surface_free(h)
+                    _ = keepAlive
+                }
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                MainActor.assumeIsolated {
+                    freeWhenDetached(h, keepAlive: keepAlive, attempt: attempt + 1)
+                }
             }
         }
 
