@@ -28,7 +28,7 @@ final class Preferences: ObservableObject {
     /// saturated fill and lights the `+` in its yellow. Colours are kept
     /// dark/saturated enough for white glyphs.
     enum ActionAccent: String, CaseIterable, Identifiable {
-        case mono, red, orange, green, blue, purple, pink
+        case mono, red, orange, yellow, green, blue, purple, pink
         var id: String { rawValue }
         var isColored: Bool { self != .mono }
         var label: String { self == .mono ? "Mono" : rawValue.capitalized }
@@ -38,6 +38,7 @@ final class Preferences: ObservableObject {
             case .mono:   return nil
             case .red:    return Color(red: 1.00, green: 0.18, blue: 0.18)
             case .orange: return Color(red: 1.00, green: 0.50, blue: 0.16)
+            case .yellow: return Color(red: 0.945, green: 0.835, blue: 0.0)
             case .green:  return Color(red: 0.26, green: 0.74, blue: 0.40)
             case .blue:   return Color(red: 0.24, green: 0.52, blue: 1.00)
             case .purple: return Color(red: 0.58, green: 0.40, blue: 1.00)
@@ -171,14 +172,6 @@ final class Preferences: ObservableObject {
     @Published var autoHideSidebar: Bool {
         didSet { ud.set(autoHideSidebar, forKey: K.autoHideSidebar) }
     }
-    /// When ON, Conterm drops the Liquid Glass backdrop to a cheap
-    /// flat fill whenever the window isn't visible to the user
-    /// (occluded, different Space, or app not active). Dramatically
-    /// cuts GPU compositor cost in the background. When OFF, the
-    /// backdrop stays as real Liquid Glass at all times.
-    @Published var batterySavingMode: Bool {
-        didSet { ud.set(batterySavingMode, forKey: K.batterySavingMode) }
-    }
     /// Stop libghostty presenting the terminal on every display refresh
     /// (`window-vsync = false`). Conterm's window is non-opaque so the
     /// glass backdrop shows through; every surface present then makes
@@ -217,6 +210,11 @@ final class Preferences: ObservableObject {
     @Published var actionAccent: ActionAccent {
         didSet { ud.set(actionAccent.rawValue, forKey: K.actionAccent) }
     }
+    /// Color of the new-tab + disc, chosen independently of the action
+    /// cluster's accent. `.mono` = a plain glass disc.
+    @Published var newTabAccent: ActionAccent {
+        didSet { ud.set(newTabAccent.rawValue, forKey: K.newTabAccent) }
+    }
 
     /// Paint each pane on a solid opaque backing instead of letting a
     /// translucent terminal reveal the glass behind it. The desktop never
@@ -253,7 +251,6 @@ final class Preferences: ObservableObject {
         static let autoCheckUpdates  = "conterm.autoCheckUpdates"
         static let showSystemStats  = "conterm.showSystemStats"
         static let autoHideSidebar  = "conterm.autoHideSidebar"
-        static let batterySavingMode = "conterm.batterySavingMode"
         static let lowPowerRendering = "conterm.lowPowerRendering"
         static let useDefaultConfig = "conterm.useDefaultConfig"
         static let lightGlass       = "conterm.lightGlass"
@@ -262,6 +259,7 @@ final class Preferences: ObservableObject {
         static let sshCompatMode    = "conterm.sshCompatMode"
         static let agentPillLite    = "conterm.agentPillLite"
         static let actionAccent     = "conterm.actionAccent"
+        static let newTabAccent     = "conterm.newTabAccent"
         static let opaquePanes      = "conterm.opaquePanes"
         static let soundEffects     = "conterm.soundEffects"
     }
@@ -306,7 +304,6 @@ final class Preferences: ObservableObject {
         self.autoCheckUpdates       = ud.object(forKey: K.autoCheckUpdates) as? Bool ?? true
         self.showSystemStats        = ud.object(forKey: K.showSystemStats) as? Bool ?? true
         self.autoHideSidebar        = ud.object(forKey: K.autoHideSidebar) as? Bool ?? false
-        self.batterySavingMode      = ud.object(forKey: K.batterySavingMode) as? Bool ?? true
         self.lowPowerRendering      = ud.object(forKey: K.lowPowerRendering) as? Bool ?? true
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
         self.lightGlass             = ud.object(forKey: K.lightGlass) as? Bool ?? false
@@ -317,6 +314,9 @@ final class Preferences: ObservableObject {
         self.actionAccent           = ActionAccent(
             rawValue: ud.string(forKey: K.actionAccent) ?? ActionAccent.red.rawValue
         ) ?? .red
+        self.newTabAccent           = ActionAccent(
+            rawValue: ud.string(forKey: K.newTabAccent) ?? ActionAccent.yellow.rawValue
+        ) ?? .yellow
         self.opaquePanes            = ud.object(forKey: K.opaquePanes) as? Bool ?? true
         refreshPaneBlurFromConfig()
         NotificationCenter.default.addObserver(

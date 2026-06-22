@@ -195,7 +195,7 @@ struct SettingsPanel: View {
 
             // Glass
             card {
-                SettingsRow(title: "Glass",
+                SettingsRow(title: "Window",
                             subtitle: "The window is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Solid turns it off for an opaque window.") {
                     Picker("", selection: Binding(
                         get: { prefs.solidGlass },
@@ -240,12 +240,23 @@ struct SettingsPanel: View {
                         .labelsHidden()
                 }
                 SettingsRow(title: "Action pill",
-                            subtitle: "The bell / search / ⌘K cluster and the new-tab + wear an accent. Monochrome returns both to plain glass.") {
+                            subtitle: "The bell / search / ⌘K cluster wears an accent. Monochrome returns it to plain glass.") {
                     HStack(spacing: 7) {
                         ForEach(Preferences.ActionAccent.allCases) { accent in
                             AccentSwatch(accent: accent,
                                          selected: prefs.actionAccent == accent) {
                                 prefs.actionAccent = accent
+                            }
+                        }
+                    }
+                }
+                SettingsRow(title: "New tab",
+                            subtitle: "Color of the new-tab + disc. Monochrome makes it a plain glass disc.") {
+                    HStack(spacing: 7) {
+                        ForEach(Preferences.ActionAccent.allCases) { accent in
+                            AccentSwatch(accent: accent,
+                                         selected: prefs.newTabAccent == accent) {
+                                prefs.newTabAccent = accent
                             }
                         }
                     }
@@ -259,14 +270,8 @@ struct SettingsPanel: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
-                SettingsRow(title: "Battery saving",
-                            subtitle: "Drop the window glass to solid while Conterm is hidden, inactive, or on another Space — so Mission Control and desktop switches don't composite the glass sheet.") {
-                    Toggle("", isOn: $prefs.batterySavingMode.withSound())
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                }
                 SettingsRow(title: "Efficient rendering",
-                            subtitle: "Redraw the terminal only when its output changes, not on every screen refresh — the biggest battery saver, especially with glass on. Fast scrolling may tear slightly. Relaunch to fully apply.") {
+                            subtitle: "Redraw the terminal only when its output changes, not on every screen refresh — a big battery saver, especially with glass on. Fast scrolling may tear slightly. Relaunch to fully apply.") {
                     Toggle("", isOn: Binding(
                         get: { prefs.lowPowerRendering },
                         set: { newValue in
