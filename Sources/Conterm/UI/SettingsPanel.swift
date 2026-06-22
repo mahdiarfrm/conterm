@@ -630,6 +630,23 @@ struct SettingsPanel: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
+                SettingsRow(title: "Diagnostic logging",
+                            subtitle: "Write internal events to ~/Library/Logs/Conterm/conterm.log. A development aid; off by default.") {
+                    HStack(spacing: 10) {
+                        Button {
+                            SoundEffects.shared.play(.click)
+                            DiagnosticLog.reveal()
+                        } label: {
+                            Image(systemName: "folder")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Reveal log in Finder")
+                        Toggle("", isOn: $prefs.diagnosticLogging.withSound())
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                    }
+                }
             }
             card {
                 SettingsRow(title: "Automatic updates",
