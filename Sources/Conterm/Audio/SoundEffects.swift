@@ -154,7 +154,16 @@ final class SoundEffects {
         player.stop()
         player.scheduleBuffer(buffer, at: nil, options: .interrupts,
                               completionHandler: nil)
-        if !player.isPlaying { player.play() }
+        // A just-(re)started engine may not have rendered an I/O cycle
+        // yet — typically right after an audio-device resume — and
+        // play() then raises an ObjC exception that unwinds past Swift
+        // and aborts the app. Swallow it and drop this one sound; the
+        // engine stays running, so the next play lands.
+        if !player.isPlaying,
+           let raised = catchingNSException({ player.play() }) {
+            clog("conterm: SoundEffects play() raised \(raised)")
+            return
+        }
 
         armIdleStop()
     }
