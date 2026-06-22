@@ -324,11 +324,6 @@ extension Ghostty {
             controller?.draw()
         }
 
-        @objc private func tick() {
-            // Retained for compatibility with the @objc selector
-            // reference; no longer hooked to a timer.
-        }
-
         // MARK: - Keyboard
 
         override func keyDown(with event: NSEvent) {
@@ -343,6 +338,13 @@ extension Ghostty {
             if (event.keyCode == 36 || event.keyCode == 76),
                event.modifierFlags.contains(.command) {
                 return
+            }
+
+            // Esc (keyCode 53): observe-only signal so a "thinking" agent
+            // pill can flip to "interrupted". The key still flows to
+            // libghostty below so the agent actually cancels.
+            if event.keyCode == 53 {
+                controller?.onInterrupt?()
             }
 
             // libghostty owns the `macos-option-as-alt` policy. We ask

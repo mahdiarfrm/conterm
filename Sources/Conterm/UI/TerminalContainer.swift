@@ -588,14 +588,12 @@ private struct PaneView: View {
             }
         }
         .animation(Theme.Spring.snappy, value: pane.agent)
-        // .onTapGesture used to live here for focus. Removed: focus
-        // is already done by SurfaceView.mouseDown, AND SwiftUI's tap
-        // gesture observer recomputes the view's body on every
-        // pointer movement to check if the tap is still in flight —
-        // showed up as `body_pane=32/s` in the energy log during
-        // mouse activity. SurfaceView's mouseDown handles the focus
-        // transfer; the dim/title-bar/agent-pill overlays all use
-        // `.allowsHitTesting(false)` so clicks fall through.
+        // No .onTapGesture for focus: a SwiftUI tap gesture recomputes
+        // this view's body on every pointer move to test whether a tap is
+        // still in flight, which is wasteful during mouse activity.
+        // SurfaceView.mouseDown owns focus transfer; the dim / title-bar /
+        // agent-pill overlays use `.allowsHitTesting(false)` so clicks
+        // fall through to it.
         // Pure opacity fade on insert/remove — no scale, because a
         // scale animation forces the libghostty IOSurface layer
         // through a CALayer affine transform on every frame, which
@@ -1007,12 +1005,31 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
                 }
             }
         }
+        // Esc while the agent is "thinking" = user interrupt. Claude
+        // Code's Esc cancel emits no Stop hook, so the pill would stay
+        // on "thinking…"; flip it to "interrupted", then settle to the
+        // ready prompt the agent returns to — unless a new turn (a fresh
+        // prompt/tool hook) already moved the phase on.
+        controller.onInterrupt = { [weak pane, weak owningTab] in
+            DispatchQueue.main.async {
+                guard let pane, pane.agent.phase == .working else { return }
+                let tool = pane.agent.tool
+                pane.agent = AgentStatus(phase: .interrupted, tool: tool)
+                owningTab?.recomputeAgentPhase()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    guard pane.agent.phase == .interrupted,
+                          pane.agent.tool == tool else { return }
+                    pane.agent = AgentStatus(phase: .ready, tool: tool)
+                    owningTab?.recomputeAgentPhase()
+                }
+            }
+        }
         // Deterministic protocol: the Claude/opencode hooks emit
         //   OSC 9 ; conterm-agent:<tool>:<state> BEL
         // <state> ∈ start | prompt | idle | attention | end.
         // We ONLY react to our own prefix, so normal desktop
         // notifications never hijack the pill.
-        controller.onAgentNotify = { [weak pane, notifications] title, body in
+        controller.onAgentNotify = { [weak pane, weak owningTab, notifications] title, body in
             DispatchQueue.main.async {
                 guard let pane else { return }
                 let msg = body.isEmpty ? title : body
@@ -1039,6 +1056,7 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
                 // identical state, even if a hook/plugin double-sends.
                 guard pane.agent != next else { return }
                 pane.agent = next
+                owningTab?.recomputeAgentPhase()
 
                 // Feed the notification center on the two transitions
                 // worth surfacing: the agent needs you (blocked on
@@ -1075,6 +1093,7 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
                 // safety net alongside the OSC 7 PWD path above.
                 if pane.agent.phase != .idle {
                     pane.agent = .idle
+                    owningTab?.recomputeAgentPhase()
                 }
 
                 guard prefs.commandAlerts else { return }
