@@ -66,7 +66,15 @@ final class LaunchChime {
         }
 
         player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
-        player.play()
+        // On a resuming audio device the engine can start before its
+        // render thread runs an I/O cycle, and play() then raises an
+        // ObjC exception that unwinds past Swift and aborts the app.
+        // Swallow it and release the engine instead of ringing the chime.
+        if let raised = catchingNSException({ player.play() }) {
+            clog("conterm: launch chime play() raised \(raised)")
+            if engine.isRunning { engine.stop() }
+            return
+        }
 
         // Stop the engine once the chime has rung out. A running
         // AVAudioEngine keeps CoreAudio's HAL I/O thread awake at the

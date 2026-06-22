@@ -9,7 +9,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Conterm",
-            dependencies: ["GhosttyKit"],
+            dependencies: ["GhosttyKit", "CatchNSException"],
             path: "Sources/Conterm",
             resources: [
                 .process("Resources"),
@@ -25,6 +25,10 @@ let package = Package(
                 .linkedFramework("IOKit"),
                 .linkedLibrary("c++"),
             ]
+        ),
+        .target(
+            name: "CatchNSException",
+            path: "Sources/CatchNSException"
         ),
         .binaryTarget(
             name: "GhosttyKit",
