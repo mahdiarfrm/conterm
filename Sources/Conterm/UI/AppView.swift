@@ -6,7 +6,6 @@ import SwiftUI
 struct AppView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Preferences
-    @EnvironmentObject var glassLoad: GlassLoad
     @EnvironmentObject var notifications: NotificationStore
 
     /// Vertical auto-hide: is the floating sidebar currently slid in?
@@ -82,33 +81,20 @@ struct AppView: View {
     @ViewBuilder
     private var backdrop: some View {
         if prefs.solidGlass {
+            // The one opaque escape hatch — also the real work-time power
+            // lever (an opaque window skips WindowServer's per-present
+            // re-blend against the desktop).
             solidBackdrop
         } else {
-            // Crossfade between live glass and the solid fill rather than
-            // hard-swapping, so when Battery saving flattens (window hidden,
-            // or a pane streaming) and restores, the backdrop dissolves
-            // instead of snapping. Only one of the two ever stays mounted, so
-            // the glass is genuinely dropped (not just covered) while flat.
-            ZStack {
-                if backdropFlattened {
-                    solidBackdrop.transition(.opacity)
-                } else {
-                    LiquidGlassBackdrop(glassiness: prefs.glassiness,
-                                        light: prefs.lightGlass)
-                        .transition(.opacity)
-                }
-            }
-            .animation(.easeInOut(duration: 0.4), value: backdropFlattened)
+            // Always-on glass. The sheet only ever samples the static
+            // desktop (the panes are opaque tiles on top), so it composites
+            // once and stays free whether the window is focused or not —
+            // there's nothing to flatten for power. The genuine savers are
+            // the opaque mode above, renderer occlusion-pause when hidden,
+            // and a clear Frost.
+            LiquidGlassBackdrop(glassiness: prefs.glassiness,
+                                light: prefs.lightGlass)
         }
-    }
-
-    /// Battery saving drops the live glass to solid when the window is
-    /// occluded / inactive / on another Space, OR while a visible pane is
-    /// actively streaming — the live Liquid Glass material composites
-    /// continuously, so dropping it for those cases is what keeps a fanless
-    /// Mac cool.
-    private var backdropFlattened: Bool {
-        prefs.batterySavingMode && (!state.heavyGlassEnabled || glassLoad.streaming)
     }
 
     private var solidBackdrop: some View {

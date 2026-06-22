@@ -90,14 +90,6 @@ final class AppState: ObservableObject {
     /// after the launch animation until the user completes or skips it.
     @Published var setupWizardVisible: Bool = false
 
-    /// True while this window is on screen (its Space is showing, not
-    /// occluded) AND the app is active. With Battery saving on, the live
-    /// glass backdrop drops to a solid fill when this is false — so
-    /// switching Spaces, Mission Control, hiding Conterm, or another app
-    /// covering it all stop compositing the glass sheet. WindowController
-    /// drives it from occlusion + app-active notifications.
-    @Published var heavyGlassEnabled: Bool = true
-
     /// Signed deltas from arrow-key navigation in the settings panel.
     /// Settings panel observes the value (not just the change) so it
     /// can move its sidebar selection up/down by the cumulative
@@ -338,6 +330,18 @@ final class AppState: ObservableObject {
             let visible = windowVisible && tab.id == selectedID
             for pane in tab.paneTree.root.leaves() {
                 pane.controller?.setVisible(visible)
+            }
+        }
+    }
+
+    /// Force a fresh frame for every on-screen surface. Used on wake:
+    /// the renderer was paused across sleep, so its last presented frame
+    /// is stale until cell content next changes.
+    func forceRedrawVisibleSurfaces() {
+        guard ownWindow?.occlusionState.contains(.visible) ?? true else { return }
+        for tab in tabs where tab.id == selectedID {
+            for pane in tab.paneTree.root.leaves() {
+                pane.controller?.draw()
             }
         }
     }

@@ -43,6 +43,11 @@ extension Ghostty {
         /// Fired by the pane's right-click context menu. TerminalContainer
         /// wires this to focus this pane then split the active tab.
         var onSplit:       ((SplitAxis) -> Void)?
+        /// Fired when Esc is pressed in this pane. Claude Code's Esc
+        /// cancel emits no Stop hook, so a "thinking" pill would stay
+        /// stuck; TerminalContainer uses this to flip it to "interrupted".
+        /// The key itself still flows to libghostty — this only observes.
+        var onInterrupt:   (() -> Void)?
         /// OSC 9;4 progress (state, percent) — Claude Code "thinking".
         var onAgentProgress: ((Int, Int) -> Void)?
         /// OSC 9/777/99 notification (title, body) — Claude needs you / done.
@@ -152,7 +157,6 @@ extension Ghostty {
             // handle as the re-entrancy guard (deinit / double-close
             // then become no-ops and can never double-free).
             SurfaceRegistry.unregister(self)
-            GlassLoad.shared.set(false, for: self)
             handle = nil
             // Pause libghostty's renderer immediately so it stops
             // competing with other surfaces' renderers during a rapid
@@ -192,13 +196,6 @@ extension Ghostty {
         private var lastDrawAt: CFTimeInterval = 0
         private var pendingDraw = false
         private let minDrawInterval: CFTimeInterval = 1.0 / 60.0
-        /// Tracks a *continuous* run of fast draws. Only sustained output
-        /// (≥ 1s without a gap) counts as streaming and flips `GlassLoad`; a
-        /// brief scroll or flick never accrues enough, so it leaves the glass
-        /// untouched.
-        private var streamStart: CFTimeInterval = 0
-        private var lastStreamDraw: CFTimeInterval = 0
-        private var streamClearGen = 0
         /// Last visibility pushed to libghostty. Forced draws are
         /// pointless Metal + compositor work while the surface is
         /// hidden (non-selected tab, covered/minimized window), so
@@ -210,7 +207,12 @@ extension Ghostty {
 
         func draw() {
             guard let h = handle else { return }
-            if !isVisible {
+            // No draws across the sleep/wake boundary: the renderer's
+            // lock + IOSurface backing are in a transitional state and a
+            // forced draw there aborts on a corrupt os_unfair_lock. The
+            // deferred flag replays the final frame once the display is
+            // confirmed awake.
+            if PowerState.shared.isAsleep || !isVisible {
                 drawDeferredWhileHidden = true
                 return
             }
@@ -219,7 +221,6 @@ extension Ghostty {
             if since >= minDrawInterval {
                 lastDrawAt = now
                 ghostty_surface_draw(h)
-                noteStreaming(now)
             } else if !pendingDraw {
                 pendingDraw = true
                 DispatchQueue.main.asyncAfter(
@@ -230,27 +231,6 @@ extension Ghostty {
                         self.pendingDraw = false
                         self.draw()
                     }
-                }
-            }
-        }
-
-        /// Flags `GlassLoad` while this pane repaints fast (≥ ~20fps over a
-        /// 0.5s window) and drops the flag 1.2s after the burst ends, so the
-        /// glass backdrop flattens to solid only for the streaming burst.
-        private func noteStreaming(_ now: CFTimeInterval) {
-            guard isVisible else { return }
-            // A gap > 0.25s restarts the run, so only genuinely continuous
-            // output (a build log, `yes`, a stream) reaches the 1s mark.
-            if now - lastStreamDraw > 0.25 { streamStart = now }
-            lastStreamDraw = now
-            guard now - streamStart >= 1.0 else { return }
-            GlassLoad.shared.set(true, for: self)
-            streamClearGen &+= 1
-            let gen = streamClearGen
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self, self.streamClearGen == gen else { return }
-                    GlassLoad.shared.set(false, for: self)
                 }
             }
         }
@@ -282,8 +262,6 @@ extension Ghostty {
             guard visible != isVisible else { return }
             isVisible = visible
             ghostty_surface_set_occlusion(h, visible)
-            // A hidden pane can't drive visible glass; release its claim.
-            if !visible { GlassLoad.shared.set(false, for: self) }
             if visible, drawDeferredWhileHidden {
                 drawDeferredWhileHidden = false
                 draw()
