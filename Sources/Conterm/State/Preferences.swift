@@ -205,6 +205,14 @@ final class Preferences: ObservableObject {
         didSet { ud.set(agentPillLite, forKey: K.agentPillLite) }
     }
 
+    /// Write internal diagnostics to ~/Library/Logs/Conterm/conterm.log.
+    /// A development aid, OFF by default. `clog` reads this same
+    /// UserDefaults key directly (via `DiagnosticLog`) so the logging
+    /// path needs no Preferences reference.
+    @Published var diagnosticLogging: Bool {
+        didSet { ud.set(diagnosticLogging, forKey: K.diagnosticLogging) }
+    }
+
     /// Accent for the action cluster + new-tab `+`. `mono` = plain glass;
     /// a colour fills the cluster and lights the `+` yellow.
     @Published var actionAccent: ActionAccent {
@@ -262,6 +270,7 @@ final class Preferences: ObservableObject {
         static let newTabAccent     = "conterm.newTabAccent"
         static let opaquePanes      = "conterm.opaquePanes"
         static let soundEffects     = "conterm.soundEffects"
+        static let diagnosticLogging = "conterm.diagnosticLogging"
     }
 
     init() {
@@ -318,6 +327,7 @@ final class Preferences: ObservableObject {
             rawValue: ud.string(forKey: K.newTabAccent) ?? ActionAccent.yellow.rawValue
         ) ?? .yellow
         self.opaquePanes            = ud.object(forKey: K.opaquePanes) as? Bool ?? true
+        self.diagnosticLogging      = ud.object(forKey: K.diagnosticLogging) as? Bool ?? false
         refreshPaneBlurFromConfig()
         NotificationCenter.default.addObserver(
             forName: .contermConfigReloaded,
