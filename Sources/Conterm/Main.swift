@@ -74,6 +74,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             SetupAssistant.migrateToSingleSource()
         }
         ghostty = Ghostty.App()
+        // Register the sleep/wake gate early so its NSWorkspace observers
+        // are live before the first sleep — it pauses every renderer
+        // across the display-sleep boundary to avoid the renderer
+        // use-after-free seen after long locked stretches.
+        _ = PowerState.shared
         notes = NotesStore()
         themes = ThemeCatalog()
         fonts = FontCatalog()

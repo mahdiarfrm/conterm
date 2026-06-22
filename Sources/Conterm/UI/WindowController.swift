@@ -44,7 +44,6 @@ final class WindowController {
         let root = AppView()
             .environmentObject(state)
             .environmentObject(prefs)
-            .environmentObject(GlassLoad.shared)
             .environmentObject(themes)
             .environmentObject(fonts)
             .environmentObject(notifications)
@@ -100,20 +99,13 @@ final class WindowController {
         // Back-link so AppState.closeTab can close THIS window.
         state.ownWindow = win
 
-        // Battery saving: drop the live glass backdrop to a solid fill when
-        // this window isn't actually on screen (other Space / occluded) or
-        // the app is inactive — no glass compositing during Mission Control,
-        // Space switches, or while Conterm is hidden. Also pause libghostty
-        // renderers when occluded: streaming content otherwise keeps drawing
-        // frames nobody can see. Recompute on occlusion + app-active changes.
-        let recompute: () -> Void = { [weak win, weak state] in
-            guard let win, let state else { return }
-            let wanted = win.occlusionState.contains(.visible) && NSApp.isActive
-            if state.heavyGlassEnabled != wanted {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    state.heavyGlassEnabled = wanted
-                }
-            }
+        // Pause libghostty renderers when this window isn't on screen
+        // (other Space / occluded / minimized): streaming content otherwise
+        // keeps drawing frames nobody can see. The glass sheet itself is
+        // left alone — it only ever samples the static desktop, so it costs
+        // nothing whether focused or not. Recompute on occlusion + app-active.
+        let recompute: () -> Void = { [weak state] in
+            guard let state else { return }
             state.syncSurfaceOcclusion()
         }
         let nc = NotificationCenter.default
@@ -129,6 +121,16 @@ final class WindowController {
             nc.addObserver(forName: NSApplication.didResignActiveNotification,
                            object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated(recompute)
+            },
+            // Display confirmed awake after sleep: restore each surface's
+            // per-tab occlusion, then force one fresh frame (the renderer
+            // was paused across sleep so its last frame is stale).
+            nc.addObserver(forName: .contermPowerDidWake,
+                           object: nil, queue: .main) { [weak state] _ in
+                MainActor.assumeIsolated {
+                    recompute()
+                    state?.forceRedrawVisibleSurfaces()
+                }
             },
         ]
 
