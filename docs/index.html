@@ -409,7 +409,10 @@ nav.scrolled{transform:translateY(0)}
    FEATURE SECTIONS — numbered editorial rows, alternating
 ───────────────────────────────────────────────────────────── */
 .feature{
-  padding: 96px 0;
+  /* vertical only — .wrap supplies the horizontal gutter (a shorthand
+     `padding: 96px 0` here would zero it, flushing content to the edges
+     on viewports narrower than --max). */
+  padding-block: 96px;
   border-top: 1px solid var(--hairline);
 }
 .feature .row{
@@ -708,7 +711,7 @@ kbd{
    CHEATSHEET
 ───────────────────────────────────────────────────────────── */
 .cheat{
-  padding: 96px 0;
+  padding-block: 96px;
   border-top: 1px solid var(--hairline);
 }
 .cheat .head{
@@ -777,7 +780,7 @@ kbd{
 /* ─────────────────────────────────────────────────────────────
    PHILOSOPHY (libghostty credit)
 ───────────────────────────────────────────────────────────── */
-.philo{padding: 120px 0; border-top: 1px solid var(--hairline)}
+.philo{padding-block: 120px; border-top: 1px solid var(--hairline)}
 .philo blockquote{
   font-family: var(--display);
   font-weight: 500;
@@ -821,7 +824,7 @@ kbd{
    latest release, drag it to Applications, and you're in."
 ───────────────────────────────────────────────────────────── */
 .download{
-  padding: 120px 0 100px;
+  padding-block: 120px 100px;
   border-top: 1px solid var(--hairline);
   text-align: center;
 }
@@ -948,7 +951,7 @@ footer{
   .hero-logo{width:min(220px,68vw);margin:4px auto 12px}
   .hero .lede{font-size:15px;margin-top:14px;line-height:1.55}
   .hero .meta{margin-top:14px;font-size:12.5px}
-  .feature{padding: 64px 0}
+  .feature{padding-block: 64px}
   .feature .row,
   .feature.reverse .row{
     grid-template-columns: 1fr; gap: 36px;
