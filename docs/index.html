@@ -194,7 +194,10 @@ nav.scrolled{transform:translateY(0)}
 .nav-brand img{
   height: 22px; width: auto; display:block;
   opacity: .92;
-  transition: opacity .2s;
+  /* Explicit identity filter (not `none`) + a transition so the theme
+     toggle reliably repaints the recolour on WebKit. */
+  filter: brightness(1);
+  transition: opacity .2s, filter .25s ease;
 }
 .nav-brand:hover img{opacity: 1}
 .nav-links{
@@ -316,7 +319,8 @@ nav.scrolled{transform:translateY(0)}
 .hero-logo{
   width: min(340px, 72vw);
   margin: 6px auto 22px;
-  filter: drop-shadow(0 6px 18px rgba(0,0,0,.4));
+  filter: drop-shadow(0 6px 18px rgba(0,0,0,.4)) brightness(1);
+  transition: filter .25s ease;
 }
 .hero h1{
   font-family: var(--display);
@@ -897,6 +901,8 @@ footer{
 .foot-brand img{
   height: 22px; width: auto;
   opacity: .85;
+  filter: brightness(1);
+  transition: filter .25s ease;
 }
 .foot-links{
   display: flex; flex-wrap: wrap; gap: 22px;
@@ -1039,9 +1045,9 @@ footer{
 :root[data-theme="light"] .download .firstrun{ background:rgba(255,255,255,.42) }
 :root[data-theme="light"] .download .firstrun code{ background:rgba(255,255,255,.62) }
 /* Light-lettered wordmark → dark so it reads on the light chrome. */
-:root[data-theme="light"] .nav-brand img,
-:root[data-theme="light"] .hero-logo,
-:root[data-theme="light"] .foot-brand img{ filter:brightness(0) opacity(.82) }
+:root[data-theme="light"] .nav-brand img{ filter:brightness(0) }
+:root[data-theme="light"] .hero-logo{ filter:drop-shadow(0 6px 18px rgba(0,0,0,.22)) brightness(0) }
+:root[data-theme="light"] .foot-brand img{ filter:brightness(0) }
 /* Logo glow goes black (a soft shadow) on the light ground. */
 :root[data-theme="light"] .hero-icon{
   filter:
