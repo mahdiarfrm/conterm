@@ -23,7 +23,7 @@
      produced by weight, glass, and the .grad pill instead. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
 /* ─────────────────────────────────────────────────────────────
@@ -42,8 +42,9 @@
   --muted:        #8A8780;            /* warm muted */
   --muted-2:      #5C5A55;
 
-  --red:          #FF2E2E;            /* the app's action-pill red */
-  --red-glow:     rgba(255,46,46,.65);
+  --red:          #FF383C;            /* lone live accent — agent pill + hero dot only */
+  --red-glow:     rgba(255,56,60,.45);
+  --selection:    rgba(244,242,236,.16); /* neutral warm-white — selection is never red */
 
   --yellow:       #F1D500;            /* the icon's new-tab + disc */
   --yellow-glow:  rgba(241,213,0,.55);
@@ -59,6 +60,9 @@
   --mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans:  -apple-system, BlinkMacSystemFont, "SF Pro Display",
             "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif;
+  /* Distinctive geometric grotesk for display headings; body stays
+     system-sans, code stays mono. */
+  --display: "Space Grotesk", var(--sans);
 
   --max: 1180px;
   --gutter: 28px;
@@ -67,7 +71,7 @@
    clips it duller than the app draws it. */
 @supports (color: color(display-p3 1 0 0)){
   :root{
-    --red: color(display-p3 1 .14 .13);
+    --red: color(display-p3 1 .2 .22);
     --yellow: color(display-p3 .95 .84 0);
   }
 }
@@ -86,7 +90,11 @@ body{
 }
 a{color:inherit;text-decoration:none}
 img,video{max-width:100%;display:block}
-::selection{background: var(--red); color: #fff}
+::selection{background: var(--selection); color: var(--text)}
+/* Visible keyboard focus — restrained accent ring, never on mouse click. */
+a:focus-visible, button:focus-visible, summary:focus-visible, [tabindex]:focus-visible{
+  outline: 2px solid var(--red); outline-offset: 3px; border-radius: 6px;
+}
 
 /* ─────────────────────────────────────────────────────────────
    ATMOSPHERE
@@ -100,57 +108,49 @@ img,video{max-width:100%;display:block}
 .atmos{
   position:fixed; inset:0; z-index:0; pointer-events:none;
   overflow:hidden;
-  /* Faint grey base lift in the lower half so the black isn't flat. */
-  background:
-    radial-gradient(66vw 54vh ellipse at 8% 98%,
-      rgba(241,213,0,.13) 0%, transparent 58%),
-    radial-gradient(120vw 90vh ellipse at 80% 115%,
-      #16161B 0%, transparent 60%),
-    var(--bg);
+  background:#0a0a0e;
 }
-.atmos::before{
-  /* Red field — the banner's crimson corner. Oversized and blurred
-     so only the inner falloff is ever on screen. */
-  content:""; position:absolute;
-  top:-30%; left:-25%; width:95vw; height:100vh;
-  background:
-    radial-gradient(closest-side at 38% 42%,
-      rgba(255,46,46,.17) 0%,
-      rgba(170,28,40,.08) 45%,
-      transparent 72%);
-  filter: blur(60px);
-  animation: drift-a 46s ease-in-out infinite alternate;
+/* Full-bleed background: a soft smoky greyscale texture carrying its own
+   fine film grain. A slow Ken Burns drift keeps it alive; the theme filter
+   tones it (dark = deep graphite, light = bright). */
+.atmos-img{
+  position:absolute; inset:-8%;
+  background:url('assets/bg-texture.webp') center/cover no-repeat;
+  filter: brightness(.24) contrast(1.06);
+  will-change: transform;
+  animation: bgdrift 46s ease-in-out infinite alternate;
 }
 .atmos::after{
-  /* Grey counter-field, lower-right. */
-  content:""; position:absolute;
-  bottom:-30%; right:-22%; width:85vw; height:95vh;
-  background:
-    radial-gradient(closest-side at 55% 55%,
-      rgba(168,170,182,.11) 0%,
-      rgba(120,122,134,.045) 50%,
-      transparent 75%);
-  filter: blur(70px);
-  animation: drift-b 58s ease-in-out infinite alternate;
+  content:""; position:absolute; inset:0;
+  background: radial-gradient(150% 115% at 50% 40%, transparent 60%, rgba(6,6,9,.55));
 }
-/* Mismatched periods keep the two fields from ever syncing, so the
-   composition never visibly repeats. Transform-only animation — the
-   blur renders once and the layer just moves. */
-@keyframes drift-a{
-  from{transform: translate3d(0,0,0) scale(1)}
-  to  {transform: translate3d(7vw,9vh,0) scale(1.14)}
-}
-@keyframes drift-b{
-  from{transform: translate3d(0,0,0) scale(1.1)}
-  to  {transform: translate3d(-6vw,-8vh,0) scale(1)}
+@keyframes bgdrift{
+  from{ transform: scale(1.05) translate(0,0) }
+  to  { transform: scale(1.16) translate(-3%,-2%) }
 }
 @media (prefers-reduced-motion: reduce){
-  .atmos::before,.atmos::after{animation:none}
+  .atmos-img{ animation:none }
 }
-.grain{
+/* Glass sheet — a frosted overlay between the moving ground and the
+   content, exactly how Conterm floats Liquid Glass over the desktop.
+   backdrop-filter blurs the light-field below into a soft luminous
+   surface; the translucent tint keeps text legible. */
+.glass-overlay{
   position:fixed; inset:0; z-index:1; pointer-events:none;
-  opacity:.07; mix-blend-mode:overlay;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.9'/%3E%3C/svg%3E");
+  backdrop-filter: blur(9px) saturate(110%) brightness(1.03);
+  -webkit-backdrop-filter: blur(9px) saturate(110%) brightness(1.03);
+  background: linear-gradient(180deg, rgba(12,12,16,.34), rgba(8,8,12,.5));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+}
+/* Black grainy spots over the glass — fine tactile texture. The noise is
+   mapped to a varying-alpha black so it reads as speckle, not a flat veil. */
+/* Greyscale film grain. overlay blend is tone-neutral — it darkens the
+   dark noise and lightens the light, so it reads as speckle without
+   veiling the page. On the light theme that lands as black grainy spots. */
+.grain{
+  position:fixed; inset:0; z-index:2; pointer-events:none;
+  opacity:.5; mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -161,9 +161,9 @@ img,video{max-width:100%;display:block}
   margin: 0 auto;
   padding: 0 var(--gutter);
   position: relative;
-  z-index: 2;
+  z-index: 3;
 }
-main{position:relative; z-index:2}
+main{position:relative; z-index:3}
 
 /* ─────────────────────────────────────────────────────────────
    NAV
@@ -266,6 +266,8 @@ nav.scrolled{transform:translateY(0)}
   border-color: var(--hairline-3);
   transform: translateY(-1.5px);
 }
+/* Tactile press — a slight settle-and-shrink on click. */
+.btn:active{transform: translateY(0) scale(.985); transition-duration: .08s}
 
 /* ─────────────────────────────────────────────────────────────
    HERO
@@ -301,14 +303,13 @@ nav.scrolled{transform:translateY(0)}
   width: 120px; height: 120px;
   margin: 30px auto 6px;
   border-radius: 27px;
-  /* The icon is near-black, so on the dark page it needs lifting: a
-     crisp warm edge plus two soft colour halos placed like the icon's
-     own marks — red upper-right (the pill), yellow lower-left (the +
-     disc) — over the usual depth shadow. */
+  /* The icon is near-black, so it needs lifting off the page: a neutral
+     glow behind it — white in dark mode, a soft black halo in light —
+     over the usual depth shadow. */
   filter:
     drop-shadow(0 0 .5px rgba(255,248,230,.45))
-    drop-shadow(11px -9px 34px rgba(255,46,46,.28))
-    drop-shadow(-13px 11px 38px rgba(241,213,0,.24))
+    drop-shadow(0 0 18px rgba(255,255,255,.22))
+    drop-shadow(0 6px 52px rgba(255,255,255,.30))
     drop-shadow(0 22px 54px rgba(0,0,0,.5))
     drop-shadow(0 8px 16px rgba(0,0,0,.38));
 }
@@ -318,20 +319,20 @@ nav.scrolled{transform:translateY(0)}
   filter: drop-shadow(0 6px 18px rgba(0,0,0,.4));
 }
 .hero h1{
-  font-family: var(--sans);
+  font-family: var(--display);
   font-weight: 700;
-  font-size: clamp(34px, 5.6vw, 62px);
-  line-height: 1.06;
-  letter-spacing: -0.02em;
+  font-size: clamp(38px, 6vw, 76px);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
   margin: 0 auto;
-  max-width: 780px;
+  max-width: 840px;
 }
 .hero .lede{
-  margin: 20px auto 0;
-  max-width: 560px;
-  font-size: 18px;
+  margin: 22px auto 0;
+  max-width: 580px;
+  font-size: 18.5px;
   color: var(--muted);
-  line-height: 1.55;
+  line-height: 1.62;
 }
 .hero .ctas{
   margin: 32px auto 0;
@@ -345,6 +346,9 @@ nav.scrolled{transform:translateY(0)}
   letter-spacing: .02em;
 }
 .hero .meta span + span:before{content:" · "; opacity:.4; margin:0 4px}
+/* Hero text floats over the live colour ground — a soft dark halo keeps
+   it crisp without a plate. */
+.hero h1, .hero .lede{text-shadow: 0 2px 44px rgba(6,6,10,.6)}
 
 /* The frosted-glass pill that lifts the accent word out of the
    headline. White-on-glass — neutral; the red lives in the
@@ -384,7 +388,17 @@ nav.scrolled{transform:translateY(0)}
   -webkit-backdrop-filter: blur(28px) saturate(180%);
   box-shadow:
     inset 0 1px 0 var(--glass-highlight),
+    0 2px 12px rgba(0,0,0,.5),
     0 60px 120px -40px rgba(0,0,0,.85);
+  transition: transform .5s cubic-bezier(.2,.7,.2,1),
+              box-shadow .5s cubic-bezier(.2,.7,.2,1);
+}
+.demo-frame:hover{
+  transform: translateY(-4px);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 6px 18px rgba(0,0,0,.55),
+    0 80px 150px -44px rgba(0,0,0,.9);
 }
 .demo-frame video{
   width: 100%; display: block;
@@ -415,24 +429,25 @@ nav.scrolled{transform:translateY(0)}
   color: var(--text);
   text-transform: uppercase;
 }
-/* The number sits in a miniature of the app's action pill — opaque
-   red capsule, white digits. Red never appears as bare small text;
-   it reads muddy on the near-black ground. */
+/* Section index marker — a restrained warm-glass capsule. Monochrome
+   by design: the page's chrome stays neutral so the single red accent
+   reads as deliberate, not decorative. */
 .num .chip{
   display: inline-flex; align-items: center; justify-content: center;
   padding: 3px 9px;
   margin-right: 9px;
   border-radius: 999px;
-  background: var(--red);
-  color: #fff;
+  background: rgba(255,248,230,.055);
+  border: 1px solid var(--hairline-2);
+  color: var(--text);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: .1em;
-  box-shadow: 0 4px 14px -4px var(--red-glow);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
 }
 .feature h2{
   margin-top: 18px;
-  font-family: var(--sans);
+  font-family: var(--display);
   font-weight: 600;
   font-size: clamp(32px, 4.2vw, 48px);
   line-height: 1.06;
@@ -486,7 +501,20 @@ kbd{
   box-shadow:
     inset 0 1px 0 var(--glass-highlight),
     inset 0 -1px 0 rgba(0,0,0,.18),
+    0 2px 8px rgba(0,0,0,.4),
     0 40px 80px -30px rgba(0,0,0,.75);
+  transition: transform .45s cubic-bezier(.2,.7,.2,1),
+              box-shadow .45s cubic-bezier(.2,.7,.2,1);
+}
+/* The panel lifts toward the reader on hover — deepens the cast shadow
+   so the glass reads as a physical surface, not a flat tile. */
+.visual:hover{
+  transform: translateY(-5px);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 rgba(0,0,0,.18),
+    0 6px 16px rgba(0,0,0,.45),
+    0 64px 120px -34px rgba(0,0,0,.88);
 }
 .visual::after{
   /* warm-white hue lift in one corner, never a chromatic colour */
@@ -533,9 +561,9 @@ kbd{
 .pane.c{grid-column: 2; grid-row: 2}
 .cursor{
   display:inline-block; width:7px; height:13px;
-  background: var(--red); vertical-align:-2px;
+  background: var(--text); vertical-align:-2px;
   animation: blink 1s steps(2,end) infinite;
-  box-shadow: 0 0 8px var(--red-glow);
+  box-shadow: 0 0 8px rgba(244,242,236,.45);
 }
 @keyframes blink{50%{opacity:0}}
 
@@ -574,11 +602,11 @@ kbd{
   background: rgba(255,248,230,.05);
   color: var(--text);
 }
-/* The selected row's icon takes the action-pill treatment; matched
-   query letters carry the same red so the eye tracks the search. */
-.palette-mock .row-r.sel .ic{background: var(--red); color: #fff}
+/* The selected row's icon lifts to warm glass; matched query letters
+   brighten to full cream so the eye tracks the search without colour. */
+.palette-mock .row-r.sel .ic{background: rgba(255,248,230,.14); color: var(--text)}
 .palette-mock .row-r .nm{color:var(--text); flex:1}
-.palette-mock .row-r .hi{color: var(--red); font-weight: 700}
+.palette-mock .row-r .hi{color: var(--text); font-weight: 700}
 .palette-mock .row-r .sh{color:var(--muted); font-size:11px}
 
 /* ── Visual C: tabs / sidebar ── */
@@ -693,7 +721,7 @@ kbd{
   color: var(--text); text-transform:uppercase;
 }
 .cheat h2{
-  font-family: var(--sans);
+  font-family: var(--display);
   font-weight: 600;
   font-size: clamp(32px, 4.2vw, 48px);
   letter-spacing: -.025em;
@@ -751,7 +779,7 @@ kbd{
 ───────────────────────────────────────────────────────────── */
 .philo{padding: 120px 0; border-top: 1px solid var(--hairline)}
 .philo blockquote{
-  font-family: var(--sans);
+  font-family: var(--display);
   font-weight: 500;
   font-size: clamp(26px, 3.4vw, 40px);
   line-height: 1.22;
@@ -804,7 +832,7 @@ kbd{
 }
 .download h2{
   margin-top: 12px;
-  font-family: var(--sans);
+  font-family: var(--display);
   font-weight: 700;
   font-size: clamp(40px, 5.2vw, 64px);
   letter-spacing: -.03em;
@@ -937,12 +965,132 @@ footer{
   .hero-logo{width:min(200px,72vw)}
   .hero .lede{font-size:14.5px}
 }
+
+/* ─────────────────────────────────────────────────────────────
+   THEME TOGGLE + LIGHT THEME
+   Dark stays the base. A floating glass toggle flips data-theme on
+   <html> (persisted in localStorage). The light theme remaps the
+   tokens and the surfaces that hardcode the dark palette; the feature
+   mock panels re-declare the dark palette on .visual so the depicted
+   app still reads as the dark terminal it is.
+───────────────────────────────────────────────────────────── */
+.theme-toggle{
+  position:fixed; top:14px; right:18px; z-index:70;
+  display:inline-flex; align-items:center; justify-content:center;
+  width:36px; height:36px; border-radius:10px;
+  background:var(--glass-fill-2); border:1px solid var(--hairline-2);
+  color:var(--muted); cursor:pointer;
+  backdrop-filter:blur(18px) saturate(160%);
+  -webkit-backdrop-filter:blur(18px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+  transition: color .2s, background .2s, border-color .2s, transform .2s;
+}
+.theme-toggle:hover{ color:var(--text); border-color:var(--hairline-3); }
+.theme-toggle:active{ transform:scale(.94); transition-duration:.08s }
+.theme-toggle svg{ width:17px; height:17px }
+.theme-toggle .moon{ display:none }
+:root[data-theme="light"] .theme-toggle .sun{ display:none }
+:root[data-theme="light"] .theme-toggle .moon{ display:block }
+/* Keep nav content clear of the floating toggle. */
+.nav-in{ padding-right: calc(var(--gutter) + 50px) }
+
+:root[data-theme="light"]{
+  --bg:#d6d6da; --bg-2:#ececee;
+  --text:#1b1b20; --muted:#56565e; --muted-2:#8a8a92;
+  --hairline:rgba(0,0,0,.08); --hairline-2:rgba(0,0,0,.14); --hairline-3:rgba(0,0,0,.26);
+  --glass-fill:rgba(255,255,255,.5); --glass-fill-2:rgba(255,255,255,.66);
+  --glass-highlight:rgba(255,255,255,.85);
+  --selection:rgba(0,0,0,.13);
+}
+/* Background — light smoky greyscale (the reference look). */
+:root[data-theme="light"] .atmos{ background:#e4e4e8 }
+/* Light theme shows the texture near its original brightness; the small
+   lift + lower contrast keeps the darkest cloud patches off pure-black so
+   dark text stays readable over them. */
+:root[data-theme="light"] .atmos-img{ filter:brightness(1.12) contrast(.84) }
+:root[data-theme="light"] .atmos::after{ background:radial-gradient(155% 118% at 50% 42%, transparent 64%, rgba(168,168,174,.28)) }
+:root[data-theme="light"] .glass-overlay{
+  backdrop-filter:blur(8px) saturate(104%) brightness(1.02);
+  -webkit-backdrop-filter:blur(8px) saturate(104%) brightness(1.02);
+  background:linear-gradient(180deg, rgba(252,252,254,.14), rgba(242,242,246,.24));
+}
+:root[data-theme="light"] .grain{ opacity:.5 }
+/* Chrome surfaces that hardcode the dark palette. */
+:root[data-theme="light"] nav{ background:rgba(248,248,250,.64) }
+:root[data-theme="light"] .nav-links a.text:hover{ background:rgba(0,0,0,.05) }
+:root[data-theme="light"] .btn-primary{
+  color:#f6f5f0; background:#1b1b20; border-color:#1b1b20;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.16),
+             0 14px 34px -14px rgba(0,0,0,.32), 0 2px 8px rgba(0,0,0,.22);
+}
+:root[data-theme="light"] .btn-primary:hover{ background:#000; border-color:#000 }
+:root[data-theme="light"] .grad{ background:rgba(255,255,255,.55) }
+:root[data-theme="light"] .demo-frame{ background:linear-gradient(180deg, rgba(255,255,255,.6), rgba(255,255,255,.32)) }
+:root[data-theme="light"] .num .chip{ background:rgba(255,255,255,.6) }
+:root[data-theme="light"] .feature .sub span{ background:rgba(255,255,255,.42) }
+:root[data-theme="light"] kbd{ background:rgba(255,255,255,.64) }
+:root[data-theme="light"] .cheat .sheet{
+  background:linear-gradient(160deg, rgba(255,255,255,.56), rgba(255,255,255,.32) 60%, rgba(255,255,255,.22));
+}
+:root[data-theme="light"] .philo blockquote .accent{ background:rgba(255,255,255,.55) }
+:root[data-theme="light"] .download .firstrun{ background:rgba(255,255,255,.42) }
+:root[data-theme="light"] .download .firstrun code{ background:rgba(255,255,255,.62) }
+/* Light-lettered wordmark → dark so it reads on the light chrome. */
+:root[data-theme="light"] .nav-brand img,
+:root[data-theme="light"] .hero-logo,
+:root[data-theme="light"] .foot-brand img{ filter:brightness(0) opacity(.82) }
+/* Logo glow goes black (a soft shadow) on the light ground. */
+:root[data-theme="light"] .hero-icon{
+  filter:
+    drop-shadow(0 0 .5px rgba(0,0,0,.25))
+    drop-shadow(0 0 18px rgba(0,0,0,.22))
+    drop-shadow(0 6px 52px rgba(0,0,0,.34))
+    drop-shadow(0 22px 54px rgba(0,0,0,.26))
+    drop-shadow(0 8px 16px rgba(0,0,0,.2));
+}
+/* Feature visuals keep the dark terminal palette. */
+:root[data-theme="light"] .visual{
+  --text:#F4F2EC; --muted:#8A8780; --muted-2:#5C5A55;
+  --hairline:rgba(255,248,230,.06); --hairline-2:rgba(255,248,230,.12); --hairline-3:rgba(255,248,230,.22);
+  --glass-highlight:rgba(255,252,240,.20);
+  /* Translucent smoked glass — the light grainy ground frosts through it
+     (the card's own backdrop-blur), so it reads as glass, not a black tile,
+     while the inner terminal panes keep their dark surface. */
+  background:linear-gradient(165deg, rgba(26,26,32,.5), rgba(16,16,21,.44));
+  border-color:rgba(255,255,255,.1);
+}
 </style>
+<script>
+  /* Set the theme before first paint to avoid a flash. Dark is the
+     default; light is opt-in and remembered. */
+  (function(){
+    try{
+      var t = localStorage.getItem('conterm-theme');
+      document.documentElement.dataset.theme = (t === 'light' || t === 'dark') ? t : 'dark';
+    }catch(e){ document.documentElement.dataset.theme = 'dark'; }
+  })();
+</script>
 </head>
 <body>
 
-<div class="atmos" aria-hidden="true"></div>
+<div class="atmos" aria-hidden="true">
+  <div class="atmos-img"></div>
+</div>
+<div class="glass-overlay" aria-hidden="true"></div>
 <div class="grain" aria-hidden="true"></div>
+
+<button class="theme-toggle" id="themeToggle" type="button"
+        aria-label="Toggle light or dark theme" title="Toggle theme">
+  <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="4.2"/>
+    <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19"/>
+  </svg>
+  <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 14.5A8 8 0 119.5 4a6.2 6.2 0 0010.5 10.5z"/>
+  </svg>
+</button>
 
 <nav id="nav">
   <div class="nav-in">
@@ -1300,6 +1448,16 @@ const nav = document.getElementById('nav');
 const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 120);
 onScroll();
 addEventListener('scroll', onScroll, { passive: true });
+
+// Light / dark toggle — flips data-theme on <html> and remembers it.
+const themeToggle = document.getElementById('themeToggle');
+if (themeToggle) {
+  themeToggle.addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('conterm-theme', next); } catch (e) {}
+  });
+}
 
 // One reveal grammar (16px translateY + opacity, 600ms), staggered
 // in groups of three through DOM order.
