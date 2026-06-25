@@ -17,7 +17,19 @@ fi
 
 WANT_DMG="${1:-zip}"
 OUT_DIR="release"
-VERSION="${VERSION:-$(date +%Y.%m.%d)}"
+
+# Source of truth for the version is the built bundle. Default to it, and
+# if VERSION is set explicitly, refuse to ship an artifact whose name
+# disagrees with what's actually inside the bundle.
+PLIST_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
+    Conterm.app/Contents/Info.plist 2>/dev/null || true)
+VERSION="${VERSION:-${PLIST_VERSION:-$(date +%Y.%m.%d)}}"
+if [[ -n "$PLIST_VERSION" && "$VERSION" != "$PLIST_VERSION" ]]; then
+    echo "VERSION=$VERSION doesn't match the built bundle (CFBundleShortVersionString=$PLIST_VERSION)." >&2
+    echo "Rebuild at the intended version, or unset VERSION to use the bundle's." >&2
+    exit 1
+fi
+
 STAGE="$OUT_DIR/Conterm-$VERSION"
 ZIP="$OUT_DIR/Conterm-$VERSION.zip"
 DMG="$OUT_DIR/Conterm-$VERSION.dmg"

@@ -109,11 +109,16 @@ echo "==> ad-hoc codesign"
 # choke. Otherwise we get "resource fork, Finder information, or
 # similar detritus not allowed" on subsequent re-signs.
 xattr -cr "$APP"
-codesign --force --sign - \
+if codesign --force --sign - \
     --entitlements Resources/Conterm.entitlements \
     --options runtime \
-    "$APP" >/dev/null 2>&1 || \
-codesign --force --sign - "$APP"
+    "$APP"; then
+    echo "OK: signed with entitlements + hardened runtime"
+else
+    echo "WARN: entitlements/hardened-runtime signing failed — falling back to a" >&2
+    echo "      bare ad-hoc sign (NO entitlements, NO hardened runtime)." >&2
+    codesign --force --sign - "$APP"
+fi
 
 echo "OK: ./$APP"
 echo "Run with: open ./$APP   (or ./$APP/Contents/MacOS/Conterm for console logs)"
