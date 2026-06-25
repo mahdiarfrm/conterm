@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var titleBarClickMonitor: Any?
     private var scrollMonitor: Any?
     private var mouseMovedMonitor: Any?
+    private var occlusionObservers: [NSObjectProtocol] = []
     /// Accumulated trackpad scroll travel (points) since the last
     /// palette focus step. A gentle two-finger scroll reports
     /// sub-point deltas that a fixed threshold would drop, so we sum
@@ -113,6 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         installShortcutMonitor()
         installTitleBarDoubleClickMonitor()
+        installOcclusionCoordinator()
         runLaunchScaleIn()
 
         NSApp.activate(ignoringOtherApps: true)
@@ -519,6 +521,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.performZoom(nil)
             return nil
         }
+    }
+
+    /// App-level occlusion driver. App activation/resign and post-sleep
+    /// wake are process-wide events, so one set of observers fans them out
+    /// to every window's renderer occlusion — instead of each
+    /// WindowController registering its own app-scoped (`object: nil`)
+    /// observers, which made a single notification fire once per open
+    /// window. Per-window occlusion-state changes stay local to each
+    /// WindowController. AppDelegate lives for the process lifetime, so
+    /// these are never torn down.
+    private func installOcclusionCoordinator() {
+        let nc = NotificationCenter.default
+        occlusionObservers = [
+            nc.addObserver(forName: NSApplication.didBecomeActiveNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.windows.forEach { $0.state.syncSurfaceOcclusion() }
+                }
+            },
+            nc.addObserver(forName: NSApplication.didResignActiveNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.windows.forEach { $0.state.syncSurfaceOcclusion() }
+                }
+            },
+            // Display confirmed awake after sleep: restore each surface's
+            // per-tab occlusion, then force one fresh frame (the renderer
+            // was paused across sleep so its last frame is stale).
+            nc.addObserver(forName: .contermPowerDidWake,
+                           object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.windows.forEach {
+                        $0.state.syncSurfaceOcclusion()
+                        $0.state.forceRedrawVisibleSurfaces()
+                    }
+                }
+            },
+        ]
     }
 
     /// Subtle window scale-in when the app first launches — the

@@ -116,34 +116,15 @@ final class WindowController {
         // (other Space / occluded / minimized): streaming content otherwise
         // keeps drawing frames nobody can see. The glass sheet itself is
         // left alone — it only ever samples the static desktop, so it costs
-        // nothing whether focused or not. Recompute on occlusion + app-active.
-        let recompute: () -> Void = { [weak state] in
-            guard let state else { return }
-            state.syncSurfaceOcclusion()
-        }
+        // nothing whether focused or not. This occlusion-state signal is
+        // window-specific, so it stays local; the process-wide triggers
+        // (app activate/resign, post-sleep wake) are fanned out to every
+        // window once by AppDelegate's occlusion coordinator.
         let nc = NotificationCenter.default
         glassObservers = [
             nc.addObserver(forName: NSWindow.didChangeOcclusionStateNotification,
-                           object: win, queue: .main) { _ in
-                MainActor.assumeIsolated(recompute)
-            },
-            nc.addObserver(forName: NSApplication.didBecomeActiveNotification,
-                           object: nil, queue: .main) { _ in
-                MainActor.assumeIsolated(recompute)
-            },
-            nc.addObserver(forName: NSApplication.didResignActiveNotification,
-                           object: nil, queue: .main) { _ in
-                MainActor.assumeIsolated(recompute)
-            },
-            // Display confirmed awake after sleep: restore each surface's
-            // per-tab occlusion, then force one fresh frame (the renderer
-            // was paused across sleep so its last frame is stale).
-            nc.addObserver(forName: .contermPowerDidWake,
-                           object: nil, queue: .main) { [weak state] _ in
-                MainActor.assumeIsolated {
-                    recompute()
-                    state?.forceRedrawVisibleSurfaces()
-                }
+                           object: win, queue: .main) { [weak state] _ in
+                MainActor.assumeIsolated { state?.syncSurfaceOcclusion() }
             },
         ]
 
