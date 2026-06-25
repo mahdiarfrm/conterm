@@ -16,7 +16,7 @@ struct SystemStatsWidget: View {
     // two heavyweight cluster members stand taller than the plain
     // toolbar pills so sparklines + values read at a glance.
     private var pillHeight: CGFloat {
-        compact ? 26 : TabBar.heavyPillHeight
+        compact ? 23 : 27
     }
 
     var body: some View {
@@ -41,7 +41,7 @@ struct SystemStatsWidget: View {
 
     @ViewBuilder
     private var pill: some View {
-        let row = HStack(spacing: compact ? 7 : 9) {
+        let row = HStack(spacing: compact ? 6 : 8) {
             metricChip(symbol: "cpu", value: stats.cpuPercent,
                        history: stats.cpuHistory)
             chipDivider
@@ -50,12 +50,12 @@ struct SystemStatsWidget: View {
             chipDivider
             netChip
         }
-        .padding(.horizontal, compact ? 9 : 12)
+        .padding(.horizontal, compact ? 8 : 10)
         .frame(height: pillHeight)
-        // Dark wash over the glass so the widget reads as a heavier,
-        // darker bar than the action pills beside it (same treatment
-        // as the palette's input bubble).
-        .background(Capsule(style: .continuous).fill(Color.black.opacity(0.16)))
+        // Recessed wash over the glass so the widget reads as a heavier,
+        // darker bar than the action pills beside it. Adaptive so a light
+        // glass tint doesn't leave a muddy black slab.
+        .background(Capsule(style: .continuous).fill(Theme.recessedWash))
 
         if #available(macOS 26, *) {
             // macOS 26: use real Liquid Glass so this widget can join
@@ -75,7 +75,7 @@ struct SystemStatsWidget: View {
             )
             .overlay(
                 Capsule(style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                    .strokeBorder(Theme.stroke, lineWidth: 0.5)
             )
             .shadow(color: .black.opacity(hovering ? 0.35 : 0.20),
                      radius: hovering ? 8 : 4,
@@ -88,23 +88,23 @@ struct SystemStatsWidget: View {
 
     private var chipDivider: some View {
         RoundedRectangle(cornerRadius: 0.5)
-            .fill(Color.white.opacity(0.10))
-            .frame(width: 1, height: 14)
+            .fill(Theme.stroke)
+            .frame(width: 1, height: 12)
     }
 
     // Monochrome on the bar — the widget is ambient chrome; the load
     // colors live in the popover's detail graphs.
     private func metricChip(symbol: String, value: Double,
                             history: [Double]) -> some View {
-        HStack(spacing: compact ? 5 : 6) {
+        HStack(spacing: compact ? 4 : 5) {
             Image(systemName: symbol)
-                .font(.system(size: compact ? 9 : 10, weight: .medium))
+                .font(.system(size: compact ? 8 : 9, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
             Sparkline(samples: history)
-                .frame(width: compact ? 18 : 24, height: compact ? 10 : 13)
+                .frame(width: compact ? 16 : 20, height: compact ? 9 : 11)
                 .foregroundStyle(Theme.textSecondary)
             Text(String(format: "%.0f%%", min(99, max(0, value))))
-                .font(.system(size: compact ? 11 : 12, weight: .semibold,
+                .font(.system(size: compact ? 10 : 11, weight: .semibold,
                               design: .rounded))
                 .foregroundStyle(Theme.textPrimary)
                 .monospacedDigit()
@@ -112,35 +112,35 @@ struct SystemStatsWidget: View {
                 // change the pill's size, or every sample relayouts the
                 // whole tab-bar HStack (a real idle-CPU cost seen in
                 // the sample).
-                .frame(width: compact ? 30 : 33, alignment: .trailing)
+                .frame(width: compact ? 27 : 30, alignment: .trailing)
         }
     }
 
     private var netChip: some View {
-        HStack(spacing: compact ? 5 : 6) {
+        HStack(spacing: compact ? 4 : 5) {
             Image(systemName: "network")
-                .font(.system(size: compact ? 9 : 10, weight: .medium))
+                .font(.system(size: compact ? 8 : 9, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
             VStack(alignment: .trailing, spacing: 0) {
                 HStack(spacing: 2) {
                     Image(systemName: "arrow.down")
-                        .font(.system(size: compact ? 6.5 : 7, weight: .bold))
+                        .font(.system(size: compact ? 6 : 6.5, weight: .bold))
                     Text(formatRate(stats.netDownKBps))
-                        .font(.system(size: compact ? 9 : 10, weight: .semibold,
+                        .font(.system(size: compact ? 8.5 : 9, weight: .semibold,
                                       design: .rounded))
                         .monospacedDigit()
                         // Fixed width so a rate change can't resize the
                         // pill (→ no tab-bar relayout per sample).
-                        .frame(width: compact ? 36 : 40, alignment: .trailing)
+                        .frame(width: compact ? 32 : 35, alignment: .trailing)
                 }
                 HStack(spacing: 2) {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: compact ? 6.5 : 7, weight: .bold))
+                        .font(.system(size: compact ? 6 : 6.5, weight: .bold))
                     Text(formatRate(stats.netUpKBps))
-                        .font(.system(size: compact ? 9 : 10, weight: .semibold,
+                        .font(.system(size: compact ? 8.5 : 9, weight: .semibold,
                                       design: .rounded))
                         .monospacedDigit()
-                        .frame(width: compact ? 36 : 40, alignment: .trailing)
+                        .frame(width: compact ? 32 : 35, alignment: .trailing)
                 }
             }
             .foregroundStyle(Theme.textPrimary)

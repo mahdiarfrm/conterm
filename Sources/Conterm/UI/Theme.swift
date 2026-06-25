@@ -32,6 +32,18 @@ enum Theme {
     /// terminal, a step lighter than `paneTile` for separation.
     static let paneTitleBar  = Color(red: 0.12, green: 0.13, blue: 0.16)
 
+    /// Bed for the title pill while the pane is SSH'd. Same lightness as
+    /// `paneTitleBar` but pushed cool/blue so a remote pane reads as
+    /// remote at a glance, with no per-frame cost.
+    static let paneRemoteBar = Color(red: 0.07, green: 0.13, blue: 0.20)
+
+    /// SSH cyan, on the dark pill bed — the remote-state hue for the
+    /// glyph glow, border, and connect sweep.
+    static let sshAccent     = Color(red: 0.45, green: 0.85, blue: 1.0)
+    /// SSH blue for the collapsed (light) pill, where the bright cyan
+    /// would wash out against white.
+    static let sshAccentDeep = Color(red: 0.10, green: 0.50, blue: 0.95)
+
     /// Accent: near-white cool on dark glass, near-black cool on light
     /// glass. Stays neutral (not a saturated blue) so it doesn't tint
     /// the whole UI in light mode.
@@ -42,6 +54,12 @@ enum Theme {
         light: NSColor(white: 0.0, alpha: 0.10),
         dark:  NSColor(white: 1.0, alpha: 0.14))
     static let highlight     = Color(red: 0.85, green: 0.95, blue: 1.00)
+
+    /// Non-adaptive accent for chrome that floats over the dark terminal
+    /// in BOTH appearances (pane title pill, suggestion strip). The
+    /// regular `accent` flips near-black in light mode and would vanish
+    /// against the dark bed — this stays the cool near-white.
+    static let accentOnDark  = Color(red: 0.92, green: 0.96, blue: 1.00)
     static let warning       = Color(red: 1.00, green: 0.80, blue: 0.55)
 
     static let textPrimary   = dynamic(
@@ -51,8 +69,43 @@ enum Theme {
         light: NSColor(white: 0.0, alpha: 0.55),
         dark:  NSColor(white: 1.0, alpha: 0.55))
 
-    static let stroke        = Color.white.opacity(0.08)
-    static let strokeStrong  = Color.white.opacity(0.18)
+    static let stroke        = dynamic(
+        light: NSColor(white: 0.0, alpha: 0.10),
+        dark:  NSColor(white: 1.0, alpha: 0.08))
+    static let strokeStrong  = dynamic(
+        light: NSColor(white: 0.0, alpha: 0.16),
+        dark:  NSColor(white: 1.0, alpha: 0.18))
+
+    /// Opaque bed for floating chrome (command palette, overlays) when
+    /// Liquid Glass is off — near-white on light, near-black on dark.
+    static let panelBed      = dynamic(
+        light: NSColor(calibratedRed: 0.95, green: 0.96, blue: 0.97, alpha: 1.0),
+        dark:  NSColor(calibratedRed: 0.04, green: 0.04, blue: 0.05, alpha: 1.0))
+    /// Opaque bed for a small raised chip (suggestion circle). Near-black
+    /// on dark to match the panels and the agent pill — the hairline rim
+    /// defines the disc — and near-white on light. Opaque so it neither
+    /// samples the backdrop nor needs a shadow.
+    static let chipBed       = dynamic(
+        light: NSColor(calibratedWhite: 0.88, alpha: 1.0),
+        dark:  NSColor(calibratedRed: 0.05, green: 0.055, blue: 0.07, alpha: 1.0))
+    /// Opaque bed for a vertical-sidebar tab pill. The sidebar is a wide
+    /// expanse where translucent pills over the desktop read as noise, so
+    /// the pill goes opaque — near-white on light, the chrome grey on dark.
+    static let tabBed        = dynamic(
+        light: NSColor(calibratedWhite: 0.97, alpha: 1.0),
+        dark:  NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 1.0))
+    /// Focused/hover row wash. Preserves the dark-mode value (white 0.08)
+    /// and gives a matching dark wash in light mode.
+    static let selectionFill = dynamic(
+        light: NSColor(white: 0.0, alpha: 0.06),
+        dark:  NSColor(white: 1.0, alpha: 0.08))
+    /// Translucent recessed wash for a heavier chrome bar (the system-stats
+    /// widget, the layout switcher) — a dark veil that sinks the bar a step
+    /// below the glass around it. Lighter in light mode so it reads as a
+    /// subtle recess instead of a muddy black slab.
+    static let recessedWash  = dynamic(
+        light: NSColor(white: 0.0, alpha: 0.06),
+        dark:  NSColor(white: 0.0, alpha: 0.18))
 
     // Geometry tokens shared across the chrome.
     static let windowCorner:    CGFloat = 18
