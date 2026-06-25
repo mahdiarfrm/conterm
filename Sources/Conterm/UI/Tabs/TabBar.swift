@@ -31,6 +31,9 @@ struct TabBar: View {
             switch orientation {
             case .horizontal: horizontal
             case .vertical:   vertical
+            // Agents mode uses AgentSidebar, not the tab bar; TabBar is
+            // only ever instantiated as horizontal or vertical.
+            case .agents:     EmptyView()
             }
         }
         .animation(Theme.Spring.soft, value: orientation)
@@ -72,29 +75,47 @@ struct TabBar: View {
                     .fill(Color.clear)
                     .frame(height: 58)
 
-                VStack(spacing: 4) {
-                    ForEach(state.tabs) { tab in
-                        pillCell(for: tab)
-                            .frame(maxWidth: .infinity)
+                // Scrolls when tabs + group sections overflow the column.
+                // The stats / action cluster below stays pinned. Ungrouped
+                // tabs sit at the top; each tab group is a collapsible folder
+                // with its rows nested under a colored tree guide.
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(ungroupedTabs) { tab in
+                            pillCell(for: tab)
+                                .frame(maxWidth: .infinity)
+                        }
+                        ForEach(tabGroups.groups) { group in
+                            tabFolder(group)
+                        }
+                        VerticalNewTabRow { _ = state.addTab() }
+                            .padding(.top, 6)
+                            .padding(.leading, 2)
                     }
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
                 .animation(Theme.Spring.soft, value: state.selectedID)
                 .animation(Theme.Spring.soft, value: state.tabs.map(\.id))
+                .animation(Theme.Spring.soft, value: state.tabs.map(\.groupID))
+                .animation(Theme.Spring.soft, value: tabGroups.groups)
 
-                VerticalNewTabRow { state.addTab() }
-                    .padding(.top, 6)
-
-                Spacer()
                 if prefs.showSystemStats {
                     SystemStatsWidget(compact: true)
                         .padding(.leading, 2)
                         .padding(.bottom, 8)
                         .transition(.opacity)
                 }
+                // Layout switcher above the bottom action bar.
+                HStack {
+                    LayoutModeSwitcher()
+                    Spacer(minLength: 0)
+                }
+                .padding(.bottom, 6)
                 // Bell / search / ⌘K at the bottom, in their own glass bar.
                 HStack {
                     UpdateIndicatorButton()
                     HStack(spacing: 2) {
+                        AgentToolbarPill(bare: true)
                         NotificationBell(bare: true)
                         SearchHintButton(bare: true)
                         ShortcutHintButton(bare: true, compact: true)
@@ -120,10 +141,47 @@ struct TabBar: View {
         .frame(maxHeight: .infinity)
     }
 
+    // MARK: - Tree / folders
+
+    /// Tabs not in any (existing) group — rendered flat at the top of the
+    /// sidebar, above the group folders.
+    private var ungroupedTabs: [Tab] {
+        state.tabs.filter { tabGroups.group(id: $0.groupID) == nil }
+    }
+
+    /// One collapsible group folder: a header that owns the group color, with
+    /// its tabs nested under a colored tree guide when expanded.
+    @ViewBuilder
+    private func tabFolder(_ group: TabGroup) -> some View {
+        let groupTabs = state.tabs.filter { $0.groupID == group.id }
+        if !groupTabs.isEmpty {
+            let color = TabGroup.color(forKey: group.colorKey)
+            TabFolderHeader(name: group.name, color: color,
+                            count: groupTabs.count, collapsed: group.collapsed) {
+                withAnimation(Theme.Spring.soft) { tabGroups.toggleCollapsed(group.id) }
+            }
+            .padding(.top, 2)
+            if !group.collapsed {
+                ForEach(groupTabs) { tab in
+                    HStack(spacing: 8) {
+                        RoundedRectangle(cornerRadius: 1, style: .continuous)
+                            .fill(color.opacity(0.4))
+                            .frame(width: 2)
+                            .padding(.vertical, 3)
+                        pillCell(for: tab, inGroupFolder: true)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .padding(.leading, 7)
+                }
+            }
+        }
+    }
+
     // MARK: - One row
 
     @ViewBuilder
-    private func pillCell(for tab: Tab) -> some View {
+    private func pillCell(for tab: Tab, compact: Bool = false,
+                          inGroupFolder: Bool = false) -> some View {
         let index = (state.tabs.firstIndex(where: { $0.id == tab.id }) ?? 0) + 1
         let selected = state.selectedID == tab.id
         TabPill(
@@ -132,9 +190,11 @@ struct TabBar: View {
             isSelected: selected,
             onSelect:   { state.select(tab.id) },
             onClose:    { state.closeTab(tab) },
-            onBeginRename: { state.beginRename(tab) }
+            onBeginRename: { state.beginRename(tab) },
+            compact: compact,
+            inGroupFolder: inGroupFolder
         )
-        .background { selectionGlow(selected) }
+        .background { selectionGlow(selected, compact: compact) }
     }
 
     /// The travelling glow. Only the selected pill renders it; because
@@ -155,14 +215,15 @@ struct TabBar: View {
     }
 
     @ViewBuilder
-    private func selectionGlow(_ visible: Bool) -> some View {
+    private func selectionGlow(_ visible: Bool, compact: Bool = false) -> some View {
         if visible {
             let tint = selectionColor
             RoundedRectangle(cornerRadius: Theme.pillCorner, style: .continuous)
                 // Soft accent/group-tinted fill + a brighter top edge,
                 // lifted by a coloured glow. Reads as the selected pill
                 // glowing in its colour instead of a plain white sheet.
-                .fill(tint.opacity(0.18))
+                // Slimmer rows get a tighter glow so it stays inside the row.
+                .fill(tint.opacity(compact ? 0.16 : 0.18))
                 .overlay(
                     RoundedRectangle(cornerRadius: Theme.pillCorner,
                                      style: .continuous)
@@ -174,7 +235,7 @@ struct TabBar: View {
                             lineWidth: 1)
                         .blendMode(.plusLighter)
                 )
-                .shadow(color: tint.opacity(0.45), radius: 10)
+                .shadow(color: tint.opacity(0.45), radius: compact ? 4 : 10)
                 .shadow(color: tint.opacity(0.20), radius: 2)
                 .matchedGeometryEffect(id: "tab.selection", in: selectionNS)
                 .animation(Theme.Spring.snappy, value: tint)
@@ -295,6 +356,7 @@ struct TabBar: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
             UpdateIndicatorButton()
+            LayoutModeSwitcher()
             actionBar
         }
     }
@@ -305,6 +367,7 @@ struct TabBar: View {
             if orientation == .vertical {
                 AutoHideToggleButton(bare: true)
             }
+            AgentToolbarPill(bare: true)
             NotificationBell(bare: true)
             SearchHintButton(bare: true)
             ShortcutHintButton(bare: true, compact: orientation == .vertical)
@@ -365,7 +428,7 @@ private struct ActionBarGlass: ViewModifier {
             // glass sheet (see LiquidGlass `chromeFill`). Never its own glass.
             content
                 .background(Capsule(style: .continuous)
-                    .fill(solid ? Theme.paneTitleBar : chromeFill(prefs)))
+                    .fill(solid ? Theme.tabBed : chromeFill(prefs)))
                 .overlay(
                     Capsule(style: .continuous)
                         .strokeBorder(
@@ -440,7 +503,7 @@ private struct SearchHintButton: View {
             NSApp.keyWindow?.makeFirstResponder(nil)
         } label: {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 12.5, weight: .semibold))
                 .foregroundStyle(toolbarIconColor(hovering: hovering, onRed: onRedPill))
                 .padding(.horizontal, bare ? 6 : 9)
                 .frame(height: TabBar.toolbarPillHeight)
@@ -452,6 +515,55 @@ private struct SearchHintButton: View {
         .onHover { hovering = $0 }
         .scaleEffect(hovering ? 1.12 : 1.0)
         .animation(Theme.Spring.snappy, value: hovering)
+    }
+}
+
+/// Toolbar agent pill — appears only while agents are running (the cluster
+/// extends to make room), showing the robot mark + a live count. Opens the
+/// agent command center; lights to the accent while it's open.
+private struct AgentToolbarPill: View {
+    @EnvironmentObject var state: AppState
+    @ObservedObject private var center = AgentCenter.shared
+    @Environment(\.onRedPill) private var onRedPill
+    @State private var hovering = false
+    var bare: Bool = false
+
+    var body: some View {
+        Group {
+            if center.runningCount > 0 {
+                Button {
+                    state.openAgentCenter(tab: .live)
+                    NSApp.keyWindow?.makeFirstResponder(nil)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "rectangle.stack")
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(tint)
+                        Text("\(center.runningCount)")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(tint)
+                    }
+                    .padding(.horizontal, bare ? 6 : 9)
+                    .frame(height: TabBar.toolbarPillHeight)
+                    .glassPill(enabled: !bare)
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Agents (⌘⇧A)")
+                .onHover { hovering = $0 }
+                .scaleEffect(hovering ? 1.12 : 1.0)
+                .animation(Theme.Spring.snappy, value: hovering)
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .animation(Theme.Spring.snappy, value: center.runningCount > 0)
+    }
+
+    private var tint: Color {
+        state.agentCenterOpen
+            ? (onRedPill ? Color.white : Theme.accent)
+            : toolbarIconColor(hovering: hovering, onRed: onRedPill)
     }
 }
 
@@ -482,7 +594,7 @@ private struct NotificationBell: View {
             HStack(spacing: 3) {
                 Image(systemName: notifications.unreadCount > 0
                       ? "bell.badge.fill" : "bell")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                 if notifications.unreadCount > 0 {
                     Text("\(min(notifications.unreadCount, 99))")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
@@ -632,5 +744,51 @@ struct FloatingLightsAutohidePill: View {
         // otherwise push the auto-hide icon on top of the native
         // traffic lights (the lights' x is fixed at the window edge).
         .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+/// Collapsible folder header for a tab group in the vertical sidebar tree.
+/// A disclosure chevron, the group's color dot + name, and a tab count;
+/// clicking folds/unfolds the group's rows.
+private struct TabFolderHeader: View {
+    let name: String
+    let color: Color
+    let count: Int
+    let collapsed: Bool
+    var onToggle: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 7) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .rotationEffect(.degrees(collapsed ? 0 : 90))
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: color.opacity(0.5), radius: 2)
+                Text(name)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text("\(count)")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(hovering ? Theme.selectionFill : .clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(Theme.Spring.snappy, value: hovering)
     }
 }
