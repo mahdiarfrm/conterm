@@ -96,6 +96,8 @@ private final class TrafficLightShifter: NSObject {
     private weak var window: NSWindow?
     private let xOffset: CGFloat
     private let yOffset: CGFloat
+    private let key: ObjectIdentifier
+    private var observers: [NSObjectProtocol] = []
     private static var attached: [ObjectIdentifier: TrafficLightShifter] = [:]
 
     static func attach(to window: NSWindow, xOffset: CGFloat, yOffset: CGFloat) {
@@ -111,7 +113,12 @@ private final class TrafficLightShifter: NSObject {
         self.window = window
         self.xOffset = xOffset
         self.yOffset = yOffset
+        self.key = ObjectIdentifier(window)
         super.init()
+    }
+
+    isolated deinit {
+        observers.forEach(NotificationCenter.default.removeObserver)
     }
 
     private func register() {
@@ -124,10 +131,20 @@ private final class TrafficLightShifter: NSObject {
             NSWindow.didEnterFullScreenNotification,
         ]
         for n in events {
-            nc.addObserver(forName: n, object: window, queue: .main) { [weak self] _ in
+            let token = nc.addObserver(forName: n, object: window, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.reposition() }
             }
+            observers.append(token)
         }
+        // Drop the shifter — and with it the observers above — when its window
+        // closes, so a long multi-window session doesn't retain one per window
+        // for the process lifetime. Removing the last strong ref triggers deinit.
+        let key = self.key
+        let close = nc.addObserver(forName: NSWindow.willCloseNotification,
+                                   object: window, queue: .main) { _ in
+            MainActor.assumeIsolated { _ = Self.attached.removeValue(forKey: key) }
+        }
+        observers.append(close)
     }
 
     /// Cached original-x positions per button. AppKit may or may not
@@ -202,11 +219,20 @@ final class WindowEdgeResizer: NSView {
         case .top, .bottom:
             cursor = .resizeUpDown
         case .topLeft, .bottomRight:
-            cursor = .crosshair       // closest standard cursor; macOS has _diagonalResizing privately
+            cursor = Self.diagonalCursor("_windowResizeNorthWestSouthEastCursor") ?? .crosshair
         case .topRight, .bottomLeft:
-            cursor = .crosshair
+            cursor = Self.diagonalCursor("_windowResizeNorthEastSouthWestCursor") ?? .crosshair
         }
         addCursorRect(bounds, cursor: cursor)
+    }
+
+    /// The system's diagonal resize cursors are private (`NSCursor` only
+    /// exposes the orthogonal ones publicly). Look them up by selector and
+    /// fall back to the crosshair if a future macOS drops them.
+    private static func diagonalCursor(_ name: String) -> NSCursor? {
+        let sel = NSSelectorFromString(name)
+        guard NSCursor.responds(to: sel) else { return nil }
+        return NSCursor.perform(sel)?.takeUnretainedValue() as? NSCursor
     }
 
     override func mouseDown(with event: NSEvent) {
