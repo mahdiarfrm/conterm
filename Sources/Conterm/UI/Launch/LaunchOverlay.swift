@@ -68,13 +68,16 @@ struct LaunchOverlay: View {
     /// Rasterized via `.drawingGroup()` so it composes cheaply.
     private var colorWash: some View {
         GeometryReader { geo in
+            // One cohesive red family — crimson, the signature red
+            // (#FF383C), coral, raspberry. A single harmonious hue,
+            // balanced like a calm aurora; no clashing tints.
             LinearGradient(
                 stops: [
                     .init(color: .clear,                                                  location: 0.00),
-                    .init(color: Color(red: 0.45, green: 0.75, blue: 1.00).opacity(0.42), location: 0.30),
-                    .init(color: Color(red: 0.85, green: 0.65, blue: 1.00).opacity(0.46), location: 0.50),
-                    .init(color: Color(red: 1.00, green: 0.80, blue: 0.70).opacity(0.42), location: 0.65),
-                    .init(color: Color(red: 0.65, green: 1.00, blue: 0.85).opacity(0.38), location: 0.80),
+                    .init(color: Color(red: 0.80, green: 0.10, blue: 0.16).opacity(0.42), location: 0.30),
+                    .init(color: Color(red: 1.00, green: 0.22, blue: 0.24).opacity(0.44), location: 0.50),
+                    .init(color: Color(red: 1.00, green: 0.42, blue: 0.34).opacity(0.40), location: 0.65),
+                    .init(color: Color(red: 0.96, green: 0.25, blue: 0.40).opacity(0.38), location: 0.80),
                     .init(color: .clear,                                                  location: 1.00),
                 ],
                 startPoint: .topLeading,
@@ -95,11 +98,12 @@ struct LaunchOverlay: View {
         GeometryReader { geo in
             TimelineView(.animation) { tl in
                 let t = tl.date.timeIntervalSinceReferenceDate
+                // Cohesive red family — matching `colorWash`.
                 let palette: [Color] = [
-                    Color(red: 0.45, green: 0.75, blue: 1.00),
-                    Color(red: 0.85, green: 0.65, blue: 1.00),
-                    Color(red: 1.00, green: 0.80, blue: 0.70),
-                    Color(red: 0.65, green: 1.00, blue: 0.85),
+                    Color(red: 0.80, green: 0.10, blue: 0.16),  // crimson
+                    Color(red: 1.00, green: 0.22, blue: 0.24),  // signature red
+                    Color(red: 1.00, green: 0.42, blue: 0.34),  // coral
+                    Color(red: 0.96, green: 0.25, blue: 0.40),  // raspberry
                 ]
                 let w = geo.size.width, h = geo.size.height
                 Canvas { ctx, size in
@@ -114,7 +118,7 @@ struct LaunchOverlay: View {
                             width: radius, height: radius))
                         var blurredCtx = ctx
                         blurredCtx.addFilter(.blur(radius: 110))
-                        blurredCtx.fill(blob, with: .color(palette[i].opacity(0.55)))
+                        blurredCtx.fill(blob, with: .color(palette[i].opacity(0.48)))
                     }
                 }
                 .blendMode(.plusLighter)
@@ -160,8 +164,10 @@ struct LaunchOverlay: View {
             .foregroundStyle(
                 LinearGradient(
                     colors: [
-                        Color.white.opacity(0.96),
-                        Color.white.opacity(0.78),
+                        // Warm cream (#F4F2EC), the brand's text colour —
+                        // not a cold white.
+                        Color(red: 0.97, green: 0.95, blue: 0.90),
+                        Color(red: 0.90, green: 0.86, blue: 0.78),
                     ],
                     startPoint: .top, endPoint: .bottom
                 )
@@ -169,7 +175,7 @@ struct LaunchOverlay: View {
             .blur(radius: wordIn ? 0 : 22)
             .opacity(wordIn ? 1 : 0)
             .scaleEffect(wordIn ? 1.0 : 0.96)
-            .shadow(color: Color.white.opacity(0.20), radius: 30)
+            .shadow(color: Color(red: 1.00, green: 0.40, blue: 0.42).opacity(0.22), radius: 30)
     }
 
     /// Cheap deterministic PRNG. Avoids a per-frame `Int.random` syscall
@@ -206,7 +212,7 @@ struct LaunchOverlay: View {
         Text("a modern way to connect")
             .font(.system(size: 12, weight: .regular, design: .monospaced))
             .tracking(3)
-            .foregroundStyle(Color.white.opacity(0.55))
+            .foregroundStyle(Color(red: 0.95, green: 0.91, blue: 0.82).opacity(0.55))
             .opacity(taglineIn ? 1 : 0)
     }
 

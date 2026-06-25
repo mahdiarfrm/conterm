@@ -67,8 +67,6 @@ struct SearchOverlay: View {
             .foregroundStyle(Theme.textPrimary)
             .onSubmit { jumpToSelectedMatch() }
             .onChange(of: state.searchQuery) { _, _ in
-                // Reset selection so the highlight always points at
-                // the first match in the new result set.
                 selectedLineNo = nil
             }
             .background(ArrowKeyCatcher(
