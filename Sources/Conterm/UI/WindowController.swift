@@ -60,6 +60,13 @@ final class WindowController {
         )
         win.contentView = host
         win.title = "Conterm"
+        // This window's lifetime is ARC-owned: WindowController holds the only
+        // strong ref, kept alive by AppDelegate.windows until the willClose
+        // handler drops it. NSWindow defaults isReleasedWhenClosed to true for
+        // code-created windows, which would free it a second time on close — a
+        // double-free that leaves a zombie NSWindow for a later autorelease-pool
+        // drain. Must stay false so close runs through ARC alone.
+        win.isReleasedWhenClosed = false
         // No implicit open/close window animation: AppKit's transform
         // animation snapshots the content (the panes' Metal surface layers)
         // and tears it down on a later CoreAnimation commit, which races the
