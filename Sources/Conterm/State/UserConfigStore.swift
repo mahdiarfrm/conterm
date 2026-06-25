@@ -11,27 +11,43 @@ enum UserConfigStore {
         return "\(home)/.config/conterm/config"
     }
 
+    /// Parsed config keyed by the file's modification date. A whole-file
+    /// parse on every single-key lookup is wasteful — launch alone reads
+    /// theme + font-family + font-size. The mtime guard keeps the cache
+    /// honest against external edits (hand-edits, Reload).
+    private static var cache: (mtime: Date, values: [String: String])?
+
     /// Read a single key's value. Returns nil if the key isn't set or
     /// is commented out. Last-write-wins (matches libghostty's parser).
     static func read(key: String) -> String? {
-        guard let body = try? String(contentsOfFile: path, encoding: .utf8) else {
-            return nil
+        parsed()[key]
+    }
+
+    private static func parsed() -> [String: String] {
+        let mtime = (try? FileManager.default
+            .attributesOfItem(atPath: path)[.modificationDate]) as? Date
+        if let cache, let mtime, cache.mtime == mtime {
+            return cache.values
         }
-        var hit: String?
+        guard let body = try? String(contentsOfFile: path, encoding: .utf8) else {
+            cache = nil
+            return [:]
+        }
+        var values: [String: String] = [:]
         for raw in body.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
             let line = String(raw)
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
-            // Match `<key> = …` allowing leading whitespace.
+            // Match `<key> = …` allowing leading whitespace. Last
+            // assignment wins, so a later line overwrites an earlier one.
             guard let eq = line.firstIndex(of: "=") else { continue }
             let lhs = line[..<eq].trimmingCharacters(in: .whitespaces)
-            if lhs == key {
-                hit = String(line[line.index(after: eq)...])
-                    .trimmingCharacters(in: .whitespaces)
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-            }
+            values[lhs] = String(line[line.index(after: eq)...])
+                .trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
         }
-        return hit
+        if let mtime { cache = (mtime, values) }
+        return values
     }
 
     /// Replace (or append) `key = value` and re-write the file. The new
@@ -92,6 +108,9 @@ enum UserConfigStore {
         }
         let joined = collapsed.joined(separator: "\n") + "\n"
         try? joined.write(toFile: path, atomically: true, encoding: .utf8)
+        // Drop the parse cache — a same-second rewrite can land on an
+        // unchanged mtime, which would otherwise serve stale values.
+        cache = nil
     }
 
     /// Quote a value if it contains spaces. Theme names + font families

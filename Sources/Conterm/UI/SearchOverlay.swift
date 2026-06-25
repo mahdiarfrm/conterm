@@ -10,6 +10,10 @@ struct SearchOverlay: View {
     @EnvironmentObject var state: AppState
     @FocusState private var queryFocused: Bool
     @State private var selectedLineNo: Int?
+    // Memoized scan of the (fixed) snapshot. Recomputed only when the
+    // query changes — moving the selection or hovering a row must not
+    // re-scan thousands of lines.
+    @State private var matches: [SearchMatch] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,6 +51,8 @@ struct SearchOverlay: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
                 queryFocused = true
             }
+            // Reopening can carry a query forward; seed the cache.
+            matches = computeMatches()
         }
     }
 
@@ -68,6 +74,7 @@ struct SearchOverlay: View {
             .onSubmit { jumpToSelectedMatch() }
             .onChange(of: state.searchQuery) { _, _ in
                 selectedLineNo = nil
+                matches = computeMatches()
             }
             .background(ArrowKeyCatcher(
                 onUp: { moveSelection(by: -1) },
@@ -139,7 +146,7 @@ struct SearchOverlay: View {
 
     // MARK: - Search
 
-    private var matches: [SearchMatch] {
+    private func computeMatches() -> [SearchMatch] {
         let q = state.searchQuery
         guard !q.isEmpty else { return [] }
         var hits: [SearchMatch] = []
