@@ -534,25 +534,35 @@ struct SettingsPanel: View {
     }
 
     private var shortcuts: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             sectionHeader("Shortcuts", subtitle: "Keyboard reference.")
-            card {
-                ForEach(KeyboardShortcuts.all, id: \.label) { s in
-                    HStack {
-                        Text(s.label)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(Theme.textPrimary)
-                        Spacer()
-                        Text(s.keys)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(Theme.textSecondary)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(Color.white.opacity(0.08))
-                            )
+            ForEach(KeyboardShortcuts.groups, id: \.title) { group in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(group.title)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .textCase(.uppercase)
+                        .kerning(0.5)
+                        .padding(.horizontal, 2)
+                    card {
+                        ForEach(group.items, id: \.label) { s in
+                            HStack {
+                                Text(s.label)
+                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                    .foregroundStyle(Theme.textPrimary)
+                                Spacer()
+                                Text(s.keys)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        Capsule().fill(Color.white.opacity(0.08))
+                                    )
+                            }
+                            .padding(.vertical, 3)
+                        }
                     }
-                    .padding(.vertical, 3)
                 }
             }
         }
@@ -847,16 +857,39 @@ private extension Text {
 // MARK: - Keyboard shortcuts table
 
 private struct KeyboardShortcuts {
-    static let all: [(label: String, keys: String)] = [
-        ("New tab",                  "⌘T"),
-        ("Close active pane / tab",  "⌘W"),
-        ("Split horizontal",         "⌘D"),
-        ("Split vertical",           "⌘⇧D"),
-        ("Open command palette",     "⌘K"),
-        ("Open settings",            "⌘,"),
-        ("Jump to tab N",            "⌘1 … ⌘9"),
-        ("Focus pane N in tab",      "⌥1 … ⌥9"),
-        ("Close palette / settings", "Esc"),
+    struct Item { let label: String; let keys: String }
+    struct Group { let title: String; let items: [Item] }
+
+    static let groups: [Group] = [
+        Group(title: "Tabs & windows", items: [
+            Item(label: "New window",       keys: "⌘N"),
+            Item(label: "New tab",          keys: "⌘T"),
+            Item(label: "Close pane / tab", keys: "⌘W"),
+            Item(label: "Jump to tab 1–9",  keys: "⌘1 … ⌘9"),
+            Item(label: "Minimize window",  keys: "⌘M"),
+        ]),
+        Group(title: "Panes", items: [
+            Item(label: "Split right",    keys: "⌘D"),
+            Item(label: "Split down",     keys: "⌘⇧D"),
+            Item(label: "Focus pane 1–9", keys: "⌥1 … ⌥9"),
+        ]),
+        Group(title: "Terminal", items: [
+            Item(label: "Previous prompt",   keys: "⌘↑"),
+            Item(label: "Next prompt",       keys: "⌘↓"),
+            Item(label: "Search scrollback", keys: "⌘F"),
+        ]),
+        Group(title: "Overlays", items: [
+            Item(label: "Command palette",      keys: "⌘K"),
+            Item(label: "Agent command center", keys: "⌘⇧A"),
+            Item(label: "Settings",             keys: "⌘,"),
+            Item(label: "Dismiss overlay",      keys: "Esc"),
+        ]),
+        Group(title: "Command palette", items: [
+            Item(label: "Move selection",    keys: "↑ ↓"),
+            Item(label: "Switch suggestion", keys: "← →"),
+            Item(label: "Run selection",     keys: "↩"),
+            Item(label: "Delete note",       keys: "⌘⌫"),
+        ]),
     ]
 }
 
