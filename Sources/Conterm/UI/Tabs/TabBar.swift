@@ -26,6 +26,14 @@ struct TabBar: View {
     /// guarantees each slot draws the correct variant.
     var orientation: Preferences.TabOrientation = .horizontal
 
+    /// Measured width of the horizontal bar, used to shed toolbar width
+    /// before the labelled pills would be pushed off a narrow window. Two
+    /// breakpoints — stats drop first, then the pills compact — so there's
+    /// no width band where the full ⌘K label overflows and clips.
+    @State private var barWidth: CGFloat = 0
+    private var hideStats: Bool    { barWidth > 0 && barWidth < 1080 }
+    private var compactPills: Bool { barWidth > 0 && barWidth < 940 }
+
     var body: some View {
         Group {
             switch orientation {
@@ -59,7 +67,13 @@ struct TabBar: View {
         }
         .padding(.horizontal, 8)
         .frame(height: Theme.tabBarHeight)
+        .background(GeometryReader { proxy in
+            Color.clear.preference(key: TabBarWidthKey.self, value: proxy.size.width)
+        })
+        .onPreferenceChange(TabBarWidthKey.self) { barWidth = $0 }
         .animation(Theme.Spring.snappy, value: prefs.showSystemStats)
+        .animation(Theme.Spring.snappy, value: hideStats)
+        .animation(Theme.Spring.snappy, value: compactPills)
     }
 
     // MARK: - Vertical
@@ -351,11 +365,13 @@ struct TabBar: View {
     /// bar with a hairline border — the macOS 26 grouped-toolbar look.
     private var fusedToolbarCluster: some View {
         HStack(spacing: 8) {
-            if orientation == .horizontal, prefs.showSystemStats {
+            // Stats are informational; drop them when narrow so the higher-
+            // priority ⌘K / action pills aren't pushed off the bar.
+            if orientation == .horizontal, prefs.showSystemStats, !hideStats {
                 SystemStatsWidget()
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
-            UpdateIndicatorButton()
+            UpdateIndicatorButton(compact: compactPills)
             LayoutModeSwitcher()
             actionBar
         }
@@ -370,7 +386,7 @@ struct TabBar: View {
             AgentToolbarPill(bare: true)
             NotificationBell(bare: true)
             SearchHintButton(bare: true)
-            ShortcutHintButton(bare: true, compact: orientation == .vertical)
+            ShortcutHintButton(bare: true, compact: orientation == .vertical || compactPills)
         }
         .padding(.horizontal, 5)
         .frame(height: TabBar.heavyPillHeight)
@@ -627,10 +643,37 @@ private struct NotificationBell: View {
 /// being installed). A neutral Liquid Glass capsule with an accent
 /// download glyph and a softly pulsing accent ring — glanceable without
 /// nagging. Click → confirm + install & relaunch.
+/// Reports the horizontal tab bar's width up to `TabBar` so it can collapse
+/// the labelled toolbar pills when the window gets narrow.
+private struct TabBarWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct UpdateIndicatorButton: View {
     @EnvironmentObject var updates: UpdateChecker
+    @Environment(\.controlActiveState) private var controlActive
     @State private var hovering = false
     @State private var pulse = false
+    /// Narrow window: collapse to an icon-only circle so the toolbar
+    /// doesn't push the ⌘K / action pills off the bar.
+    var compact: Bool = false
+
+    /// Run the attention pulse only while this window is key. A
+    /// repeatForever animation on a background window keeps compositing for
+    /// no benefit — every other looping animation in the app is gated the
+    /// same way.
+    private func syncPulse() {
+        if controlActive == .key {
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) { pulse = false }
+        }
+    }
 
     private var label: String? {
         switch updates.phase {
@@ -651,12 +694,15 @@ private struct UpdateIndicatorButton: View {
                           ? "arrow.down.circle.fill"
                           : "arrow.triangle.2.circlepath")
                         .font(.system(size: 11, weight: .bold))
-                    Text(label)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    if !compact {
+                        Text(label)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    }
                 }
                 .foregroundStyle(Theme.accent)
-                .padding(.horizontal, 10)
-                .frame(height: TabBar.toolbarPillHeight)
+                .padding(.horizontal, compact ? 0 : 10)
+                .frame(width: compact ? TabBar.toolbarPillHeight : nil,
+                       height: TabBar.toolbarPillHeight)
                 .glassPill()
                 .overlay(
                     Capsule(style: .continuous)
@@ -672,11 +718,8 @@ private struct UpdateIndicatorButton: View {
             .shadow(color: Theme.accent.opacity(pulse ? 0.45 : 0.18),
                     radius: pulse ? 7 : 3)
             .help("A new version of Conterm is available")
-            .onAppear {
-                withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
-                    pulse = true
-                }
-            }
+            .onAppear { syncPulse() }
+            .onChange(of: controlActive) { _, _ in syncPulse() }
             .animation(Theme.Spring.snappy, value: hovering)
             .transition(.opacity.combined(with: .scale(scale: 0.9)))
         }
