@@ -282,7 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `scrollingDeltaY` (not the deprecated `deltaY`) honors the
         // system natural-scroll direction in both paths.
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
-            guard let self else { return event }
+            guard let self, self.state != nil else { return event }
             guard self.state.paletteOpen else { return event }
             let dy = event.scrollingDeltaY
             if event.hasPreciseScrollingDeltas {
@@ -311,6 +311,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self else { return event }
+            // During the last-window-close race `state` (windows.first?.state)
+            // is nil; a dispatched key event would otherwise crash on the IUO.
+            guard self.state != nil else { return event }
 
             // Esc: bump the palette's tick so it can unwind one level
             // (note-edit → notes-list → commands → closed). Settings
