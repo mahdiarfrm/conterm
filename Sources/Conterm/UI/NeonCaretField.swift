@@ -81,6 +81,12 @@ struct NeonCaretField: NSViewRepresentable {
     }
 
     func updateNSView(_ tv: PrismCaretTextView, context: Context) {
+        // Re-seat the coordinator on the current view value. SwiftUI makes a
+        // fresh NeonCaretField (and a fresh `text` binding) on every parent
+        // re-render, but the coordinator is created once — so without this it
+        // keeps writing through the binding captured at first mount, and
+        // `onChange(of:)` on the bound state stops firing reliably.
+        context.coordinator.parent = self
         if tv.string != text { tv.string = text }
         tv.placeholder = placeholder
         tv.onSubmit = onSubmit
@@ -92,7 +98,7 @@ struct NeonCaretField: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
-        let parent: NeonCaretField
+        var parent: NeonCaretField
         init(_ parent: NeonCaretField) { self.parent = parent }
         func textDidChange(_ note: Notification) {
             guard let tv = note.object as? NSTextView else { return }

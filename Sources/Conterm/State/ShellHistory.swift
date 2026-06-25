@@ -5,6 +5,10 @@ import Foundation
 struct HistoryEntry: Identifiable, Hashable {
     let id = UUID()
     let command: String
+    /// When the command was last run, from zsh's extended-history
+    /// timestamp. nil for bash / non-extended zsh history, which carry
+    /// no time — those fall back to file order for recency.
+    var date: Date? = nil
 }
 
 /// Best-effort reader for the user's shell history. Looks at zsh
@@ -21,7 +25,7 @@ enum ShellHistory {
         let zsh  = "\(home)/.zsh_history"
         let bash = "\(home)/.bash_history"
 
-        var all: [String] = []
+        var all: [(command: String, date: Date?)] = []
         // Zsh's extended history file format: `: timestamp:duration;command`
         // when `setopt EXTENDED_HISTORY`, plain `command` otherwise.
         // Multi-line commands continue with a trailing `\`.
@@ -32,15 +36,18 @@ enum ShellHistory {
             // Bash history has plain command lines, occasionally with
             // `#timestamp` markers above if `HISTTIMEFORMAT` is set —
             // we just skip those.
-            all.append(contentsOf: bashLines.filter { !$0.hasPrefix("#") && !$0.isEmpty })
+            all.append(contentsOf: bashLines
+                .filter { !$0.hasPrefix("#") && !$0.isEmpty }
+                .map { (command: $0, date: nil) })
         }
         // Reverse so newest is first (history files are append-only,
         // newest at the bottom).
         all.reverse()
-        // Dedupe preserving order.
+        // Dedupe preserving order — keep the newest occurrence's timestamp.
         var seen = Set<String>()
-        let unique = all.filter { seen.insert($0).inserted }
-        return Array(unique.prefix(cap)).map { HistoryEntry(command: $0) }
+        var unique: [(command: String, date: Date?)] = []
+        for e in all where seen.insert(e.command).inserted { unique.append(e) }
+        return unique.prefix(cap).map { HistoryEntry(command: $0.command, date: $0.date) }
     }
 
     private static func readLines(_ path: String) -> [String]? {
@@ -57,40 +64,45 @@ enum ShellHistory {
         return nil
     }
 
-    private static func parseZsh(_ lines: [String]) -> [String] {
-        var out: [String] = []
-        var continued: String?
+    private static func parseZsh(_ lines: [String]) -> [(command: String, date: Date?)] {
+        var out: [(command: String, date: Date?)] = []
+        var continued: (text: String, date: Date?)?
         for raw in lines {
             // Continuation handling: zsh stores multi-line commands
             // with a trailing `\` on each non-final line.
             if var cont = continued {
-                cont += "\n" + raw
+                cont.text += "\n" + raw
                 if raw.hasSuffix("\\") {
-                    cont.removeLast()
+                    cont.text.removeLast()
                     continued = cont
                 } else {
-                    out.append(strip(cont))
+                    out.append((strip(cont.text), cont.date))
                     continued = nil
                 }
                 continue
             }
             let trimmed = raw.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty { continue }
-            // Extended format: ": <ts>:<dur>;<cmd>". Drop the prefix.
+            // Extended format: ": <ts>:<dur>;<cmd>". Pull the epoch
+            // timestamp out of the header, then drop the prefix.
             var body = trimmed
-            if trimmed.hasPrefix(":") {
-                if let semi = trimmed.firstIndex(of: ";") {
-                    body = String(trimmed[trimmed.index(after: semi)...])
+            var date: Date?
+            if trimmed.hasPrefix(":"), let semi = trimmed.firstIndex(of: ";") {
+                let header = trimmed[trimmed.index(after: trimmed.startIndex)..<semi]
+                if let tsField = header.split(separator: ":").first,
+                   let ts = TimeInterval(tsField.trimmingCharacters(in: .whitespaces)) {
+                    date = Date(timeIntervalSince1970: ts)
                 }
+                body = String(trimmed[trimmed.index(after: semi)...])
             }
             if body.hasSuffix("\\") {
                 body.removeLast()
-                continued = body
+                continued = (body, date)
             } else {
-                out.append(strip(body))
+                out.append((strip(body), date))
             }
         }
-        return out.filter { !$0.isEmpty }
+        return out.filter { !$0.command.isEmpty }
     }
 
     private static func strip(_ s: String) -> String {

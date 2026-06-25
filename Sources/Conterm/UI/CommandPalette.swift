@@ -69,7 +69,18 @@ struct CommandPalette: View {
             if mode == .commands { refreshOmniSources() }
             syncTrayState(focusTray: mode == .commands)
         }
-        .onChange(of: query) { _, _ in
+        .onChange(of: query) { _, q in
+            // Recompute the omni cache once per keystroke — the only place
+            // the query-dependent results change. Sources (cwd files, SSH
+            // rows) are refreshed on open / mode-change, before any typing.
+            if q.isEmpty {
+                cachedOmniResults = []
+                cachedRecentBand = nil
+            } else {
+                let r = omniResults(for: q)
+                cachedOmniResults = r.rows
+                cachedRecentBand = r.recentBand
+            }
             state.paletteFocusedIndex = 0
             // Typing hides the tray; clearing brings it back unfocused
             // (↑ from the list's top row climbs back in).
@@ -234,6 +245,17 @@ struct CommandPalette: View {
             ScrollView {
                 VStack(spacing: 2) {
                     ForEach(Array(filteredCommands.enumerated()), id: \.element.id) { index, command in
+                        // Section markers: a "Recently used" caption above the
+                        // top-picks band, and a divider where the latest-used
+                        // list begins. Decorations only — they take no focus
+                        // index, so keyboard nav over the rows is unaffected.
+                        if let band = cachedRecentBand {
+                            if index == band.lowerBound {
+                                omniSectionLabel("Recently used")
+                            } else if index == band.upperBound {
+                                omniSectionDivider
+                            }
+                        }
                         CommandRow(
                             command: command,
                             index: index,
@@ -267,17 +289,54 @@ struct CommandPalette: View {
         }
     }
 
+    /// Caption that heads the omni "Recently used" band.
+    private func omniSectionLabel(_ text: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 9, weight: .semibold))
+            Text(text)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .textCase(.uppercase)
+                .kerning(0.5)
+            Spacer()
+        }
+        .foregroundStyle(Theme.textSecondary)
+        .padding(.horizontal, 10)
+        .padding(.top, 4)
+        .padding(.bottom, 2)
+    }
+
+    /// Hairline between the top picks and the latest-used list.
+    private var omniSectionDivider: some View {
+        Rectangle()
+            .fill(Theme.stroke)
+            .frame(height: 1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+    }
+
     /// What the default ⌘K view shows. Empty query: learned top picks
     /// first, then the command list. Any query: a unified search
     /// across commands, SSH hosts, recent files in the pane's cwd,
     /// shell history, and notes — plus a live calculator row when the
     /// query is arithmetic. Everything is synthesized into `Command`
     /// rows so focus, Enter, and rendering need no special cases.
+    /// Omni-search results for the current non-empty query, recomputed
+    /// only when `query` changes (see `onChange(of: query)`). The body
+    /// re-renders on every focus-index move (arrow keys); reading this
+    /// cache instead of calling `omniResults` keeps that navigation off
+    /// the fuzzy-match + frecency-sort path.
+    @State private var cachedOmniResults: [Command] = []
+    /// Index range of the "Recently used" top-picks band within
+    /// `cachedOmniResults`, so the list can draw the section label +
+    /// divider. nil when no row has been picked before.
+    @State private var cachedRecentBand: Range<Int>? = nil
+
     private var filteredCommands: [Command] {
         // Empty query keeps the command list in its configured order —
         // learned picks live in the suggestion strip above, not here.
         guard !query.isEmpty else { return commands }
-        return omniResults(for: query)
+        return cachedOmniResults
     }
 
     // MARK: - Omni search
@@ -318,11 +377,17 @@ struct CommandPalette: View {
             .map { $0 }
     }
 
-    private func omniResults(for q: String) -> [Command] {
+    private func omniResults(for q: String) -> (rows: [Command], recentBand: Range<Int>?) {
         let ql = q.lowercased()
-        var rows: [Command] = []
+        let frec = FrecencyStore.shared
+        // Each row carries a "last used" date for recency ordering: shell
+        // history timestamps, file mtimes, and the frecency table's last-pick
+        // date for everything else. nil when unknown (trails the dated rows).
+        var rows: [(cmd: Command, recency: Date?)] = []
 
-        rows += commands.filter { $0.title.lowercased().contains(ql) }
+        rows += commands
+            .filter { $0.title.lowercased().contains(ql) }
+            .map { (cmd: $0, recency: frec.entries[$0.id]?.last) }
 
         // SSH hosts are a small set — show every match. History and
         // files can be huge, so those stay capped (the list scrolls,
@@ -332,40 +397,61 @@ struct CommandPalette: View {
                 $0.host.alias.lowercased().contains(ql)
                 || ($0.host.hostname?.lowercased().contains(ql) ?? false)
             }
-            .map { sshResultRow($0.host) }
+            .map { row -> (cmd: Command, recency: Date?) in
+                let c = sshResultRow(row.host)
+                return (cmd: c, recency: frec.entries[c.id]?.last)
+            }
 
         rows += cachedCwdFiles
             .filter { $0.name.lowercased().contains(ql) }
             .prefix(8)
-            .map(fileResultRow)
+            .map { (cmd: fileResultRow($0), recency: $0.mtime) }
 
         rows += Self.history
             .filter { $0.command.lowercased().contains(ql) }
             .prefix(8)
-            .map(historyResultRow)
+            .map { (cmd: historyResultRow($0), recency: $0.date) }
 
-        rows += state.notes.filtered(q).prefix(5).map(noteResultRow)
+        rows += state.notes.filtered(q).prefix(5)
+            .map { note -> (cmd: Command, recency: Date?) in
+                let c = noteResultRow(note)
+                return (cmd: c, recency: frec.entries[c.id]?.last)
+            }
 
-        // Learned ordering: anything the user keeps picking floats up;
-        // untouched rows keep their source order (stable sort). Score
-        // each row once up front — recomputing inside the comparator
-        // would call score() (Date + pow) O(n·log n) times per keystroke.
+        // Two-tier ordering. Top picks: up to 3 most-used-recently matches by
+        // frecency, from ANY source — habitual choices lead. The rest follow
+        // newest→oldest by last-used (history timestamp, file mtime, last
+        // pick), undated rows trailing in source order. Score once up front;
+        // scoring inside the comparator would call score() (Date + pow)
+        // O(n·log n) times per keystroke.
         let now = Date()
-        let ranked = rows.enumerated()
-            .map { (offset: $0.offset, element: $0.element,
-                    score: FrecencyStore.shared.score($0.element.id, now: now)) }
+        let scored = rows.enumerated().map {
+            (offset: $0.offset, cmd: $0.element.cmd, recency: $0.element.recency,
+             score: frec.score($0.element.cmd.id, now: now))
+        }
+        let topPicks = scored
+            .filter { $0.score > 0 }
+            .sorted { $0.score > $1.score }
+            .prefix(3)
+        let topIDs = Set(topPicks.map { $0.cmd.id })
+        let rest = scored
+            .filter { !topIDs.contains($0.cmd.id) }
             .sorted { a, b in
-                if a.score != b.score { return a.score > b.score }
+                let da = a.recency ?? .distantPast
+                let db = b.recency ?? .distantPast
+                if da != db { return da > db }
                 return a.offset < b.offset
             }
-            .map(\.element)
+        var ranked = topPicks.map(\.cmd) + rest.map(\.cmd)
+        var band: Range<Int>? = topPicks.isEmpty ? nil : 0 ..< topPicks.count
 
         // The calculator/converter answer always leads — it's the one
         // result the user can read without selecting anything.
         if let a = QuickMath.answer(q) {
-            return [calcResultRow(expression: q, answer: a)] + ranked
+            ranked.insert(calcResultRow(expression: q, answer: a), at: 0)
+            band = band.map { ($0.lowerBound + 1) ..< ($0.upperBound + 1) }
         }
-        return ranked
+        return (rows: ranked, recentBand: band)
     }
 
     private func calcResultRow(expression: String,
