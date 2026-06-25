@@ -347,13 +347,18 @@ struct CommandPalette: View {
         rows += state.notes.filtered(q).prefix(5).map(noteResultRow)
 
         // Learned ordering: anything the user keeps picking floats up;
-        // untouched rows keep their source order (stable sort).
-        let ranked = rows.enumerated().sorted { a, b in
-            let sa = FrecencyStore.shared.score(a.element.id)
-            let sb = FrecencyStore.shared.score(b.element.id)
-            if sa != sb { return sa > sb }
-            return a.offset < b.offset
-        }.map(\.element)
+        // untouched rows keep their source order (stable sort). Score
+        // each row once up front — recomputing inside the comparator
+        // would call score() (Date + pow) O(n·log n) times per keystroke.
+        let now = Date()
+        let ranked = rows.enumerated()
+            .map { (offset: $0.offset, element: $0.element,
+                    score: FrecencyStore.shared.score($0.element.id, now: now)) }
+            .sorted { a, b in
+                if a.score != b.score { return a.score > b.score }
+                return a.offset < b.offset
+            }
+            .map(\.element)
 
         // The calculator/converter answer always leads — it's the one
         // result the user can read without selecting anything.
@@ -2103,15 +2108,18 @@ private struct NoteRow: View {
         .animation(Theme.Spring.snappy, value: isFocused)
     }
 
+    private static let shortDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        return f
+    }()
+
     private func formatDate(_ d: Date) -> String {
-        let now = Date()
-        let interval = now.timeIntervalSince(d)
+        let interval = Date().timeIntervalSince(d)
         if interval < 60 { return "just now" }
         if interval < 3600 { return "\(Int(interval/60))m ago" }
         if interval < 86400 { return "\(Int(interval/3600))h ago" }
-        let fmt = DateFormatter()
-        fmt.dateStyle = .short
-        return fmt.string(from: d)
+        return Self.shortDateFormatter.string(from: d)
     }
 }
 

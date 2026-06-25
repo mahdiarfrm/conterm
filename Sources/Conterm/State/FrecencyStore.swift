@@ -43,23 +43,36 @@ final class FrecencyStore {
         // Cap the table so years of use can't grow it unbounded; keep
         // the strongest-scoring entries.
         if entries.count > 400 {
+            let now = Date()
             let keep = Set(entries.keys
-                .sorted { score($0) > score($1) }
-                .prefix(300))
+                .map { (key: $0, score: score($0, now: now)) }
+                .sorted { $0.score > $1.score }
+                .prefix(300).map(\.key))
             entries = entries.filter { keep.contains($0.key) }
         }
         save()
     }
 
     func score(_ key: String) -> Double {
+        score(key, now: Date())
+    }
+
+    /// Score against a caller-supplied `now`. Ranking a result list calls
+    /// this O(n·log n) times inside the sort comparator; hoisting `Date()`
+    /// out of the loop keeps the decay reference fixed and cheap.
+    func score(_ key: String, now: Date) -> Double {
         guard let e = entries[key] else { return 0 }
-        let age = Date().timeIntervalSince(e.last)
+        let age = now.timeIntervalSince(e.last)
         return Double(e.uses) * pow(2, -age / halfLife)
     }
 
     /// Highest-scoring keys, for the empty-query suggestions block.
     func top(_ n: Int) -> [String] {
-        entries.keys.sorted { score($0) > score($1) }.prefix(n).map { $0 }
+        let now = Date()
+        return entries.keys
+            .map { (key: $0, score: score($0, now: now)) }
+            .sorted { $0.score > $1.score }
+            .prefix(n).map(\.key)
     }
 
     private func save() {
