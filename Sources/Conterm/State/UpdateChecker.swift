@@ -165,6 +165,13 @@ final class UpdateChecker: ObservableObject {
 
     private func downloadAndSwap(_ rel: Release) async {
         guard let zip = rel.zipURL else { NSWorkspace.shared.open(rel.htmlURL); return }
+        // Never fetch an update bundle over a downgradeable transport.
+        guard zip.scheme?.lowercased() == "https" else {
+            phase = .failed("Update URL was not HTTPS")
+            alert("Update blocked",
+                  "The update download URL wasn't HTTPS, so it wasn't installed.")
+            return
+        }
         let appURL = Bundle.main.bundleURL
         guard isUpdatableLocation(appURL) else {
             phase = .available
@@ -196,6 +203,16 @@ final class UpdateChecker: ObservableObject {
                 alert("Update failed", "The downloaded archive didn't contain Conterm.app.")
                 return
             }
+            // Refuse a bundle whose signature seal doesn't verify — a
+            // corrupted or tampered download fails here and is never swapped in.
+            guard verifiesCodeSignature(newApp) else {
+                phase = .failed("Update failed its signature check")
+                alert("Update blocked",
+                      "The downloaded update failed its code-signature check "
+                      + "and was not installed. Download it manually from the "
+                      + "releases page instead.")
+                return
+            }
             swapAndRelaunch(old: appURL, new: newApp)
         } catch {
             phase = .failed(error.localizedDescription)
@@ -208,6 +225,21 @@ final class UpdateChecker: ObservableObject {
     private func isUpdatableLocation(_ url: URL) -> Bool {
         if url.path.contains("/AppTranslocation/") { return false }
         return FileManager.default.isWritableFile(atPath: url.deletingLastPathComponent().path)
+    }
+
+    /// `codesign --verify` on the downloaded bundle. The build is ad-hoc
+    /// signed, so this confirms the on-disk seal is intact (the archive
+    /// wasn't truncated or modified after signing) rather than a Developer-ID
+    /// identity. A determined attacker who controls a release can still
+    /// re-sign a malicious bundle; closing that gap needs Developer-ID
+    /// notarization or a checksum published over a trusted channel.
+    private func verifiesCodeSignature(_ app: URL) -> Bool {
+        do {
+            try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
+            return true
+        } catch {
+            return false
+        }
     }
 
     private func findApp(in dir: URL) -> URL? {
