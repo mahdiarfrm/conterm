@@ -11,8 +11,13 @@ struct SettingsPanel: View {
     @EnvironmentObject var fonts: FontCatalog
 
     @State private var section: Section = .appearance
-    @State private var claudeIntegrationOn = ClaudeIntegration.isInstalled
-    @State private var openCodeIntegrationOn = OpenCodeIntegration.isInstalled
+    // Integration state is read from disk lazily in `.onAppear`, not here:
+    // a `@State` initializer re-runs on every struct init (each parent
+    // re-render while the panel is open), so reading `isInstalled` here
+    // would repeat a settings.json read + parse on the main thread. Config
+    // isn't the default section, so the initial `false` is never shown.
+    @State private var claudeIntegrationOn = false
+    @State private var openCodeIntegrationOn = false
     @State private var themeFilter: String = ""
 
     enum Section: String, CaseIterable, Identifiable {
@@ -62,6 +67,12 @@ struct SettingsPanel: View {
         // because focus may still be on the terminal underneath).
         .onChange(of: state.settingsNavDelta) { old, new in
             moveSelection(by: new - old)
+        }
+        .onAppear {
+            // One disk read per panel-open for the integration toggles
+            // (see the @State declarations above).
+            claudeIntegrationOn = ClaudeIntegration.isInstalled
+            openCodeIntegrationOn = OpenCodeIntegration.isInstalled
         }
         .onExitCommand { state.toggleSettings() }
     }
@@ -952,9 +963,14 @@ private struct ConfigEditor: View {
                     .tint(Theme.accent.opacity(0.75))
             }
         }
-        .onAppear {
-            path = configPath
-            text = (try? String(contentsOfFile: configPath, encoding: .utf8)) ?? ""
+        .task {
+            let p = configPath
+            path = p
+            // Read off the main thread so opening the Config section never
+            // blocks the UI on disk (the file can grow with includes).
+            text = await Task.detached {
+                (try? String(contentsOfFile: p, encoding: .utf8)) ?? ""
+            }.value
         }
     }
 
