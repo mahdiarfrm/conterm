@@ -422,6 +422,14 @@ extension Ghostty {
             keybind = ctrl+x=text:\\x18
             keybind = ctrl+y=text:\\x19
             keybind = ctrl+z=text:\\x1a
+            # Complete the C0 control range past the a–z run. Without
+            # these, Ctrl+[ / \\ / ] take libghostty's printable-Ctrl path
+            # and emit Kitty CSI-u, so Ctrl+[ never reaches vim as Esc.
+            # Mapping them to text: makes SurfaceView.sendKey yield to the
+            # binding instead of stripping Ctrl (see `ctrl.isBinding`).
+            keybind = ctrl+bracket_left=text:\\x1b
+            keybind = ctrl+backslash=text:\\x1c
+            keybind = ctrl+bracket_right=text:\\x1d
             """
         }
 
