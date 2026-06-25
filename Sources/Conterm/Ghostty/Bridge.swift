@@ -46,6 +46,9 @@ extension Ghostty {
             strdup("Conterm"),
             nil,
         ]
+        // ghostty_init parses argv during the call and doesn't retain it,
+        // so the strdup'd entries can be released once it returns.
+        defer { args.forEach { if let p = $0 { free(p) } } }
         args.withUnsafeMutableBufferPointer { buf in
             _ = ghostty_init(UInt(buf.count - 1), buf.baseAddress)
         }

@@ -204,6 +204,9 @@ extension Ghostty {
         }
 
         isolated deinit {
+            // Drop the global handle before freeing so nothing reads a freed
+            // App through it. (Only clear it if it still points at us.)
+            if App.shared === self { App.shared = nil }
             if let h = handle {
                 ghostty_app_free(h)
             }
@@ -519,9 +522,18 @@ extension Ghostty {
         private static let cbReadClipboard: @convention(c) (UnsafeMutableRawPointer?, ghostty_clipboard_e, UnsafeMutableRawPointer?) -> Bool = { ud, _, state in
             guard let ud, let state else { return false }
             let controller = Unmanaged<SurfaceController>.fromOpaque(ud).takeUnretainedValue()
-            let text = NSPasteboard.general.string(forType: .string) ?? ""
-            text.withCString { ptr in
-                ghostty_surface_complete_clipboard_request(controller.handle, ptr, state, false)
+            // NSPasteboard isn't thread-safe and the surface handle is
+            // main-actor state; libghostty calls this off the main thread.
+            // Complete asynchronously on main (the `state` token defers the
+            // reply), mirroring the write-clipboard path. The token crosses
+            // the hop as a bit pattern — a raw pointer isn't Sendable.
+            let stateToken = Int(bitPattern: state)
+            DispatchQueue.main.async {
+                guard let st = UnsafeMutableRawPointer(bitPattern: stateToken) else { return }
+                let text = NSPasteboard.general.string(forType: .string) ?? ""
+                text.withCString { ptr in
+                    ghostty_surface_complete_clipboard_request(controller.handle, ptr, st, false)
+                }
             }
             return true
         }
