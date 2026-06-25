@@ -471,6 +471,7 @@ private struct AgentRowView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             footer
+            subAgentChildren
             replyRow
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -617,6 +618,48 @@ private struct AgentRowView: View {
         var parts = [money(u.estCost), compactTokens(u.totalTokens) + " tok"]
         if let m = shortModel(u.model) { parts.append(m) }
         return parts.joined(separator: "  ·  ")
+    }
+
+    /// Live sub-agents (Task tool) this session spawned, as quiet child rows
+    /// tied to the parent card by a left guide — so a fan-out shows each
+    /// branch's task and spend without leaving the parent's row.
+    @ViewBuilder
+    private var subAgentChildren: some View {
+        if let subs = entry.usage?.subAgents, !subs.isEmpty {
+            HStack(alignment: .top, spacing: 9) {
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(Theme.strokeStrong)
+                    .frame(width: 1.5)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(subs.count == 1 ? "1 SUB-AGENT" : "\(subs.count) SUB-AGENTS")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundStyle(Theme.textSecondary.opacity(0.75))
+                    ForEach(subs) { sub in subAgentRow(sub) }
+                }
+            }
+            .padding(.leading, 2)
+        }
+    }
+
+    private func subAgentRow(_ s: SubAgentInfo) -> some View {
+        HStack(spacing: 7) {
+            Circle().fill(AgentColor.working)
+                .frame(width: 5, height: 5)
+            Text(s.task ?? "working…")
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textPrimary.opacity(0.82))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 6)
+            if s.totalTokens > 0 {
+                Text(money(s.estCost) + "  ·  " + compactTokens(s.totalTokens))
+                    .font(.system(size: 10.5))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize()
+            }
+        }
     }
 
     private var replyRow: some View {
