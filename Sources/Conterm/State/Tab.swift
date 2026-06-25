@@ -43,6 +43,8 @@ final class Tab: ObservableObject, Identifiable {
         let phases = paneTree.root.leaves().map { $0.agent.phase }
         let priority: [AgentStatus.Phase] = [.attention, .working, .interrupted, .ready]
         agentPhase = priority.first(where: phases.contains) ?? .idle
+        // Keep the app-wide roster + toolbar agent pill in sync.
+        AgentCenter.shared.noteAgentActivity()
     }
 
     init(indexLabel: String = "Terminal", customTitle: String? = nil) {

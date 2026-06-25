@@ -37,7 +37,10 @@ struct AgentPill: View {
             mark
             Text(status.label)
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
+                // Pinned light, not adaptive: the pill keeps its dark bed in
+                // both appearances (it floats over the dark terminal), so the
+                // label must stay light or it vanishes in light mode.
+                .foregroundStyle(Color(white: 0.96))
                 .lineLimit(1)
                 .fixedSize()
                 // Crossfade the words instead of a hard swap, so
@@ -111,17 +114,14 @@ struct AgentPill: View {
 
     @ViewBuilder
     private var mark: some View {
-        let tint = (working || attention) ? glowColor : Theme.textSecondary
+        // Pinned light for the same reason as the label — see `body`.
+        let tint = (working || attention) ? glowColor : Color.white.opacity(0.6)
+        let templated = status.tool.markIsTemplate
+        // Cached decode: `mark` re-evaluates every frame while the sweep
+        // animates, so reading the PNG here uncached hit the disk per frame.
         if let asset = status.tool.markAsset,
-           let url = Bundle.main.url(forResource: asset, withExtension: "png"),
-           let img = NSImage(contentsOf: url) {
-            let templated = status.tool.markIsTemplate
-            let prepared: NSImage = {
-                let c = img.copy() as! NSImage
-                c.isTemplate = templated
-                return c
-            }()
-            Image(nsImage: prepared)
+           let img = MarkImage.load(asset, template: templated) {
+            Image(nsImage: img)
                 .resizable().interpolation(.high)
                 // Preserve the mark's aspect (OpenCode's is a tall
                 // block — squishing it into a square distorted it).
@@ -195,6 +195,13 @@ struct AgentPill: View {
                             lineWidth: 1.0
                         )
                 )
+                // Flatten the two animated conic strokes + blur into one
+                // Metal-rendered layer. An AngularGradient whose angle
+                // animates changes its contents every frame, so CoreGraphics
+                // re-shades it on the CPU (atan2f per pixel) on the main
+                // thread for the whole working sweep; drawingGroup moves that
+                // shading to the GPU.
+                .drawingGroup()
                 .allowsHitTesting(false)
         } else if attention {
             Capsule(style: .continuous)

@@ -244,7 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.keyWindow?.makeFirstResponder(nil)
     }
     @objc func toggleVerticalTabs(_ sender: Any?) {
-        prefs.tabOrientation = prefs.tabOrientation == .horizontal ? .vertical : .horizontal
+        prefs.cycleTabOrientation()
     }
 
     /// Catches app-level shortcuts before they reach the SurfaceView.
@@ -316,9 +316,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // (note-edit → notes-list → commands → closed). Settings
             // panel still just closes outright.
             if event.keyCode == 53 {
-                if self.state.paletteOpen  { self.state.paletteEscTick &+= 1; return nil }
-                if self.state.settingsOpen { self.state.toggleSettings();     return nil }
-                if self.state.searchOpen   { self.state.toggleSearch();       return nil }
+                if self.state.paletteOpen      { self.state.paletteEscTick &+= 1; return nil }
+                if self.state.settingsOpen     { self.state.toggleSettings();     return nil }
+                if self.state.searchOpen       { self.state.toggleSearch();       return nil }
+                if self.state.agentCenterOpen  { self.state.toggleAgentCenter();  return nil }
                 return event
             }
 
@@ -336,15 +337,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.state.paletteDeleteTick &+= 1
                     return nil
                 }
-                switch event.keyCode {
-                case 126: self.state.paletteMoveVertical(-1); return nil
-                case 125: self.state.paletteMoveVertical(1);  return nil
-                // ←/→ walk the suggestion tray when it has focus;
-                // otherwise they stay with the text field's caret.
-                case 123: if self.state.paletteMoveHorizontal(-1) { return nil }
-                case 124: if self.state.paletteMoveHorizontal(1)  { return nil }
-                case 36:  self.state.paletteRunTick &+= 1;     return nil
-                default: break
+                // Note-edit is a full multi-line text editor: Return, the
+                // arrows, and plain ⌫ belong to its caret, not to list
+                // navigation. Only Esc (unwind, above) and ⌘⌫ (delete)
+                // are intercepted there.
+                if !self.state.paletteMode.isNoteEdit {
+                    switch event.keyCode {
+                    case 126: self.state.paletteMoveVertical(-1); return nil
+                    case 125: self.state.paletteMoveVertical(1);  return nil
+                    // ←/→ walk the suggestion tray when it has focus;
+                    // otherwise they stay with the text field's caret.
+                    case 123: if self.state.paletteMoveHorizontal(-1) { return nil }
+                    case 124: if self.state.paletteMoveHorizontal(1)  { return nil }
+                    case 36:  self.state.paletteRunTick &+= 1;     return nil
+                    default: break
+                    }
                 }
             }
 
@@ -367,6 +374,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let ctrl = event.modifierFlags.contains(.control)
             let shift = event.modifierFlags.contains(.shift)
             let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+
+            // Standard editing shortcuts for SwiftUI text surfaces (the
+            // note editor, palette search, rename fields). The Edit menu
+            // deliberately carries no key equivalents so it never shadows
+            // libghostty's own ⌘C / ⌘V inside the terminal — so dispatch
+            // the selectors here, gated on an NSText first responder. The
+            // terminal's SurfaceView isn't NSText, so its copy/paste path
+            // stays untouched.
+            if cmd, !opt, !ctrl, NSApp.keyWindow?.firstResponder is NSText {
+                let action: Selector?
+                switch key {
+                case "a": action = #selector(NSText.selectAll(_:))
+                case "c": action = #selector(NSText.copy(_:))
+                case "v": action = #selector(NSText.paste(_:))
+                case "x": action = #selector(NSText.cut(_:))
+                case "z": action = shift ? Selector(("redo:")) : Selector(("undo:"))
+                default:  action = nil
+                }
+                if let action, NSApp.sendAction(action, to: nil, from: nil) {
+                    return nil
+                }
+            }
 
             // ⌘↑ / ⌘↓ → jump to the previous / next shell prompt, using
             // libghostty's OSC 133 command marks. Requires shell
@@ -409,6 +438,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // ⌘⇧D = horizontal split (down); ⌘D = vertical split (right).
             if cmd && shift && key == "d" {
                 self.state.splitSelected(direction: .vertical)
+                return nil
+            }
+            // ⌘⇧A = toggle the agent command center.
+            if cmd && shift && key == "a" {
+                self.state.toggleAgentCenter()
+                NSApp.keyWindow?.makeFirstResponder(nil)
                 return nil
             }
             // NB: modified Return (⌘/⌥-Return) is intentionally NOT

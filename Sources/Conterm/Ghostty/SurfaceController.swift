@@ -340,6 +340,21 @@ extension Ghostty {
             }
         }
 
+        /// Send a discrete Return keypress. Injected text (`sendText`) can
+        /// land as a bracketed paste, where a trailing newline is a literal
+        /// line break — TUIs like Claude Code only SUBMIT on a real Enter
+        /// key event, which this produces.
+        func sendReturn() {
+            sendKey(ghostty_input_key_s(
+                action: GHOSTTY_ACTION_PRESS,
+                mods: GHOSTTY_MODS_NONE,
+                consumed_mods: GHOSTTY_MODS_NONE,
+                keycode: 36,                 // macOS Return
+                text: nil,
+                unshifted_codepoint: 0x0D,
+                composing: false))
+        }
+
         /// Trigger a libghostty keybind action by name (e.g.
         /// "copy_to_clipboard", "paste_from_clipboard"). Used by the
         /// pane's right-click menu so Copy/Paste route through the

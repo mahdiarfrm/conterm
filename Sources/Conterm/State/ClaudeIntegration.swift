@@ -36,12 +36,19 @@ enum ClaudeIntegration {
         // and ALWAYS `exit 0` with no stderr so Claude never reports
         // an error even when no tty is found. `\033`/`\a` are octal
         // ESC + BEL that POSIX `printf` expands.
-        let seq = "\\033]9;conterm-agent:claude:\(state)\\a"
-        return "p=$PPID; n=0; while [ \"$n\" -lt 15 ]; do "
+        //
+        // The hook's JSON arrives on stdin; pull `transcript_path` out of it
+        // (sed, no jq dependency) and append it to the OSC so the command
+        // center reads THIS session's transcript rather than the newest file
+        // in the cwd's project dir. `%s` is filled by the unquoted "$tp" arg.
+        let seq = "\\033]9;conterm-agent:claude:\(state):%s\\a"
+        return "input=$(cat 2>/dev/null); "
+             + "tp=$(printf '%s' \"$input\" | sed -n 's/.*\\\"transcript_path\\\"[[:space:]]*:[[:space:]]*\\\"\\([^\\\"]*\\)\\\".*/\\1/p' | head -n1); "
+             + "p=$PPID; n=0; while [ \"$n\" -lt 15 ]; do "
              + "case \"$p\" in ''|*[!0-9]*|0|1) break;; esac; "
              + "t=$(ps -o tty= -p \"$p\" 2>/dev/null | tr -d ' '); "
              + "if [ -n \"$t\" ] && [ \"$t\" != '??' ] && [ -w \"/dev/$t\" ]; then "
-             + "printf '\(seq)' > \"/dev/$t\" 2>/dev/null; break; fi; "
+             + "printf '\(seq)' \"$tp\" > \"/dev/$t\" 2>/dev/null; break; fi; "
              + "p=$(ps -o ppid= -p \"$p\" 2>/dev/null | tr -d ' '); "
              + "n=$((n+1)); done; exit 0 \(sentinel)"
     }

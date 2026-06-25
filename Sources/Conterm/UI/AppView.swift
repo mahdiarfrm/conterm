@@ -41,6 +41,7 @@ struct AppView: View {
             // exit on screen.
             searchOverlay.id("overlay.search").zIndex(10)
             notificationsOverlay.id("overlay.notifications").zIndex(11)
+            agentCenterOverlay.id("overlay.agentCenter").zIndex(14)
             renameOverlay.id("overlay.rename").zIndex(12)
             groupRenameOverlay.id("overlay.groupRename").zIndex(13)
             paletteOverlay.id("overlay.palette").zIndex(20)
@@ -62,6 +63,7 @@ struct AppView: View {
         .onChange(of: state.settingsOpen)   { _, open in if !open { state.focusActiveSurface() } }
         .onChange(of: state.searchOpen)     { _, open in if !open { state.focusActiveSurface() } }
         .onChange(of: state.notificationsOpen) { _, open in if !open { state.focusActiveSurface() } }
+        .onChange(of: state.agentCenterOpen) { _, open in if !open { state.focusActiveSurface() } }
         // Always start collapsed when auto-hide turns on / orientation
         // leaves vertical, so it can't get stuck open.
         .onChange(of: prefs.autoHideSidebar)  { _, _ in sidebarRevealed = false }
@@ -114,58 +116,74 @@ struct AppView: View {
     /// would shift `paneArea`'s child index and remount the pane subtree.
     /// `paneArea` carries a stable `.id("paneArea")` for the same reason.
     private var content: some View {
-        let isVertical = prefs.tabOrientation == .vertical
+        let mode = prefs.tabOrientation
+        let isVertical = mode == .vertical
+        let isAgents = mode == .agents
+        // Both vertical-tabs and agents place a left sidebar; the top tab
+        // bar is hidden in either.
+        let isSidebar = isVertical || isAgents
         // Hide the tab bar when there's exactly one tab AND the user
         // opted in. Keyboard shortcuts (⌘T new tab, ⌘K palette) still
         // work; the bar reappears as soon as a second tab is added.
         let hideForSingleTab = prefs.hideTabBarSingleTab && state.tabs.count <= 1
-        // Auto-hide (vertical only): the inline sidebar leaves the
+        // Auto-hide (vertical tabs only): the inline sidebar leaves the
         // layout entirely so the terminal gets the full width; it
         // comes back as the floating overlay on left-edge hover.
         let sidebarFloating = isVertical && prefs.autoHideSidebar
-        let showInlineSidebar = isVertical && !hideForSingleTab && !sidebarFloating
+        let showVerticalSidebar = isVertical && !hideForSingleTab && !sidebarFloating
+        // The agent sidebar is always shown in agents mode (it's the
+        // window's navigator, not a tab list that can be single-hidden).
+        let showSidebarSlot = showVerticalSidebar || isAgents
         return HStack(spacing: 0) {
-            TabBar(orientation: .vertical)
-                .frame(width: showInlineSidebar ? prefs.sidebarWidth + 8 : 0)
-                .opacity(showInlineSidebar ? 1 : 0)
-                .allowsHitTesting(showInlineSidebar)
-                .clipped()
+            // Left sidebar slot: the vertical tab bar (always mounted, per
+            // positional identity) with the agent navigator layered over it
+            // in agents mode. Conditionally mounting AgentSidebar here
+            // doesn't shift `paneArea`'s index — it lives in the VStack.
+            ZStack {
+                TabBar(orientation: .vertical)
+                    .opacity(showVerticalSidebar ? 1 : 0)
+                    .allowsHitTesting(showVerticalSidebar)
+                if isAgents { AgentSidebar() }
+            }
+            .frame(width: showSidebarSlot ? prefs.sidebarWidth + 8 : 0)
+            .clipped()
 
             VStack(spacing: 0) {
                 TabBar(orientation: .horizontal)
-                    .padding(.top, isVertical ? 0 : 6)
-                    .padding(.leading, isVertical ? 0 : 78)
+                    .padding(.top, isSidebar ? 0 : 6)
+                    .padding(.leading, isSidebar ? 0 : 78)
                     .gesture(
                         TapGesture(count: 2).onEnded { _ in
                             NSApp.keyWindow?.performZoom(nil)
                         }
                     )
-                    .frame(height: (!isVertical && !hideForSingleTab) ? nil : 0)
-                    .opacity((!isVertical && !hideForSingleTab) ? 1 : 0)
-                    .allowsHitTesting(!isVertical && !hideForSingleTab)
+                    .frame(height: (!isSidebar && !hideForSingleTab) ? nil : 0)
+                    .opacity((!isSidebar && !hideForSingleTab) ? 1 : 0)
+                    .allowsHitTesting(!isSidebar && !hideForSingleTab)
                     .clipped()
                     // The gap that floats the bar clear of the panes. Tuned
                     // so the toolbar pills sit the same distance below the
                     // window top as above the pane: top = 6 pad + 4 centering
                     // = 10; bottom = 4 centering + 2 here + 4 paneArea inset
                     // = 10.
-                    .padding(.bottom, isVertical ? 0 : 2)
+                    .padding(.bottom, isSidebar ? 0 : 2)
 
                 paneArea
                     .id("paneArea")
-                    // Vertical-mode top clearance. With the floating
+                    // Sidebar-mode top clearance. With the floating
                     // lights pill we no longer reserve a wide top strip
                     // when the sidebar is hidden — the pill sits over
                     // the pane and the lights live inside it. Only the
                     // single-tab-hidden case (no sidebar AND no pill)
                     // still needs the larger clearance.
-                    .padding(.top, isVertical
-                             ? ((hideForSingleTab && !sidebarFloating) ? 38 : 6)
+                    .padding(.top, isSidebar
+                             ? ((isVertical && hideForSingleTab && !sidebarFloating) ? 38 : 6)
                              : 0)
             }
         }
         .animation(Theme.Spring.crisp, value: hideForSingleTab)
         .animation(Theme.Spring.soft, value: sidebarFloating)
+        .animation(Theme.Spring.soft, value: prefs.tabOrientation)
     }
 
     // MARK: - Floating lights+autohide pill (auto-hide vertical only)
@@ -385,6 +403,30 @@ struct AppView: View {
                         removal: .opacity
                             .animation(.easeOut(duration: 0.14))
                     ))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        }
+    }
+
+    /// Agent command center — a panel docked to the right rail, over a
+    /// dismiss scrim.
+    @ViewBuilder
+    private var agentCenterOverlay: some View {
+        if state.agentCenterOpen {
+            ZStack(alignment: .topTrailing) {
+                Color.black.opacity(0.14)
+                    .ignoresSafeArea()
+                    .onTapGesture { state.toggleAgentCenter() }
+                    .transition(.opacity.animation(.easeOut(duration: 0.16)))
+                AgentCenterView()
+                    .padding(.top, 52)
+                    .padding(.trailing, 16)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.94, anchor: .topTrailing)
+                            .combined(with: .opacity)
+                            .combined(with: .move(edge: .trailing))
+                            .animation(.spring(response: 0.40, dampingFraction: 0.82)),
+                        removal: .opacity.animation(.easeOut(duration: 0.14))))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
