@@ -17,8 +17,8 @@
 
 **Conterm** is a macOS terminal built on [Ghostty's](https://github.com/ghostty-org/ghostty)
 engine, adding Liquid Glass chrome, splittable panes, a multi-source `⌘K`
-command palette, and live status for AI coding agents like Claude Code and
-opencode.
+command palette, and a command center for AI coding agents like Claude Code
+and opencode.
 
 > Conterm is an independent frontend built on **libghostty**. It is not
 > affiliated with the Ghostty project. The terminal engine (rendering, parsing,
@@ -54,7 +54,8 @@ opencode.
 - **Tabs, top or sidebar** — move the tab bar to a left sidebar; it can
   auto-hide and slide back in when the cursor reaches the left edge.
 - **Tab groups** — color-coded groups with inline rename, reordering, and a
-  live list of every tab in each group.
+  live list of every tab in each group; in the sidebar they fold into
+  collapsible folders.
 - **Session restore** — every window, tab, pane, split, and working directory
   comes back exactly where you left it on relaunch.
 - **File drops** — drag a file or image onto a pane to insert its shell-quoted
@@ -83,8 +84,14 @@ One search over everything:
   [opencode](https://opencode.ai) is *ready*, *thinking*, or *needs you*, with
   a notification center for what finished while you were away. Hooks are
   installed non-destructively.
-- **Agents mode** — the palette lists every running agent across all windows,
-  *needs you* first; pick one to jump straight to its pane.
+- **Command center** (`⌘⇧A`) — a docked rail listing every running agent across
+  all windows, *needs you* first. Each card shows its branch, the task it's
+  working on, live cost / tokens / model, and how long since it last acted —
+  with jump-to-pane and an inline reply / accept / interrupt. A toolbar pill
+  appears with the running count.
+- **Agents layout** — a third window layout whose sidebar *is* the live agent
+  roster; an **Add agent** button opens Claude Code or opencode in a directory
+  you pick, and a panes dropdown jumps to any open pane.
 - **Command markers** *(shell integration)* — a ✓ / ✗ chip with the run time
   when a command fails or takes a while, a notification when a long command
   finishes while you've stepped away, and `⌘↑` / `⌘↓` to jump between prompts.
@@ -148,6 +155,7 @@ and turn the automatic check off there.
 | `⌘1`–`⌘9` | Jump to tab *N* |
 | `⌘↑` / `⌘↓` | Jump to previous / next prompt |
 | `⌘K` | Command palette |
+| `⌘⇧A` | Agent command center |
 | `⌘F` | Search scrollback |
 | `⌘,` | Settings |
 | `Esc` | Dismiss palette / settings / search |
