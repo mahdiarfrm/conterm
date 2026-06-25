@@ -198,7 +198,7 @@ extension Ghostty {
         ) {
             let mounted = keepAlive.0?.window != nil || keepAlive.1?.window != nil
             if !mounted {
-                ghostty_surface_free(h)
+                freeIfUnowned(h)
                 _ = keepAlive
                 return
             }
@@ -206,7 +206,7 @@ extension Ghostty {
                 keepAlive.1?.removeFromSuperview()
                 keepAlive.0?.removeFromSuperview()
                 DispatchQueue.main.async {
-                    ghostty_surface_free(h)
+                    freeIfUnowned(h)
                     _ = keepAlive
                 }
                 return
@@ -216,6 +216,16 @@ extension Ghostty {
                     freeWhenDetached(h, keepAlive: keepAlive, attempt: attempt + 1)
                 }
             }
+        }
+
+        /// Free the surface only if no live controller has since claimed this
+        /// handle. `forceFreeSurface` unregisters before scheduling the free,
+        /// so the registry is empty for `h` in the normal case; a non-nil
+        /// entry means libghostty recycled the pointer for a new surface that
+        /// now owns the free — freeing here would double-free it.
+        private static func freeIfUnowned(_ h: ghostty_surface_t) {
+            guard SurfaceRegistry.controller(for: h) == nil else { return }
+            ghostty_surface_free(h)
         }
 
         // MARK: - View-side hooks
