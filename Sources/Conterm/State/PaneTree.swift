@@ -397,7 +397,11 @@ final class PaneTree: ObservableObject {
         let apply = {
             parent.kind = sibling.kind
             parent.firstFraction = sibling.firstFraction
-            if let firstSurviving = parent.leaves().first {
+            // Only move focus when the pane that closed was the active one.
+            // A background pane exiting (e.g. its shell finished) must not
+            // yank focus off the pane the user is actually working in — its
+            // id still exists elsewhere in the tree, so leave it be.
+            if self.activePaneID == id, let firstSurviving = parent.leaves().first {
                 self.activePaneID = firstSurviving.id
             }
         }
