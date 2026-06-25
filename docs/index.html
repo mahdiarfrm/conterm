@@ -710,6 +710,26 @@ kbd{
 }
 .agent-mock .term .pp{color: var(--text); opacity: .85}
 .agent-mock .term .em{color: var(--text)}
+/* Command-center roster preview. Cards stay dark in either theme, like
+   the terminal block above — fixed chip colours read on that bed. */
+.agent-mock .roster{flex:1; display:flex; flex-direction:column; gap:8px}
+.agent-mock .card{
+  background: rgba(10,10,14,.86);
+  border: 1px solid var(--hairline-2);
+  border-radius: 10px;
+  padding: 11px 13px;
+}
+.agent-mock .card .top{display:flex; align-items:center; gap:7px}
+.agent-mock .card .name{color:#fff; font-weight:600}
+.agent-mock .card .ctx{color: rgba(255,255,255,.45)}
+.agent-mock .card .chip{
+  margin-left:auto; font-size:10px; padding:2px 9px; border-radius:999px;
+  border:1px solid transparent;
+}
+.agent-mock .card .chip.attn{color:#ffcf6b; background:rgba(255,180,60,.12); border-color:rgba(255,180,60,.38)}
+.agent-mock .card .chip.work{color:#7db4ff; background:rgba(90,150,255,.12); border-color:rgba(90,150,255,.38)}
+.agent-mock .card .meta{color: rgba(255,255,255,.78); margin-top:6px}
+.agent-mock .card .foot{color: rgba(255,255,255,.42); margin-top:7px; letter-spacing:.2px}
 
 /* ─────────────────────────────────────────────────────────────
    CHEATSHEET
@@ -1297,15 +1317,18 @@ footer{
     <div class="row">
       <div class="copy reveal">
         <div class="num"><span class="chip">04</span> Agents</div>
-        <h2>Agent status pills.</h2>
+        <h2>Agent command center.</h2>
         <p>
-          Claude Code and opencode are detected per-pane and show a
-          live "ready / thinking / needs you" pill at the top of the
-          pane. Non-destructive hook install.
+          Claude Code and opencode are detected per-pane with a live
+          "ready / thinking / needs you" pill. The command center gathers
+          every running agent across every window into one roster — each
+          with its task, git branch, and live token count and cost — so you
+          can jump to a pane, reply, or interrupt without hunting for it.
+          A dedicated Agents layout turns the sidebar into the roster.
         </p>
         <div class="sub">
-          <span>per-pane</span>
-          <span>non-destructive</span>
+          <span>tokens · cost</span>
+          <span>jump · reply</span>
           <span>claude · opencode</span>
         </div>
       </div>
@@ -1317,17 +1340,25 @@ footer{
             <span style="color:rgba(255,255,255,.6)">·</span>
             <span style="color:#fff">thinking…</span>
           </div>
-          <div class="bar ready">
-            <span class="pulse"></span>
-            <span style="color:var(--text)">opencode</span>
-            <span style="color:var(--muted-2)">·</span>
-            <span style="color:var(--muted)">ready</span>
-          </div>
-          <div class="term">
-            <div><span class="pp">~ $</span> claude</div>
-            <div style="margin-top:6px">› <span class="em">Reading 4 files…</span></div>
-            <div style="margin-top:4px">› Drafting plan.</div>
-            <div style="margin-top:8px"><span class="pp">~ $</span> <span class="cursor"></span></div>
+          <div class="roster">
+            <div class="card">
+              <div class="top">
+                <span class="name">Claude</span>
+                <span class="ctx">· main</span>
+                <span class="chip attn">needs you</span>
+              </div>
+              <div class="meta">Wire the roster store</div>
+              <div class="foot">$0.34 · 128k tok · opus</div>
+            </div>
+            <div class="card">
+              <div class="top">
+                <span class="name">opencode</span>
+                <span class="ctx">· api</span>
+                <span class="chip work">working</span>
+              </div>
+              <div class="meta">Refactor the auth middleware</div>
+              <div class="foot">Win 2 · Tab 1</div>
+            </div>
           </div>
         </div>
       </div>
