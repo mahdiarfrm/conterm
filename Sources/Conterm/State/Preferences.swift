@@ -17,10 +17,20 @@ extension Notification.Name {
 /// so observers across the app react to changes everywhere.
 @MainActor
 final class Preferences: ObservableObject {
+    /// Window layout. `horizontal`/`vertical` place the tab bar on top or
+    /// in a sidebar; `agents` swaps the sidebar's tab list for the live
+    /// agent roster — the window becomes agent-first.
     enum TabOrientation: String, CaseIterable, Identifiable {
-        case horizontal, vertical
+        case horizontal, vertical, agents
         var id: String { rawValue }
         var label: String { rawValue.capitalized }
+    }
+
+    /// Advance the layout: Horizontal → Vertical → Agents → Horizontal.
+    func cycleTabOrientation() {
+        let all = TabOrientation.allCases
+        let i = all.firstIndex(of: tabOrientation) ?? 0
+        tabOrientation = all[(i + 1) % all.count]
     }
 
     /// Accent for the action cluster (bell / search / ⌘K) and the new-tab

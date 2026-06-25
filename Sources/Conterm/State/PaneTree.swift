@@ -47,6 +47,13 @@ final class Pane: ObservableObject, Identifiable {
     /// only vanishes (`.idle`) when the session ends.
     @Published var agent: AgentStatus = .idle
 
+    /// Absolute path to the running agent's transcript JSONL, carried in the
+    /// agent OSC by the hook. Lets the command center read THIS pane's
+    /// session instead of guessing the newest file in the cwd's project dir
+    /// (two agents in one directory otherwise share — and mislabel — a
+    /// transcript). Plain var: AgentCenter reads it on its refresh tick.
+    var agentTranscriptPath: String?
+
     /// Result of the most recently finished foreground command in this
     /// pane, from libghostty's OSC 133 command-end mark. Drives the
     /// transient result badge in the pane's bottom corner. Each finished
@@ -97,10 +104,9 @@ enum AgentTool: String, Equatable {
     var markIsTemplate: Bool {
         switch self {
         case .claude:   return true
-        // The square OpenCode mark is a single dark shape on
-        // transparency — tint it (violet) so it's visible on the
-        // dark glass pill instead of near-invisible dark-on-dark.
-        case .opencode: return true
+        // The opencode mark is its own two-tone artwork (white over dark) —
+        // render it as-is rather than flattening it to a tint.
+        case .opencode: return false
         case .generic:  return true
         }
     }

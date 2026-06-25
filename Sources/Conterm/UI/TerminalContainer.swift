@@ -196,6 +196,19 @@ private struct PaneTitleBar: View {
     /// transient — not persisted.
     @State private var collapsed = false
 
+    /// One-shot "connection established" sweep: a light band glides across
+    /// the capsule once when the pane goes local → remote, then stops.
+    /// `shimmering` keeps the overlay out of the tree at rest so the remote
+    /// pill costs nothing per frame once connected.
+    @State private var shimmerPhase: CGFloat = 0
+    @State private var shimmering = false
+
+    /// The sweep only fires when the pane's window is key — an off-screen
+    /// animation still drives compositor recomposites — and is dropped
+    /// under Reduce Motion.
+    @Environment(\.controlActiveState) private var activeState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private var labelText: String {
         remoteHost ?? dirLabel
     }
@@ -208,10 +221,9 @@ private struct PaneTitleBar: View {
     /// a glance which panes are remote.
     private var dotColor: Color {
         if remoteHost != nil {
-            return isActive ? Color(red: 0.45, green: 0.85, blue: 1.0)
-                            : Color(red: 0.45, green: 0.85, blue: 1.0).opacity(0.55)
+            return isActive ? Theme.sshAccent : Theme.sshAccent.opacity(0.55)
         }
-        return isActive ? Theme.accent : Color.white.opacity(0.35)
+        return isActive ? Theme.accentOnDark : Color.white.opacity(0.35)
     }
 
     var body: some View {
@@ -221,8 +233,10 @@ private struct PaneTitleBar: View {
                 Image(systemName: icon)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(collapsed
-                        ? Color(red: 0.10, green: 0.50, blue: 0.95)
+                        ? Theme.sshAccentDeep
                         : (isActive ? Color.white : Color.white.opacity(0.7)))
+                    .shadow(color: (!collapsed && isActive) ? Theme.sshAccent.opacity(0.7) : .clear,
+                            radius: 4)
             } else {
                 Circle()
                     .fill(collapsed ? collapsedDot : dotColor)
@@ -250,24 +264,27 @@ private struct PaneTitleBar: View {
                     Capsule(style: .continuous).fill(Color.white.opacity(0.92))
                 } else {
                     // Solid (opaque) bed: the pill floats over the opaque
-                    // terminal, so it reads as a solid chip, not glass.
-                    Capsule(style: .continuous).fill(Theme.paneTitleBar)
+                    // terminal, so it reads as a solid chip, not glass. The
+                    // cool variant marks an SSH pane statically — no per-frame
+                    // cost over a long remote session.
+                    Capsule(style: .continuous)
+                        .fill(remoteHost != nil ? Theme.paneRemoteBar : Theme.paneTitleBar)
                     Capsule(style: .continuous)
                         .fill(Color.white.opacity(isActive ? 0.10 : 0.0))
                         .blendMode(.plusLighter)
                 }
             }
         )
+        // One-shot light sweep on connect — kept out of the tree at rest.
+        .overlay {
+            if shimmering { connectSweep }
+        }
         // Flat strokeBorder (solid colour) — a LinearGradient stroke
         // here forces macOS to re-rasterise on every SwiftUI redraw,
         // which dominates compositing cost during mouse activity.
         .overlay(
             Capsule(style: .continuous)
-                .strokeBorder(
-                    collapsed ? Color.black.opacity(0.12)
-                              : Color.white.opacity(isActive ? 0.30 : 0.10),
-                    lineWidth: 0.6
-                )
+                .strokeBorder(borderColor, lineWidth: 0.6)
         )
         // Collapsed pill is a bright light capsule, so it must dim on an
         // inactive pane the way the expanded pill does through its colours
@@ -288,6 +305,50 @@ private struct PaneTitleBar: View {
         .animation(Theme.Spring.snappy, value: dirLabel)
         .animation(Theme.Spring.snappy, value: remoteHost)
         .animation(Theme.Spring.snappy, value: collapsed)
+        // Fire the connect sweep only on a live local → remote (or host
+        // switch) transition; a pane that restores already-remote stays
+        // statically tinted without replaying it.
+        .onChange(of: remoteHost) { old, new in
+            guard new != nil, old != new, !reduceMotion, activeState == .key else { return }
+            shimmerPhase = 0
+            shimmering = true
+            withAnimation(.easeOut(duration: 0.8)) {
+                shimmerPhase = 1
+            } completion: {
+                shimmering = false
+            }
+        }
+    }
+
+    /// Capsule border: cyan while remote, neutral white otherwise; darker
+    /// on the collapsed light bed. Flat solid colours only — see the note
+    /// on the stroke overlay.
+    private var borderColor: Color {
+        if collapsed { return Color.black.opacity(0.12) }
+        if remoteHost != nil {
+            return Theme.sshAccent.opacity(isActive ? 0.45 : 0.18)
+        }
+        return Color.white.opacity(isActive ? 0.30 : 0.10)
+    }
+
+    /// A narrow band of cyan light that travels left → right across the
+    /// capsule once, clipped to the pill so it reads as the glass catching
+    /// light at the moment the remote link comes up.
+    private var connectSweep: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            Capsule(style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [.clear, Theme.sshAccent.opacity(0.55), .clear],
+                        startPoint: .leading, endPoint: .trailing)
+                )
+                .frame(width: w * 0.4)
+                .offset(x: -0.45 * w + shimmerPhase * 1.5 * w)
+                .blendMode(.plusLighter)
+        }
+        .clipShape(Capsule(style: .continuous))
+        .allowsHitTesting(false)
     }
 
     /// Status dot colour in the collapsed (light) capsule — must read on
@@ -310,7 +371,7 @@ private struct KeybindChip: View {
             .font(.system(size: 11, weight: .semibold, design: .rounded))
             .foregroundStyle(light
                 ? Color.black.opacity(0.7)
-                : (isActive ? Theme.accent : Color.white.opacity(0.55)))
+                : (isActive ? Theme.accentOnDark : Color.white.opacity(0.55)))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
@@ -434,6 +495,12 @@ private struct PaneView: View {
     /// Generation token for the "needs you" auto-dismiss timer, so a new
     /// attention restarts the 30s clock instead of an old timer clearing it.
     @State private var attentionGen = 0
+
+    /// Tab that owns this pane, for resyncing its aggregated `agentPhase`
+    /// (the tab-bar dot) whenever this pane's agent phase is cleared here.
+    private var owningTab: Tab? {
+        state.tabs.first { $0.paneTree.root.leaves().contains { $0.id == pane.id } }
+    }
 
     var body: some View {
         let corner = Theme.paneCorner
@@ -609,12 +676,18 @@ private struct PaneView: View {
                 // Focusing the pane acknowledges a "needs you": stop the
                 // attention pulse (its continuous render) — you're looking
                 // at it now. The notification in the center stays.
-                if pane.agent.phase == .attention { pane.agent = .idle }
+                if pane.agent.phase == .attention {
+                    // Acknowledged, not gone: drop to `.ready` so the pulse
+                    // stops but the agent stays in the roster (it's still
+                    // running, just no longer demanding attention).
+                    pane.agent = AgentStatus(phase: .ready, tool: pane.agent.tool)
+                    owningTab?.recomputeAgentPhase()
+                }
             }
         }
-        // "needs you" auto-clears after 30s even unfocused, so a pill you
-        // never return to can't pulse (and drain) forever. The notification
-        // already posted remains, so you still know the agent finished.
+        // "needs you" calms to `.ready` after 30s even unfocused, so a pill
+        // you never return to stops pulsing (and draining) — but the agent
+        // stays in the roster, since it's still alive and waiting.
         .onChange(of: pane.agent.phase) { _, phase in
             guard phase == .attention else { return }
             attentionGen &+= 1
@@ -622,7 +695,8 @@ private struct PaneView: View {
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
                 if attentionGen == gen, pane.agent.phase == .attention {
-                    pane.agent = .idle
+                    pane.agent = AgentStatus(phase: .ready, tool: pane.agent.tool)
+                    owningTab?.recomputeAgentPhase()
                 }
             }
         }
@@ -891,6 +965,7 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
                     // unreliable). Clear it. Agent-agnostic + free.
                     if let p = pane, p.agent.phase != .idle {
                         p.agent = .idle
+                        owningTab?.recomputeAgentPhase()
                     }
                 } else {
                     clog("conterm: REJECT pane.cwd \(decoded.path) (raw=\(newPwd))")
@@ -1025,8 +1100,9 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
             }
         }
         // Deterministic protocol: the Claude/opencode hooks emit
-        //   OSC 9 ; conterm-agent:<tool>:<state> BEL
-        // <state> ∈ start | prompt | idle | attention | end.
+        //   OSC 9 ; conterm-agent:<tool>:<state>[:<transcript_path>] BEL
+        // <state> ∈ start | prompt | idle | attention | end. Claude carries
+        // its transcript path so the command center reads the exact session.
         // We ONLY react to our own prefix, so normal desktop
         // notifications never hijack the pill.
         controller.onAgentNotify = { [weak pane, weak owningTab, notifications] title, body in
@@ -1037,10 +1113,15 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
                 guard let r = msg.range(of: prefix) else { return }
                 let parts = msg[r.upperBound...]
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .split(separator: ":", maxSplits: 1).map(String.init)
+                    .split(separator: ":", maxSplits: 2).map(String.init)
                 guard let toolRaw = parts.first else { return }
                 let tool = AgentTool(rawValue: toolRaw) ?? .generic
                 let stateStr = parts.count > 1 ? parts[1] : ""
+                // A path is paths-only (no colons on macOS); empty means the
+                // hook couldn't read it — leave whatever we already have.
+                if parts.count > 2, !parts[2].isEmpty {
+                    pane.agentTranscriptPath = parts[2]
+                }
                 let phase: AgentStatus.Phase
                 switch stateStr {
                 case "start", "idle", "stop": phase = .ready
@@ -1049,6 +1130,7 @@ private struct GhosttySurfaceRep: NSViewRepresentable {
                 case "end", "exit":           phase = .idle
                 default:                      return
                 }
+                if phase == .idle { pane.agentTranscriptPath = nil }
                 let prev = pane.agent.phase
                 let next = AgentStatus(phase: phase, tool: tool,
                                        progress: nil)

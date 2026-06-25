@@ -82,6 +82,16 @@ final class AppState: ObservableObject {
     /// Notification-center glass panel (bell button next to search).
     @Published var notificationsOpen: Bool = false
 
+    /// Agent command center (this window): a roster of every running agent
+    /// across all windows, with jump + inline control. Toggled by ⌘⇧A or
+    /// the toolbar button; presented as a docked right rail.
+    @Published var agentCenterOpen: Bool = false
+
+    /// Which section of the agent center is showing: the live roster, or
+    /// the activity log (the old notification center, folded in).
+    enum AgentCenterTab: String { case live, activity }
+    @Published var agentCenterTab: AgentCenterTab = .live
+
     @Published var searchOpen: Bool = false
     @Published var searchQuery: String = ""
     @Published var searchSnapshot: String = ""
@@ -107,6 +117,13 @@ final class AppState: ObservableObject {
         case shellHistory          // fuzzy-search the user's zsh/bash history
         case sshHosts              // pick an ssh host (recents first, then all)
         case groups                // manage tab groups: rename / recolor / reorder
+
+        /// The note editor owns all text-navigation keys (Return, arrows,
+        /// ⌫); the global key monitor leaves them alone in this mode.
+        var isNoteEdit: Bool {
+            if case .noteEdit = self { return true }
+            return false
+        }
     }
     @Published var paletteMode: PaletteMode = .commands
 
@@ -234,6 +251,20 @@ final class AppState: ObservableObject {
         SoundEffects.shared.play(settingsOpen ? .paletteOpen : .paletteClose)
     }
 
+    func toggleAgentCenter() {
+        withAnimation(Theme.Spring.bouncy) { agentCenterOpen.toggle() }
+        SoundEffects.shared.play(agentCenterOpen ? .paletteOpen : .paletteClose)
+    }
+
+    /// Open the agent center to a specific section — the bell targets
+    /// Activity, the palette's Agents command targets Live.
+    func openAgentCenter(tab: AgentCenterTab) {
+        agentCenterTab = tab
+        guard !agentCenterOpen else { return }
+        withAnimation(Theme.Spring.bouncy) { agentCenterOpen = true }
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
     /// Open / close the scrollback-search overlay. On open, snapshots the
     /// active pane's scrollback so the result list isn't a moving target
     /// while the user types.
@@ -278,6 +309,41 @@ final class AppState: ObservableObject {
         }
         focusActiveSurface()
         SoundEffects.shared.play(.tabAdd)
+        return tab
+    }
+
+    /// Open a new tab whose first pane starts in `dir` and immediately runs
+    /// an agent CLI (`claude` / `opencode`). Backs the agents sidebar's
+    /// "add agent" action. The launch command is sent once the pane's
+    /// surface mounts (retry-poll, same as the palette's run-in-new-tab).
+    @discardableResult
+    func openAgent(command: String, in dir: String) -> Tab {
+        let inUse = Set(tabs.compactMap { Int($0.indexLabel.dropFirst("Terminal ".count)) })
+        var n = 1
+        while inUse.contains(n) { n += 1 }
+        let leaf = (dir as NSString).lastPathComponent
+        let tab = Tab(indexLabel: "Terminal \(n)", customTitle: leaf.isEmpty ? nil : leaf)
+        tab.paneTree.root.leaves().first?.startingDir = dir
+        withAnimation(Theme.Spring.crisp) {
+            tabs.append(tab)
+            selectedID = tab.id
+        }
+        focusActiveSurface()
+        SoundEffects.shared.play(.tabAdd)
+
+        var attempts = 0
+        func sendWhenReady() {
+            attempts += 1
+            if let ctrl = tab.paneTree.activePane?.controller {
+                ctrl.sendText(command + "\n")
+                return
+            }
+            guard attempts < 40 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                Task { @MainActor in sendWhenReady() }
+            }
+        }
+        sendWhenReady()
         return tab
     }
 
