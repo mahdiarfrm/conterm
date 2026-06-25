@@ -21,6 +21,10 @@ struct AgentUsage: Equatable {
     var cacheReadTokens: Int = 0
     /// Assistant messages seen — a rough turn count.
     var turns: Int = 0
+    /// Sub-agents (Task tool) this session is currently running, each read
+    /// from its own `subagents/agent-*.jsonl`. Empty for opencode and for
+    /// Claude sessions that haven't fanned out.
+    var subAgents: [SubAgentInfo] = []
 
     /// Tokens the session *produced* — input + output + cache writes.
     /// Cache READS are deliberately excluded: a long session re-reads the
@@ -34,6 +38,18 @@ struct AgentUsage: Equatable {
     /// Anthropic bills each request independently, so summing per-message
     /// usage × rate matches the session total.
     var estCost: Double { AgentPricing.cost(for: self) }
+}
+
+/// One sub-agent (Claude Code Task tool) spawned by a parent session, read
+/// from its own `subagents/agent-<id>.jsonl`. Surfaced as a child row under
+/// the parent so a fanned-out run shows each branch's task and spend.
+struct SubAgentInfo: Equatable, Identifiable {
+    let id: String            // agentId, taken from the transcript filename
+    var task: String?         // the sub-agent's first prompt (its instructions)
+    var model: String?
+    var totalTokens: Int
+    var estCost: Double
+    var lastActivity: Date?
 }
 
 /// One row in the agent command center: a live agent in some pane, its
@@ -171,7 +187,48 @@ final class AgentTranscriptStore: @unchecked Sendable {
         var usage = st.snapshot()
         usage.lastActivity = (try? FileManager.default
             .attributesOfItem(atPath: path))?[.modificationDate] as? Date
+        usage.subAgents = liveSubAgents(forMain: path)
         return usage
+    }
+
+    /// How recently a sub-agent's transcript must have changed to still count
+    /// as running: a finished sub-agent stops being written, so it ages out.
+    private static let subAgentLiveWindow: TimeInterval = 60
+
+    /// Currently-running sub-agents for a session. They live beside the main
+    /// transcript `<dir>/<session>.jsonl` under `<dir>/<session>/subagents/`.
+    /// Each is parsed with the same incremental, id-deduped accumulator as a
+    /// top-level transcript; quiet ones drop out and their accumulators are
+    /// pruned so `states` stays bounded across a long fan-out.
+    private func liveSubAgents(forMain main: String) -> [SubAgentInfo] {
+        guard main.hasSuffix(".jsonl") else { return [] }
+        let dir = String(main.dropLast(6)) + "/subagents"   // strip ".jsonl"
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: dir) else { return [] }
+        let now = Date()
+        var out: [SubAgentInfo] = []
+        var livePaths: Set<String> = []
+        for n in names where n.hasPrefix("agent-") && n.hasSuffix(".jsonl") {
+            let p = "\(dir)/\(n)"
+            guard let mod = (try? fm.attributesOfItem(atPath: p))?[.modificationDate] as? Date,
+                  now.timeIntervalSince(mod) < Self.subAgentLiveWindow else { continue }
+            livePaths.insert(p)
+            var st = states[p] ?? FileState(path: p)
+            if st.path != p { st = FileState(path: p) }
+            accumulate(into: &st)
+            states[p] = st
+            let u = st.snapshot()
+            let id = String(n.dropFirst(6).dropLast(6))   // "agent-" … ".jsonl"
+            out.append(SubAgentInfo(id: id, task: u.task, model: u.model,
+                                    totalTokens: u.totalTokens, estCost: u.estCost,
+                                    lastActivity: mod))
+        }
+        // Drop accumulators for sub-agents that have gone quiet.
+        for key in states.keys
+        where key.hasPrefix(dir + "/") && !livePaths.contains(key) {
+            states.removeValue(forKey: key)
+        }
+        return out.sorted { ($0.lastActivity ?? .distantPast) > ($1.lastActivity ?? .distantPast) }
     }
 
     private func newestTranscript(in dir: String) -> String? {
