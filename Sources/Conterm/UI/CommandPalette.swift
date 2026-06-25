@@ -497,13 +497,15 @@ struct CommandPalette: View {
                                                startPoint: .top, endPoint: .bottom))
                             .shadow(color: Theme.accentOnDark.opacity(0.5), radius: 4)
                     }
-                    // Fixed light: the header sits over the dark terminal,
-                    // not a light panel, so it must stay legible in light mode.
+                    // Fixed-light over the bare terminal (no panel bed). A
+                    // legibility shadow keeps it readable over a bright
+                    // terminal too, where plain white would wash out.
                     RollUpText(
                         "Suggestions",
                         font: .system(size: 11, weight: .semibold, design: .rounded),
-                        color: Color.white.opacity(0.6),
+                        color: Color.white.opacity(0.7),
                         startDelay: 0.10)
+                    .shadow(color: .black.opacity(0.55), radius: 2.5)
                 }
                 .padding(.leading, 6)
 
@@ -530,6 +532,17 @@ struct CommandPalette: View {
                     }
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            // Soft dark scrim under the fixed-light header + labels so they
+            // stay legible over a bright terminal, where the shadow alone
+            // wasn't enough. Feathered by its own shadow → a glow-bed, not a
+            // hard box; invisible over a dark terminal.
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.black.opacity(0.34))
+                    .shadow(color: .black.opacity(0.3), radius: 12)
+            )
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
         }
@@ -1765,13 +1778,15 @@ private struct CircleSuggestion: View {
                 .shadow(color: isFocused ? Theme.accentOnDark.opacity(0.5) : .clear,
                         radius: isFocused ? 11 : 0)
 
-                // Fixed light: the label sits below the disc on the dark
-                // terminal, so it can't follow the light-mode flip.
+                // Fixed-light over the bare terminal (the label sits below
+                // the disc, off any panel bed). A legibility shadow keeps it
+                // readable over a bright terminal as well as a dark one.
                 Text(command.title)
                     .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.white.opacity(isFocused ? 0.95 : 0.6))
+                    .foregroundStyle(Color.white.opacity(isFocused ? 0.98 : 0.72))
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .shadow(color: .black.opacity(0.6), radius: 2.5)
                     .frame(maxWidth: 72)
             }
             .contentShape(Rectangle())
@@ -1947,7 +1962,9 @@ private struct CommandRow: View {
         .opacity(entered ? 1 : 0)
         .offset(y: entered ? 0 : -8)
         .task {
-            try? await Task.sleep(nanoseconds: UInt64(index) * 16_000_000)
+            // Cap the stagger so a row revealed far down a lazy list (high
+            // index) still fades in promptly instead of after seconds.
+            try? await Task.sleep(nanoseconds: UInt64(min(index, 14)) * 16_000_000)
             withAnimation(Theme.Spring.soft) { entered = true }
         }
     }
