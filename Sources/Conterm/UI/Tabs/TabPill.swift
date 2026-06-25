@@ -17,6 +17,13 @@ struct TabPill: View {
     /// which couldn't reliably hold first responder against the
     /// terminal NSView + context-menu focus restoration.
     var onBeginRename: () -> Void
+    /// Slim sidebar-row layout (vertical mode): tighter padding, a lighter
+    /// hover/selected wash instead of the full glass card, and no per-pill
+    /// group accent — the collapsible section header carries the colour.
+    var compact: Bool = false
+    /// Rendered nested under a group folder header (vertical tree view): the
+    /// folder owns the group colour, so the per-pill accent bar is dropped.
+    var inGroupFolder: Bool = false
 
     @EnvironmentObject var tabGroups: TabGroupStore
     @EnvironmentObject var state: AppState
@@ -29,24 +36,26 @@ struct TabPill: View {
     private var group: TabGroup? { tabGroups.group(id: tab.groupID) }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: compact ? 7 : 8) {
             statusDot
             titleLabel
             Spacer(minLength: 0)
-            badge
+            if !compact { badge }
             closeButton
                 .opacity(hovering ? 1 : 0)
                 .allowsHitTesting(hovering)
                 .frame(width: hovering ? 18 : 0)
                 .animation(Theme.Spring.snappy, value: hovering)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.horizontal, compact ? 10 : 12)
+        .padding(.vertical, compact ? 6 : 7)
         .background(pillBackground)
         // Group accent: a thin coloured bar across the top of the
-        // pill when this tab belongs to a group. Browser-style.
+        // pill when this tab belongs to a group. Browser-style. In the
+        // sidebar the section header owns the colour, so the per-pill bar
+        // is dropped there.
         .overlay(alignment: .top) {
-            if let g = group {
+            if let g = group, !compact, !inGroupFolder {
                 Capsule(style: .continuous)
                     .fill(TabGroup.color(forKey: g.colorKey))
                     .frame(height: 2)
@@ -84,7 +93,9 @@ struct TabPill: View {
             Divider()
             groupMenu
         }
-        .scaleEffect(hovering && !isSelected ? 1.02 : 1.0)
+        // No hover-scale in the sidebar — scaling rows in a tight list
+        // reads as jitter. Horizontal cards still lift slightly.
+        .scaleEffect(!compact && hovering && !isSelected ? 1.02 : 1.0)
         .onHover { hovering = $0 }
         .animation(Theme.Spring.snappy, value: hovering)
         .transition(.asymmetric(
@@ -95,20 +106,45 @@ struct TabPill: View {
 
     // MARK: - Background (three visible layers)
 
-    /// Horizontal: a flat tinted lens on the window glass sheet (the desktop
-    /// reads through it). Vertical: a solid bed — the sidebar is a wider
-    /// expanse where translucent pills over the desktop read as noise, so
-    /// the pills go opaque. Either way the travelling accent glow (TabBar)
-    /// and `pillTrim` supply the selection cue on top.
+    /// Horizontal: a flat tinted lens on the window glass sheet. Vertical:
+    /// the v2.0.0 frosted-glass card — a faint dark base for contrast on
+    /// bright desktops, then `.ultraThinMaterial` that lifts in on hover /
+    /// selection so the pill reads as translucent glass, not an opaque slab.
+    /// Either way the travelling accent glow (TabBar) and `pillTrim` supply
+    /// the selection cue on top.
+    @ViewBuilder
     private var pillBackground: some View {
         let corner = Theme.pillCorner
-        let vertical = prefs.tabOrientation == .vertical
-        return ZStack {
+        if compact {
+            // Slim row, but each tab still reads as a bounded box: a faint
+            // resting bed + hairline edge so the boundary never vanishes —
+            // even mid-switch when the travelling selection glow has slid
+            // off this pill. Fill + edge lift on hover / selection.
             RoundedRectangle(cornerRadius: corner, style: .continuous)
-                .fill(vertical ? Theme.paneTitleBar
-                               : chromeFill(prefs, selected: isSelected))
-                .opacity(vertical ? 1.0 : (isSelected ? 1.0 : (hovering ? 0.9 : 0.7)))
-            pillTrim
+                .fill(isSelected ? Color.white.opacity(0.09)
+                                 : (hovering ? Color.white.opacity(0.06)
+                                             : Color.white.opacity(0.035)))
+                .overlay(
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .strokeBorder(Color.white.opacity(isSelected ? 0.18 : 0.10),
+                                      lineWidth: 0.5)
+                )
+        } else if prefs.tabOrientation == .vertical {
+            ZStack {
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .fill(Color.black.opacity(isSelected ? 0.25 : 0.08))
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .opacity(isSelected ? 1.0 : (hovering ? 0.6 : 0.0))
+                pillTrim
+            }
+        } else {
+            ZStack {
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .fill(chromeFill(prefs, selected: isSelected))
+                    .opacity(isSelected ? 1.0 : (hovering ? 0.9 : 0.7))
+                pillTrim
+            }
         }
     }
 
@@ -146,8 +182,14 @@ struct TabPill: View {
 
             RoundedRectangle(cornerRadius: corner, style: .continuous)
                 .strokeBorder(
-                    isSelected ? Color.white.opacity(0.30)
-                                : Color.white.opacity(0.06),
+                    // Adaptive outline: white on dark glass, black on light
+                    // — a white rim vanishes on a light pill, leaving it
+                    // undefined.
+                    isSelected
+                        ? Theme.dynamic(light: NSColor(white: 0.0, alpha: 0.22),
+                                        dark:  NSColor(white: 1.0, alpha: 0.30))
+                        : Theme.dynamic(light: NSColor(white: 0.0, alpha: 0.10),
+                                        dark:  NSColor(white: 1.0, alpha: 0.06)),
                     lineWidth: 0.5
                 )
         }
@@ -226,7 +268,8 @@ struct TabPill: View {
 
     private var titleLabel: some View {
         Text(tab.title.isEmpty ? "shell" : tab.title)
-            .font(.system(size: 13, weight: isSelected ? .semibold : .regular,
+            .font(.system(size: compact ? 12.5 : 13,
+                           weight: isSelected ? .semibold : .regular,
                            design: .rounded))
             .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
             .lineLimit(1)

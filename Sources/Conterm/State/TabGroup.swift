@@ -9,6 +9,28 @@ struct TabGroup: Codable, Identifiable, Hashable {
     /// One of `TabGroup.colorKeys`. Stored as a key so the Codable
     /// representation is stable across app versions.
     var colorKey: String
+    /// Folded in the vertical sidebar: the section header stays, its tab
+    /// rows hide. Persisted so a folded group stays folded across launches.
+    var collapsed: Bool = false
+
+    enum CodingKeys: String, CodingKey { case id, name, colorKey, collapsed }
+
+    init(id: UUID, name: String, colorKey: String, collapsed: Bool = false) {
+        self.id = id
+        self.name = name
+        self.colorKey = colorKey
+        self.collapsed = collapsed
+    }
+
+    /// `collapsed` is absent from pre-collapse group files — default it to
+    /// expanded rather than failing the whole decode.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        colorKey = try c.decode(String.self, forKey: .colorKey)
+        collapsed = try c.decodeIfPresent(Bool.self, forKey: .collapsed) ?? false
+    }
 
     static let colorKeys = [
         "blue", "purple", "pink", "red", "orange",
@@ -85,6 +107,13 @@ final class TabGroupStore: ObservableObject {
 
     func delete(_ id: UUID) {
         groups.removeAll { $0.id == id }
+        persist()
+    }
+
+    /// Fold / unfold a group's section in the vertical sidebar.
+    func toggleCollapsed(_ id: UUID) {
+        guard let idx = groups.firstIndex(where: { $0.id == id }) else { return }
+        groups[idx].collapsed.toggle()
         persist()
     }
 
