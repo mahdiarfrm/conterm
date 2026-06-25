@@ -1524,7 +1524,8 @@ struct CommandPalette: View {
             attempts += 1
             if let pane = tab.paneTree.activePane,
                let ctrl = pane.controller {
-                ctrl.sendText(command + "\n")
+                ctrl.typeText(command)
+                ctrl.sendReturn()
                 return
             }
             if attempts < 30 {
@@ -1542,7 +1543,8 @@ struct CommandPalette: View {
     static func runInActivePane(state: AppState, command: String) {
         guard let pane = state.selectedTab?.paneTree.activePane,
               let ctrl = pane.controller else { return }
-        ctrl.sendText(command + "\n")
+        ctrl.typeText(command)
+        ctrl.sendReturn()
     }
 
     /// Type `text` into the active pane WITHOUT a newline — used by
@@ -1552,7 +1554,7 @@ struct CommandPalette: View {
     static func insertInActivePane(state: AppState, text: String) {
         guard let pane = state.selectedTab?.paneTree.activePane,
               let ctrl = pane.controller else { return }
-        ctrl.sendText(text)
+        ctrl.typeText(text)
     }
 
     // MARK: - Notes-list mode

@@ -350,6 +350,33 @@ extension Ghostty {
             }
         }
 
+        /// Commit `s` as typed key input rather than a paste.
+        /// `ghostty_surface_text` is the clipboard-paste path: it wraps the
+        /// text in DECSET-2004 bracketed-paste markers whenever the shell has
+        /// that mode on (a zsh prompt does), which is wrong for programmatic
+        /// inserts — a shell that doesn't strip the markers shows a literal
+        /// `[200~…~`, and the embedded newline of a run-command is swallowed
+        /// instead of executing. Routing through the key encoder types the
+        /// text exactly as the keyboard would, with no bracketing.
+        func typeText(_ s: String) {
+            guard let h = handle, !s.isEmpty else { return }
+            for ch in s {
+                // One key event per character, carrying just the text
+                // payload; keycode 0 (unidentified) matches no keybind, so
+                // the encoder commits the character verbatim.
+                String(ch).withCString { ptr in
+                    _ = ghostty_surface_key(h, ghostty_input_key_s(
+                        action: GHOSTTY_ACTION_PRESS,
+                        mods: GHOSTTY_MODS_NONE,
+                        consumed_mods: GHOSTTY_MODS_NONE,
+                        keycode: 0,
+                        text: ptr,
+                        unshifted_codepoint: ch.unicodeScalars.first?.value ?? 0,
+                        composing: false))
+                }
+            }
+        }
+
         /// Send a discrete Return keypress. Injected text (`sendText`) can
         /// land as a bracketed paste, where a trailing newline is a literal
         /// line break — TUIs like Claude Code only SUBMIT on a real Enter

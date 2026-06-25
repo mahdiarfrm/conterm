@@ -341,7 +341,8 @@ final class AppState: ObservableObject {
         func sendWhenReady() {
             attempts += 1
             if let ctrl = tab.paneTree.activePane?.controller {
-                ctrl.sendText(command + "\n")
+                ctrl.typeText(command)
+                ctrl.sendReturn()
                 return
             }
             guard attempts < 40 else { return }
