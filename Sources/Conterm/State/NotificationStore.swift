@@ -23,6 +23,11 @@ final class NotificationStore: ObservableObject {
 
     private let cap = 60
     private var bannerAuthorized = false
+    /// Last OS-banner time per tool. A flapping agent (working↔needs-you)
+    /// would otherwise post one banner per transition and flood Notification
+    /// Center; the in-app list still records every event.
+    private var lastBannerAt: [AgentTool: Date] = [:]
+    private let bannerThrottle: TimeInterval = 8
 
     init() {
         // Best-effort. Ad-hoc / translocated apps may not get banner
@@ -51,6 +56,11 @@ final class NotificationStore: ObservableObject {
         // agent run". Frontmost → the in-app pill/center already shows
         // it, no need to interrupt.
         guard !NSApp.isActive, bannerAuthorized else { return }
+        // Rate-limit banners per tool so a flapping agent can't flood
+        // Notification Center.
+        let now = Date()
+        if let last = lastBannerAt[tool], now.timeIntervalSince(last) < bannerThrottle { return }
+        lastBannerAt[tool] = now
         let c = UNMutableNotificationContent()
         c.title = title
         c.body = message
