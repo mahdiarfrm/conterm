@@ -22,4 +22,5 @@ conterm_video/
 /scripts/diag-wakeups.sh
 /docs/HEAT-AND-BATTERY.md
 /docs/GLASS-REDESIGN.md
+/docs/WIP-AGENT-CENTER.md
 conterm-monitor-*.log
