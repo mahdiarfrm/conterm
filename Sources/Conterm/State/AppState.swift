@@ -166,10 +166,16 @@ final class AppState: ObservableObject {
                 let tab = Tab(indexLabel: entry.indexLabel,
                               customTitle: entry.customTitle ? title : nil)
                 if let treeSnap = entry.tree {
-                    // Full pane-tree restore: rebuild splits + cwds.
+                    // Full pane-tree restore: rebuild splits + cwds, then
+                    // restore focus to the saved active pane by its
+                    // depth-first leaf index (UUIDs are regenerated).
                     let restored = PaneTree()
                     restored.root = PaneNode.from(snapshot: treeSnap)
-                    if let firstLeaf = restored.root.leaves().first {
+                    let leaves = restored.root.leaves()
+                    let activeIdx = entry.activePaneIndex ?? 0
+                    if leaves.indices.contains(activeIdx) {
+                        restored.activePaneID = leaves[activeIdx].id
+                    } else if let firstLeaf = leaves.first {
                         restored.activePaneID = firstLeaf.id
                     }
                     tab.paneTree = restored

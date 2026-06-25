@@ -42,6 +42,11 @@ enum SessionStore {
         /// Optional tab group membership (UUID), persisted across
         /// launches so the colored stripe / dot survive a quit.
         var groupID: String?
+        /// Depth-first leaf index of the active pane within `tree`. Pane
+        /// UUIDs are regenerated each launch, so identity is restored
+        /// positionally. Optional for older session files (fall back to
+        /// the first leaf).
+        var activePaneIndex: Int?
     }
 
     /// Codable mirror of `PaneNode`. Indirect so split nodes can
@@ -96,12 +101,17 @@ enum SessionStore {
             // The earlier guard was silently dropping every window
             // and leaving sessions.json frozen at an old snapshot.)
             let tabs: [Tab] = wc.state.tabs.map { tab in
-                Tab(title: tab.title,
+                let leaves = tab.paneTree.root.leaves()
+                let activeIdx = leaves.firstIndex(where: {
+                    $0.id == tab.paneTree.activePaneID
+                })
+                return Tab(title: tab.title,
                     customTitle: tab.customTitle,
                     cwd: tab.paneTree.activePane?.cwd,
                     indexLabel: tab.indexLabel,
                     tree: tab.paneTree.root.toSnapshot(),
-                    groupID: tab.groupID?.uuidString)
+                    groupID: tab.groupID?.uuidString,
+                    activePaneIndex: activeIdx)
             }
             let selected: Int = {
                 if let id = wc.state.selectedID,
