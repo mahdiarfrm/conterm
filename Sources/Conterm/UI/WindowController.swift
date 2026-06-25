@@ -60,6 +60,12 @@ final class WindowController {
         )
         win.contentView = host
         win.title = "Conterm"
+        // No implicit open/close window animation: AppKit's transform
+        // animation snapshots the content (the panes' Metal surface layers)
+        // and tears it down on a later CoreAnimation commit, which races the
+        // surface free during close. Instant windows keep that teardown off
+        // the animation path.
+        win.animationBehavior = .none
         // Position/size persistence (Ghostty's window-save-state). Set
         // the autosave name BEFORE makeKeyAndOrderFront so AppKit
         // restores any previously-saved frame on first display. We
