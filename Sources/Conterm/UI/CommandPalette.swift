@@ -200,7 +200,7 @@ struct CommandPalette: View {
         switch state.paletteMode {
         case .commands:        runFocusedCommand();       SoundEffects.shared.play(.paletteConfirm)
         case .notesList:       openFocusedNote();         SoundEffects.shared.play(.paletteConfirm)
-        case .noteEdit:        break  // Enter in editor inserts newline
+        case .noteEdit:        break  // Return passes through to the editor
         case .sessions:        jumpToFocusedSession();    SoundEffects.shared.play(.paletteConfirm)
         case .agents:          jumpToFocusedAgent();      SoundEffects.shared.play(.paletteConfirm)
         case .shellHistory:    runFocusedHistoryEntry();  SoundEffects.shared.play(.paletteConfirm)
@@ -429,21 +429,23 @@ struct CommandPalette: View {
         return f
     }()
 
-    /// The suggestion strip's five picks: the strongest frecency keys,
+    /// The suggestion strip's seven picks: the strongest frecency keys,
     /// resolved back into rows; keys whose target no longer exists
     /// resolve to nil and drop out. Until the learned picks fill all
-    /// five slots, the core destinations pad the strip.
+    /// seven slots, the core destinations pad the strip.
     private func suggestionRows() -> [Command] {
         var rows: [Command] = []
         var seen = Set<String>()
-        for key in FrecencyStore.shared.top(20) where rows.count < 5 {
+        for key in FrecencyStore.shared.top(20) where rows.count < 7 {
             if let row = resolveSuggestion(key),
                seen.insert(row.id).inserted {
                 rows.append(row)
             }
         }
-        for id in ["sessions", "agents", "ssh_hosts", "shell_history", "settings"]
-        where rows.count < 5 {
+        for id in ["sessions", "agents", "notes", "ssh_hosts", "shell_history",
+                   "tab_groups", "settings", "tabs_orientation", "new_tab",
+                   "reveal_finder"]
+        where rows.count < 7 {
             if !seen.contains(id),
                let c = commands.first(where: { $0.id == id }) {
                 seen.insert(id)
@@ -476,28 +478,44 @@ struct CommandPalette: View {
     @ViewBuilder private var suggestionStrip: some View {
         let rows = suggestionRows()
         if !rows.isEmpty {
-            HStack(spacing: 8) {
-                // Caption in its own small bubble beside the tray.
-                VStack(spacing: 3) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Suggestions")
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+            VStack(alignment: .leading, spacing: 10) {
+                // Header pinned top-left: the sparkles glyph and a label
+                // whose letters roll up out of a blur, clock-digit style.
+                // Each element reveals itself, so there's no container-wide
+                // animation fighting the per-circle ones.
+                HStack(spacing: 6) {
+                    RollUpReveal(delay: 0.04) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(
+                                LinearGradient(colors: [Theme.highlight, Theme.accentOnDark],
+                                               startPoint: .top, endPoint: .bottom))
+                            .shadow(color: Theme.accentOnDark.opacity(0.5), radius: 4)
+                    }
+                    // Fixed light: the header sits over the dark terminal,
+                    // not a light panel, so it must stay legible in light mode.
+                    RollUpText(
+                        "Suggestions",
+                        font: .system(size: 11, weight: .semibold, design: .rounded),
+                        color: Color.white.opacity(0.6),
+                        startDelay: 0.10)
                 }
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 13)
-                .frame(maxHeight: .infinity)
-                .modifier(PaletteBubble(cornerRadius: 38, darken: 0.14))
+                .padding(.leading, 6)
 
-                HStack(spacing: 2) {
+                // Each pick is its own glass circle in an equal-width cell,
+                // so the row spreads evenly across the palette; each rolls
+                // up out of a blur, staggered down the row.
+                HStack(spacing: 6) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, cmd in
-                        SuggestionSegment(
+                        CircleSuggestion(
                             command: cmd,
+                            index: i,
                             isFocused: state.paletteTrayFocused
                                 && state.paletteTrayIndex == i
                         ) {
                             runCommand(cmd)
                         }
+                        .frame(maxWidth: .infinity)
                         .onHover { hovering in
                             if hovering && state.paletteHoverArmed {
                                 state.paletteTrayFocused = true
@@ -506,15 +524,9 @@ struct CommandPalette: View {
                         }
                     }
                 }
-                .padding(5)
-                .modifier(PaletteBubble(cornerRadius: 38))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
-            .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 8)
-            .animation(.spring(response: 0.40, dampingFraction: 0.80)
-                           .delay(0.05),
-                       value: appeared)
         }
     }
 
@@ -601,12 +613,11 @@ struct CommandPalette: View {
                     }),
             Command(id: "agents", icon: RobotGlyph.iconName,
                     title: "Agents",
-                    subtitle: "Jump to any running agent",
-                    shortcut: "",
+                    subtitle: "Open the agent command center",
+                    shortcut: "⌘⇧A",
                     run: {
-                        withAnimation(Theme.Spring.soft) {
-                            state.paletteMode = .agents
-                        }
+                        state.togglePalette()
+                        state.openAgentCenter(tab: .live)
                     }),
             Command(id: "notes", icon: "note.text",
                     title: "Notes",
@@ -648,11 +659,10 @@ struct CommandPalette: View {
                     title: "Settings", shortcut: "⌘,",
                     run: { state.toggleSettings() }),
             Command(id: "tabs_orientation", icon: "rectangle.lefthalf.inset.filled",
-                    title: "Toggle Top / Side Tab Bar", shortcut: "",
+                    title: "Cycle Layout: Horizontal / Vertical / Agents", shortcut: "",
                     run: {
                         withAnimation(Theme.Spring.soft) {
-                            state.prefs.tabOrientation =
-                                state.prefs.tabOrientation == .horizontal ? .vertical : .horizontal
+                            state.prefs.cycleTabOrientation()
                         }
                     }),
             Command(id: "toggle_palette", icon: "command",
@@ -1315,7 +1325,7 @@ struct CommandPalette: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isFocused ? Color.white.opacity(0.08) : .clear)
+                .fill(isFocused ? Theme.selectionFill : .clear)
         )
     }
 
@@ -1462,7 +1472,7 @@ struct CommandPalette: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(isFocused ? Color.white.opacity(0.08) : .clear)
+                .fill(isFocused ? Theme.selectionFill : .clear)
         )
         .contentShape(Rectangle())
     }
@@ -1632,11 +1642,8 @@ struct CommandPalette: View {
                     .foregroundStyle(Theme.textSecondary)
                     .font(.system(size: 15, weight: .medium))
             }
-            TextField(placeholder, text: $query)
-                .textFieldStyle(.plain)
-                .focused($queryFocused)
-                .font(.system(size: 16, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
+            NeonCaretField(text: $query, placeholder: placeholder, fontSize: 16)
+                .frame(height: 24)
             Spacer()
             switch state.paletteMode {
             case .commands:
@@ -1695,7 +1702,7 @@ private struct PaletteBubble: ViewModifier {
                                         frostiness: 0.85,
                                         light: prefs.lightGlass)
                     } else {
-                        Color(red: 0.04, green: 0.04, blue: 0.05)
+                        Theme.panelBed
                     }
                     if darken > 0 { Color.black.opacity(darken) }
                 }
@@ -1721,63 +1728,138 @@ private struct PaletteBubble: ViewModifier {
     }
 }
 
-// MARK: - Suggestion segment
+// MARK: - Suggestion circle
 
-/// One pick inside the suggestion tray: icon over a small label,
-/// highlighted like a list row when focused (keyboard or hover).
-private struct SuggestionSegment: View {
+/// One pick in the suggestion strip, rendered as a standalone glass
+/// circle with its label beneath. On appear it rolls up out of a blur
+/// (clock-digit style), staggered by `index` across the row; focus keeps
+/// a steady accent halo.
+private struct CircleSuggestion: View {
     let command: Command
+    let index: Int
     let isFocused: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 4) {
-                segmentIcon
-                    .frame(height: 26)
+            VStack(spacing: 7) {
+                ZStack {
+                    // Opaque bed: a flat disc that neither samples the
+                    // backdrop nor needs a shadow.
+                    Circle().fill(Theme.chipBed)
+                    if isFocused { Circle().fill(Theme.accentSoft) }
+                    Circle()
+                        .strokeBorder(isFocused ? Theme.accent.opacity(0.5)
+                                                : Theme.strokeStrong,
+                                      lineWidth: 1)
+                    icon
+                }
+                .frame(width: 48, height: 48)
+                // Glow only on the focused circle, so the strip carries one
+                // shadow filter, not seven.
+                .shadow(color: isFocused ? Theme.accentOnDark.opacity(0.5) : .clear,
+                        radius: isFocused ? 11 : 0)
+
+                // Fixed light: the label sits below the disc on the dark
+                // terminal, so it can't follow the light-mode flip.
                 Text(command.title)
                     .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(isFocused ? Theme.textPrimary
-                                               : Theme.textSecondary)
+                    .foregroundStyle(Color.white.opacity(isFocused ? 0.95 : 0.6))
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .frame(maxWidth: 72)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
-            .padding(.horizontal, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(isFocused ? Theme.accentSoft : .clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
-                                  lineWidth: 0.5)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .focusable(false)
         .help(command.subtitle ?? command.title)
         .animation(Theme.Spring.snappy, value: isFocused)
+        .rollUp(delay: 0.05 + Double(index) * 0.06)
     }
 
     @ViewBuilder
-    private var segmentIcon: some View {
+    private var icon: some View {
         let tint = isFocused ? Theme.accent : Theme.textSecondary
         if let asset = command.assetName,
            let templated = CommandRow.bundledTemplateImage(named: asset) {
             Image(nsImage: templated)
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 23, height: 23)
+                .frame(width: 21, height: 21)
                 .foregroundStyle(tint)
         } else if command.icon == RobotGlyph.iconName {
-            RobotGlyph(color: tint, size: 24)
+            RobotGlyph(color: tint, size: 22)
         } else {
             Image(systemName: command.icon)
-                .font(.system(size: 20, weight: .medium))
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(tint)
+        }
+    }
+}
+
+// MARK: - Roll-up reveal
+
+/// Clock-digit reveal: content rises into place out of a blur with a
+/// soft settle, the way the old stats widget tumbled its numbers. Runs
+/// once per appearance (guarded against SwiftUI's repeat `onAppear`),
+/// and replays each time the view is freshly inserted.
+private struct RollUpReveal<Content: View>: View {
+    let delay: Double
+    @ViewBuilder var content: Content
+
+    @State private var shown = false
+    @State private var ran = false
+
+    var body: some View {
+        content
+            .blur(radius: shown ? 0 : 5)
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown ? 0 : 9)
+            .onAppear {
+                guard !ran else { return }
+                ran = true
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.68).delay(delay)) {
+                    shown = true
+                }
+            }
+    }
+}
+
+extension View {
+    /// Reveal this view with the clock-digit roll-up. See `RollUpReveal`.
+    func rollUp(delay: Double) -> some View {
+        RollUpReveal(delay: delay) { self }
+    }
+}
+
+/// A label whose characters roll up out of a blur one after another, so
+/// the word assembles like rolling clock digits instead of typing out.
+private struct RollUpText: View {
+    let text: String
+    let font: Font
+    let color: Color
+    var startDelay: Double = 0.0
+    var step: Double = 0.045
+
+    init(_ text: String, font: Font, color: Color,
+         startDelay: Double = 0.0, step: Double = 0.045) {
+        self.text = text
+        self.font = font
+        self.color = color
+        self.startDelay = startDelay
+        self.step = step
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(text.enumerated()), id: \.offset) { i, ch in
+                Text(String(ch))
+                    .font(font)
+                    .foregroundStyle(color)
+                    .fixedSize()
+                    .rollUp(delay: startDelay + Double(i) * step)
+            }
         }
     }
 }
@@ -1852,7 +1934,7 @@ private struct CommandRow: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
+                .strokeBorder(isFocused ? Theme.strokeStrong : .clear,
                               lineWidth: 0.5)
         )
         .contentShape(Rectangle())
@@ -2014,7 +2096,7 @@ private struct NoteRow: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
+                .strokeBorder(isFocused ? Theme.strokeStrong : .clear,
                               lineWidth: 0.5)
         )
         .contentShape(Rectangle())
@@ -2250,7 +2332,7 @@ private struct SessionRowView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
+                .strokeBorder(isFocused ? Theme.strokeStrong : .clear,
                               lineWidth: 0.5)
         )
         .contentShape(Rectangle())
@@ -2349,7 +2431,7 @@ private struct AgentRowView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(isFocused ? Color.white.opacity(0.18) : .clear,
+                .strokeBorder(isFocused ? Theme.strokeStrong : .clear,
                               lineWidth: 0.5)
         )
         .contentShape(Rectangle())
