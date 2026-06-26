@@ -315,6 +315,10 @@ final class PaneNode: ObservableObject, Identifiable {
 final class PaneTree: ObservableObject {
     @Published var root: PaneNode
     @Published var activePaneID: UUID
+    /// Bumped on every structural change (split/close) so the AppKit
+    /// PaneTreeView — which subscribes to objectWillChange — re-applies even
+    /// when only a nested PaneNode (not this object) was mutated.
+    @Published var revision: Int = 0
 
     init() {
         let initial = PaneNode.leaf()
@@ -354,6 +358,7 @@ final class PaneTree: ObservableObject {
             self.activePaneID = newPane.id
         }
         SoundEffects.shared.play(.paneAdd)
+        revision &+= 1
         return true
     }
 
@@ -411,6 +416,7 @@ final class PaneTree: ObservableObject {
             withAnimation(.easeOut(duration: 0.16), apply)
         }
         SoundEffects.shared.play(.paneRemove)
+        revision &+= 1
         return true
     }
 

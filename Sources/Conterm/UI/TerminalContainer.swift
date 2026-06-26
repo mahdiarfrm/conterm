@@ -6,19 +6,21 @@ import SwiftUI
 struct TerminalContainer: View {
     @ObservedObject var tab: Tab
     @EnvironmentObject var state: AppState
+    @EnvironmentObject var prefs: Preferences
+    @EnvironmentObject var notifications: NotificationStore
     var isActive: Bool
 
     var body: some View {
-        // .id(structuralIdentity) forces SwiftUI to tear down + rebuild
-        // the entire pane tree whenever the structure changes (split /
-        // close), instead of incremental diff. This is Ghostty's fix
-        // for the same class of bug — incremental diff was leaving
-        // NSViewRepresentables in transitional states that libghostty's
-        // IOSurface didn't recover from, producing blank panes after
-        // rapid splits.
-        TreeView(node: tab.paneTree.root, tree: tab.paneTree)
-            .id(tab.paneTree.root.structuralIdentity)
-            .animation(Theme.Spring.soft, value: isActive)
+        // The pane tree is owned by AppKit (PaneTreeView): a surviving pane is
+        // only reframed across splits/closes, never reparented, so libghostty's
+        // IOSurface stays attached. No .id-rebuild / host-reuse workaround.
+        if let app = state.ghostty {
+            PaneTreeHost(tree: tab.paneTree, app: app, state: state,
+                         notifications: notifications, prefs: prefs)
+        } else {
+            Text("libghostty failed to initialize")
+                .foregroundStyle(Theme.warning)
+        }
     }
 }
 
