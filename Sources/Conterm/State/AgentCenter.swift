@@ -25,6 +25,10 @@ struct AgentUsage: Equatable {
     /// from its own `subagents/agent-*.jsonl`. Empty for opencode and for
     /// Claude sessions that haven't fanned out.
     var subAgents: [SubAgentInfo] = []
+    /// Recent shell (Bash tool) commands the agent ran, oldest→newest, read
+    /// from the transcript. Lets the command center show what the agent is
+    /// actually doing at the shell. Claude only.
+    var shellCommands: [ShellCommand] = []
 
     /// Tokens the session *produced* — input + output + cache writes.
     /// Cache READS are deliberately excluded: a long session re-reads the
@@ -50,6 +54,14 @@ struct SubAgentInfo: Equatable, Identifiable {
     var totalTokens: Int
     var estCost: Double
     var lastActivity: Date?
+}
+
+/// One Bash command the agent ran, surfaced as a shell-feed row. `id` is the
+/// tool_use id from the transcript, so a streamed message re-logging the same
+/// call is de-duped.
+struct ShellCommand: Equatable, Identifiable {
+    let id: String
+    let command: String
 }
 
 /// One row in the agent command center: a live agent in some pane, its
@@ -141,6 +153,10 @@ final class AgentTranscriptStore: @unchecked Sendable {
         var branch: String?
         var task: String?
         var anon = 0   // fallback key for assistant lines lacking an id
+        // Bash commands the agent ran, oldest→newest, de-duped by tool_use id
+        // (streaming re-logs the same assistant message). Capped to a tail.
+        var recentShell: [ShellCommand] = []
+        var shellSeen: Set<String> = []
 
         func snapshot() -> AgentUsage {
             var u = AgentUsage(model: model, branch: branch, task: task)
@@ -151,6 +167,7 @@ final class AgentTranscriptStore: @unchecked Sendable {
                 u.cacheReadTokens += m.cacheRead
             }
             u.turns = perMessage.count
+            u.shellCommands = recentShell
             return u
         }
     }
@@ -283,6 +300,26 @@ final class AgentTranscriptStore: @unchecked Sendable {
         guard type == "assistant",
               let msg = obj["message"] as? [String: Any] else { return }
         if let m = msg["model"] as? String { st.model = m }
+        // Pull Bash commands out of this turn's tool_use blocks for the shell
+        // feed, de-duped by tool_use id and capped to the most recent 40.
+        if let content = msg["content"] as? [[String: Any]] {
+            for block in content
+                where (block["type"] as? String) == "tool_use"
+                    && (block["name"] as? String) == "Bash" {
+                guard let tid = block["id"] as? String, !st.shellSeen.contains(tid),
+                      let input = block["input"] as? [String: Any],
+                      let cmd = (input["command"] as? String)?
+                          .trimmingCharacters(in: .whitespacesAndNewlines),
+                      !cmd.isEmpty else { continue }
+                st.shellSeen.insert(tid)
+                st.recentShell.append(ShellCommand(
+                    id: tid,
+                    command: cmd.count > 200 ? String(cmd.prefix(200)) + "…" : cmd))
+                if st.recentShell.count > 40 {
+                    st.recentShell.removeFirst(st.recentShell.count - 40)
+                }
+            }
+        }
         guard let us = msg["usage"] as? [String: Any] else { return }
         // Dedupe: a streamed message id reappears with the same/growing usage;
         // overwrite so it's counted once.
