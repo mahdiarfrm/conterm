@@ -148,7 +148,10 @@ private struct SplitDivider: View {
 
     var body: some View {
         let line: CGFloat = hovering ? 1.5 : 0.8
-        let hit: CGFloat = 8
+        // A horizontal line (the .vertical split between stacked panes) is
+        // harder to land on than a vertical one — vertical cursor aim is
+        // coarser — so give it a taller grab band to feel as easy to seize.
+        let hit: CGFloat = axis == .vertical ? 12 : 8
         Rectangle()
             .fill(hovering ? Color.white.opacity(0.55) : Color.white.opacity(0.10))
             .frame(width: axis == .horizontal ? line : nil,
