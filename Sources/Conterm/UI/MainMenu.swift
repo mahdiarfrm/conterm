@@ -46,7 +46,8 @@ enum MainMenu {
                           action: #selector(NSApplication.unhideAllApplications(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Quit Conterm",
-                          action: #selector(NSApplication.terminate(_:)), key: "q"))
+                          action: #selector(AppDelegate.quitOrCloseWindow(_:)),
+                          key: "q", target: delegate))
 
         root.submenu = menu
         return root
