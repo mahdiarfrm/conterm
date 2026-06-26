@@ -597,10 +597,9 @@ final class AppState: ObservableObject {
 
     /// Walks down to the active tab → active pane → SurfaceView and
     /// pulls AppKit's first-responder there. After a split, the new
-    /// pane's SurfaceView may not be in the window yet by the time
-    /// we first run — SwiftUI's `.id(structuralIdentity)` rebuild
-    /// needs several runloop turns to mount the new NSView. We
-    /// retry frequently for the first 300ms, then sparser checks at
+    /// pane's SurfaceView may not be mounted in the window yet by the
+    /// time we first run, so we retry frequently for the first 300ms,
+    /// then sparser checks at
     /// 500ms / 800ms / 1200ms to re-claim focus if something steals
     /// it (e.g. a stray becomeFirstResponder during the rebuild).
     /// Without these guards, typing immediately after ⌘D sometimes

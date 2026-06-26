@@ -202,49 +202,6 @@ final class PaneNode: ObservableObject, Identifiable {
         if case .leaf = kind { return true } else { return false }
     }
 
-    /// A hashable signature of this subtree's structure: pane
-    /// identities, split positions, and split axes (but NOT split
-    /// ratios, which change frequently during drag). Used as a
-    /// SwiftUI `.id()` value on the top-level TreeView so the
-    /// framework tears down and rebuilds the entire view tree
-    /// when the structure changes, instead of incrementally diffing
-    /// it. Ghostty's macOS app does the same thing — see
-    /// https://github.com/ghostty-org/ghostty/issues/7546.
-    ///
-    /// Incremental SwiftUI diff during a split / close can leave
-    /// our NSViewRepresentables in transitional states that the
-    /// libghostty IOSurface layer doesn't recover from, producing
-    /// the "blank pane" bug. Forcing a full rebuild gives AppKit
-    /// a clean detach/reattach cycle that the layer hosting
-    /// infrastructure handles cleanly.
-    var structuralIdentity: StructuralIdentity {
-        var components: [StructuralIdentity.Component] = []
-        StructuralIdentity.collect(self, into: &components)
-        return StructuralIdentity(components: components)
-    }
-
-    struct StructuralIdentity: Hashable {
-        enum Component: Hashable {
-            case leaf(ObjectIdentifier)
-            case splitOpen(SplitAxis)
-            case splitClose
-        }
-        let components: [Component]
-
-        @MainActor
-        static func collect(_ node: PaneNode, into out: inout [Component]) {
-            switch node.kind {
-            case .leaf(let pane):
-                out.append(.leaf(ObjectIdentifier(pane)))
-            case .split(let axis, let a, let b):
-                out.append(.splitOpen(axis))
-                collect(a, into: &out)
-                collect(b, into: &out)
-                out.append(.splitClose)
-            }
-        }
-    }
-
     /// Build a Codable snapshot of this subtree. Used by SessionStore
     /// to persist pane splits / fractions / cwds across launches.
     func toSnapshot() -> SessionStore.PaneTreeSnapshot {
@@ -344,12 +301,9 @@ final class PaneTree: ObservableObject {
         // whose children are two fresh leaf nodes (old + new).
         let oldLeafNode = PaneNode(kind: .leaf(existing))
         let newLeafNode = PaneNode(kind: .leaf(newPane))
-        // Crisp animation — shorter than the default `.soft` because
-        // the underlying `.id(structuralIdentity)` rebuild on the
-        // TreeView is expensive (every PaneView reconstructed),
-        // and the longer the animation runs, the longer that
-        // expensive frame-by-frame work continues. 220ms feels
-        // responsive without a visible jank window.
+        // Animate SwiftUI observers of the mutation (tab-bar state, focus
+        // scrim); the panes themselves are relaid out instantly by
+        // PaneTreeView, off the animation path.
         withAnimation(Theme.Spring.crisp) {
             activeLeafNode.kind = .split(axis: axis,
                                           first: oldLeafNode,
