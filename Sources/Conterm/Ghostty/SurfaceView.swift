@@ -394,6 +394,16 @@ extension Ghostty {
             let collected = insertTextAccumulator?.joined() ?? ""
             insertTextAccumulator = nil
 
+            // An IME mid-composition routes this key into marked (preedit)
+            // text via setMarkedText rather than committing it through
+            // insertText, so `collected` is empty while `hasMarkedText()`
+            // is true. Forwarding `translationEvent.characters` below would
+            // send the raw layout character to the PTY now AND again when
+            // the IME later commits — the input method owns the key until
+            // it commits, so drop it here. (A commit that also lands this
+            // cycle fills `collected`, so it still flows through.)
+            if collected.isEmpty, hasMarkedText() { return }
+
             // NSEvent represents non-text special keys (arrows, F1-F12,
             // Home/End/PageUp/PageDown, etc.) using codepoints in the
             // U+F700..U+F8FF private-use range. We must NOT pass those
