@@ -351,7 +351,12 @@ extension Ghostty {
             guard visible != isVisible else { return }
             isVisible = visible
             ghostty_surface_set_occlusion(h, visible)
-            if visible, drawDeferredWhileHidden {
+            // A paused surface stops presenting; its CAMetalLayer can read
+            // back empty, and a translucent terminal then shows the desktop
+            // through the glass. Always repaint on re-show — not just when a
+            // frame was deferred while hidden — so a re-shown pane never
+            // lingers blank after the renderer resumes.
+            if visible {
                 drawDeferredWhileHidden = false
                 draw()
             }
