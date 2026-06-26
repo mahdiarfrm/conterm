@@ -186,7 +186,7 @@ private struct SplitDivider: View {
 /// the pane's current directory (or remote host when SSH'd) plus a
 /// keybind chip (⌥1..⌥9) for keyboard pane-switching. Made small and
 /// translucent so it doesn't fight the terminal output behind it.
-private struct PaneTitleBar: View {
+struct PaneTitleBar: View {
     let dirLabel: String
     /// Non-nil when the pane is inside an ssh session — shown
     /// instead of the local cwd, with a 🌐 globe glyph to make the
@@ -392,7 +392,7 @@ private struct KeybindChip: View {
 /// a green check + duration on success, a red ✗ + exit code on
 /// failure, a neutral clock when the shell reported no exit code.
 /// Matches the title pill's glass styling so the two read as a set.
-private struct CommandBadge: View {
+struct CommandBadge: View {
     let result: Pane.CommandResult
     @EnvironmentObject var prefs: Preferences
 
@@ -441,7 +441,7 @@ private struct CommandBadge: View {
 
 /// Human-friendly run time for a command badge / notification.
 /// < 1s → "420ms"; < 10s → "1.4s"; < 60s → "12s"; else "2m 03s".
-private func formatCommandDuration(_ ns: UInt64) -> String {
+func formatCommandDuration(_ ns: UInt64) -> String {
     let seconds = Double(ns) / 1_000_000_000
     if seconds < 1 { return "\(Int((seconds * 1000).rounded()))ms" }
     if seconds < 10 { return String(format: "%.1fs", seconds) }
@@ -460,7 +460,7 @@ private func formatCommandDuration(_ ns: UInt64) -> String {
 /// (too little context) and the full path (overflows the pill on
 /// narrow panes).
 @MainActor
-private func friendlyDirLabel(for cwd: String?) -> String {
+func friendlyDirLabel(for cwd: String?) -> String {
     guard let cwd, !cwd.isEmpty else { return "—" }
     let home = NSHomeDirectory()
     if cwd == home { return "~" }
@@ -726,7 +726,7 @@ private struct PaneView: View {
 /// glyphs (?). URL-parse → strip scheme → percent-decode → last
 /// component. Falls through gracefully for plain-path inputs too.
 @MainActor
-private func decodePwdForTitle(_ raw: String) -> String {
+func decodePwdForTitle(_ raw: String) -> String {
     let path = decodePwdToPath(raw)
     let base = (path as NSString).lastPathComponent
     return base.isEmpty ? path : base
@@ -746,7 +746,7 @@ private func decodePwdToPath(_ raw: String) -> String {
 /// the OSC 7 URL's host doesn't match our local hostname, we're
 /// inside an ssh session.
 @MainActor
-private func decodePwd(_ raw: String) -> (path: String, host: String?) {
+func decodePwd(_ raw: String) -> (path: String, host: String?) {
     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     if let url = URL(string: trimmed),
        url.scheme == "file" || url.scheme == "kitty-shell-cwd" {
@@ -774,7 +774,7 @@ private func decodePwd(_ raw: String) -> (path: String, host: String?) {
 /// `gethostname(2)` + `ProcessInfo.hostName` are pure local syscalls
 /// (no network) and give us everything we actually need.
 @MainActor
-private let localHostnames: Set<String> = {
+let localHostnames: Set<String> = {
     var names = Set<String>(["localhost"])
 
     func add(_ raw: String) {
@@ -818,7 +818,7 @@ private func expandTilde(_ p: String) -> String {
 ///
 /// Returns nil for anything that isn't an ssh/mosh command line.
 @MainActor
-private func extractSshTarget(from title: String) -> String? {
+func extractSshTarget(from title: String) -> String? {
     let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
     let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
     guard let first = parts.first,
@@ -854,7 +854,7 @@ private func extractSshTarget(from title: String) -> String? {
 /// use this to know when an ssh session has ended (and clear the
 /// pane's `remoteHost`).
 @MainActor
-private func isLocalPromptTitle(_ title: String) -> Bool {
+func isLocalPromptTitle(_ title: String) -> Bool {
     let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let atIdx = trimmed.firstIndex(of: "@"),
           let colonIdx = trimmed[atIdx...].firstIndex(of: ":") else { return false }
@@ -870,7 +870,7 @@ private func isLocalPromptTitle(_ title: String) -> Bool {
 /// recover the full path from that), or for command strings emitted
 /// during preexec.
 @MainActor
-private func extractCwdFromTitle(_ title: String) -> String? {
+func extractCwdFromTitle(_ title: String) -> String? {
     let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
     if trimmed.isEmpty { return nil }
 
@@ -895,7 +895,7 @@ private func extractCwdFromTitle(_ title: String) -> String? {
 /// The garbage emits we want to reject contain control characters and
 /// don't start with "/", so a simple syntactic check is sufficient.
 @MainActor
-private func isPlausibleAbsolutePath(_ p: String) -> Bool {
+func isPlausibleAbsolutePath(_ p: String) -> Bool {
     guard p.hasPrefix("/") else { return false }
     guard p.count >= 1, p.count < 4096 else { return false }
     // No ASCII control characters (covers \x00-\x1F + \x7F). These are
