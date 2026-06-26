@@ -102,6 +102,12 @@ final class PaneTreeView: NSView {
     // Top-left origin so the tree math matches the model (first = top/left).
     override var isFlipped: Bool { true }
 
+    // The window is movable-by-background; a clear view counts as background,
+    // so a divider drag would move the window. Opt this view out — the window
+    // stays draggable by its top chrome. (The old SwiftUI divider couldn't do
+    // this and had to toggle isMovableByWindowBackground on hover instead.)
+    override var mouseDownCanMoveWindow: Bool { false }
+
     /// Bind to a tab's tree and re-apply whenever it changes. PaneTree bumps
     /// `revision` on every structural change, so objectWillChange always fires.
     func bind(to tree: PaneTree) {
@@ -223,7 +229,6 @@ final class PaneTreeView: NSView {
             total: hit.axis == .horizontal ? hit.span.width : hit.span.height,
             anchorMouse: NSEvent.mouseLocation,
             anchorFraction: hit.node.firstFraction)
-        window?.isMovableByWindowBackground = false
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -239,7 +244,6 @@ final class PaneTreeView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         drag = nil
-        window?.isMovableByWindowBackground = true
     }
 }
 
