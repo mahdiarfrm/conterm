@@ -430,6 +430,13 @@ extension Ghostty {
             keybind = ctrl+bracket_left=text:\\x1b
             keybind = ctrl+backslash=text:\\x1c
             keybind = ctrl+bracket_right=text:\\x1d
+            # Ctrl+Space is the one remaining C0 byte (NUL) that isn't
+            # keyboard-layout dependent: every layout has a space bar.
+            # Readline/emacs read it as set-mark. Without the bind it takes
+            # the printable-Ctrl path and reaches the shell as a literal
+            # space. (Ctrl+^/_/@/? are layout-specific and left to the
+            # encoder.)
+            keybind = ctrl+space=text:\\x00
             """
         }
 
