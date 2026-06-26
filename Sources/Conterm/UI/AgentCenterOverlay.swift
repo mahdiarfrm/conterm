@@ -472,6 +472,7 @@ private struct AgentRowView: View {
             }
             footer
             subAgentChildren
+            shellFeed
             replyRow
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -636,6 +637,37 @@ private struct AgentRowView: View {
                         .tracking(0.5)
                         .foregroundStyle(Theme.textSecondary.opacity(0.75))
                     ForEach(subs) { sub in subAgentRow(sub) }
+                }
+            }
+            .padding(.leading, 2)
+        }
+    }
+
+    @ViewBuilder
+    private var shellFeed: some View {
+        if let cmds = entry.usage?.shellCommands, !cmds.isEmpty {
+            let recent = Array(cmds.suffix(5))
+            HStack(alignment: .top, spacing: 9) {
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(Theme.strokeStrong)
+                    .frame(width: 1.5)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("SHELL")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(0.5)
+                        .foregroundStyle(Theme.textSecondary.opacity(0.75))
+                    ForEach(recent) { c in
+                        HStack(spacing: 6) {
+                            Text("$")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Theme.textSecondary.opacity(0.55))
+                            Text(c.command)
+                                .font(.system(size: 11.5, design: .monospaced))
+                                .foregroundStyle(Theme.textPrimary.opacity(0.82))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
                 }
             }
             .padding(.leading, 2)
