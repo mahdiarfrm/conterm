@@ -196,7 +196,7 @@ final class UpdateChecker: ObservableObject {
             try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
             // `ditto -x -k` is the macOS-native unzip; preserves bundle
             // bits a naive unzip can mangle.
-            try run("/usr/bin/ditto", ["-x", "-k", zipPath.path, extractDir.path])
+            try await run("/usr/bin/ditto", ["-x", "-k", zipPath.path, extractDir.path])
 
             guard let newApp = findApp(in: extractDir) else {
                 phase = .failed("No app in the downloaded archive")
@@ -205,7 +205,7 @@ final class UpdateChecker: ObservableObject {
             }
             // Refuse a bundle whose signature seal doesn't verify — a
             // corrupted or tampered download fails here and is never swapped in.
-            guard verifiesCodeSignature(newApp) else {
+            guard await verifiesCodeSignature(newApp) else {
                 phase = .failed("Update failed its signature check")
                 alert("Update blocked",
                       "The downloaded update failed its code-signature check "
@@ -233,9 +233,9 @@ final class UpdateChecker: ObservableObject {
     /// identity. A determined attacker who controls a release can still
     /// re-sign a malicious bundle; closing that gap needs Developer-ID
     /// notarization or a checksum published over a trusted channel.
-    private func verifiesCodeSignature(_ app: URL) -> Bool {
+    private func verifiesCodeSignature(_ app: URL) async -> Bool {
         do {
-            try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
+            try await run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
             return true
         } catch {
             return false
@@ -283,17 +283,22 @@ final class UpdateChecker: ObservableObject {
 
     // MARK: - Helpers
 
-    private func run(_ launch: String, _ args: [String]) throws {
-        let t = Process()
-        t.launchPath = launch
-        t.arguments = args
-        t.standardError = Pipe()
-        try t.run()
-        t.waitUntilExit()
-        if t.terminationStatus != 0 {
-            throw NSError(domain: "Conterm.Update", code: Int(t.terminationStatus),
-                          userInfo: [NSLocalizedDescriptionKey: "Unpacking the update failed."])
-        }
+    /// Run a tool to completion off the main actor. `waitUntilExit` blocks
+    /// its thread, so a detached task keeps `ditto` unpack and the
+    /// `codesign` walk (both seconds on a multi-MB bundle) off main.
+    private func run(_ launch: String, _ args: [String]) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            let t = Process()
+            t.launchPath = launch
+            t.arguments = args
+            t.standardError = Pipe()
+            try t.run()
+            t.waitUntilExit()
+            if t.terminationStatus != 0 {
+                throw NSError(domain: "Conterm.Update", code: Int(t.terminationStatus),
+                              userInfo: [NSLocalizedDescriptionKey: "Unpacking the update failed."])
+            }
+        }.value
     }
 
     private func alert(_ title: String, _ message: String) {
