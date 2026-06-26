@@ -397,8 +397,37 @@ final class AppState: ObservableObject {
     /// glass re-blur busy at up to 60fps for pixels nobody can see.
     /// Driven by selectedID's didSet, WindowController's occlusion
     /// observer, and surface creation.
+    /// Supersedes any pending deferred occlusion pause: a later sync
+    /// (re-show, tab switch) bumps this so an earlier scheduled pause
+    /// becomes a no-op without tracking DispatchWorkItems.
+    private var occlusionGeneration = 0
+
     func syncSurfaceOcclusion() {
         let windowVisible = ownWindow?.occlusionState.contains(.visible) ?? true
+        occlusionGeneration &+= 1
+        if windowVisible {
+            applySurfaceVisibility(windowVisible: true)
+            return
+        }
+        // occlusionState briefly drops `.visible` for transient system
+        // overlays — notably the green traffic-light tiling menu's
+        // full-window preview. Pausing the renderer there blanks the
+        // active terminal (translucent panes show the desktop through the
+        // glass). Defer the pause and re-check: only a window that's still
+        // hidden after a short settle is genuinely occluded (covered,
+        // minimized, off-space) and worth pausing for battery.
+        let gen = occlusionGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.occlusionGeneration == gen else { return }
+                let stillHidden = !(self.ownWindow?
+                    .occlusionState.contains(.visible) ?? true)
+                self.applySurfaceVisibility(windowVisible: !stillHidden)
+            }
+        }
+    }
+
+    private func applySurfaceVisibility(windowVisible: Bool) {
         for tab in tabs {
             let visible = windowVisible && tab.id == selectedID
             for pane in tab.paneTree.root.leaves() {
