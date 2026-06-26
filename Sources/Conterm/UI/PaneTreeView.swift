@@ -176,10 +176,48 @@ func makePaneSurface(pane: Pane,
         }
     }
 
+    // On restore, launch through a wrapper that prints the saved scrollback
+    // then execs the shell, so prior output reappears above a fresh prompt.
+    if let sb = pane.pendingScrollback, !sb.isEmpty,
+       let script = restoreWrapperScript(scrollback: sb) {
+        controller.restoreCommand = script
+    }
+    pane.pendingScrollback = nil
+
     _ = controller.start(view: view)
     pane.startingDir = nil
     state.syncSurfaceOcclusion()
     return controller
+}
+
+/// Write the saved scrollback and a tiny executable wrapper into the cache,
+/// returning the wrapper's path for libghostty's surface `command`. The
+/// wrapper prints the scrollback, deletes both files, then `exec`s the login
+/// shell. Paths are UUIDs (no quoting hazards) under a known cache dir.
+@MainActor
+private func restoreWrapperScript(scrollback: String) -> String? {
+    let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        ?? URL(fileURLWithPath: NSTemporaryDirectory())
+    let dir = base.appendingPathComponent("conterm/restore", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let id = UUID().uuidString
+    let sb = dir.appendingPathComponent("\(id).txt")
+    let sh = dir.appendingPathComponent("\(id).sh")
+    let script = """
+    #!/bin/sh
+    cat -- '\(sb.path)' 2>/dev/null
+    rm -f -- '\(sb.path)' '\(sh.path)'
+    exec "${SHELL:-/bin/zsh}" -l
+    """
+    do {
+        try scrollback.write(to: sb, atomically: true, encoding: .utf8)
+        try script.write(to: sh, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755],
+                                              ofItemAtPath: sh.path)
+        return sh.path
+    } catch {
+        return nil
+    }
 }
 
 /// AppKit owner of a tab's pane tree. Lays out each pane's SurfaceHostView by

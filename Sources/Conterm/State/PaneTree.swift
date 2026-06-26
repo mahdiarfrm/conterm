@@ -38,6 +38,11 @@ final class Pane: ObservableObject, Identifiable {
     /// libghostty config: `working_directory`.
     var startingDir: String?
 
+    /// Saved scrollback text from the previous session, set when this pane is
+    /// restored. The surface is launched via a wrapper that prints it, then
+    /// it's cleared. nil for fresh panes.
+    var pendingScrollback: String?
+
     /// Live status of an AI coding agent (Claude Code / opencode)
     /// running in this pane. Driven by the `conterm-agent:<tool>:<state>`
     /// OSC the agents' hooks emit (see ClaudeIntegration /
@@ -207,7 +212,7 @@ final class PaneNode: ObservableObject, Identifiable {
     func toSnapshot() -> SessionStore.PaneTreeSnapshot {
         switch kind {
         case .leaf(let p):
-            return .leaf(cwd: p.cwd)
+            return .leaf(cwd: p.cwd, scrollback: p.controller?.captureScrollback())
         case .split(let axis, let a, let b):
             return .split(axis: axis.rawValue,
                           fraction: firstFraction,
@@ -220,13 +225,14 @@ final class PaneNode: ObservableObject, Identifiable {
     /// a session-store snapshot.
     static func from(snapshot: SessionStore.PaneTreeSnapshot) -> PaneNode {
         switch snapshot {
-        case .leaf(let cwd):
+        case .leaf(let cwd, let scrollback):
             let pane = Pane()
             // `startingDir` is what libghostty's surface_new uses to
             // spawn the shell in the right place. `cwd` keeps the
             // title bar accurate before the OSC 7 report lands.
             pane.startingDir = cwd
             pane.cwd = cwd
+            pane.pendingScrollback = scrollback
             return PaneNode(kind: .leaf(pane))
         case .split(let axisRaw, let frac, let aSnap, let bSnap):
             let axis = SplitAxis(rawValue: axisRaw) ?? .horizontal
