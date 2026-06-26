@@ -392,7 +392,7 @@ final class PaneBox: NSView {
     let host: Ghostty.SurfaceHostView
     private let prefs: Preferences
     private weak var tab: Tab?
-    private let chrome: PassthroughHostingView<PaneChrome>
+    private let chrome: NSHostingView<PaneChrome>
 
     var index: Int = 0 { didSet { if index != oldValue { refreshChrome() } } }
     var isActivePane: Bool = false { didSet { if isActivePane != oldValue { refreshChrome() } } }
@@ -402,7 +402,10 @@ final class PaneBox: NSView {
         self.host = host
         self.prefs = prefs
         self.tab = tab
-        self.chrome = PassthroughHostingView(rootView: PaneChrome(
+        // Normal hosting view: PaneChrome marks its decorative layers
+        // non-interactive so clicks fall through to the surface, while the
+        // title-bar pill stays tappable (collapse toggle).
+        self.chrome = NSHostingView(rootView: PaneChrome(
             pane: pane, prefs: prefs, isActive: false, index: 0,
             recomputeAgentPhase: { [weak tab] in tab?.recomputeAgentPhase() }))
         super.init(frame: .zero)
@@ -435,15 +438,6 @@ final class PaneBox: NSView {
     }
 }
 
-/// Hosting view that never intercepts the mouse — clicks fall through to the
-/// terminal surface beneath the chrome overlay.
-@MainActor
-final class PassthroughHostingView<Content: View>: NSHostingView<Content> {
-    required init(rootView: Content) { super.init(rootView: rootView) }
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
 /// The per-pane overlay lifted out of the old PaneView: dim / border / focus
 /// halo, the floating title bar, the agent pill, and the command-result badge.
 /// Click-through; keyboard focus is driven by PaneTreeView, not here.
@@ -459,24 +453,40 @@ struct PaneChrome: View {
     var body: some View {
         let corner = Theme.paneCorner
         ZStack {
-            if !isActive {
-                RoundedRectangle(cornerRadius: corner - 1, style: .continuous)
-                    .fill(Color.black.opacity(0.32))
-                    .padding(1)
-            }
-            RoundedRectangle(cornerRadius: corner, style: .continuous)
-                .stroke(Color.white.opacity(isActive ? 0.32 : 0.07),
-                        lineWidth: isActive ? 1.5 : 0.5)
-                .blendMode(.plusLighter)
-            RoundedRectangle(cornerRadius: corner, style: .continuous)
-                .strokeBorder(isActive ? Color.white.opacity(0.55) : Color.white.opacity(0.05),
-                              lineWidth: isActive ? 1 : 0.5)
-            if isActive {
-                RoundedRectangle(cornerRadius: corner + 2, style: .continuous)
-                    .strokeBorder(Theme.highlight.opacity(0.18), lineWidth: 3)
+            // Decorative layers — non-interactive so clicks reach the surface.
+            Group {
+                if !isActive {
+                    RoundedRectangle(cornerRadius: corner - 1, style: .continuous)
+                        .fill(Color.black.opacity(0.32))
+                        .padding(1)
+                }
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .strokeBorder(Theme.highlight.opacity(0.75), lineWidth: 1.5)
+                    .stroke(Color.white.opacity(isActive ? 0.32 : 0.07),
+                            lineWidth: isActive ? 1.5 : 0.5)
+                    .blendMode(.plusLighter)
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .strokeBorder(isActive ? Color.white.opacity(0.55) : Color.white.opacity(0.05),
+                                  lineWidth: isActive ? 1 : 0.5)
+                if isActive {
+                    RoundedRectangle(cornerRadius: corner + 2, style: .continuous)
+                        .strokeBorder(Theme.highlight.opacity(0.18), lineWidth: 3)
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .strokeBorder(Theme.highlight.opacity(0.75), lineWidth: 1.5)
+                }
+                if pane.agent.phase != .idle {
+                    AgentPill(status: pane.agent)
+                        .padding(.top, 10)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+                if let badge = commandBadge {
+                    CommandBadge(result: badge)
+                        .padding(.bottom, 10).padding(.trailing, 12)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                }
             }
+            .allowsHitTesting(false)
+
+            // The title-bar pill stays interactive (tap toggles collapse).
             if prefs.showPaneTitleBar {
                 PaneTitleBar(dirLabel: friendlyDirLabel(for: pane.cwd),
                              remoteHost: pane.remoteHost,
@@ -484,18 +494,7 @@ struct PaneChrome: View {
                     .padding(.top, 10).padding(.trailing, 12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
-            if pane.agent.phase != .idle {
-                AgentPill(status: pane.agent)
-                    .padding(.top, 10)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            }
-            if let badge = commandBadge {
-                CommandBadge(result: badge)
-                    .padding(.bottom, 10).padding(.trailing, 12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-            }
         }
-        .allowsHitTesting(false)
         .animation(Theme.Spring.snappy, value: pane.agent)
         .animation(Theme.Spring.soft, value: isActive)
         .onChange(of: pane.lastCommand) { _, result in
