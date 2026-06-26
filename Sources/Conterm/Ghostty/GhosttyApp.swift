@@ -529,7 +529,13 @@ extension Ghostty {
         // Surface-scoped callbacks: userdata is the SurfaceController.
         private static let cbReadClipboard: @convention(c) (UnsafeMutableRawPointer?, ghostty_clipboard_e, UnsafeMutableRawPointer?) -> Bool = { ud, _, state in
             guard let ud, let state else { return false }
-            let controller = Unmanaged<SurfaceController>.fromOpaque(ud).takeUnretainedValue()
+            // userdata is a weak box (SurfaceUserdata): resolve the
+            // controller weakly so a surface mid-teardown — alive in its
+            // deferred-free window after its controller was freed — yields
+            // nil here instead of dereferencing freed memory. The strong
+            // load also pins a live controller across the main hop.
+            guard let controller = Unmanaged<SurfaceUserdata>
+                .fromOpaque(ud).takeUnretainedValue().controller else { return false }
             // NSPasteboard isn't thread-safe and the surface handle is
             // main-actor state; libghostty calls this off the main thread.
             // Complete asynchronously on main (the `state` token defers the
@@ -538,9 +544,12 @@ extension Ghostty {
             let stateToken = Int(bitPattern: state)
             DispatchQueue.main.async {
                 guard let st = UnsafeMutableRawPointer(bitPattern: stateToken) else { return }
+                // An explicit free between the callback and this hop nils
+                // the handle; never pass a NULL surface into libghostty.
+                guard let h = controller.handle else { return }
                 let text = NSPasteboard.general.string(forType: .string) ?? ""
                 text.withCString { ptr in
-                    ghostty_surface_complete_clipboard_request(controller.handle, ptr, st, false)
+                    ghostty_surface_complete_clipboard_request(h, ptr, st, false)
                 }
             }
             return true
@@ -568,7 +577,11 @@ extension Ghostty {
 
         private static let cbCloseSurface: @convention(c) (UnsafeMutableRawPointer?, Bool) -> Void = { ud, _ in
             guard let ud else { return }
-            let controller = Unmanaged<SurfaceController>.fromOpaque(ud).takeUnretainedValue()
+            // Weak resolution through the userdata box — see cbReadClipboard.
+            // A surface whose controller is already gone (deferred-free
+            // window) closes to nil here rather than touching freed memory.
+            guard let controller = Unmanaged<SurfaceUserdata>
+                .fromOpaque(ud).takeUnretainedValue().controller else { return }
             DispatchQueue.main.async {
                 controller.requestedClose()
             }

@@ -3,6 +3,22 @@ import Foundation
 import GhosttyKit
 
 extension Ghostty {
+    /// Stable heap box handed to libghostty as a surface's `userdata`.
+    /// Holds the controller WEAKLY: the surface-scoped C callbacks
+    /// (read-clipboard, close) receive only this pointer — not the surface
+    /// handle — so they can't resolve the controller through the weak
+    /// `SurfaceRegistry` the action callback uses. A surface can outlive
+    /// its controller through the deferred-free window (see
+    /// `forceFreeSurface`), and those callbacks fire off the main thread; a
+    /// weak load through this box yields nil once the controller is gone
+    /// rather than dereferencing freed memory. The box is kept alive by a
+    /// manual +1 (passRetained) for the surface's whole life and released
+    /// exactly once, after `ghostty_surface_free`.
+    final class SurfaceUserdata {
+        weak var controller: SurfaceController?
+        init(_ controller: SurfaceController) { self.controller = controller }
+    }
+
     /// One controller per terminal pane. Owns a `ghostty_surface_t` and
     /// the NSView it draws into. The view forwards keyboard/mouse events
     /// back here so we can ferry them into libghostty.
@@ -25,6 +41,10 @@ extension Ghostty {
         /// not subject to AppKit's reparent-time layer detachment.
         var hostView: SurfaceHostView?
         private(set) var handle: ghostty_surface_t!
+        /// Opaque pointer to the retained `SurfaceUserdata` box passed to
+        /// libghostty as this surface's `userdata`. Held so the deferred
+        /// free can release the box's manual +1 after the surface is gone.
+        private var userdataPtr: UnsafeMutableRawPointer?
 
         @Published var title: String = ""
         @Published var pwd:   String = ""
@@ -97,7 +117,12 @@ extension Ghostty {
             cfg.scale_factor = Double(view.window?.backingScaleFactor ?? 2.0)
             cfg.font_size = 0
             cfg.context = GHOSTTY_SURFACE_CONTEXT_WINDOW
-            cfg.userdata = Unmanaged.passUnretained(self).toOpaque()
+            // userdata is a retained weak-box, not the controller itself:
+            // the surface can outlive the controller, so a raw unretained
+            // controller pointer here would dangle for the off-thread
+            // surface callbacks. See `SurfaceUserdata`.
+            let boxPtr = Unmanaged.passRetained(SurfaceUserdata(self)).toOpaque()
+            cfg.userdata = boxPtr
 
             // Pass a starting cwd to libghostty when this pane was born
             // from a split / new tab that inherits the active pane's
@@ -115,10 +140,13 @@ extension Ghostty {
                 result = ghostty_surface_new(app.handle, &cfg)
             }
             guard let s = result else {
+                // Surface never took ownership of the box — reclaim its +1.
+                Unmanaged<SurfaceUserdata>.fromOpaque(boxPtr).release()
                 clog("conterm: surface_new FAILED")
                 return false
             }
             self.handle = s
+            self.userdataPtr = boxPtr
             SurfaceRegistry.register(self)
 
             // libghostty initializes the surface with the cfg's
@@ -177,13 +205,19 @@ extension Ghostty {
             let keepAlive = (view, hostView)
             view = nil
             hostView = nil
+            // Hand the box pointer to the deferred free so its +1 is
+            // released once the surface is actually gone. Nil it here so a
+            // re-entrant call (deinit after an explicit free) can't release
+            // it twice.
+            let ud = userdataPtr
+            userdataPtr = nil
             // Free only once the view has actually left the window. A
             // fixed delay can't guarantee that — it may fire while the
             // collapse is still animating and a CoreAnimation commit is
             // still driving this surface's layer. Polling `window == nil`
             // ties the free to SwiftUI unmounting the view, so no CA
             // transaction can touch the surface after it's freed.
-            Self.freeWhenDetached(h, keepAlive: keepAlive, attempt: 0)
+            Self.freeWhenDetached(h, userdata: ud, keepAlive: keepAlive, attempt: 0)
         }
 
         /// Polls until the closing pane's view is out of the window
@@ -193,12 +227,13 @@ extension Ghostty {
         /// it force-detaches first so the free still can't race a commit.
         private static func freeWhenDetached(
             _ h: ghostty_surface_t,
+            userdata: UnsafeMutableRawPointer?,
             keepAlive: (SurfaceView?, SurfaceHostView?),
             attempt: Int
         ) {
             let mounted = keepAlive.0?.window != nil || keepAlive.1?.window != nil
             if !mounted {
-                freeIfUnowned(h)
+                freeIfUnowned(h, userdata: userdata)
                 _ = keepAlive
                 return
             }
@@ -206,14 +241,15 @@ extension Ghostty {
                 keepAlive.1?.removeFromSuperview()
                 keepAlive.0?.removeFromSuperview()
                 DispatchQueue.main.async {
-                    freeIfUnowned(h)
+                    freeIfUnowned(h, userdata: userdata)
                     _ = keepAlive
                 }
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 MainActor.assumeIsolated {
-                    freeWhenDetached(h, keepAlive: keepAlive, attempt: attempt + 1)
+                    freeWhenDetached(h, userdata: userdata,
+                                     keepAlive: keepAlive, attempt: attempt + 1)
                 }
             }
         }
@@ -223,9 +259,17 @@ extension Ghostty {
         /// so the registry is empty for `h` in the normal case; a non-nil
         /// entry means libghostty recycled the pointer for a new surface that
         /// now owns the free — freeing here would double-free it.
-        private static func freeIfUnowned(_ h: ghostty_surface_t) {
-            guard SurfaceRegistry.controller(for: h) == nil else { return }
-            ghostty_surface_free(h)
+        private static func freeIfUnowned(_ h: ghostty_surface_t,
+                                          userdata: UnsafeMutableRawPointer?) {
+            // Skip the surface free only if libghostty recycled this handle
+            // for a live surface (which now owns it); release our box either
+            // way, since no surface references it once the old one is gone.
+            if SurfaceRegistry.controller(for: h) == nil {
+                ghostty_surface_free(h)
+            }
+            if let userdata {
+                Unmanaged<SurfaceUserdata>.fromOpaque(userdata).release()
+            }
         }
 
         // MARK: - View-side hooks
