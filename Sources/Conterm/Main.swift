@@ -14,7 +14,7 @@ struct ContermApp {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var prefs: Preferences!
     private var ghostty: Ghostty.App?
     private var notes: NotesStore!
@@ -159,6 +159,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             restore: restore
         )
         windows.append(wc)
+        // Per-window close confirmation routes through windowShouldClose
+        // (red button, ⌘⇧W, and the performClose that drains the last pane).
+        wc.window.delegate = self
         clog("conterm: openNewWindow #\(wc.window.windowNumber) → windows=\(windows.count) nsappWindows=\(NSApp.windows.count)")
         NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
@@ -173,6 +176,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // was up to date.
             MainActor.assumeIsolated {
                 let beforeOurs = self.windows.count
+                // Free this window's libghostty surfaces as it commits to
+                // closing. closeTab no longer tears down the last tab up
+                // front (so a cancelled close stays intact), so the
+                // teardown lands here for every close path — red button,
+                // ⌘⇧W, and the performClose that drains the last tab.
+                if let wc = self.windows.first(where: { $0.window === closing }) {
+                    for tab in wc.state.tabs {
+                        for pane in tab.paneTree.root.leaves() {
+                            pane.controller?.forceFreeSurface()
+                        }
+                    }
+                }
                 self.windows.removeAll { $0.window === closing }
                 let afterOurs = self.windows.count
                 // Count visible windows AppKit knows about (subtract
@@ -235,6 +250,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func newWindow(_ sender: Any?)         { openNewWindow() }
     @objc func newTab(_ sender: Any?)            { state.addTab() }
     @objc func closeActive(_ sender: Any?)       { state.closeActivePaneOrTab() }
+    /// Close only the focused window (⌘⇧W). Routes through performClose so
+    /// windowShouldClose can warn about running agents; never quits the app.
+    @objc func closeWindow(_ sender: Any?)       { NSApp.keyWindow?.performClose(nil) }
     @objc func splitRight(_ sender: Any?)        { state.splitSelected(direction: .horizontal) }
     @objc func splitDown(_ sender: Any?)         { state.splitSelected(direction: .vertical) }
     @objc func togglePalette(_ sender: Any?)     {
@@ -577,6 +595,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             w.animator().alphaValue = 1
             w.animator().setFrame(target, display: true)
         }
+    }
+
+    /// Per-window close guard. Closing a window ends every tab, pane, and
+    /// running command in it, so confirm first (gated on the same
+    /// "Confirm before quit" preference). Returning false cancels; true
+    /// closes only THIS window — the app keeps running if others remain.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard let wc = windows.first(where: { $0.window === sender }) else { return true }
+        guard prefs?.confirmBeforeQuit == true else { return true }
+
+        let paneCount = wc.state.tabs.reduce(0) { $0 + $1.paneTree.root.leaves().count }
+        let agents = wc.state.tabs
+            .flatMap { $0.paneTree.root.leaves() }
+            .filter { $0.agent.phase != .idle }
+
+        let alert = NSAlert()
+        alert.messageText = "Close this window?"
+        if let agent = agents.first {
+            alert.informativeText = agents.count == 1
+                ? "\(agent.agent.tool.displayName) is running here and will be ended."
+                : "\(agents.count) running agents in this window will be ended."
+        } else {
+            alert.informativeText = paneCount > 1
+                ? "Its \(paneCount) panes and any running commands will be closed."
+                : "Any running commands in this window will be ended."
+        }
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Close")    // .alertFirstButtonReturn
+        alert.addButton(withTitle: "Cancel")   // .alertSecondButtonReturn
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

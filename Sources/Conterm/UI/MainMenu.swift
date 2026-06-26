@@ -64,6 +64,11 @@ enum MainMenu {
         menu.addItem(item("Close Tab/Pane",
                           action: #selector(AppDelegate.closeActive(_:)),
                           key: "w", target: delegate))
+        let closeWindow = item("Close Window",
+                               action: #selector(AppDelegate.closeWindow(_:)),
+                               key: "w", target: delegate)
+        closeWindow.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(closeWindow)
         menu.addItem(.separator())
         menu.addItem(item("Split Right",
                           action: #selector(AppDelegate.splitRight(_:)),
