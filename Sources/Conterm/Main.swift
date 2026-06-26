@@ -251,8 +251,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func newTab(_ sender: Any?)            { state.addTab() }
     @objc func closeActive(_ sender: Any?)       { state.closeActivePaneOrTab() }
     /// Close only the focused window (⌘⇧W). Routes through performClose so
-    /// windowShouldClose can warn about running agents; never quits the app.
+    /// windowShouldClose can confirm; never quits the app.
     @objc func closeWindow(_ sender: Any?)       { NSApp.keyWindow?.performClose(nil) }
+
+    /// ⌘Q closes just the focused window while more than one is open, and only
+    /// quits the app (with its save prompt) when closing the last one.
+    @objc func quitOrCloseWindow(_ sender: Any?) {
+        if windows.count > 1,
+           let key = NSApp.keyWindow,
+           windows.contains(where: { $0.window === key }) {
+            key.performClose(nil)
+        } else {
+            NSApp.terminate(sender)
+        }
+    }
     @objc func splitRight(_ sender: Any?)        { state.splitSelected(direction: .horizontal) }
     @objc func splitDown(_ sender: Any?)         { state.splitSelected(direction: .vertical) }
     @objc func togglePalette(_ sender: Any?)     {
