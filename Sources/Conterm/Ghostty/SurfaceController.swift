@@ -84,6 +84,13 @@ extension Ghostty {
         /// afterwards (the shell's own pwd takes over).
         var startingDir: String?
 
+        /// On session restore: path to an executable wrapper script that prints
+        /// the pane's saved scrollback, then `exec`s the login shell. Passed as
+        /// libghostty's surface `command` so the prior output reappears above a
+        /// fresh prompt. nil for normal panes (default shell). Set before
+        /// `start`; consumed once in `createSurfaceIfNeeded`.
+        var restoreCommand: String?
+
         /// Two-phase init: storage first, then `start(view:)` to create the
         /// libghostty surface once we can take `Unmanaged.passUnretained(self)`.
         init(app: App) {
@@ -124,20 +131,23 @@ extension Ghostty {
             let boxPtr = Unmanaged.passRetained(SurfaceUserdata(self)).toOpaque()
             cfg.userdata = boxPtr
 
-            // Pass a starting cwd to libghostty when this pane was born
-            // from a split / new tab that inherits the active pane's
-            // directory. `withCString` keeps the C string alive across
-            // the surface_new call (libghostty copies it internally).
-            let result: ghostty_surface_t?
-            if let dir = startingDir, !dir.isEmpty {
-                clog("conterm: surface_new with working_directory=\(dir)")
-                result = dir.withCString { ptr -> ghostty_surface_t? in
-                    cfg.working_directory = ptr
+            // Pass a starting cwd and (on session restore) a launch command
+            // to libghostty. `withCString` keeps each C string alive across
+            // the surface_new call (libghostty copies it internally). The
+            // restore command is a single executable-script path — see
+            // `restoreCommand` — so libghostty's command parsing can't trip
+            // on quoting.
+            func withOpt(_ s: String?,
+                         _ body: (UnsafePointer<CChar>?) -> ghostty_surface_t?) -> ghostty_surface_t? {
+                if let s, !s.isEmpty { return s.withCString { body($0) } }
+                return body(nil)
+            }
+            let result: ghostty_surface_t? = withOpt(startingDir) { dirPtr in
+                if let dirPtr { cfg.working_directory = dirPtr }
+                return withOpt(restoreCommand) { cmdPtr in
+                    if let cmdPtr { cfg.command = cmdPtr }
                     return ghostty_surface_new(app.handle, &cfg)
                 }
-            } else {
-                clog("conterm: surface_new no startingDir")
-                result = ghostty_surface_new(app.handle, &cfg)
             }
             guard let s = result else {
                 // Surface never took ownership of the box — reclaim its +1.
@@ -370,6 +380,30 @@ extension Ghostty {
         func setContentScale(x: Double, y: Double) {
             guard let h = handle else { return }
             ghostty_surface_set_content_scale(h, x, y)
+        }
+
+        /// Read the surface's full text (scrollback + viewport) as plain text,
+        /// trimmed to the last `maxBytes`. Best-effort session-restore capture;
+        /// returns nil when the surface is gone or empty.
+        func captureScrollback(maxBytes: Int = 16_384) -> String? {
+            guard let h = handle else { return nil }
+            let pt = { (coord: ghostty_point_coord_e) in
+                ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: coord, x: 0, y: 0)
+            }
+            var sel = ghostty_selection_s()
+            sel.top_left = pt(GHOSTTY_POINT_COORD_TOP_LEFT)
+            sel.bottom_right = pt(GHOSTTY_POINT_COORD_BOTTOM_RIGHT)
+            sel.rectangle = false
+            var text = ghostty_text_s()
+            guard ghostty_surface_read_text(h, sel, &text) else { return nil }
+            defer { ghostty_surface_free_text(h, &text) }
+            guard let ptr = text.text, text.text_len > 0 else { return nil }
+            let data = Data(bytes: ptr, count: Int(text.text_len))
+            var s = String(decoding: data, as: UTF8.self)
+                .trimmingCharacters(in: .newlines)
+            if s.isEmpty { return nil }
+            if s.utf8.count > maxBytes { s = String(s.suffix(maxBytes)) }
+            return s
         }
 
         // MARK: - Input
