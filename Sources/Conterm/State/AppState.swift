@@ -356,6 +356,15 @@ final class AppState: ObservableObject {
 
     func closeTab(_ tab: Tab) {
         guard let idx = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        // Draining the last tab closes the window. Route through the
+        // window's close path (performClose → windowShouldClose) so its
+        // confirmation runs BEFORE any teardown — a cancelled close must
+        // not leave a half-emptied window. The willClose handler frees
+        // this window's surfaces once the close actually commits.
+        if tabs.count == 1 {
+            ownWindow?.performClose(nil)
+            return
+        }
         // Free EVERY libghostty surface in this tab's pane tree NOW.
         // Without this, closing a tab only dropped the Swift objects
         // and relied on ARC/deinit to call ghostty_surface_free — but a
@@ -372,18 +381,9 @@ final class AppState: ObservableObject {
         withAnimation(Theme.Spring.crisp) {
             tabs.remove(at: idx)
             if selectedID == tab.id {
-                if !tabs.isEmpty {
-                    let next = min(idx, tabs.count - 1)
-                    selectedID = tabs[next].id
-                } else {
-                    selectedID = nil
-                }
+                let next = min(idx, tabs.count - 1)
+                selectedID = tabs[next].id
             }
-        }
-        // Window close when we drain the last tab — but only THIS
-        // window, not whatever window happens to be key.
-        if tabs.isEmpty {
-            ownWindow?.performClose(nil)
         }
         SoundEffects.shared.play(.tabRemove)
     }
