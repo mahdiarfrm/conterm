@@ -822,8 +822,15 @@ extension Ghostty {
             }
 
             guard !paths.isEmpty else { return false }
-            let joined = paths.map(Self.shellQuote).joined(separator: " ") + " "
-            controller?.sendText(joined)
+            // One bracketed paste per path. An agent that attaches a single
+            // dropped image (Claude Code recognizes one image path per drop)
+            // sees each path as its own drop and attaches them all; a single
+            // space-joined paste only ever attaches the first. The trailing
+            // space keeps a plain shell receiving them as separate, quoted
+            // arguments on one line.
+            for path in paths {
+                controller?.sendText(Self.shellQuote(path) + " ")
+            }
             return true
         }
 
