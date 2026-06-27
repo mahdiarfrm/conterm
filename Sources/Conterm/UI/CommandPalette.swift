@@ -573,8 +573,6 @@ struct CommandPalette: View {
                    .widgets, "battery.100", prefs.isWidgetEnabled("battery")) { prefs.setWidget("battery", enabled: $0) },
             toggle("widget.gitStatus", "Git status widget", "branch dirty ahead behind repo",
                    .widgets, "arrow.triangle.branch", prefs.isWidgetEnabled("gitStatus")) { prefs.setWidget("gitStatus", enabled: $0) },
-            toggle("widget.agentStatus", "Agents widget", "claude opencode running attention needs you",
-                   .widgets, RobotGlyph.iconName, prefs.isWidgetEnabled("agentStatus")) { prefs.setWidget("agentStatus", enabled: $0) },
             toggle("autoHideSidebar", "Auto-hide sidebar",
                    "vertical collapse edge reveal", .tabs, "sidebar.left",
                    prefs.autoHideSidebar) { prefs.autoHideSidebar = $0 },

@@ -390,15 +390,13 @@ final class Preferences: ObservableObject {
         self.showSystemStats        = ud.object(forKey: K.showSystemStats) as? Bool ?? true
         // Seed the enabled-widget rail once from the legacy stats flag so
         // existing users keep their widget; thereafter `enabledWidgets`
-        // is authoritative.
-        if let storedWidgets = ud.stringArray(forKey: K.enabledWidgets) {
-            self.enabledWidgets = storedWidgets
-        } else {
-            let seed = (ud.object(forKey: K.showSystemStats) as? Bool ?? true)
-                ? ["systemStats"] : []
-            self.enabledWidgets = seed
-            ud.set(seed, forKey: K.enabledWidgets)
-        }
+        // is authoritative. Strip `agentStatus` (not a current widget
+        // kind) so the stored list stays valid.
+        var widgets = ud.stringArray(forKey: K.enabledWidgets)
+            ?? ((ud.object(forKey: K.showSystemStats) as? Bool ?? true) ? ["systemStats"] : [])
+        widgets.removeAll { $0 == "agentStatus" }
+        self.enabledWidgets = widgets
+        ud.set(widgets, forKey: K.enabledWidgets)
         self.statsShowCPU           = ud.object(forKey: K.statsShowCPU) as? Bool ?? true
         self.statsShowMemory        = ud.object(forKey: K.statsShowMemory) as? Bool ?? true
         self.statsShowNetwork       = ud.object(forKey: K.statsShowNetwork) as? Bool ?? true
