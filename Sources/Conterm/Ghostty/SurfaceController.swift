@@ -84,13 +84,6 @@ extension Ghostty {
         /// afterwards (the shell's own pwd takes over).
         var startingDir: String?
 
-        /// On session restore: path to an executable wrapper script that prints
-        /// the pane's saved scrollback, then `exec`s the login shell. Passed as
-        /// libghostty's surface `command` so the prior output reappears above a
-        /// fresh prompt. nil for normal panes (default shell). Set before
-        /// `start`; consumed once in `createSurfaceIfNeeded`.
-        var restoreCommand: String?
-
         /// Two-phase init: storage first, then `start(view:)` to create the
         /// libghostty surface once we can take `Unmanaged.passUnretained(self)`.
         init(app: App) {
@@ -131,23 +124,16 @@ extension Ghostty {
             let boxPtr = Unmanaged.passRetained(SurfaceUserdata(self)).toOpaque()
             cfg.userdata = boxPtr
 
-            // Pass a starting cwd and (on session restore) a launch command
-            // to libghostty. `withCString` keeps each C string alive across
-            // the surface_new call (libghostty copies it internally). The
-            // restore command is a single executable-script path — see
-            // `restoreCommand` — so libghostty's command parsing can't trip
-            // on quoting.
-            func withOpt(_ s: String?,
-                         _ body: (UnsafePointer<CChar>?) -> ghostty_surface_t?) -> ghostty_surface_t? {
-                if let s, !s.isEmpty { return s.withCString { body($0) } }
-                return body(nil)
-            }
-            let result: ghostty_surface_t? = withOpt(startingDir) { dirPtr in
-                if let dirPtr { cfg.working_directory = dirPtr }
-                return withOpt(restoreCommand) { cmdPtr in
-                    if let cmdPtr { cfg.command = cmdPtr }
+            // Pass a starting cwd to libghostty. `withCString` keeps the C
+            // string alive across the surface_new call (libghostty copies it).
+            let result: ghostty_surface_t?
+            if let dir = startingDir, !dir.isEmpty {
+                result = dir.withCString { ptr -> ghostty_surface_t? in
+                    cfg.working_directory = ptr
                     return ghostty_surface_new(app.handle, &cfg)
                 }
+            } else {
+                result = ghostty_surface_new(app.handle, &cfg)
             }
             guard let s = result else {
                 // Surface never took ownership of the box — reclaim its +1.

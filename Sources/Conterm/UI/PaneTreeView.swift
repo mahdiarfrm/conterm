@@ -176,45 +176,63 @@ func makePaneSurface(pane: Pane,
         }
     }
 
-    // On restore, launch through a wrapper that prints the saved scrollback
-    // then execs the shell, so prior output reappears above a fresh prompt.
-    if let sb = pane.pendingScrollback, !sb.isEmpty,
-       let script = restoreWrapperScript(scrollback: sb) {
-        controller.restoreCommand = script
-    }
+    // Capture restore intent before starting, then clear it so a later
+    // re-mount of this pane never replays it.
+    let resumeSession = pane.pendingAgentResume
+    let scrollback = pane.pendingScrollback
+    pane.pendingAgentResume = nil
     pane.pendingScrollback = nil
 
     _ = controller.start(view: view)
     pane.startingDir = nil
     state.syncSurfaceOcclusion()
+
+    // Session restore. libghostty ignores the surface `command`/`initial_input`
+    // config in this build, so we drive restore through the input path (same as
+    // a paste): once the shell is up, type a setup line. For an agent pane that
+    // resumes the session (`claude --resume`); otherwise it replays the saved
+    // scrollback. cwd alone (working_directory) covers a plain pane.
+    if let cmd = restoreCommandLine(resumeSession: resumeSession,
+                                    scrollback: scrollback,
+                                    cwd: pane.cwd) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak controller] in
+            controller?.typeText(cmd)
+            controller?.sendReturn()
+        }
+    }
     return controller
 }
 
-/// Write the saved scrollback and a tiny executable wrapper into the cache,
-/// returning the wrapper's path for libghostty's surface `command`. The
-/// wrapper prints the scrollback, deletes both files, then `exec`s the login
-/// shell. Paths are UUIDs (no quoting hazards) under a known cache dir.
+/// The setup line typed into a freshly-restored pane: resume the agent if one
+/// was running, else replay the saved scrollback. nil for a plain pane.
 @MainActor
-private func restoreWrapperScript(scrollback: String) -> String? {
+private func restoreCommandLine(resumeSession: String?,
+                                scrollback: String?, cwd: String?) -> String? {
+    if let id = resumeSession, !id.isEmpty {
+        let dir = cwd ?? NSHomeDirectory()
+        return "cd \(shellSingleQuote(dir)) && claude --resume \(shellSingleQuote(id))"
+    }
+    if let sb = scrollback, !sb.isEmpty, let path = writeRestoreScrollback(sb) {
+        return "cat \(shellSingleQuote(path)) && rm -f \(shellSingleQuote(path))"
+    }
+    return nil
+}
+
+private func shellSingleQuote(_ s: String) -> String {
+    "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+}
+
+/// Write the saved scrollback to a cache file for the restore `cat` to print.
+@MainActor
+private func writeRestoreScrollback(_ text: String) -> String? {
     let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         ?? URL(fileURLWithPath: NSTemporaryDirectory())
     let dir = base.appendingPathComponent("conterm/restore", isDirectory: true)
     try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    let id = UUID().uuidString
-    let sb = dir.appendingPathComponent("\(id).txt")
-    let sh = dir.appendingPathComponent("\(id).sh")
-    let script = """
-    #!/bin/sh
-    cat -- '\(sb.path)' 2>/dev/null
-    rm -f -- '\(sb.path)' '\(sh.path)'
-    exec "${SHELL:-/bin/zsh}" -l
-    """
+    let url = dir.appendingPathComponent("\(UUID().uuidString).txt")
     do {
-        try scrollback.write(to: sb, atomically: true, encoding: .utf8)
-        try script.write(to: sh, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755],
-                                              ofItemAtPath: sh.path)
-        return sh.path
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        return url.path
     } catch {
         return nil
     }
