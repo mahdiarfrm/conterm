@@ -528,13 +528,9 @@ struct PaneChrome: View {
                         .fill(Color.black.opacity(0.32))
                         .padding(1)
                 }
-                // strokeBorder (not stroke): keeps the highlight INSIDE the
-                // pane. `.stroke` centers on the edge, leaving half the line
-                // above the pane's top — which floats as a stray line at the
-                // window top in vertical-tabs/agents (no tab bar hides it).
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .strokeBorder(Color.white.opacity(isActive ? 0.32 : 0.07),
-                                  lineWidth: isActive ? 1.5 : 0.5)
+                    .stroke(Color.white.opacity(isActive ? 0.32 : 0.07),
+                            lineWidth: isActive ? 1.5 : 0.5)
                     .blendMode(.plusLighter)
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
                     .strokeBorder(isActive ? Color.white.opacity(0.55) : Color.white.opacity(0.05),
