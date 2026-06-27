@@ -301,6 +301,7 @@ final class PaneTreeView: NSView {
             removedAny = true
         }
         // Add a box per new pane (reusing the pane's controller if present).
+        var addedAny = false
         for (i, pane) in leaves.enumerated() {
             let box: PaneBox
             if let existing = boxes[pane.id] {
@@ -312,17 +313,22 @@ final class PaneTreeView: NSView {
                 box = PaneBox(pane: pane, host: host, prefs: prefs, tab: tab)
                 boxes[pane.id] = box
                 addSubview(box)
+                addedAny = true
             }
             box.index = i + 1
             box.isActivePane = (pane.id == activeID)
         }
-        // A close slides the survivors into place; everything else lays out
-        // instantly (splits, focus, divider drag, resize).
+        // A close slides the survivors into place; a split lays out instantly.
+        // A focus-only / no-op apply must NOT disturb an in-flight close
+        // animation (a close fires objectWillChange more than once — the later
+        // passes would otherwise cancel the slide and snap to final).
         if removedAny {
             beginCollapseAnimation()
-        } else {
+        } else if addedAny {
             collapseLink?.invalidate()
             collapseLink = nil
+            needsLayout = true
+        } else if collapseLink == nil {
             needsLayout = true
         }
 
