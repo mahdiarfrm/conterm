@@ -254,6 +254,7 @@ final class PaneTreeView: NSView {
     private let prefs: Preferences
     private weak var tree: PaneTree?
     private var cancellable: AnyCancellable?
+    private var prefsCancellable: AnyCancellable?
 
     /// Live pane container per leaf pane id. Reused across relayouts.
     private var boxes: [UUID: PaneBox] = [:]
@@ -280,9 +281,25 @@ final class PaneTreeView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.backgroundColor = .clear   // glass shows through the gaps
+        // Re-apply the opaque/clear pane backing to live panes whenever
+        // `opaquePanes` flips, so the setting reaches existing panes. The
+        // publisher fires before the value commits, so re-apply on the
+        // next runloop turn.
+        prefsCancellable = prefs.$opaquePanes
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.applyPaneBacking() }
+            }
     }
 
     required init?(coder: NSCoder) { nil }
+
+    /// Re-run each live box's layout so it re-reads `prefs.opaquePanes`
+    /// and repaints its backing. Frames are unchanged, so this only
+    /// refreshes the tile color.
+    private func applyPaneBacking() {
+        for box in boxes.values { box.needsLayout = true }
+    }
 
     // Top-left origin so the tree math matches the model (first = top/left).
     override var isFlipped: Bool { true }
