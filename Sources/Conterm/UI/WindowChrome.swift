@@ -160,6 +160,11 @@ private final class TrafficLightShifter: NSObject {
 
     private func reposition() {
         guard let window else { return }
+        // AppKit restores the default title-bar separator on these same events,
+        // so re-assert .none here (set once at apply() doesn't stick). Without
+        // it a hairline streaks the first terminal row in vertical-tabs/agents
+        // modes, where the pane reaches the window top.
+        window.titlebarSeparatorStyle = .none
         let buttons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
         for type in buttons {
             guard let btn = window.standardWindowButton(type) else { continue }
