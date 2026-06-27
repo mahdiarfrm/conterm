@@ -120,4 +120,106 @@ enum UserConfigStore {
         if s.rangeOfCharacter(from: .whitespacesAndNewlines) == nil { return s }
         return "\"\(s)\""
     }
+
+    // MARK: - Managed theme block
+
+    // Sentinels bounding the picker-owned theme block. Kept verbatim so
+    // `strippingManagedThemeBlock` can find and replace it on each pick.
+    static let themeBlockBegin =
+        "# >>> conterm theme (managed — set in Settings ▸ Appearance; edits here are overwritten)"
+    static let themeBlockEnd = "# <<< conterm theme"
+    private static let themeIDMarker = "# conterm-theme-id = "
+
+    /// Apply a theme by appending its colors as EXPLICIT keys at EOF.
+    /// Ghostty resolves `background`/`foreground`/`palette` set anywhere
+    /// in the config — even a `config-file`-included one — above a bare
+    /// `theme =` line, so a hardcoded palette silently shadows the pick.
+    /// Emitting the theme's own colors as the LAST explicit keys makes
+    /// the pick win regardless. Non-destructive: the user's earlier lines
+    /// stay (just overridden); removing this block restores them.
+    /// `colorLines` are verbatim `key = value` lines from the theme file.
+    static func writeManagedThemeBlock(themeID: String, colorLines: [String]) {
+        var lines = currentLines()
+        lines = strippingManagedThemeBlock(lines)
+        lines = strippingTopLevelTheme(lines)
+        while let last = lines.last,
+              last.trimmingCharacters(in: .whitespaces).isEmpty {
+            lines.removeLast()
+        }
+        lines.append("")
+        lines.append(themeBlockBegin)
+        // Name recorded as a comment (not an active `theme =`) so the
+        // colors below are self-sufficient — no dependency on libghostty
+        // resolving the theme by name.
+        lines.append("\(themeIDMarker)\(themeID)")
+        lines.append(contentsOf: colorLines)
+        lines.append(themeBlockEnd)
+        persist(lines)
+    }
+
+    /// Drop the managed theme block so the user's own config (and any
+    /// `config-file`-included Ghostty config) sets the colors again.
+    static func removeManagedThemeBlock() {
+        let lines = strippingManagedThemeBlock(currentLines())
+        persist(lines)
+    }
+
+    /// The theme id recorded inside the managed block, if present — the
+    /// picker's current selection. nil when the block is absent (the
+    /// user's config owns the colors).
+    static func managedThemeID() -> String? {
+        let lines = currentLines()
+        guard let start = lines.firstIndex(where: {
+            $0.trimmingCharacters(in: .whitespaces) == themeBlockBegin
+        }) else { return nil }
+        for line in lines[start...] {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t == themeBlockEnd { break }
+            if t.hasPrefix(themeIDMarker) {
+                return String(t.dropFirst(themeIDMarker.count))
+                    .trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return nil
+    }
+
+    private static func currentLines() -> [String] {
+        (try? String(contentsOfFile: path, encoding: .utf8))?
+            .components(separatedBy: "\n") ?? []
+    }
+
+    private static func persist(_ lines: [String]) {
+        let dir = (path as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: dir,
+                                                  withIntermediateDirectories: true)
+        let joined = lines.joined(separator: "\n")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\n")) + "\n"
+        try? joined.write(toFile: path, atomically: true, encoding: .utf8)
+        cache = nil
+    }
+
+    /// Remove the managed block (begin…end inclusive). Tolerates a
+    /// missing end sentinel by cutting to EOF.
+    private static func strippingManagedThemeBlock(_ lines: [String]) -> [String] {
+        guard let start = lines.firstIndex(where: {
+            $0.trimmingCharacters(in: .whitespaces) == themeBlockBegin
+        }) else { return lines }
+        let end = lines[start...].firstIndex(where: {
+            $0.trimmingCharacters(in: .whitespaces) == themeBlockEnd
+        }) ?? (lines.count - 1)
+        var result = lines
+        result.removeSubrange(start...min(end, lines.count - 1))
+        return result
+    }
+
+    /// Drop any uncommented top-level `theme = …` line — the picker owns
+    /// the theme key now, so a stray earlier assignment can't linger.
+    private static func strippingTopLevelTheme(_ lines: [String]) -> [String] {
+        lines.filter { line in
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t.hasPrefix("#") { return true }
+            guard let eq = t.firstIndex(of: "=") else { return true }
+            return t[..<eq].trimmingCharacters(in: .whitespaces) != "theme"
+        }
+    }
 }

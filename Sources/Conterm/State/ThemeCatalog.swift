@@ -35,11 +35,11 @@ final class ThemeCatalog: ObservableObject {
     /// the launch animation (and tripping the OS launch watchdog on
     /// slower machines).
     init() {
-        current = UserConfigStore.read(key: "theme")
+        current = UserConfigStore.managedThemeID() ?? UserConfigStore.read(key: "theme")
     }
 
     func reloadCurrent() {
-        current = UserConfigStore.read(key: "theme")
+        current = UserConfigStore.managedThemeID() ?? UserConfigStore.read(key: "theme")
     }
 
     /// Kick off a one-time background parse. Safe to call repeatedly
@@ -127,13 +127,56 @@ final class ThemeCatalog: ObservableObject {
         )
     }
 
-    /// Apply a theme: writes `theme = "Name"` to the user's config and
-    /// triggers a libghostty config reload so the change is live.
+    /// Apply a theme: writes the theme's colors as an explicit managed
+    /// block at the end of the user's config (so they override any
+    /// hardcoded background/palette, including a `config-file`-included
+    /// Ghostty config) and triggers a libghostty reload so it's live.
     func apply(_ theme: Theme) {
-        UserConfigStore.write(key: "theme",
-                               value: UserConfigStore.quote(theme.id))
+        let colors = Self.colorLines(forThemeID: theme.id)
+        if colors.isEmpty {
+            // Theme file unreadable — fall back to a bare key. Won't win
+            // against hardcoded colors, but it's better than a silent no-op.
+            UserConfigStore.write(key: "theme",
+                                   value: UserConfigStore.quote(theme.id))
+        } else {
+            UserConfigStore.writeManagedThemeBlock(themeID: theme.id,
+                                                    colorLines: colors)
+        }
         current = theme.id
         Ghostty.App.shared?.reloadConfig()
+    }
+
+    /// Hand color control back to the user's own config: remove the
+    /// managed block and reload. The included Ghostty config (and any
+    /// hardcoded background/palette) then sets the colors again.
+    func followConfig() {
+        UserConfigStore.removeManagedThemeBlock()
+        current = nil
+        Ghostty.App.shared?.reloadConfig()
+    }
+
+    /// Verbatim color-defining lines from a bundled theme file: every
+    /// `key = value` except `theme`/`config-file` (which a theme file
+    /// can't set anyway). Emitted into the user config so the theme's
+    /// colors land as explicit keys that override a hardcoded palette.
+    nonisolated private static func colorLines(forThemeID id: String) -> [String] {
+        guard let dir = Bundle.main.resourceURL?
+            .appendingPathComponent("ghostty/themes") else { return [] }
+        let path = dir.appendingPathComponent(id).path
+        guard let body = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return []
+        }
+        var out: [String] = []
+        for raw in body.split(omittingEmptySubsequences: true, whereSeparator: \.isNewline) {
+            let line = String(raw).trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("#") { continue }
+            guard let eq = line.firstIndex(of: "=") else { continue }
+            let key = line[..<eq].trimmingCharacters(in: .whitespaces)
+            if key == "theme" || key == "config-file" { continue }
+            let value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
+            out.append("\(key) = \(value)")
+        }
+        return out
     }
 }
 
