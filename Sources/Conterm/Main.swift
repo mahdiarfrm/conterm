@@ -180,10 +180,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             MainActor.assumeIsolated {
                 let beforeOurs = self.windows.count
                 // Free this window's libghostty surfaces as it commits to
-                // closing. closeTab no longer tears down the last tab up
-                // front (so a cancelled close stays intact), so the
-                // teardown lands here for every close path — red button,
-                // ⌘⇧W, and the performClose that drains the last tab.
+                // closing. closeTab leaves the last tab intact (so a
+                // cancelled close stays usable), so teardown lands here for
+                // every close path — red button, ⌘⇧W, and the performClose
+                // that drains the last tab.
                 if let wc = self.windows.first(where: { $0.window === closing }) {
                     for tab in wc.state.tabs {
                         for pane in tab.paneTree.root.leaves() {
@@ -652,8 +652,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         // Persist this close's choice. willClose would otherwise re-save the
         // remaining windows; suppress it once so the choice (incl. "don't
-        // save") stands. The last window includes itself in the snapshot so
-        // its tabs/panes/scrollback survive; earlier windows save the rest.
+        // save") stands. Closing the last window includes itself so its
+        // tabs/panes/scrollback survive; closing one of several saves the
+        // siblings that remain.
         let isLast = windows.count == 1
         if save.state == .on {
             let toSave = isLast ? windows : windows.filter { $0.window !== sender }
