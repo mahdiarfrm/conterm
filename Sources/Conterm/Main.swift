@@ -23,6 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private(set) var notifications: NotificationStore!
     private(set) var tabGroups: TabGroupStore!
     private(set) var windows: [WindowController] = []
+    /// Set by windowShouldClose when its dialog already wrote the session for
+    /// the close in progress, so the willClose autosave skips it once.
+    private var suppressAutoSaveOnce = false
     private var eventMonitor: Any?
     private var titleBarClickMonitor: Any?
     private var scrollMonitor: Any?
@@ -197,11 +200,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     $0.isVisible && $0 !== closing
                 }.count
                 clog("conterm: window#\(closing.windowNumber) closing — ours \(beforeOurs)→\(afterOurs), nsapp-visible-after=\(nsappVisible)")
-                // Re-snapshot the post-close state so sessions.json
-                // tracks "what's currently open" through manual closes
-                // too — not just on quit.
-                if self.prefs?.rememberWindowState == true,
-                   !self.windows.isEmpty {
+                // Re-snapshot the post-close state so sessions.json tracks
+                // "what's currently open" through manual closes too — unless
+                // the close-confirm dialog already wrote the session for this
+                // close (then honor that choice, including "don't save").
+                if self.suppressAutoSaveOnce {
+                    self.suppressAutoSaveOnce = false
+                } else if self.prefs?.rememberWindowState == true,
+                          !self.windows.isEmpty {
                     SessionStore.save(windows: self.windows)
                 }
             }
@@ -634,9 +640,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 : "Any running commands in this window will be ended."
         }
         alert.alertStyle = .warning
+        // Same save affordance as the quit dialog, so a session is never lost
+        // silently — every close offers to keep it for next launch.
+        let save = NSButton(checkboxWithTitle: "Restore tabs & panes on next launch",
+                            target: nil, action: nil)
+        save.state = (prefs?.rememberWindowState == true) ? .on : .off
+        alert.accessoryView = save
         alert.addButton(withTitle: "Close")    // .alertFirstButtonReturn
         alert.addButton(withTitle: "Cancel")   // .alertSecondButtonReturn
-        return alert.runModal() == .alertFirstButtonReturn
+        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+
+        // Persist this close's choice. willClose would otherwise re-save the
+        // remaining windows; suppress it once so the choice (incl. "don't
+        // save") stands. The last window includes itself in the snapshot so
+        // its tabs/panes/scrollback survive; earlier windows save the rest.
+        let isLast = windows.count == 1
+        if save.state == .on {
+            let toSave = isLast ? windows : windows.filter { $0.window !== sender }
+            SessionStore.save(windows: toSave)
+        } else if isLast {
+            SessionStore.clear()
+        }
+        suppressAutoSaveOnce = true
+        return true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
