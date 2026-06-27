@@ -454,36 +454,34 @@ extension Ghostty {
 
         nonisolated static func applyConfigChain(_ cfg: ghostty_config_t) {
             let fm = FileManager.default
-            let home = NSHomeDirectory()
             let configHome: String = {
                 if let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"],
                    !xdg.isEmpty { return xdg }
-                return (home as NSString).appendingPathComponent(".config")
+                return (NSHomeDirectory() as NSString).appendingPathComponent(".config")
             }()
+            // Mirror init()'s load order exactly so a reload rebuilds the
+            // SAME config — otherwise a theme/font change would resolve
+            // against a different chain than the one the app booted on.
             // 1) Base = genuine Ghostty default (bundled).
             if let bundled = Bundle.main.path(forResource: "ghostty-default",
                                               ofType: "conf"),
                fm.fileExists(atPath: bundled) {
                 bundled.withCString { ghostty_config_load_file(cfg, $0) }
             }
-            // 2 & 3) User config — SKIPPED in safe mode so a broken
-            //        config can't break startup. Normal mode loads
-            //        ~/.config/ghostty/config then ~/.config/conterm/config
-            //        (conterm wins — highest priority).
+            // 2) Conterm's single user-facing config (highest priority).
+            //    The user pulls in their Ghostty config from inside it via
+            //    `config-file = …`, which libghostty resolves recursively —
+            //    so the Ghostty config is NOT auto-loaded here, matching
+            //    init(). SKIPPED in safe mode so a broken config can't
+            //    break a reload.
             if !useDefaultGhosttyConfig {
-                for path in [
-                    "\(home)/Library/Application Support/com.mitchellh.ghostty/config",
-                    (configHome as NSString).appendingPathComponent("ghostty/config"),
-                ] where fm.fileExists(atPath: path) {
-                    path.withCString { ghostty_config_load_file(cfg, $0) }
-                }
                 let contermConfigPath = (configHome as NSString)
                     .appendingPathComponent("conterm/config")
                 if fm.fileExists(atPath: contermConfigPath) {
                     contermConfigPath.withCString { ghostty_config_load_file(cfg, $0) }
                 }
             }
-            // 4) Lastword: regenerated each reload so preference
+            // 3) Lastword: regenerated each reload so preference
             //    changes (e.g. SSH compatibility mode) take effect.
             writeAndLoadLastword(into: cfg)
         }
