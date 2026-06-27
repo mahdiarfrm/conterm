@@ -8,7 +8,7 @@ import SwiftUI
 /// renders them. System Stats is one kind among several so every widget
 /// reads as one family via the shared `WidgetShell` chrome.
 enum WidgetKind: String, CaseIterable, Identifiable {
-    case systemStats, clock, battery, gitStatus, agentStatus
+    case systemStats, clock, battery, gitStatus
     var id: String { rawValue }
 
     var title: String {
@@ -17,7 +17,6 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .clock:       return "Clock"
         case .battery:     return "Battery"
         case .gitStatus:   return "Git status"
-        case .agentStatus: return "Agents"
         }
     }
     var subtitle: String {
@@ -26,18 +25,15 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .clock:       return "Time, optionally date and seconds."
         case .battery:     return "Charge, charging state, time left."
         case .gitStatus:   return "Branch + dirty/ahead/behind for the active pane's repo."
-        case .agentStatus: return "Running / needs-you agent count across tabs."
         }
     }
-    /// SF Symbol for the settings list. `agentStatus` renders RobotGlyph
-    /// at the render site instead.
+    /// SF Symbol for the settings list.
     var icon: String {
         switch self {
         case .systemStats: return "chart.bar"
         case .clock:       return "clock"
         case .battery:     return "battery.100"
         case .gitStatus:   return "arrow.triangle.branch"
-        case .agentStatus: return RobotGlyph.iconName
         }
     }
 }
@@ -45,8 +41,8 @@ enum WidgetKind: String, CaseIterable, Identifiable {
 // MARK: - Rail
 
 /// Renders the enabled widgets in order. Horizontal in the toolbar,
-/// stacked in the sidebar. Git / Agent widgets self-hide when they have
-/// nothing to show, so an empty rail collapses to nothing.
+/// stacked in the sidebar. The Git widget self-hides outside a repo, so
+/// an empty rail collapses to nothing.
 struct WidgetRail: View {
     @EnvironmentObject var prefs: Preferences
     var compact: Bool
@@ -77,7 +73,6 @@ struct WidgetRail: View {
         case .clock:       ClockWidget(compact: compact)
         case .battery:     BatteryWidget(compact: compact)
         case .gitStatus:   GitWidget(compact: compact)
-        case .agentStatus: AgentWidget(compact: compact)
         }
     }
 }
@@ -479,65 +474,5 @@ struct GitWidget: View {
         if model.snap.ahead > 0 { s += " · ↑\(model.snap.ahead)" }
         if model.snap.behind > 0 { s += " · ↓\(model.snap.behind)" }
         return s
-    }
-}
-
-// MARK: - Agent status
-
-struct AgentWidget: View {
-    @EnvironmentObject var state: AppState
-    var compact: Bool
-
-    private var working: Int {
-        state.tabs.filter { $0.agentPhase == .working }.count
-    }
-    private var attention: Int {
-        state.tabs.filter { $0.agentPhase == .attention }.count
-    }
-    /// Count of tabs with a non-idle agent — present whether it's working,
-    /// waiting, or ready, so the pill reflects any live session.
-    private var present: Int {
-        state.tabs.filter { $0.agentPhase != .idle }.count
-    }
-
-    var body: some View {
-        // Per-tab `agentPhase` is @Published on each Tab, but this widget
-        // only observes AppState, which doesn't republish when a tab's
-        // phase flips. A light periodic tick re-reads the phases so the
-        // count stays live; it pauses when the view isn't visible.
-        TimelineView(.periodic(from: .now, by: 1.5)) { _ in
-            let total = present
-            Group {
-                if total > 0 {
-                    WidgetShell(compact: compact, help: help,
-                                onTap: { state.openAgentCenter(tab: .live) }) {
-                        HStack(spacing: compact ? 4 : 5) {
-                            RobotGlyph(color: attention > 0
-                                       ? Color(red: 0.93, green: 0.49, blue: 0.20)
-                                       : Theme.textSecondary,
-                                       size: compact ? 14 : 15)
-                            Text("\(total)")
-                                .font(.system(size: compact ? 10 : 11, weight: .semibold, design: .rounded))
-                                .foregroundStyle(Theme.textPrimary)
-                                .monospacedDigit()
-                            if attention > 0 {
-                                Circle()
-                                    .fill(Color(red: 0.93, green: 0.49, blue: 0.20))
-                                    .frame(width: 5, height: 5)
-                            }
-                        }
-                    }
-                }
-            }
-            .animation(Theme.Spring.snappy, value: total)
-        }
-    }
-
-    private var help: String {
-        var bits: [String] = []
-        if working > 0 { bits.append("\(working) working") }
-        if attention > 0 { bits.append("\(attention) needs you") }
-        if bits.isEmpty { bits.append("\(present) ready") }
-        return "Agents · " + bits.joined(separator: ", ")
     }
 }
