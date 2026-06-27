@@ -415,9 +415,7 @@ final class AgentCenter: ObservableObject {
         observers += 1
         refresh()
         guard timer == nil else { return }
-        // 1s while a center surface is open (it's foreground; the user is
-        // watching the shell feed) — endObserving stops it when none remain.
-        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
         RunLoop.main.add(t, forMode: .common)
