@@ -233,7 +233,7 @@ struct WelcomeWizard: View {
     /// Ordered set of wizard steps the user moves through with Back /
     /// Next. `welcome` and `ready` bookend the substantive choices.
     private enum Step: Int, CaseIterable, Comparable {
-        case welcome, config, look, tabs, sound, ready
+        case welcome, config, look, tabs, widgets, sound, ready
         static func < (a: Step, b: Step) -> Bool { a.rawValue < b.rawValue }
 
         var headline: String {
@@ -242,6 +242,7 @@ struct WelcomeWizard: View {
             case .config:  "CONFIG"
             case .look:    "LOOK"
             case .tabs:    "TABS"
+            case .widgets: "WIDGETS"
             case .sound:   "SOUND"
             case .ready:   "READY"
             }
@@ -261,6 +262,8 @@ struct WelcomeWizard: View {
     // remaining picks below are applied only on Get Started.
     @State private var pickedLaunchAnim = true
     @State private var pickedSoundEffects = true
+    /// Widget kinds (WidgetKind rawValues) the user wants in the tab bar.
+    @State private var pickedWidgets: Set<String> = []
     @State private var appeared = false
 
     /// White-on-transparent wordmark loaded as a template so the
@@ -309,6 +312,7 @@ struct WelcomeWizard: View {
             pickedEfficientRendering = prefs.lowPowerRendering
             pickedLaunchAnim    = prefs.launchAnimationEnabled
             pickedSoundEffects  = prefs.soundEffectsEnabled
+            pickedWidgets       = Set(prefs.enabledWidgets)
         }
     }
 
@@ -388,6 +392,7 @@ struct WelcomeWizard: View {
             case .config:  configStep
             case .look:    lookStep
             case .tabs:    tabsStep
+            case .widgets: widgetsStep
             case .sound:   soundStep
             case .ready:   readyStep
             }
@@ -408,7 +413,7 @@ struct WelcomeWizard: View {
                 .font(.system(size: 13, design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Five short steps: config source, look, tabs, sound, then you're in.")
+            Text("Six short steps: config source, look, tabs, widgets, sound, then you're in.")
                 .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(Theme.textSecondary.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
@@ -464,6 +469,53 @@ struct WelcomeWizard: View {
             .toggleStyle(.switch)
             .tint(Theme.accent)
         }
+    }
+
+    private var widgetsStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionTitle("Tab-bar widgets", systemImage: "square.grid.2x2.fill")
+            Text("Glanceable pills in the tab bar. Reorder and fine-tune them anytime in Settings ▸ Widgets.")
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(WidgetKind.allCases) { widgetPickRow($0) }
+            }
+        }
+    }
+
+    private func widgetPickRow(_ kind: WidgetKind) -> some View {
+        // Full-width row with the switch pushed to a uniform trailing edge,
+        // so icons/titles align on the left and toggles align on the right
+        // regardless of subtitle length.
+        HStack(spacing: 10) {
+            Image(systemName: kind.icon)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(kind.title)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(kind.subtitle)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            Toggle("", isOn: Binding(
+                get: { pickedWidgets.contains(kind.rawValue) },
+                set: { on in
+                    if on { pickedWidgets.insert(kind.rawValue) }
+                    else  { pickedWidgets.remove(kind.rawValue) }
+                    SoundEffects.shared.play(.toggle)
+                }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .tint(Theme.accent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var soundStep: some View {
@@ -815,6 +867,13 @@ struct WelcomeWizard: View {
             // pickers write straight to prefs for live preview.
             prefs.launchAnimationEnabled = pickedLaunchAnim
             prefs.soundEffectsEnabled   = pickedSoundEffects
+            // Enabled widgets in canonical order; preserve any prior order
+            // for kinds that were already enabled.
+            let priorOrder = prefs.enabledWidgets.filter { pickedWidgets.contains($0) }
+            let added = WidgetKind.allCases
+                .map(\.rawValue)
+                .filter { pickedWidgets.contains($0) && !priorOrder.contains($0) }
+            prefs.enabledWidgets = priorOrder + added
             prefs.useDefaultConfig = false
 
             // Only touch the config file when the user doesn't already
