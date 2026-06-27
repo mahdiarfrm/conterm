@@ -170,15 +170,13 @@ struct AppView: View {
 
                 paneArea
                     .id("paneArea")
-                    // Sidebar-mode top clearance. With the floating
-                    // lights pill we no longer reserve a wide top strip
-                    // when the sidebar is hidden — the pill sits over
-                    // the pane and the lights live inside it. Only the
-                    // single-tab-hidden case (no sidebar AND no pill)
-                    // still needs the larger clearance.
-                    .padding(.top, isSidebar
-                             ? ((isVertical && hideForSingleTab && !sidebarFloating) ? 38 : 6)
-                             : 0)
+                    // Sidebar modes have no top tab bar, so without this the
+                    // pane reaches the window's top edge and its active border
+                    // reads as a stray line in the corner. Reserve the same
+                    // top-chrome row the tab bar occupies in horizontal mode
+                    // (where the traffic lights sit), so the pane lands in open
+                    // space below it — derived from the height, not tuned.
+                    .padding(.top, isSidebar ? Theme.tabBarHeight : 0)
             }
         }
         .animation(Theme.Spring.crisp, value: hideForSingleTab)
