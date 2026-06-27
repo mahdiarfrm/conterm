@@ -12,6 +12,12 @@ struct AppView: View {
     /// Driven purely by left-edge / panel hover, never persisted.
     @State private var sidebarRevealed = false
 
+    /// The window's title-bar band height, from the title-bar style mask
+    /// (the real system height, not a tuned value). Sidebar modes reserve
+    /// this at the top so the active pane clears the traffic-light band.
+    static let titleBarHeight =
+        NSWindow.frameRect(forContentRect: .zero, styleMask: [.titled]).height
+
     var body: some View {
         ZStack(alignment: .top) {
             backdrop
@@ -170,11 +176,12 @@ struct AppView: View {
 
                 paneArea
                     .id("paneArea")
-                    // Top tile inset. Sidebar modes (no top tab bar) get the
-                    // full even gap so the pane reads as a centered tile,
-                    // matching the 12pt side/bottom inset; horizontal mode
-                    // needs only a small gap below the tab bar.
-                    .padding(.top, isSidebar ? 12 : 4)
+                    // Sidebar modes (no top tab bar) reserve the window's
+                    // title-bar band at the top — its real height, from the
+                    // style mask — so the active pane's edge clears the
+                    // traffic-light region instead of riding the window top.
+                    // Horizontal mode gets this clearance from the tab bar.
+                    .padding(.top, isSidebar ? Self.titleBarHeight : 0)
             }
         }
         .animation(Theme.Spring.crisp, value: hideForSingleTab)
@@ -307,6 +314,7 @@ struct AppView: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
+        .padding(.top, 4)
     }
 
 
