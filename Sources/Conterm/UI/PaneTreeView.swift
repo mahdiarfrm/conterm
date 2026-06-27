@@ -337,8 +337,11 @@ final class PaneTreeView: NSView {
         }
         needsLayout = true
 
-        // Pull keyboard focus to the active pane's surface.
-        if let id = activeID, let box = boxes[id] {
+        // Pull keyboard focus to the active pane's surface — but only for the
+        // selected tab, so a background tab's apply() (e.g. a pane exiting)
+        // never yanks focus to a hidden tab. Tab-switch focus is handled by
+        // AppState.select → focusActiveSurface.
+        if tab?.id == state.selectedID, let id = activeID, let box = boxes[id] {
             DispatchQueue.main.async { [weak box] in
                 guard let box, let w = box.window, w.isKeyWindow else { return }
                 w.makeFirstResponder(box.host.surfaceView)
@@ -608,7 +611,9 @@ struct PaneTreeHost: NSViewRepresentable {
         return v
     }
 
-    // Layout/teardown are driven by the view's own subscription to the tree;
-    // re-apply here too so SwiftUI-side changes (e.g. tab switch) settle.
-    func updateNSView(_ v: PaneTreeView, context: Context) { v.apply() }
+    // No-op on purpose. The view self-drives off the PaneTree's
+    // objectWillChange; re-applying here ran every tab's PaneTreeView on every
+    // AppView re-render (a tab switch re-renders them all) — that all-tabs
+    // relayout + focus churn was the fast-tab-switch lag.
+    func updateNSView(_ v: PaneTreeView, context: Context) {}
 }
