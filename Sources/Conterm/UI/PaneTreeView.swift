@@ -482,7 +482,7 @@ final class PaneBox: NSView {
         // chrome's focus halo isn't clipped; the surface clips itself below.
         layer?.cornerRadius = Theme.paneCorner
         host.wantsLayer = true
-        host.layer?.cornerRadius = Theme.paneCorner - 1
+        host.layer?.cornerRadius = max(2, Theme.paneCorner - Self.surfaceInset)
         host.layer?.masksToBounds = true
         addSubview(host)
         addSubview(chrome)
@@ -491,11 +491,16 @@ final class PaneBox: NSView {
     required init?(coder: NSCoder) { nil }
     override var isFlipped: Bool { true }
 
+    /// Inset of the surface inside the pane so the active-pane glow / border
+    /// (drawn by the chrome at the box edge) reads as a ring around the
+    /// terminal instead of crossing its first/last rows.
+    static let surfaceInset: CGFloat = 3
+
     override func layout() {
         super.layout()
         layer?.backgroundColor = prefs.opaquePanes ? NSColor(Theme.paneTile).cgColor
                                                     : NSColor.clear.cgColor
-        host.frame = bounds.insetBy(dx: 1, dy: 1)
+        host.frame = bounds.insetBy(dx: Self.surfaceInset, dy: Self.surfaceInset)
         chrome.frame = bounds
     }
 
