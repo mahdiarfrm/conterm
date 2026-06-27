@@ -17,6 +17,10 @@ struct NeonCaretField: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String
     var fontSize: CGFloat = 14
+    /// The field sits on a light panel — pick a dark, visible caret. The
+    /// NSView's own `effectiveAppearance` doesn't follow the light-glass
+    /// setting on the palette overlay, so it's passed in explicitly.
+    var lightBackground: Bool = false
     var onSubmit: () -> Void = {}
     var onUp: () -> Void = {}
     var onDown: () -> Void = {}
@@ -63,6 +67,7 @@ struct NeonCaretField: NSViewRepresentable {
         }
 
         tv.placeholder = placeholder
+        tv.lightBackground = lightBackground
         tv.onSubmit = onSubmit
         tv.onUp = onUp
         tv.onDown = onDown
@@ -89,6 +94,7 @@ struct NeonCaretField: NSViewRepresentable {
         context.coordinator.parent = self
         if tv.string != text { tv.string = text }
         tv.placeholder = placeholder
+        tv.lightBackground = lightBackground
         tv.onSubmit = onSubmit
         tv.onUp = onUp
         tv.onDown = onDown
@@ -121,6 +127,7 @@ final class PrismCaretTextView: NSTextView {
     var onUp: () -> Void = {}
     var onDown: () -> Void = {}
     var placeholder: String = "" { didSet { if placeholder != oldValue { needsDisplay = true } } }
+    var lightBackground = false { didSet { if lightBackground != oldValue { applyCaretColors() } } }
 
     private let caretHost = CALayer()      // geometry-flipped → top-left coords
     private let caretLayer = CALayer()
@@ -183,11 +190,17 @@ final class PrismCaretTextView: NSTextView {
     }
 
     private func applyCaretColors() {
-        let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        // A light-grey caret disappears on a light bar; use a dark one there
+        // (with a tamed, deeper-blue bloom so it doesn't smear). Keyed off
+        // `lightBackground`, not effectiveAppearance, which doesn't track the
+        // light-glass tint on this overlay.
         caretLayer.backgroundColor =
-            (isDark ? NSColor(white: 0.74, alpha: 1) : NSColor(white: 0.34, alpha: 1)).cgColor
+            (lightBackground ? NSColor(white: 0.18, alpha: 1)
+                             : NSColor(white: 0.74, alpha: 1)).cgColor
         caretLayer.shadowColor =
-            NSColor(srgbRed: 0.64, green: 0.82, blue: 1.0, alpha: 1).cgColor
+            (lightBackground ? NSColor(srgbRed: 0.20, green: 0.45, blue: 0.95, alpha: 1)
+                             : NSColor(srgbRed: 0.64, green: 0.82, blue: 1.0, alpha: 1)).cgColor
+        caretLayer.shadowOpacity = lightBackground ? 0.5 : 1.0
     }
 
     override func viewDidMoveToWindow() {

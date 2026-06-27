@@ -92,6 +92,16 @@ final class Preferences: ObservableObject {
     @Published var lightGlass: Bool {
         didSet { ud.set(lightGlass, forKey: K.lightGlass) }
     }
+    /// Theme source. OFF (default): the Settings ▸ Appearance picker owns
+    /// the terminal colors (written as a managed block in the conterm
+    /// config). ON: defer to the user's own Ghostty config — the picker
+    /// is disabled and its managed block is removed, so a hand-tuned
+    /// `background`/`palette` (or a `config-file`-included Ghostty config)
+    /// sets the colors. The actual block add/remove + reload is driven by
+    /// `ThemeCatalog`; this only persists the chosen source.
+    @Published var themeFromConfig: Bool {
+        didSet { ud.set(themeFromConfig, forKey: K.themeFromConfig) }
+    }
     /// Solid mode: opaque window, no glass anywhere — flat dark chrome and
     /// a solid backdrop. The single escape hatch from the glass look (for
     /// taste or to shave the last bit of compositor work). OFF by default
@@ -173,8 +183,56 @@ final class Preferences: ObservableObject {
         didSet { ud.set(autoCheckUpdates, forKey: K.autoCheckUpdates) }
     }
     /// Show the live system-stats widget (CPU/RAM/Net) in the tab bar.
+    /// Legacy flag — kept only to seed `enabledWidgets` once. Widget
+    /// visibility is now driven by `enabledWidgets`.
     @Published var showSystemStats: Bool {
         didSet { ud.set(showSystemStats, forKey: K.showSystemStats) }
+    }
+    /// Ordered list of enabled tab-bar widgets (`WidgetKind` rawValues).
+    /// Single source of truth for what the widget rail renders and in
+    /// what order.
+    @Published var enabledWidgets: [String] {
+        didSet { ud.set(enabledWidgets, forKey: K.enabledWidgets) }
+    }
+    /// Per-metric visibility for the System Stats widget.
+    @Published var statsShowCPU: Bool {
+        didSet { ud.set(statsShowCPU, forKey: K.statsShowCPU) }
+    }
+    @Published var statsShowMemory: Bool {
+        didSet { ud.set(statsShowMemory, forKey: K.statsShowMemory) }
+    }
+    @Published var statsShowNetwork: Bool {
+        didSet { ud.set(statsShowNetwork, forKey: K.statsShowNetwork) }
+    }
+    /// Clock widget options.
+    @Published var clock24Hour: Bool {
+        didSet { ud.set(clock24Hour, forKey: K.clock24Hour) }
+    }
+    @Published var clockShowSeconds: Bool {
+        didSet { ud.set(clockShowSeconds, forKey: K.clockShowSeconds) }
+    }
+    @Published var clockShowDate: Bool {
+        didSet { ud.set(clockShowDate, forKey: K.clockShowDate) }
+    }
+
+    /// Whether a widget kind is in the enabled rail.
+    func isWidgetEnabled(_ id: String) -> Bool { enabledWidgets.contains(id) }
+    /// Add / remove a widget kind, preserving order (appends on enable).
+    func setWidget(_ id: String, enabled: Bool) {
+        var list = enabledWidgets
+        if enabled {
+            if !list.contains(id) { list.append(id) }
+        } else {
+            list.removeAll { $0 == id }
+        }
+        enabledWidgets = list
+    }
+    /// Reorder an enabled widget by one slot.
+    func moveWidget(_ id: String, by delta: Int) {
+        guard let i = enabledWidgets.firstIndex(of: id) else { return }
+        let j = i + delta
+        guard j >= 0, j < enabledWidgets.count else { return }
+        enabledWidgets.swapAt(i, j)
     }
     /// Vertical mode only: collapse the sidebar out of the layout so the
     /// terminal uses the full width, and float it back in (over the
@@ -268,10 +326,18 @@ final class Preferences: ObservableObject {
         static let commandAlerts    = "conterm.commandAlerts"
         static let autoCheckUpdates  = "conterm.autoCheckUpdates"
         static let showSystemStats  = "conterm.showSystemStats"
+        static let enabledWidgets   = "conterm.enabledWidgets"
+        static let statsShowCPU     = "conterm.statsShowCPU"
+        static let statsShowMemory  = "conterm.statsShowMemory"
+        static let statsShowNetwork = "conterm.statsShowNetwork"
+        static let clock24Hour      = "conterm.clock24Hour"
+        static let clockShowSeconds = "conterm.clockShowSeconds"
+        static let clockShowDate    = "conterm.clockShowDate"
         static let autoHideSidebar  = "conterm.autoHideSidebar"
         static let lowPowerRendering = "conterm.lowPowerRendering"
         static let useDefaultConfig = "conterm.useDefaultConfig"
         static let lightGlass       = "conterm.lightGlass"
+        static let themeFromConfig  = "conterm.themeFromConfig"
         static let solidGlass        = "conterm.solidGlass"
         static let liquidGlassPanels = "conterm.liquidGlassPanels"
         static let sshCompatMode    = "conterm.sshCompatMode"
@@ -322,10 +388,28 @@ final class Preferences: ObservableObject {
         self.commandAlerts          = ud.object(forKey: K.commandAlerts) as? Bool ?? true
         self.autoCheckUpdates       = ud.object(forKey: K.autoCheckUpdates) as? Bool ?? true
         self.showSystemStats        = ud.object(forKey: K.showSystemStats) as? Bool ?? true
+        // Seed the enabled-widget rail once from the legacy stats flag so
+        // existing users keep their widget; thereafter `enabledWidgets`
+        // is authoritative.
+        if let storedWidgets = ud.stringArray(forKey: K.enabledWidgets) {
+            self.enabledWidgets = storedWidgets
+        } else {
+            let seed = (ud.object(forKey: K.showSystemStats) as? Bool ?? true)
+                ? ["systemStats"] : []
+            self.enabledWidgets = seed
+            ud.set(seed, forKey: K.enabledWidgets)
+        }
+        self.statsShowCPU           = ud.object(forKey: K.statsShowCPU) as? Bool ?? true
+        self.statsShowMemory        = ud.object(forKey: K.statsShowMemory) as? Bool ?? true
+        self.statsShowNetwork       = ud.object(forKey: K.statsShowNetwork) as? Bool ?? true
+        self.clock24Hour            = ud.object(forKey: K.clock24Hour) as? Bool ?? false
+        self.clockShowSeconds       = ud.object(forKey: K.clockShowSeconds) as? Bool ?? false
+        self.clockShowDate          = ud.object(forKey: K.clockShowDate) as? Bool ?? false
         self.autoHideSidebar        = ud.object(forKey: K.autoHideSidebar) as? Bool ?? false
         self.lowPowerRendering      = ud.object(forKey: K.lowPowerRendering) as? Bool ?? true
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
         self.lightGlass             = ud.object(forKey: K.lightGlass) as? Bool ?? false
+        self.themeFromConfig        = ud.object(forKey: K.themeFromConfig) as? Bool ?? false
         self.solidGlass             = ud.object(forKey: K.solidGlass) as? Bool ?? false
         self.liquidGlassPanels      = ud.object(forKey: K.liquidGlassPanels) as? Bool ?? false
         self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? false

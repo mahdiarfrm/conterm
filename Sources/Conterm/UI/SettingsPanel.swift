@@ -21,12 +21,13 @@ struct SettingsPanel: View {
     @State private var themeFilter: String = ""
 
     enum Section: String, CaseIterable, Identifiable {
-        case appearance, tabs, panes, window, launch, palette, shortcuts, config, about
+        case appearance, tabs, widgets, panes, window, launch, palette, shortcuts, config, about
         var id: String { rawValue }
         var label: String {
             switch self {
             case .appearance: return "Appearance"
             case .tabs:       return "Tabs"
+            case .widgets:    return "Widgets"
             case .panes:      return "Panes"
             case .window:     return "Window"
             case .launch:     return "Launch"
@@ -40,6 +41,7 @@ struct SettingsPanel: View {
             switch self {
             case .appearance: return "paintpalette.fill"
             case .tabs:       return "rectangle.lefthalf.inset.filled"
+            case .widgets:    return "square.grid.2x2.fill"
             case .panes:      return "rectangle.split.2x1.fill"
             case .window:     return "macwindow"
             case .launch:     return "sparkles"
@@ -73,8 +75,22 @@ struct SettingsPanel: View {
             // (see the @State declarations above).
             claudeIntegrationOn = ClaudeIntegration.isInstalled
             openCodeIntegrationOn = OpenCodeIntegration.isInstalled
+            // Jump to the section a palette settings result asked for.
+            applyRequestedSection()
+        }
+        .onChange(of: state.requestedSettingsSection) { _, _ in
+            applyRequestedSection()
         }
         .onExitCommand { state.toggleSettings() }
+    }
+
+    /// Honor a section requested by the palette's settings search, then
+    /// clear it so a later re-open doesn't snap back to it.
+    private func applyRequestedSection() {
+        guard let raw = state.requestedSettingsSection,
+              let target = Section(rawValue: raw) else { return }
+        withAnimation(Theme.Spring.snappy) { section = target }
+        state.requestedSettingsSection = nil
     }
 
     private func moveSelection(by step: Int) {
@@ -174,6 +190,7 @@ struct SettingsPanel: View {
                 switch section {
                 case .appearance: appearance
                 case .tabs:       tabs
+                case .widgets:    widgets
                 case .panes:      panes
                 case .window:     window
                 case .launch:     launch
@@ -330,12 +347,122 @@ struct SettingsPanel: View {
                             subtitle: "Frees space when only one tab is open.") {
                     Toggle("", isOn: $prefs.hideTabBarSingleTab.withSound()).labelsHidden()
                 }
-                SettingsRow(title: "System stats",
-                            subtitle: "Show CPU, memory, and network in the tab bar.") {
-                    Toggle("", isOn: $prefs.showSystemStats.withSound()).labelsHidden()
+                SettingsRow(title: "Widgets",
+                            subtitle: "Stats, clock, battery, git, agents — enable and reorder them in the Widgets tab.") {
+                    Button("Widgets…") {
+                        withAnimation(Theme.Spring.snappy) { section = .widgets }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
             }
         }
+    }
+
+    // MARK: Widgets
+
+    private var widgets: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader("Widgets",
+                          subtitle: "Glanceable pills in the tab bar / sidebar. Enable the ones you want, drag with the arrows to reorder. Git and Agents hide themselves when there's nothing to show.")
+            card {
+                ForEach(Array(orderedWidgets.enumerated()), id: \.element.id) { idx, kind in
+                    widgetRow(kind, index: idx, count: orderedWidgets.count)
+                    if kind != orderedWidgets.last { Divider().opacity(0.5) }
+                }
+            }
+            // Per-widget options.
+            if prefs.isWidgetEnabled(WidgetKind.systemStats.rawValue) {
+                card {
+                    Text("System stats")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SettingsRow(title: "CPU", subtitle: "Show the CPU load chip.") {
+                        Toggle("", isOn: $prefs.statsShowCPU.withSound()).labelsHidden()
+                    }
+                    SettingsRow(title: "Memory", subtitle: "Show the memory load chip.") {
+                        Toggle("", isOn: $prefs.statsShowMemory.withSound()).labelsHidden()
+                    }
+                    SettingsRow(title: "Network", subtitle: "Show the up/down throughput chip.") {
+                        Toggle("", isOn: $prefs.statsShowNetwork.withSound()).labelsHidden()
+                    }
+                }
+            }
+            if prefs.isWidgetEnabled(WidgetKind.clock.rawValue) {
+                card {
+                    Text("Clock")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SettingsRow(title: "24-hour", subtitle: "Use a 24-hour clock.") {
+                        Toggle("", isOn: $prefs.clock24Hour.withSound()).labelsHidden()
+                    }
+                    SettingsRow(title: "Seconds", subtitle: "Tick every second.") {
+                        Toggle("", isOn: $prefs.clockShowSeconds.withSound()).labelsHidden()
+                    }
+                    SettingsRow(title: "Date", subtitle: "Show the weekday and date.") {
+                        Toggle("", isOn: $prefs.clockShowDate.withSound()).labelsHidden()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Enabled widgets first (in their saved order), disabled ones after.
+    private var orderedWidgets: [WidgetKind] {
+        let enabled = prefs.enabledWidgets.compactMap { WidgetKind(rawValue: $0) }
+        let rest = WidgetKind.allCases.filter { !prefs.enabledWidgets.contains($0.rawValue) }
+        return enabled + rest
+    }
+
+    private func widgetRow(_ kind: WidgetKind, index: Int, count: Int) -> some View {
+        let on = prefs.isWidgetEnabled(kind.rawValue)
+        let position = prefs.enabledWidgets.firstIndex(of: kind.rawValue)
+        return HStack(spacing: 10) {
+            Group {
+                if kind.icon == RobotGlyph.iconName {
+                    RobotGlyph(color: Theme.textSecondary, size: 14)
+                } else {
+                    Image(systemName: kind.icon)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+            .frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(kind.title)
+                    .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(on ? Theme.textPrimary : Theme.textSecondary)
+                Text(kind.subtitle)
+                    .font(.system(size: 10.5, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary.opacity(0.8))
+                    .lineLimit(1)
+            }
+            Spacer()
+            // Reorder (only meaningful while enabled).
+            Button { prefs.moveWidget(kind.rawValue, by: -1) } label: {
+                Image(systemName: "chevron.up").font(.system(size: 11, weight: .semibold))
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.plain)
+            .disabled(!on || position == 0)
+            .foregroundStyle((!on || position == 0) ? Theme.textSecondary.opacity(0.3) : Theme.textSecondary)
+            Button { prefs.moveWidget(kind.rawValue, by: 1) } label: {
+                Image(systemName: "chevron.down").font(.system(size: 11, weight: .semibold))
+                    .frame(width: 20, height: 20)
+            }
+            .buttonStyle(.plain)
+            .disabled(!on || position == (prefs.enabledWidgets.count - 1))
+            .foregroundStyle((!on || position == (prefs.enabledWidgets.count - 1)) ? Theme.textSecondary.opacity(0.3) : Theme.textSecondary)
+            Toggle("", isOn: Binding(
+                get: { on },
+                set: { prefs.setWidget(kind.rawValue, enabled: $0) }
+            ).withSound())
+            .labelsHidden()
+        }
+        .padding(.vertical, 3)
+        .animation(Theme.Spring.snappy, value: prefs.enabledWidgets)
     }
 
     private var panes: some View {
@@ -1097,6 +1224,7 @@ struct AboutContent: View {
 /// glance instead of reading 463 names.
 private struct ThemePicker: View {
     @EnvironmentObject var themes: ThemeCatalog
+    @EnvironmentObject var prefs: Preferences
     @Binding var filter: String
 
     private let columns = [GridItem(.adaptive(minimum: 132), spacing: 10)]
@@ -1107,7 +1235,13 @@ private struct ThemePicker: View {
                 Text("Theme")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                 Spacer()
-                if let cur = themes.current {
+                if prefs.themeFromConfig {
+                    Text("from config")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Capsule().fill(Theme.stroke))
+                } else if let cur = themes.current {
                     Text(cur)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(Theme.textSecondary)
@@ -1115,47 +1249,96 @@ private struct ThemePicker: View {
                         .background(Capsule().fill(Theme.stroke))
                 }
             }
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(Theme.textSecondary)
-                    .font(.system(size: 11))
-                TextField("Filter \(themes.themes.count) themes…", text: $filter)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12, design: .rounded))
-            }
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(0.05))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Theme.stroke, lineWidth: 0.5)
-            )
 
-            if themes.isLoading {
+            // Source switch. ON defers colors to the user's own Ghostty
+            // config (the picker is disabled and its managed block is
+            // removed); OFF lets the swatches below own the palette.
+            sourceToggle
+
+            // Only the filter + swatches dim/disable while the config owns
+            // the colors — the toggle above stays live so it can be turned
+            // back off.
+            Group {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Loading themes…")
-                        .font(.system(size: 11, design: .rounded))
+                    Image(systemName: "magnifyingglass")
                         .foregroundStyle(Theme.textSecondary)
+                        .font(.system(size: 11))
+                    TextField("Filter \(themes.themes.count) themes…", text: $filter)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12, design: .rounded))
                 }
-                .frame(maxWidth: .infinity, minHeight: 120)
-            } else {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 10) {
-                        ForEach(filteredThemes, id: \.id) { theme in
-                            ThemeSwatch(
-                                theme: theme,
-                                isSelected: theme.id == themes.current
-                            )
-                            .onTapGesture { themes.apply(theme) }
-                        }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.white.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Theme.stroke, lineWidth: 0.5)
+                )
+
+                if themes.isLoading {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Loading themes…")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(Theme.textSecondary)
                     }
-                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, minHeight: 120)
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 10) {
+                            ForEach(filteredThemes, id: \.id) { theme in
+                                ThemeSwatch(
+                                    theme: theme,
+                                    isSelected: theme.id == themes.current
+                                )
+                                .onTapGesture { themes.apply(theme) }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .frame(maxHeight: 280)
                 }
-                .frame(maxHeight: 280)
             }
+            .disabled(prefs.themeFromConfig)
+            .opacity(prefs.themeFromConfig ? 0.4 : 1)
+            .animation(Theme.Spring.snappy, value: prefs.themeFromConfig)
+        }
+    }
+
+    /// Toggle row choosing where the terminal palette comes from.
+    private var sourceToggle: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Use theme from terminal config")
+                    .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(prefs.themeFromConfig
+                     ? "Colors follow your Ghostty config. Turn off to pick a theme."
+                     : "The picker below sets the colors. Turn on to defer to your config.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Toggle("", isOn: $prefs.themeFromConfig)
+                .labelsHidden()
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Theme.stroke, lineWidth: 0.5)
+        )
+        // Flipping ON hands control back to the config (removes the
+        // managed block + reloads); OFF re-enables the swatches and the
+        // user picks one.
+        .onChange(of: prefs.themeFromConfig) { _, on in
+            if on { themes.followConfig() }
         }
     }
 

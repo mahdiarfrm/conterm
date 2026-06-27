@@ -130,13 +130,31 @@ struct TabPill: View {
                                       lineWidth: 0.5)
                 )
         } else if prefs.tabOrientation == .vertical {
+            // Adaptive opaque bed so the row reads as a crisp card over the
+            // desktop glass rather than a translucent slab. One clean border
+            // (no doubled strokes) keeps the edge smooth in both appearances.
             ZStack {
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .fill(Color.black.opacity(isSelected ? 0.25 : 0.08))
+                    .fill(Theme.tabBed)
+                    .opacity(isSelected ? 1.0 : (hovering ? 0.6 : 0.26))
+                if isSelected {
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.12), .clear],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                }
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .opacity(isSelected ? 1.0 : (hovering ? 0.6 : 0.0))
-                pillTrim
+                    .strokeBorder(
+                        isSelected
+                            ? Theme.dynamic(light: NSColor(white: 0.0, alpha: 0.14),
+                                            dark:  NSColor(white: 1.0, alpha: 0.16))
+                            : Theme.dynamic(light: NSColor(white: 0.0, alpha: 0.06),
+                                            dark:  NSColor(white: 1.0, alpha: 0.06)),
+                        lineWidth: 0.75
+                    )
             }
         } else {
             ZStack {

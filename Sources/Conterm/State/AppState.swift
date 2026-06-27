@@ -13,6 +13,10 @@ final class AppState: ObservableObject {
     }
     @Published var paletteOpen: Bool = false
     @Published var settingsOpen: Bool = false
+    /// Section the Settings panel should open to (a `SettingsPanel.Section`
+    /// rawValue), set by the command palette's settings search.
+    /// SettingsPanel reads + clears it on appear / change.
+    @Published var requestedSettingsSection: String?
     @Published var launchOverlayVisible: Bool = false
 
     /// Index of the focused row in the palette (0-based). Updated by the
@@ -255,6 +259,17 @@ final class AppState: ObservableObject {
     func toggleSettings() {
         withAnimation(Theme.Spring.bouncy) { settingsOpen.toggle() }
         SoundEffects.shared.play(settingsOpen ? .paletteOpen : .paletteClose)
+    }
+
+    /// Open Settings, optionally jumping to a specific section (a
+    /// `SettingsPanel.Section` rawValue). Used by the command palette's
+    /// settings results. A no-op-to-reopen if already open — it just
+    /// navigates.
+    func openSettings(section: String? = nil) {
+        requestedSettingsSection = section
+        guard !settingsOpen else { return }
+        withAnimation(Theme.Spring.bouncy) { settingsOpen = true }
+        SoundEffects.shared.play(.paletteOpen)
     }
 
     func toggleAgentCenter() {

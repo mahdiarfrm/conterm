@@ -5,82 +5,53 @@ import SwiftUI
 /// detailed view with sparkline history.
 struct SystemStatsWidget: View {
     @StateObject private var stats = SystemStats()
-    @State private var hovering = false
+    @EnvironmentObject private var prefs: Preferences
     @State private var showingPopover = false
 
     /// Compact fits the vertical sidebar at its narrowest width;
     /// the full size is for the horizontal toolbar cluster.
     var compact: Bool = false
 
-    // Shares TabBar.heavyPillHeight with the red action bar — the
-    // two heavyweight cluster members stand taller than the plain
-    // toolbar pills so sparklines + values read at a glance.
-    private var pillHeight: CGFloat {
-        compact ? 23 : 27
-    }
-
     var body: some View {
-        Button(action: {
-            showingPopover.toggle()
-            // Same light click on both open and close — a small
-            // popover doesn't warrant the heavier paletteOpen
-            // bloom that overlays use.
-            SoundEffects.shared.play(.toggle)
-        }) {
-            pill
+        WidgetShell(compact: compact,
+                    help: "CPU · RAM · Network — click for details",
+                    onTap: {
+                        showingPopover.toggle()
+                        // Same light click on both open and close — a small
+                        // popover doesn't warrant the heavier paletteOpen bloom.
+                        SoundEffects.shared.play(.toggle)
+                    }) {
+            row
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .scaleEffect(hovering ? 1.04 : 1.0)
-        .animation(Theme.Spring.snappy, value: hovering)
         .popover(isPresented: $showingPopover, arrowEdge: .top) {
             SystemStatsPopover(stats: stats)
         }
-        .help("CPU · RAM · Network — click for details")
     }
 
+    /// Visible metrics follow the per-widget toggles; a divider appears
+    /// only between two shown chips so a single-metric pill stays clean.
     @ViewBuilder
-    private var pill: some View {
-        let row = HStack(spacing: compact ? 6 : 8) {
-            metricChip(symbol: "cpu", value: stats.cpuPercent,
-                       history: stats.cpuHistory)
-            chipDivider
-            metricChip(symbol: "memorychip", value: stats.ramPercent,
-                       history: stats.ramHistory)
-            chipDivider
-            netChip
-        }
-        .padding(.horizontal, compact ? 8 : 10)
-        .frame(height: pillHeight)
-        // Recessed wash over the glass so the widget reads as a heavier,
-        // darker bar than the action pills beside it. Adaptive so a light
-        // glass tint doesn't leave a muddy black slab.
-        .background(Capsule(style: .continuous).fill(Theme.recessedWash))
-
-        if #available(macOS 26, *) {
-            // macOS 26: use real Liquid Glass so this widget can join
-            // the fused toolbar `GlassEffectContainer` with the bell /
-            // search / ⌘K pills. The previous `.ultraThinMaterial`
-            // avoided a recurring re-composite on stats updates; we
-            // accept the cost here in exchange for the unified Liquid
-            // Glass blob look the toolbar opts into.
-            row.glassPill()
-                .shadow(color: .black.opacity(hovering ? 0.35 : 0.20),
-                         radius: hovering ? 8 : 4,
-                         y: hovering ? 2 : 1)
-                .contentShape(Capsule())
-        } else {
-            row.background(
-                Capsule(style: .continuous).fill(.ultraThinMaterial)
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(Theme.stroke, lineWidth: 0.5)
-            )
-            .shadow(color: .black.opacity(hovering ? 0.35 : 0.20),
-                     radius: hovering ? 8 : 4,
-                     y: hovering ? 2 : 1)
-            .contentShape(Capsule())
+    private var row: some View {
+        let cpu = prefs.statsShowCPU
+        let mem = prefs.statsShowMemory
+        let net = prefs.statsShowNetwork
+        HStack(spacing: compact ? 6 : 8) {
+            if cpu {
+                metricChip(symbol: "cpu", value: stats.cpuPercent,
+                           history: stats.cpuHistory)
+            }
+            if cpu && (mem || net) { chipDivider }
+            if mem {
+                metricChip(symbol: "memorychip", value: stats.ramPercent,
+                           history: stats.ramHistory)
+            }
+            if mem && net { chipDivider }
+            if net { netChip }
+            if !cpu && !mem && !net {
+                Image(systemName: "chart.bar")
+                    .font(.system(size: compact ? 9 : 10, weight: .medium))
+                    .foregroundStyle(Theme.textSecondary)
+            }
         }
     }
 
