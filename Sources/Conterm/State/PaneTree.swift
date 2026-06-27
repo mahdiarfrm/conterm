@@ -39,9 +39,13 @@ final class Pane: ObservableObject, Identifiable {
     var startingDir: String?
 
     /// Saved scrollback text from the previous session, set when this pane is
-    /// restored. The surface is launched via a wrapper that prints it, then
-    /// it's cleared. nil for fresh panes.
+    /// restored; replayed once via a typed `cat`, then cleared. nil for fresh
+    /// panes and for panes that resume an agent instead.
     var pendingScrollback: String?
+
+    /// Claude session id to resume on restore (the pane had a running Claude
+    /// agent). Drives a typed `claude --resume <id>` once the shell is up.
+    var pendingAgentResume: String?
 
     /// Live status of an AI coding agent (Claude Code / opencode)
     /// running in this pane. Driven by the `conterm-agent:<tool>:<state>`
@@ -207,12 +211,27 @@ final class PaneNode: ObservableObject, Identifiable {
         if case .leaf = kind { return true } else { return false }
     }
 
+    /// The Claude session id for a pane with a running Claude agent, taken
+    /// from its transcript filename — used to `claude --resume` on restore.
+    /// nil when no agent is running / it's opencode / the hook gave no path.
+    static func agentSessionID(for p: Pane) -> String? {
+        guard p.agent.phase != .idle, p.agent.tool == .claude,
+              let tp = p.agentTranscriptPath, tp.hasSuffix(".jsonl") else { return nil }
+        let name = (tp as NSString).lastPathComponent
+        return String(name.dropLast(6))   // drop ".jsonl"
+    }
+
     /// Build a Codable snapshot of this subtree. Used by SessionStore
     /// to persist pane splits / fractions / cwds across launches.
     func toSnapshot() -> SessionStore.PaneTreeSnapshot {
         switch kind {
         case .leaf(let p):
-            return .leaf(cwd: p.cwd, scrollback: p.controller?.captureScrollback())
+            // A running Claude agent restores via `claude --resume`; only
+            // capture scrollback for plain panes (the agent redraws its own).
+            let session = Self.agentSessionID(for: p)
+            return .leaf(cwd: p.cwd,
+                         scrollback: session == nil ? p.controller?.captureScrollback() : nil,
+                         agentSession: session)
         case .split(let axis, let a, let b):
             return .split(axis: axis.rawValue,
                           fraction: firstFraction,
@@ -225,7 +244,7 @@ final class PaneNode: ObservableObject, Identifiable {
     /// a session-store snapshot.
     static func from(snapshot: SessionStore.PaneTreeSnapshot) -> PaneNode {
         switch snapshot {
-        case .leaf(let cwd, let scrollback):
+        case .leaf(let cwd, let scrollback, let agentSession):
             let pane = Pane()
             // `startingDir` is what libghostty's surface_new uses to
             // spawn the shell in the right place. `cwd` keeps the
@@ -233,6 +252,7 @@ final class PaneNode: ObservableObject, Identifiable {
             pane.startingDir = cwd
             pane.cwd = cwd
             pane.pendingScrollback = scrollback
+            pane.pendingAgentResume = agentSession
             return PaneNode(kind: .leaf(pane))
         case .split(let axisRaw, let frac, let aSnap, let bSnap):
             let axis = SplitAxis(rawValue: axisRaw) ?? .horizontal

@@ -52,7 +52,7 @@ enum SessionStore {
     /// Codable mirror of `PaneNode`. Indirect so split nodes can
     /// hold child snapshots recursively.
     indirect enum PaneTreeSnapshot: Codable {
-        case leaf(cwd: String?, scrollback: String?)
+        case leaf(cwd: String?, scrollback: String?, agentSession: String?)
         case split(axis: String, fraction: Double,
                    first: PaneTreeSnapshot, second: PaneTreeSnapshot)
 
@@ -60,15 +60,16 @@ enum SessionStore {
             case leaf, split
         }
         private enum CodingKeys: String, CodingKey {
-            case kind, cwd, scrollback, axis, fraction, first, second
+            case kind, cwd, scrollback, agentSession, axis, fraction, first, second
         }
         func encode(to encoder: Encoder) throws {
             var c = encoder.container(keyedBy: CodingKeys.self)
             switch self {
-            case .leaf(let cwd, let scrollback):
+            case .leaf(let cwd, let scrollback, let agentSession):
                 try c.encode(Kind.leaf, forKey: .kind)
                 try c.encodeIfPresent(cwd, forKey: .cwd)
                 try c.encodeIfPresent(scrollback, forKey: .scrollback)
+                try c.encodeIfPresent(agentSession, forKey: .agentSession)
             case .split(let axis, let frac, let a, let b):
                 try c.encode(Kind.split, forKey: .kind)
                 try c.encode(axis, forKey: .axis)
@@ -82,7 +83,8 @@ enum SessionStore {
             switch try c.decode(Kind.self, forKey: .kind) {
             case .leaf:
                 self = .leaf(cwd: try c.decodeIfPresent(String.self, forKey: .cwd),
-                             scrollback: try c.decodeIfPresent(String.self, forKey: .scrollback))
+                             scrollback: try c.decodeIfPresent(String.self, forKey: .scrollback),
+                             agentSession: try c.decodeIfPresent(String.self, forKey: .agentSession))
             case .split:
                 self = .split(
                     axis: try c.decode(String.self, forKey: .axis),
