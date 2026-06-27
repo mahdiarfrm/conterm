@@ -380,6 +380,10 @@ struct LayoutModeSwitcher: View {
                 // light mode.
                 .background(Capsule().fill(on ? chromeFill(prefs, selected: true)
                                               : Color.clear))
+                // Whole segment frame is the tap target: a clear-filled
+                // capsule doesn't hit-test, so the bed between glyphs needs
+                // an explicit content shape.
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .help(mode.label)
