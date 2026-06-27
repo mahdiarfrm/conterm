@@ -196,7 +196,10 @@ func makePaneSurface(pane: Pane,
                                     scrollback: scrollback,
                                     cwd: pane.cwd) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak controller] in
-            controller?.typeText(cmd)
+            // Send the whole line in one paste (atomic) then a real Return —
+            // char-by-char typeText raced libghostty's input and dropped
+            // characters (corrupted the path).
+            controller?.sendText(cmd)
             controller?.sendReturn()
         }
     }
@@ -312,14 +315,11 @@ final class PaneTreeView: NSView {
         // Remove panes that are gone. The model already scheduled their
         // surface free (forceFreeSurface); detaching the box here completes
         // it deterministically (freeWhenDetached polls window == nil).
-        var removedAny = false
         for (id, box) in boxes where !wanted.contains(id) {
             box.removeFromSuperview()
             boxes[id] = nil
-            removedAny = true
         }
         // Add a box per new pane (reusing the pane's controller if present).
-        var addedAny = false
         for (i, pane) in leaves.enumerated() {
             let box: PaneBox
             if let existing = boxes[pane.id] {
@@ -331,24 +331,11 @@ final class PaneTreeView: NSView {
                 box = PaneBox(pane: pane, host: host, prefs: prefs, tab: tab)
                 boxes[pane.id] = box
                 addSubview(box)
-                addedAny = true
             }
             box.index = i + 1
             box.isActivePane = (pane.id == activeID)
         }
-        // A close slides the survivors into place; a split lays out instantly.
-        // A focus-only / no-op apply must NOT disturb an in-flight close
-        // animation (a close fires objectWillChange more than once — the later
-        // passes would otherwise cancel the slide and snap to final).
-        if removedAny {
-            beginCollapseAnimation()
-        } else if addedAny {
-            collapseLink?.invalidate()
-            collapseLink = nil
-            needsLayout = true
-        } else if collapseLink == nil {
-            needsLayout = true
-        }
+        needsLayout = true
 
         // Pull keyboard focus to the active pane's surface.
         if let id = activeID, let box = boxes[id] {
@@ -360,8 +347,6 @@ final class PaneTreeView: NSView {
     }
 
     override func layout() {
-        // The collapse animation drives box frames itself; don't fight it.
-        if collapseLink != nil { return }
         super.layout()
         dividers.removeAll(keepingCapacity: true)
         guard let root = tree?.root else { return }
@@ -372,8 +357,7 @@ final class PaneTreeView: NSView {
     }
 
     /// Pure layout: fills `out` with each leaf's frame and records the divider
-    /// rects. Does not touch any view, so it's reused by both the instant
-    /// layout and the close animation.
+    /// rects.
     private func computeFrames(_ node: PaneNode, in frame: CGRect,
                                into out: inout [UUID: CGRect]) {
         switch node.kind {
@@ -403,57 +387,6 @@ final class PaneTreeView: NSView {
                                             width: frame.width,
                                             height: max(0, frame.height - firstH - t)), into: &out)
             }
-        }
-    }
-
-    // MARK: - Close animation
-
-    private var collapseLink: CADisplayLink?
-    private var collapseStart: [UUID: CGRect] = [:]
-    private var collapseTarget: [UUID: CGRect] = [:]
-    private var collapseT0: CFTimeInterval = 0
-    private let collapseDuration: CFTimeInterval = 0.16
-
-    /// Slide the surviving panes from their current frames to their new ones
-    /// after a close, so a pane's border doesn't snap across the window. The
-    /// closing box was already removed (its surface is freeing), so only live
-    /// survivors animate — nothing dead is in the animation. Dividers are
-    /// hidden during the slide and restored by the final layout().
-    private func beginCollapseAnimation() {
-        guard let root = tree?.root, bounds.width > 0, bounds.height > 0 else {
-            needsLayout = true; return
-        }
-        dividers.removeAll(keepingCapacity: true)
-        var target: [UUID: CGRect] = [:]
-        computeFrames(root, in: bounds, into: &target)
-        collapseStart = boxes.mapValues { $0.frame }
-        collapseTarget = target
-        for (id, t) in target where collapseStart[id] == nil { collapseStart[id] = t }
-        collapseT0 = CACurrentMediaTime()
-        dividers.removeAll(keepingCapacity: true)   // no traveling line mid-slide
-        needsDisplay = true
-        collapseLink?.invalidate()
-        let link = displayLink(target: self, selector: #selector(stepCollapse(_:)))
-        link.add(to: .current, forMode: .common)
-        collapseLink = link
-    }
-
-    @objc private func stepCollapse(_ link: CADisplayLink) {
-        let raw = min(1, (CACurrentMediaTime() - collapseT0) / collapseDuration)
-        let e = 1 - pow(1 - raw, 3)   // ease-out cubic
-        for (id, box) in boxes {
-            guard let s = collapseStart[id], let t = collapseTarget[id] else { continue }
-            box.frame = CGRect(
-                x: s.origin.x + (t.origin.x - s.origin.x) * e,
-                y: s.origin.y + (t.origin.y - s.origin.y) * e,
-                width:  s.width  + (t.width  - s.width)  * e,
-                height: s.height + (t.height - s.height) * e)
-            box.layoutSubtreeIfNeeded()   // host + chrome track per frame
-        }
-        if raw >= 1 {
-            link.invalidate()
-            collapseLink = nil
-            needsLayout = true            // final layout restores the dividers
         }
     }
 
