@@ -71,7 +71,7 @@ struct TabBar: View {
             Color.clear.preference(key: TabBarWidthKey.self, value: proxy.size.width)
         })
         .onPreferenceChange(TabBarWidthKey.self) { barWidth = $0 }
-        .animation(Theme.Spring.snappy, value: prefs.showSystemStats)
+        .animation(Theme.Spring.snappy, value: prefs.enabledWidgets)
         .animation(Theme.Spring.snappy, value: hideStats)
         .animation(Theme.Spring.snappy, value: compactPills)
     }
@@ -113,8 +113,8 @@ struct TabBar: View {
                 .animation(Theme.Spring.soft, value: state.tabs.map(\.groupID))
                 .animation(Theme.Spring.soft, value: tabGroups.groups)
 
-                if prefs.showSystemStats {
-                    SystemStatsWidget(compact: true)
+                if !prefs.enabledWidgets.isEmpty {
+                    WidgetRail(compact: true)
                         .padding(.leading, 2)
                         .padding(.bottom, 8)
                         .transition(.opacity)
@@ -141,7 +141,7 @@ struct TabBar: View {
                     Spacer(minLength: 0)
                 }
             }
-            .animation(Theme.Spring.snappy, value: prefs.showSystemStats)
+            .animation(Theme.Spring.snappy, value: prefs.enabledWidgets)
             // Deeper leading inset so the tab pills sit clear of the
             // window's left edge.
             .padding(.leading, 14)
@@ -232,28 +232,39 @@ struct TabBar: View {
     private func selectionGlow(_ visible: Bool, compact: Bool = false) -> some View {
         if visible {
             let tint = selectionColor
-            RoundedRectangle(cornerRadius: Theme.pillCorner, style: .continuous)
-                // Soft accent/group-tinted fill + a brighter top edge,
-                // lifted by a coloured glow. Reads as the selected pill
-                // glowing in its colour instead of a plain white sheet.
-                // Slimmer rows get a tighter glow so it stays inside the row.
-                .fill(tint.opacity(compact ? 0.16 : 0.18))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.pillCorner,
-                                     style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: [tint.opacity(0.75),
-                                         tint.opacity(0.15)],
-                                startPoint: .top, endPoint: .bottom),
-                            lineWidth: 1)
-                        .blendMode(.plusLighter)
-                )
-                .shadow(color: tint.opacity(0.45), radius: compact ? 4 : 10)
-                .shadow(color: tint.opacity(0.20), radius: 2)
-                .matchedGeometryEffect(id: "tab.selection", in: selectionNS)
-                .animation(Theme.Spring.snappy, value: tint)
-                .allowsHitTesting(false)
+            if orientation == .vertical {
+                // Sidebar pills sit on the busy desktop glass, so the glow is
+                // a single wide, soft, rim-less colour tint that feathers
+                // into whatever shows through behind them.
+                RoundedRectangle(cornerRadius: Theme.pillCorner, style: .continuous)
+                    .fill(tint.opacity(0.12))
+                    .shadow(color: tint.opacity(0.38), radius: 9)
+                    .matchedGeometryEffect(id: "tab.selection", in: selectionNS)
+                    .animation(Theme.Spring.snappy, value: tint)
+                    .allowsHitTesting(false)
+            } else {
+                RoundedRectangle(cornerRadius: Theme.pillCorner, style: .continuous)
+                    // Soft accent/group-tinted fill + a brighter top edge,
+                    // lifted by a coloured glow. Reads as the selected pill
+                    // glowing in its colour instead of a plain white sheet.
+                    .fill(tint.opacity(compact ? 0.16 : 0.18))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.pillCorner,
+                                         style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [tint.opacity(0.75),
+                                             tint.opacity(0.15)],
+                                    startPoint: .top, endPoint: .bottom),
+                                lineWidth: 1)
+                            .blendMode(.plusLighter)
+                    )
+                    .shadow(color: tint.opacity(0.45), radius: compact ? 4 : 10)
+                    .shadow(color: tint.opacity(0.20), radius: 2)
+                    .matchedGeometryEffect(id: "tab.selection", in: selectionNS)
+                    .animation(Theme.Spring.snappy, value: tint)
+                    .allowsHitTesting(false)
+            }
         }
     }
 
@@ -367,8 +378,8 @@ struct TabBar: View {
         HStack(spacing: 8) {
             // Stats are informational; drop them when narrow so the higher-
             // priority ⌘K / action pills aren't pushed off the bar.
-            if orientation == .horizontal, prefs.showSystemStats, !hideStats {
-                SystemStatsWidget()
+            if orientation == .horizontal, !hideStats, !prefs.enabledWidgets.isEmpty {
+                WidgetRail(compact: false)
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
             UpdateIndicatorButton(compact: compactPills)

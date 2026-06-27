@@ -77,9 +77,10 @@ enum Theme {
         dark:  NSColor(white: 1.0, alpha: 0.18))
 
     /// Opaque bed for floating chrome (command palette, overlays) when
-    /// Liquid Glass is off — near-white on light, near-black on dark.
+    /// Liquid Glass is off — a clean near-white on light (kept bright so a
+    /// darkening wash on top doesn't turn it muddy grey), near-black on dark.
     static let panelBed      = dynamic(
-        light: NSColor(calibratedRed: 0.95, green: 0.96, blue: 0.97, alpha: 1.0),
+        light: NSColor(calibratedRed: 0.975, green: 0.978, blue: 0.985, alpha: 1.0),
         dark:  NSColor(calibratedRed: 0.04, green: 0.04, blue: 0.05, alpha: 1.0))
     /// Opaque bed for a small raised chip (suggestion circle). Near-black
     /// on dark to match the panels and the agent pill — the hairline rim
