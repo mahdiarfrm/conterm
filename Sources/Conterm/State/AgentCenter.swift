@@ -62,6 +62,8 @@ struct SubAgentInfo: Equatable, Identifiable {
 struct ShellCommand: Equatable, Identifiable {
     let id: String
     let command: String
+    /// Transcript timestamp of the turn that ran it; ages the feed out.
+    let at: Date
 }
 
 /// One row in the agent command center: a live agent in some pane, its
@@ -141,7 +143,10 @@ enum AgentPricing {
 /// tick. Confined to AgentCenter's serial io queue; never touched on main.
 final class AgentTranscriptStore: @unchecked Sendable {
     private struct MsgTokens { var input = 0, output = 0, cacheCreate = 0, cacheRead = 0 }
+    /// How long a shell command stays in the feed after its turn.
+    private static let shellFeedTTL: TimeInterval = 300
     private struct FileState {
+        static let shellFeedTTL = AgentTranscriptStore.shellFeedTTL
         var path: String
         var offset: UInt64 = 0
         // Per assistant message id → usage. Claude Code re-logs the same
@@ -167,7 +172,10 @@ final class AgentTranscriptStore: @unchecked Sendable {
                 u.cacheReadTokens += m.cacheRead
             }
             u.turns = perMessage.count
-            u.shellCommands = recentShell
+            // Age the shell feed out: keep only commands from the last few
+            // minutes so a since-quiet agent's list clears instead of lingering.
+            let cutoff = Date().addingTimeInterval(-Self.shellFeedTTL)
+            u.shellCommands = recentShell.filter { $0.at >= cutoff }
             return u
         }
     }
@@ -303,6 +311,7 @@ final class AgentTranscriptStore: @unchecked Sendable {
         // Pull Bash commands out of this turn's tool_use blocks for the shell
         // feed, de-duped by tool_use id and capped to the most recent 40.
         if let content = msg["content"] as? [[String: Any]] {
+            let at = Self.parseTimestamp(obj["timestamp"] as? String) ?? Date()
             for block in content
                 where (block["type"] as? String) == "tool_use"
                     && (block["name"] as? String) == "Bash" {
@@ -314,7 +323,8 @@ final class AgentTranscriptStore: @unchecked Sendable {
                 st.shellSeen.insert(tid)
                 st.recentShell.append(ShellCommand(
                     id: tid,
-                    command: cmd.count > 200 ? String(cmd.prefix(200)) + "…" : cmd))
+                    command: cmd.count > 200 ? String(cmd.prefix(200)) + "…" : cmd,
+                    at: at))
                 if st.recentShell.count > 40 {
                     st.recentShell.removeFirst(st.recentShell.count - 40)
                 }
@@ -363,6 +373,22 @@ final class AgentTranscriptStore: @unchecked Sendable {
         guard let line, !line.isEmpty else { return nil }
         return line.count > 140 ? String(line.prefix(140)) + "…" : line
     }
+
+    // Touched only on AgentCenter's serial io queue (see the type doc), so the
+    // shared formatters need no locking.
+    nonisolated(unsafe) private static let iso8601Frac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    nonisolated(unsafe) private static let iso8601Plain = ISO8601DateFormatter()
+
+    /// Parse a transcript line's ISO-8601 `timestamp` (with or without
+    /// fractional seconds). nil when absent/unparseable.
+    static func parseTimestamp(_ s: String?) -> Date? {
+        guard let s, !s.isEmpty else { return nil }
+        return iso8601Frac.date(from: s) ?? iso8601Plain.date(from: s)
+    }
 }
 
 /// App-wide roster of every running AI agent across all windows, with the
@@ -389,7 +415,9 @@ final class AgentCenter: ObservableObject {
         observers += 1
         refresh()
         guard timer == nil else { return }
-        let t = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
+        // 1s while a center surface is open (it's foreground; the user is
+        // watching the shell feed) — endObserving stops it when none remain.
+        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
         RunLoop.main.add(t, forMode: .common)
