@@ -176,12 +176,11 @@ struct AppView: View {
 
                 paneArea
                     .id("paneArea")
-                    // Sidebar modes have no top tab bar, so without this the
-                    // pane reaches the window's top edge and its active border
-                    // reads as a stray line in the corner. Clear exactly the
-                    // window's title-bar band (where the traffic lights sit) —
-                    // derived from the style mask, so it's the real height and
-                    // no taller than it has to be, leaving the pane the rest.
+                    // Sidebar modes have no top tab bar to hold the pane clear
+                    // of the window's title-bar band, so reserve exactly that
+                    // band (the real height, from the style mask — where the
+                    // traffic lights sit) and give the pane the rest. In
+                    // horizontal mode the tab bar already provides it.
                     .padding(.top, isSidebar ? Self.titleBarHeight : 0)
             }
         }
