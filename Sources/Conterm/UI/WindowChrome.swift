@@ -19,6 +19,11 @@ enum WindowChrome {
     static func apply(to window: NSWindow) {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
+        // No title-bar separator hairline. With .fullSizeContentView the
+        // terminal can reach the window top (vertical-tabs / agents modes,
+        // where there's no top tab bar covering it), and the default
+        // separator would draw a stray line across the first row.
+        window.titlebarSeparatorStyle = .none
         window.styleMask.insert(.fullSizeContentView)
         window.styleMask.insert(.resizable)
         // Off, intentionally. With it ON, AppKit treats any background
