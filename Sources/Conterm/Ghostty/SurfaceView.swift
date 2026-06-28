@@ -689,14 +689,20 @@ extension Ghostty {
         // MARK: - Mouse
 
         override func mouseDown(with event: NSEvent) {
-            // Take first responder so this pane gets keys (click-to-focus).
+            // A click on a pane that isn't first responder is a focus
+            // transfer, not a selection: focus the pane and consume the
+            // click. Forwarding a press here would start a selection while
+            // the focus change runs an async pane-tree relayout
+            // (PaneTree.focus → apply(), re-setting first responder and
+            // reframing boxes) that drops AppKit's drag grab — the release
+            // is then lost and the button stays "pressed". Only an
+            // already-focused pane turns a press into a selection. Matches
+            // Ghostty.app.
             if window?.firstResponder !== self {
                 window?.makeFirstResponder(self)
+                return
             }
             leftButtonDown = true
-            // Prime the press position on a single click — re-priming on a
-            // double/triple click fights libghostty's word/line selection.
-            if event.clickCount == 1 { forwardMousePos(event) }
             forwardMouseButton(event, state: GHOSTTY_MOUSE_PRESS, button: GHOSTTY_MOUSE_LEFT)
             // The drag + release are read from the event stream; view-level
             // delivery is unreliable across the pane-tree relayout.
@@ -792,7 +798,16 @@ extension Ghostty {
             forwardMouseButton(event, state: GHOSTTY_MOUSE_RELEASE, button: GHOSTTY_MOUSE_MIDDLE)
         }
 
-        override func mouseMoved(with event: NSEvent) { forwardMousePos(event) }
+        override func mouseMoved(with event: NSEvent) {
+            // A hover means no button is physically down. If we still think
+            // the left button is held, its mouse-up was missed (the drag
+            // monitor can drop one across the pane-tree relayout) — release
+            // it so the hover can't keep extending the selection. This lives
+            // here, not on the shared forward path, because that path also
+            // runs during an active drag, where releasing would be wrong.
+            if leftButtonDown { releaseLeftButton(event) }
+            forwardMousePos(event)
+        }
         override func mouseDragged(with event: NSEvent) { forwardMousePos(event) }
         override func rightMouseDragged(with event: NSEvent) { forwardMousePos(event) }
         override func otherMouseDragged(with event: NSEvent) { forwardMousePos(event) }
@@ -846,21 +861,12 @@ extension Ghostty {
         /// current.
         private func forwardMousePos(_ event: NSEvent) {
             guard let ctrl = controller else { return }
-            let mods = InputMapping.mods(from: event.modifierFlags)
-            // Recover from a lost mouse-up: if we think the button is held
-            // but it isn't physically down, release it so a stray move
-            // can't keep extending the selection (across panes, even).
-            if leftButtonDown, NSEvent.pressedMouseButtons & 0x1 == 0 {
-                leftButtonDown = false
-                stopDragAutoScroll()
-                ctrl.sendMouseButton(state: GHOSTTY_MOUSE_RELEASE,
-                                     button: GHOSTTY_MOUSE_LEFT, mods: mods)
-            }
             let p = convert(event.locationInWindow, from: nil)
             // Forward the raw position, out-of-bounds values included, so
             // libghostty's selection autoscroll keys off the pointer
             // leaving the viewport. Clamping here would freeze it.
-            ctrl.sendMousePos(x: Double(p.x), y: Double(p.y), mods: mods)
+            ctrl.sendMousePos(x: Double(p.x), y: Double(p.y),
+                              mods: InputMapping.mods(from: event.modifierFlags))
             // Past the top/bottom edge during a left-drag: keep presenting
             // so the IO-thread autoscroll shows. Back inside: stop.
             guard leftButtonDown else { return }
