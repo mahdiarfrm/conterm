@@ -84,6 +84,24 @@ extension Ghostty {
         /// scrollWheel event so an ongoing gesture (including its
         /// system-momentum tail) keeps the per-vsync redraws running.
         private var scrollDrawExpiry: CFTimeInterval = 0
+        /// Drag-to-select autoscroll. libghostty self-scrolls the
+        /// selection on its IO thread once a left-drag pulls the pointer
+        /// past the viewport's top/bottom edge, but only re-renders on
+        /// cell changes — so the scroll steps need forced draws to show.
+        /// `leftButtonDown` gates it to an actual selection drag; while
+        /// `autoScrollActive` the shared display link keeps presenting.
+        private var leftButtonDown = false
+        private var autoScrollActive = false
+        /// Window-level monitor that drives an in-progress left-drag
+        /// selection. The surface NSView doesn't reliably receive
+        /// `mouseDragged`/`mouseUp` once a click kicks off the async
+        /// pane-tree relayout (focus → apply(), which re-sets first
+        /// responder and reframes boxes) — the grab is dropped, so a drag
+        /// past the pane edge never reports out-of-bounds and the mouse-up
+        /// is lost. Reading the drag from the event stream is upstream of
+        /// view dispatch, so it survives the churn. Installed on press,
+        /// removed on release.
+        private var dragMonitor: Any?
         private var lastModifiers: NSEvent.ModifierFlags = []
         private var markedTextStorage: String = ""
         /// Last (width_px, height_px, scale) we pushed. Skip
@@ -111,6 +129,8 @@ extension Ghostty {
 
         isolated deinit {
             NotificationCenter.default.removeObserver(self)
+            displayLink?.invalidate()
+            if let m = dragMonitor { NSEvent.removeMonitor(m) }
         }
 
         // MARK: - Responder chain
@@ -295,15 +315,17 @@ extension Ghostty {
         /// expires, keeping idle CPU at zero.
         func keepDrawingDuringScroll() {
             scrollDrawExpiry = CACurrentMediaTime() + 0.6
+            ensureDisplayLink()
+        }
+
+        /// Create the shared per-vsync display link if absent. Both scroll
+        /// momentum and drag-to-select autoscroll ride it.
+        private func ensureDisplayLink() {
             if displayLink != nil { return }
             // CADisplayLink bound to the window's display — picks up
             // ProMotion refresh rates automatically.
-            let link: CADisplayLink
-            if #available(macOS 14, *) {
-                link = displayLink(target: self, selector: #selector(scrollTick))
-            } else {
-                return
-            }
+            guard #available(macOS 14, *) else { return }
+            let link = displayLink(target: self, selector: #selector(scrollTick))
             // Cap at 30Hz. A Metal commit per draw is real work; 30fps
             // already reads as fluid for scrollback and halves the
             // scroll-time GPU cost vs an uncapped 60Hz (quartered vs
@@ -315,7 +337,31 @@ extension Ghostty {
             displayLink = link
         }
 
+        /// Force presents while a selection drag sits past the viewport
+        /// edge so libghostty's self-driven autoscroll is visible.
+        private func startDragAutoScroll() {
+            autoScrollActive = true
+            ensureDisplayLink()
+        }
+
+        private func stopDragAutoScroll() {
+            guard autoScrollActive else { return }
+            autoScrollActive = false
+            // Drop the link unless a scroll-momentum draw is still owed.
+            if CACurrentMediaTime() > scrollDrawExpiry {
+                displayLink?.invalidate()
+                displayLink = nil
+            }
+        }
+
         @objc private func scrollTick() {
+            // Drag autoscroll: present each vsync so libghostty's
+            // IO-thread selection scroll paints. The position is NOT
+            // re-fed — that would compound its own scroll into a runaway.
+            if autoScrollActive {
+                controller?.draw()
+                return
+            }
             if CACurrentMediaTime() > scrollDrawExpiry {
                 displayLink?.invalidate()
                 displayLink = nil
@@ -643,20 +689,47 @@ extension Ghostty {
         // MARK: - Mouse
 
         override func mouseDown(with event: NSEvent) {
-            // Take first responder if we don't already have it — this
-            // is what makes click-to-focus work between panes. The
-            // PRESS still flows to libghostty: a fresh PRESS at the
-            // click point is what clears any pre-existing selection
-            // on this surface, so the user gets the same "click
-            // anywhere clears selection" feel as Ghostty.app. Don't
-            // swallow it; the resulting zero-length selection from a
-            // pure click (no drag) is invisible.
+            // Take first responder so this pane gets keys (click-to-focus).
             if window?.firstResponder !== self {
                 window?.makeFirstResponder(self)
             }
+            leftButtonDown = true
+            // Prime the press position on a single click — re-priming on a
+            // double/triple click fights libghostty's word/line selection.
+            if event.clickCount == 1 { forwardMousePos(event) }
             forwardMouseButton(event, state: GHOSTTY_MOUSE_PRESS, button: GHOSTTY_MOUSE_LEFT)
+            // The drag + release are read from the event stream; view-level
+            // delivery is unreliable across the pane-tree relayout.
+            beginDragTracking()
         }
         override func mouseUp(with event: NSEvent) {
+            releaseLeftButton(event)
+        }
+
+        /// Watch the window's left drag/up stream and feed it to this
+        /// surface for the life of the gesture. Upstream of view dispatch,
+        /// so it fires even when the relayout drops the view's own grab.
+        private func beginDragTracking() {
+            if dragMonitor != nil { return }
+            dragMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] ev in
+                MainActor.assumeIsolated {
+                    guard let self, ev.window === self.window else { return }
+                    if ev.type == .leftMouseUp {
+                        self.releaseLeftButton(ev)
+                    } else {
+                        self.forwardMousePos(ev)
+                    }
+                }
+                return ev
+            }
+        }
+
+        private func releaseLeftButton(_ event: NSEvent) {
+            if let m = dragMonitor { NSEvent.removeMonitor(m); dragMonitor = nil }
+            guard leftButtonDown else { return }
+            leftButtonDown = false
+            stopDragAutoScroll()
             forwardMouseButton(event, state: GHOSTTY_MOUSE_RELEASE, button: GHOSTTY_MOUSE_LEFT)
         }
         override func rightMouseDown(with event: NSEvent) {
@@ -773,9 +846,29 @@ extension Ghostty {
         /// current.
         private func forwardMousePos(_ event: NSEvent) {
             guard let ctrl = controller else { return }
+            let mods = InputMapping.mods(from: event.modifierFlags)
+            // Recover from a lost mouse-up: if we think the button is held
+            // but it isn't physically down, release it so a stray move
+            // can't keep extending the selection (across panes, even).
+            if leftButtonDown, NSEvent.pressedMouseButtons & 0x1 == 0 {
+                leftButtonDown = false
+                stopDragAutoScroll()
+                ctrl.sendMouseButton(state: GHOSTTY_MOUSE_RELEASE,
+                                     button: GHOSTTY_MOUSE_LEFT, mods: mods)
+            }
             let p = convert(event.locationInWindow, from: nil)
-            ctrl.sendMousePos(x: Double(p.x), y: Double(p.y),
-                              mods: InputMapping.mods(from: event.modifierFlags))
+            // Forward the raw position, out-of-bounds values included, so
+            // libghostty's selection autoscroll keys off the pointer
+            // leaving the viewport. Clamping here would freeze it.
+            ctrl.sendMousePos(x: Double(p.x), y: Double(p.y), mods: mods)
+            // Past the top/bottom edge during a left-drag: keep presenting
+            // so the IO-thread autoscroll shows. Back inside: stop.
+            guard leftButtonDown else { return }
+            if p.y < 0 || p.y > bounds.height {
+                startDragAutoScroll()
+            } else {
+                stopDragAutoScroll()
+            }
         }
 
         // MARK: - Drag-and-drop
