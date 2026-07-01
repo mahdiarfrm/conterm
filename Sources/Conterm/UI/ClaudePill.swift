@@ -22,6 +22,9 @@ struct AgentPill: View {
 
     @State private var sweep: Double = 0
     @State private var pulse = false
+    /// Mirrors `SystemPressure.wantsLowAnimation` (Low Power Mode or
+    /// thermal pressure) so a hot machine sheds the sweep first.
+    @State private var systemLite = false
 
     private var working: Bool { status.phase == .working }
     private var attention: Bool { status.phase == .attention }
@@ -29,8 +32,9 @@ struct AgentPill: View {
 
     /// Reduce-motion request: drop the sweep, per-frame blur halo, mark
     /// spin and glow shadow — the dominant GPU cost over a long working
-    /// session — keeping only the flat bed + a static rim.
-    private var lite: Bool { prefs.agentPillLite }
+    /// session — keeping only the flat bed + a static rim. Forced on
+    /// while the system reports power/thermal pressure.
+    private var lite: Bool { prefs.agentPillLite || systemLite }
 
     var body: some View {
         HStack(spacing: 9) {
@@ -81,6 +85,7 @@ struct AgentPill: View {
         .onChange(of: status.phase) { _, _ in startAnimations() }
         .onChange(of: lite) { _, _ in startAnimations() }
         .onChange(of: windowIsKey) { _, _ in startAnimations() }
+        .onReceive(SystemPressure.shared.$wantsLowAnimation) { systemLite = $0 }
     }
 
     /// Flat near-black capsule bed — opaque so the streaming terminal
