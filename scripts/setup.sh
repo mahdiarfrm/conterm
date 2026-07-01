@@ -16,14 +16,40 @@ XCFRAMEWORK_DIR="GhosttyKit.xcframework"
 # workarounds assume specific libghostty behavior; re-test them), never
 # by tracking the fork's latest release. Override with GHOSTTY_KIT_TAG
 # only while validating a new pin.
-GHOSTTY_KIT_TAG="${GHOSTTY_KIT_TAG:-build-2026-04-12}"
-# Version string embedded in the pinned libghostty.a; drift detection.
-GHOSTTY_KIT_VERSION="1.3.2-main-+d8d2849"
+GHOSTTY_KIT_TAG="${GHOSTTY_KIT_TAG:-build-2026-07-01}"
+# Version string embedded in the pinned static library; drift detection.
+GHOSTTY_KIT_VERSION="1.3.2-main-+24c5671"
 
-# Embedded `<semver>-<branch>-+<commit>` marker in a libghostty.a.
+# Embedded `<semver>-<branch>-+<commit>` marker in the macOS slice's
+# static library (name varies across fork builds: libghostty.a,
+# libghostty-internal.a, …).
 kit_version() {
-    strings -a "$1/macos-arm64_x86_64/libghostty.a" 2>/dev/null \
+    local lib
+    lib=$(ls "$1"/macos-arm64_x86_64/lib*.a 2>/dev/null | head -1)
+    [[ -n "$lib" ]] || return 0
+    strings -a "$lib" 2>/dev/null \
         | grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+-.*\+[0-9a-f]{7,}$' || true
+}
+
+# SwiftPM requires a binary target's static libraries to be lib-prefixed;
+# newer fork builds ship the macOS slice as `ghostty-internal.a`. Rename
+# it and keep the xcframework manifest in sync.
+normalize_lib_prefix() {
+    local slice="$1/macos-arm64_x86_64"
+    [[ -f "$slice/ghostty-internal.a" ]] || return 0
+    mv "$slice/ghostty-internal.a" "$slice/libghostty-internal.a"
+    python3 - "$1/Info.plist" <<'PY'
+import plistlib, sys
+path = sys.argv[1]
+with open(path, "rb") as f:
+    d = plistlib.load(f)
+for lib in d.get("AvailableLibraries", []):
+    if lib.get("LibraryPath") == "ghostty-internal.a":
+        lib["LibraryPath"] = "libghostty-internal.a"
+with open(path, "wb") as f:
+    plistlib.dump(d, f)
+PY
+    echo "OK: renamed ghostty-internal.a -> libghostty-internal.a (SwiftPM lib prefix)"
 }
 
 if [[ -d "$XCFRAMEWORK_DIR" ]]; then
@@ -48,6 +74,7 @@ else
     echo "Extracting …"
     tar xzf GhosttyKit.xcframework.tar.gz
     rm GhosttyKit.xcframework.tar.gz
+    normalize_lib_prefix "$XCFRAMEWORK_DIR"
 
     FOUND=$(kit_version "$XCFRAMEWORK_DIR")
     if [[ "$FOUND" == "$GHOSTTY_KIT_VERSION" ]]; then
