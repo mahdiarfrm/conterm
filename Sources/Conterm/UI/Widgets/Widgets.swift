@@ -324,6 +324,13 @@ final class GitStatusModel: ObservableObject {
     private var activeObs: NSObjectProtocol?
     private var inactiveObs: NSObjectProtocol?
     private var loading = false
+    private var lastComputeAt: CFTimeInterval = 0
+
+    /// Full recompute cadence while the directory is unchanged. Each
+    /// recompute spawns three git subprocesses (`status --porcelain`
+    /// walks the whole worktree), so the 2 s tick only watches for a
+    /// `cd` and the expensive pass runs on this slower clock.
+    private static let recomputeEvery: CFTimeInterval = 10
 
     init() {
         let nc = NotificationCenter.default
@@ -348,27 +355,32 @@ final class GitStatusModel: ObservableObject {
     func update(cwd: String?) {
         guard cwd != self.cwd else { return }
         self.cwd = cwd
-        refresh()
+        refresh(force: true)
     }
 
     private func start() {
         guard timer == nil else { return }
         // 2 s so a `cd` inside the same pane (which doesn't re-render the
-        // widget) is reflected quickly.
+        // widget) is reflected quickly; an unchanged directory only
+        // recomputes every `recomputeEvery`.
         let t = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
         t.tolerance = 0.5
         timer = t
-        refresh()
+        refresh(force: true)
     }
     private func stop() { timer?.invalidate(); timer = nil }
 
-    private func refresh() {
+    private func refresh(force: Bool = false) {
         let target = cwdProvider?() ?? cwd
+        let changed = target != cwd
         cwd = target
         guard let target, !target.isEmpty else { snap = Snapshot(); return }
         guard !loading else { return }
+        let now = CACurrentMediaTime()
+        guard force || changed || now - lastComputeAt >= Self.recomputeEvery else { return }
+        lastComputeAt = now
         loading = true
         Task.detached(priority: .utility) {
             let s = Self.compute(cwd: target)
