@@ -594,7 +594,13 @@ struct PaneChrome: View {
             }
         }
         .onChange(of: isActive) { _, now in
-            if now, pane.agent.phase == .attention {
+            guard now, pane.agent.phase == .attention else { return }
+            // onChange runs inside SwiftUI's update transaction, and this
+            // fans out to @Published writes (pane.agent, Tab.agentPhase,
+            // the AgentCenter counters) — publishing there is undefined
+            // behavior. Clear the attention state on the next turn.
+            Task { @MainActor in
+                guard pane.agent.phase == .attention else { return }
                 pane.agent = AgentStatus(phase: .ready, tool: pane.agent.tool)
                 recomputeAgentPhase()
             }
