@@ -95,11 +95,12 @@ final class WindowController {
             win.center()
         }
         WindowChrome.apply(to: win)
-        // The window is non-opaque so the glass sheet shows the desktop in
-        // the top bar + gaps; the panes are opaque tiles, so the streaming
-        // terminal never drags the window through a per-frame desktop
-        // recomposite. Solid mode makes the whole window opaque (no glass).
-        prefs.$solidGlass
+        // The window is non-opaque so the glass or blur backdrop shows the
+        // desktop in the top bar + gaps; the panes are opaque tiles, so the
+        // streaming terminal never drags the window through a per-frame
+        // desktop recomposite. Solid mode makes the whole window opaque.
+        prefs.$glassMode
+            .map { $0 == .solid }
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak win] solid in

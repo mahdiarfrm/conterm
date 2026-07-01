@@ -88,12 +88,21 @@ struct AppView: View {
     /// swaps it for a plain opaque backdrop.
     @ViewBuilder
     private var backdrop: some View {
-        if prefs.solidGlass {
+        switch prefs.glassMode {
+        case .solid:
             // The one opaque escape hatch — also the real work-time power
             // lever (an opaque window skips WindowServer's per-present
             // re-blend against the desktop).
             solidBackdrop
-        } else {
+        case .blur:
+            // Classic behind-window frosted material. The window stays
+            // non-opaque (the desktop shows through the top bar + gaps),
+            // but WindowServer blurs a cached copy of the desktop rather
+            // than running a live glass material, so per-present cost sits
+            // between glass and solid. Follows-window-active-state flattens
+            // it for free whenever the window isn't key.
+            classicBlurBackdrop
+        case .glass:
             // Always-on glass. The sheet only ever samples the static
             // desktop (the panes are opaque tiles on top), so it composites
             // once and stays free whether the window is focused or not —
@@ -103,6 +112,21 @@ struct AppView: View {
             LiquidGlassBackdrop(glassiness: prefs.glassiness,
                                 light: prefs.lightGlass)
         }
+    }
+
+    /// The Frost slider maps to a tint wash over the material, so the
+    /// clear↔frosted axis keeps meaning in blur mode too.
+    private var classicBlurBackdrop: some View {
+        GlassBackground(material: .underWindowBackground,
+                        forcedAppearance: prefs.lightGlass ? .aqua : .darkAqua)
+            .overlay(
+                (prefs.lightGlass
+                    ? Color(red: 0.90, green: 0.92, blue: 0.96)
+                        .opacity(0.10 + 0.35 * prefs.glassiness)
+                    : Color(red: 0.05, green: 0.06, blue: 0.09)
+                        .opacity(0.20 + 0.40 * prefs.glassiness))
+            )
+            .ignoresSafeArea()
     }
 
     private var solidBackdrop: some View {

@@ -102,12 +102,27 @@ final class Preferences: ObservableObject {
     @Published var themeFromConfig: Bool {
         didSet { ud.set(themeFromConfig, forKey: K.themeFromConfig) }
     }
-    /// Solid mode: opaque window, no glass anywhere — flat dark chrome and
-    /// a solid backdrop. The single escape hatch from the glass look (for
-    /// taste or to shave the last bit of compositor work). OFF by default
-    /// (glass on). Drives the window's opacity in `WindowController`.
-    @Published var solidGlass: Bool {
-        didSet { ud.set(solidGlass, forKey: K.solidGlass) }
+    /// How the window dresses behind the panes.
+    /// - `glass`: one sheet of real Liquid Glass over the desktop.
+    /// - `blur`: the classic behind-window frosted material
+    ///   (`NSVisualEffectView`). The window stays non-opaque, but
+    ///   WindowServer caches the blurred desktop instead of re-lensing
+    ///   a live material, so it sits between glass and solid in cost.
+    /// - `solid`: opaque window, no glass anywhere — the full power
+    ///   lever (skips WindowServer's per-present re-blend entirely).
+    ///   Drives the window's opacity in `WindowController`.
+    enum GlassMode: String, CaseIterable {
+        case glass, blur, solid
+    }
+    @Published var glassMode: GlassMode {
+        didSet { ud.set(glassMode.rawValue, forKey: K.glassMode) }
+    }
+    /// Opaque-vs-not view of `glassMode` for call sites that only make
+    /// that distinction (wizard picker, palette toggle). Setting false
+    /// returns to `.glass`.
+    var solidGlass: Bool {
+        get { glassMode == .solid }
+        set { glassMode = newValue ? .solid : .glass }
     }
     /// Use real Liquid Glass (macOS 26 `NSGlassEffectView`) for the modal
     /// overlay panels — Command Palette, Search, Settings, Notifications,
@@ -338,7 +353,8 @@ final class Preferences: ObservableObject {
         static let useDefaultConfig = "conterm.useDefaultConfig"
         static let lightGlass       = "conterm.lightGlass"
         static let themeFromConfig  = "conterm.themeFromConfig"
-        static let solidGlass        = "conterm.solidGlass"
+        static let solidGlass        = "conterm.solidGlass"   // pre-glassMode migration source
+        static let glassMode         = "conterm.glassMode"
         static let liquidGlassPanels = "conterm.liquidGlassPanels"
         static let sshCompatMode    = "conterm.sshCompatMode"
         static let agentPillLite    = "conterm.agentPillLite"
@@ -408,7 +424,8 @@ final class Preferences: ObservableObject {
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
         self.lightGlass             = ud.object(forKey: K.lightGlass) as? Bool ?? false
         self.themeFromConfig        = ud.object(forKey: K.themeFromConfig) as? Bool ?? false
-        self.solidGlass             = ud.object(forKey: K.solidGlass) as? Bool ?? false
+        self.glassMode              = GlassMode(rawValue: ud.string(forKey: K.glassMode) ?? "")
+            ?? ((ud.object(forKey: K.solidGlass) as? Bool ?? false) ? .solid : .glass)
         self.liquidGlassPanels      = ud.object(forKey: K.liquidGlassPanels) as? Bool ?? false
         self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? false
         self.agentPillLite          = ud.object(forKey: K.agentPillLite) as? Bool ?? false
