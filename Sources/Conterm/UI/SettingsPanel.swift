@@ -224,17 +224,18 @@ struct SettingsPanel: View {
             // Glass
             card {
                 SettingsRow(title: "Window",
-                            subtitle: "The window is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Solid turns it off for an opaque window.") {
+                            subtitle: "Glass is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Blur is the classic frosted material — lighter on the compositor than live glass. Solid is a fully opaque window, the coolest-running of the three.") {
                     Picker("", selection: Binding(
-                        get: { prefs.solidGlass },
-                        set: { prefs.solidGlass = $0 }
+                        get: { prefs.glassMode },
+                        set: { prefs.glassMode = $0 }
                     ).withSound()) {
-                        Text("Glass").tag(false)
-                        Text("Solid").tag(true)
+                        Text("Glass").tag(Preferences.GlassMode.glass)
+                        Text("Blur").tag(Preferences.GlassMode.blur)
+                        Text("Solid").tag(Preferences.GlassMode.solid)
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    .frame(width: 150)
+                    .frame(width: 210)
                 }
                 SettingsRow(title: "Solid panes",
                             subtitle: "Paint panes on solid black instead of letting the glass show through the cells. Far cooler on fanless Macs — the desktop never re-composites under a streaming pane — so it's on by default. Off lets a translucent terminal reveal the glass behind it.") {
