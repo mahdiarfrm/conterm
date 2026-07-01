@@ -9,27 +9,53 @@ cd "$(dirname "$0")/.."
 FORK_REPO="thdxg/ghostty"
 XCFRAMEWORK_DIR="GhosttyKit.xcframework"
 
-if [[ -d "$XCFRAMEWORK_DIR" ]]; then
-    echo "GhosttyKit.xcframework already present — skipping download."
-else
-    TAG=$(curl -sL "https://api.github.com/repos/${FORK_REPO}/releases/latest" \
-        | python3 -c "import json,sys; print(json.load(sys.stdin)['tag_name'])")
+# Pinned GhosttyKit build. The fork publishes daily `build-YYYY-MM-DD`
+# releases and prunes them after a few weeks, so the pin can outlive its
+# download URL — keep a copy of the tarball somewhere durable. Bump the
+# pin deliberately (Conterm's key-encoding, occlusion, and selection
+# workarounds assume specific libghostty behavior; re-test them), never
+# by tracking the fork's latest release. Override with GHOSTTY_KIT_TAG
+# only while validating a new pin.
+GHOSTTY_KIT_TAG="${GHOSTTY_KIT_TAG:-build-2026-04-12}"
+# Version string embedded in the pinned libghostty.a; drift detection.
+GHOSTTY_KIT_VERSION="1.3.2-main-+d8d2849"
 
-    if [[ -z "$TAG" ]]; then
-        echo "Could not resolve latest release tag from ${FORK_REPO}" >&2
+# Embedded `<semver>-<branch>-+<commit>` marker in a libghostty.a.
+kit_version() {
+    strings -a "$1/macos-arm64_x86_64/libghostty.a" 2>/dev/null \
+        | grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+-.*\+[0-9a-f]{7,}$' || true
+}
+
+if [[ -d "$XCFRAMEWORK_DIR" ]]; then
+    FOUND=$(kit_version "$XCFRAMEWORK_DIR")
+    if [[ "$FOUND" == "$GHOSTTY_KIT_VERSION" ]]; then
+        echo "GhosttyKit.xcframework present (${FOUND}) — matches pin."
+    else
+        echo "WARN: local GhosttyKit.xcframework is '${FOUND:-unknown}' but the pin is '${GHOSTTY_KIT_VERSION}'." >&2
+        echo "WARN: either restore the pinned build or update the pin constants in scripts/setup.sh." >&2
+    fi
+else
+    URL="https://github.com/${FORK_REPO}/releases/download/${GHOSTTY_KIT_TAG}/GhosttyKit.xcframework.tar.gz"
+
+    echo "Downloading GhosttyKit.xcframework (${GHOSTTY_KIT_TAG}) …"
+    if ! curl -fL --progress-bar -o GhosttyKit.xcframework.tar.gz "$URL"; then
+        echo "ERROR: ${GHOSTTY_KIT_TAG} is not downloadable from ${FORK_REPO} (daily releases get pruned)." >&2
+        echo "ERROR: restore the tarball from a local/archived copy, or pick a retained tag" >&2
+        echo "ERROR: (GHOSTTY_KIT_TAG=build-YYYY-MM-DD bash scripts/setup.sh) and re-test before updating the pin." >&2
         exit 1
     fi
-
-    URL="https://github.com/${FORK_REPO}/releases/download/${TAG}/GhosttyKit.xcframework.tar.gz"
-
-    echo "Downloading GhosttyKit.xcframework (${TAG}) …"
-    curl -L --progress-bar -o GhosttyKit.xcframework.tar.gz "$URL"
 
     echo "Extracting …"
     tar xzf GhosttyKit.xcframework.tar.gz
     rm GhosttyKit.xcframework.tar.gz
 
-    echo "OK: $(du -sh GhosttyKit.xcframework | cut -f1)"
+    FOUND=$(kit_version "$XCFRAMEWORK_DIR")
+    if [[ "$FOUND" == "$GHOSTTY_KIT_VERSION" ]]; then
+        echo "OK: $(du -sh GhosttyKit.xcframework | cut -f1) (${FOUND})"
+    else
+        echo "WARN: downloaded build reports '${FOUND:-unknown}', pin expects '${GHOSTTY_KIT_VERSION}'." >&2
+        echo "WARN: update GHOSTTY_KIT_TAG + GHOSTTY_KIT_VERSION together once the new build is validated." >&2
+    fi
 fi
 
 # Bring in libghostty's shell-integration scripts + themes + docs. These
