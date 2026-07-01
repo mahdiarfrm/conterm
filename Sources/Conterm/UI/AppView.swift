@@ -114,17 +114,18 @@ struct AppView: View {
         }
     }
 
-    /// The Frost slider maps to a tint wash over the material, so the
-    /// clear↔frosted axis keeps meaning in blur mode too.
+    /// The Frost slider adds a milky scatter wash over the material —
+    /// real frosted glass brightens toward fog, so the slider must never
+    /// stack darkness on an already-dark material. At Clear the material
+    /// shows raw.
     private var classicBlurBackdrop: some View {
         GlassBackground(material: .underWindowBackground,
                         forcedAppearance: prefs.lightGlass ? .aqua : .darkAqua)
             .overlay(
                 (prefs.lightGlass
-                    ? Color(red: 0.90, green: 0.92, blue: 0.96)
-                        .opacity(0.10 + 0.35 * prefs.glassiness)
-                    : Color(red: 0.05, green: 0.06, blue: 0.09)
-                        .opacity(0.20 + 0.40 * prefs.glassiness))
+                    ? Color(red: 0.94, green: 0.95, blue: 0.98)
+                    : Color(red: 0.72, green: 0.75, blue: 0.82))
+                    .opacity(0.30 * prefs.glassiness)
             )
             .ignoresSafeArea()
     }
