@@ -34,5 +34,10 @@ let package = Package(
             name: "GhosttyKit",
             path: "GhosttyKit.xcframework"
         ),
+        .testTarget(
+            name: "ContermTests",
+            dependencies: ["Conterm"],
+            path: "Tests/ContermTests"
+        ),
     ]
 )
