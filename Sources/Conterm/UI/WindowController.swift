@@ -98,16 +98,13 @@ final class WindowController {
         // The window is non-opaque so the glass or blur backdrop shows the
         // desktop in the top bar + gaps; the panes are opaque tiles, so the
         // streaming terminal never drags the window through a per-frame
-        // desktop recomposite. Solid mode makes the whole window opaque,
-        // and so does cool-glass (its glass lenses an in-window wallpaper
-        // snapshot instead of the desktop).
+        // desktop recomposite. Solid mode makes the whole window opaque.
         prefs.$glassMode
-            .combineLatest(prefs.$coolGlass)
-            .map { mode, cool in mode == .solid || (mode == .glass && cool) }
+            .map { $0 == .solid }
             .removeDuplicates()
             .receive(on: RunLoop.main)
-            .sink { [weak win] opaque in
-                if let win { WindowChrome.setOpaque(opaque, on: win) }
+            .sink { [weak win] solid in
+                if let win { WindowChrome.setOpaque(solid, on: win) }
             }
             .store(in: &glassCancellables)
         win.makeKeyAndOrderFront(nil)
