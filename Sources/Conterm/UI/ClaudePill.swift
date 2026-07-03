@@ -67,13 +67,16 @@ struct AgentPill: View {
                 neonRing.id(status.phase).transition(.opacity)
             }
         }
+        // No outer shadow while working: a live filter over the animating
+        // ring would re-render per frame — the SweepRing's stacked halo
+        // passes carry the working glow instead.
         .shadow(color: glowColor.opacity(
-                    lite
+                    (lite || working)
                         ? 0
-                        : (working ? 0.55 : (attention ? 0.45 : 0.15))),
-                radius: lite
+                        : (attention ? 0.45 : 0.15)),
+                radius: (lite || working)
                     ? 0
-                    : (working ? 12 : (attention ? 9 : 5)))
+                    : (attention ? 9 : 5))
         // Spring (not ease) the morph: the capsule width tracks the
         // label length, the mark tint and glow ramp, all on one buttery
         // physical curve. Keyed on `phase` (not the whole status) so a
@@ -167,46 +170,11 @@ struct AgentPill: View {
                               lineWidth: 1.0)
                 .allowsHitTesting(false)
         } else if working {
-            Capsule(style: .continuous)
-                .stroke(
-                    AngularGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: .clear,                 location: 0.00),
-                            .init(color: glowColor.opacity(0.0), location: 0.55),
-                            .init(color: glowColor,              location: 0.78),
-                            .init(color: .white,                 location: 0.84),
-                            .init(color: glowColor,              location: 0.90),
-                            .init(color: glowColor.opacity(0.0), location: 1.00),
-                        ]),
-                        center: .center,
-                        angle: .degrees(sweep * 360)
-                    ),
-                    lineWidth: 2.2
-                )
-                .blur(radius: 4)
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(
-                            AngularGradient(
-                                gradient: Gradient(stops: [
-                                    .init(color: .clear,      location: 0.0),
-                                    .init(color: glowColor.opacity(0.0), location: 0.6),
-                                    .init(color: .white,      location: 0.84),
-                                    .init(color: glowColor.opacity(0.0), location: 1.0),
-                                ]),
-                                center: .center,
-                                angle: .degrees(sweep * 360)
-                            ),
-                            lineWidth: 1.0
-                        )
-                )
-                // Flatten the two animated conic strokes + blur into one
-                // Metal-rendered layer. An AngularGradient whose angle
-                // animates changes its contents every frame, so CoreGraphics
-                // re-shades it on the CPU (atan2f per pixel) on the main
-                // thread for the whole working sweep; drawingGroup moves that
-                // shading to the GPU.
-                .drawingGroup()
+            // Pure-CA sweep: static conic gradient rotated by transform,
+            // masked through the capsule stroke, glow baked as stacked
+            // stroke passes (see SweepRing). Nothing re-renders per frame
+            // — the whole animation runs compositor-side.
+            SweepRing(color: glowColor)
                 .allowsHitTesting(false)
         } else if attention {
             Capsule(style: .continuous)
