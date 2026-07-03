@@ -347,6 +347,12 @@ extension Ghostty {
             guard visible != isVisible else { return }
             isVisible = visible
             ghostty_surface_set_occlusion(h, visible)
+            // The pane's host window shows/hides with renderer visibility,
+            // so a hidden tab's deck never stacks over the selected tab's
+            // (windows ignore the SwiftUI opacity that hides the tree).
+            if let paneWin = view?.window as? PaneHostWindow {
+                paneWin.setShown(visible)
+            }
             // A paused surface stops presenting; its CAMetalLayer can read
             // back empty, and a translucent terminal then shows the desktop
             // through the glass. Always repaint on re-show — not just when a
