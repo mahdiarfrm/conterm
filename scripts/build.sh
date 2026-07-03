@@ -26,6 +26,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$EXE" "$APP/Contents/MacOS/Conterm"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+cp Resources/PrivacyInfo.xcprivacy "$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 echo -n "APPL????" > "$APP/Contents/PkgInfo"
 
 # Pack ICONS_FINAL/*.png into AppIcon.icns AS-IS (no rendering, no
