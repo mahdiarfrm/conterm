@@ -156,9 +156,9 @@ struct CircleSuggestion: View {
 // MARK: - Roll-up reveal
 
 /// Clock-digit reveal: content rises into place out of a blur with a
-/// soft settle, the way the old stats widget tumbled its numbers. Runs
-/// once per appearance (guarded against SwiftUI's repeat `onAppear`),
-/// and replays each time the view is freshly inserted.
+/// soft settle. Runs once per appearance (guarded against SwiftUI's
+/// repeat `onAppear`), and replays each time the view is freshly
+/// inserted.
 struct RollUpReveal<Content: View>: View {
     let delay: Double
     @ViewBuilder var content: Content
