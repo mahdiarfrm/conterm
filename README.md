@@ -26,13 +26,7 @@ and opencode.
 > fonts, themes, shell integration) is Ghostty's; Conterm adds the macOS app
 > around it.
 
-<p align="center">
-  <img src="docs/assets/demo.gif" alt="Conterm demo" width="100%" />
-</p>
-
-<p align="center">
-  <sub><a href="https://github.com/mahdiarfrm/conterm/raw/main/docs/assets/demo.mp4">MP4 version</a></sub>
-</p>
+https://github.com/user-attachments/assets/afbe93e9-9741-46d3-9eef-1c7b0d62ab64
 
 ## Contents
 
