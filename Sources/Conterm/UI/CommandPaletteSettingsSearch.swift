@@ -4,50 +4,79 @@ import SwiftUI
 /// setting, its keywords, and the flip-in-place vs open-Settings
 /// behavior.
 extension CommandPalette {
+    /// One settings row: static match fields plus a builder that reads
+    /// live state (On/Off, the current mode) only when the row matches.
+    struct SettingsItem {
+        let title: String
+        let kw: String
+        let section: SettingsPanel.Section
+        let make: @MainActor () -> Command
+    }
+
     /// App-settings results for the omni search. Bool prefs flip in
     /// place (the row's subtitle shows the live state and what ↩ does);
     /// richer controls — theme, accents, sliders, the config file —
-    /// open Settings to their section. `keywords` widen what each row
-    /// matches beyond its visible title.
+    /// open Settings to their section. `kw` widens what each row
+    /// matches beyond its visible title. The table is built once per
+    /// palette open; a keystroke only filters it and materializes the
+    /// few matching rows.
+    @MainActor
     func settingsResults(matching ql: String) -> [Command] {
+        if cachedSettingsItems.isEmpty { cachedSettingsItems = settingsItems() }
+        return cachedSettingsItems.filter { item in
+            item.title.lowercased().contains(ql)
+            || item.kw.contains(ql)
+            || item.section.label.lowercased().contains(ql)
+        }.map { $0.make() }
+    }
+
+    @MainActor
+    private func settingsItems() -> [SettingsItem] {
         typealias Sec = SettingsPanel.Section
-        struct Item { let kw: String; let section: Sec; let cmd: Command }
+        let prefs = self.prefs
+        let state = self.state
 
         func toggle(_ id: String, _ title: String, _ kw: String,
                     _ section: Sec, _ icon: String,
-                    _ isOn: Bool, _ set: @escaping (Bool) -> Void) -> Item {
-            let cmd = Command(
-                id: "set.\(id)", icon: icon, title: title,
-                subtitle: "Settings · \(section.label) · \(isOn ? "On" : "Off") — ↩ turns \(isOn ? "off" : "on")",
-                shortcut: "", run: { set(!isOn) })
-            return Item(kw: kw, section: section, cmd: cmd)
+                    _ isOn: @autoclosure @escaping @MainActor () -> Bool,
+                    _ set: @escaping @MainActor (Bool) -> Void) -> SettingsItem {
+            SettingsItem(title: title, kw: kw, section: section, make: {
+                let on = isOn()
+                return Command(
+                    id: "set.\(id)", icon: icon, title: title,
+                    subtitle: "Settings · \(section.label) · \(on ? "On" : "Off") — ↩ turns \(on ? "off" : "on")",
+                    shortcut: "", run: { set(!on) })
+            })
         }
         func open(_ id: String, _ title: String, _ kw: String,
-                  _ section: Sec, _ icon: String) -> Item {
-            let cmd = Command(
-                id: "set.\(id)", icon: icon, title: title,
-                subtitle: "Settings · \(section.label)",
-                shortcut: "", run: { [weak state] in
-                    state?.openSettings(section: section.rawValue)
-                })
-            return Item(kw: kw, section: section, cmd: cmd)
+                  _ section: Sec, _ icon: String) -> SettingsItem {
+            SettingsItem(title: title, kw: kw, section: section, make: {
+                Command(
+                    id: "set.\(id)", icon: icon, title: title,
+                    subtitle: "Settings · \(section.label)",
+                    shortcut: "", run: { [weak state] in
+                        state?.openSettings(section: section.rawValue)
+                    })
+            })
         }
-        // Window mode is tri-state (glass / blur / solid), so the row
-        // cycles through the modes — every mode stays reachable from
-        // the search, and no mode is silently discarded on a round trip.
-        func windowModeItem() -> Item {
-            let mode = prefs.glassMode
-            let all = Preferences.GlassMode.allCases
-            let next = all[(all.firstIndex(of: mode)! + 1) % all.count]
-            let cmd = Command(
-                id: "set.glassMode", icon: "macwindow", title: "Window mode",
-                subtitle: "Settings · Appearance · \(mode.rawValue.capitalized) — ↩ switches to \(next.rawValue.capitalized)",
-                shortcut: "", run: { [prefs] in prefs.glassMode = next })
-            return Item(kw: "glass blur solid opaque window mode frost flat",
-                        section: .appearance, cmd: cmd)
+        // Window mode is tri-state (glass / blur / solid), so its row
+        // cycles through the modes — every mode stays reachable from the
+        // search, and no mode is silently discarded on a round trip.
+        func windowMode() -> SettingsItem {
+            SettingsItem(title: "Window mode",
+                         kw: "glass blur solid opaque window mode frost flat",
+                         section: .appearance, make: {
+                let mode = prefs.glassMode
+                let all = Preferences.GlassMode.allCases
+                let next = all[(all.firstIndex(of: mode)! + 1) % all.count]
+                return Command(
+                    id: "set.glassMode", icon: "macwindow", title: "Window mode",
+                    subtitle: "Settings · Appearance · \(mode.rawValue.capitalized) — ↩ switches to \(next.rawValue.capitalized)",
+                    shortcut: "", run: { prefs.glassMode = next })
+            })
         }
 
-        let items: [Item] = [
+        return [
             // Appearance
             open("theme", "Theme", "colors palette swatch dark light scheme",
                  .appearance, "paintpalette.fill"),
@@ -56,7 +85,7 @@ extension CommandPalette {
                    prefs.themeFromConfig) { prefs.themeFromConfig = $0 },
             toggle("lightGlass", "Light glass", "appearance white tint mode bright",
                    .appearance, "sun.max", prefs.lightGlass) { prefs.lightGlass = $0 },
-            windowModeItem(),
+            windowMode(),
             toggle("liquidGlassPanels", "Liquid glass panels",
                    "frosted overlay command palette settings", .appearance, "drop.fill",
                    prefs.liquidGlassPanels) { prefs.liquidGlassPanels = $0 },
@@ -145,11 +174,5 @@ extension CommandPalette {
             open("about", "About Conterm", "version license credits libghostty",
                  .about, "info.circle"),
         ]
-
-        return items.filter { item in
-            item.cmd.title.lowercased().contains(ql)
-            || item.kw.contains(ql)
-            || item.section.label.lowercased().contains(ql)
-        }.map(\.cmd)
     }
 }

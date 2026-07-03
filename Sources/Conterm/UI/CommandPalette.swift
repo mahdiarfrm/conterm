@@ -36,6 +36,9 @@ struct CommandPalette: View {
     /// ~/.ssh/config) and the active pane's directory listing, newest
     /// first. Cached so per-keystroke filtering never touches disk.
     @State var cachedCwdFiles: [CwdFile] = []
+    /// Settings match-table, built lazily once per palette open; per
+    /// keystroke it is only filtered, and rows materialize per match.
+    @State var cachedSettingsItems: [SettingsItem] = []
 
     @EnvironmentObject var tabGroups: TabGroupStore
 
