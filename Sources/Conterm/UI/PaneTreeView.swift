@@ -531,6 +531,15 @@ final class PaneBox: NSView {
     var index: Int = 0 { didSet { if index != oldValue { refreshChrome() } } }
     var isActivePane: Bool = false { didSet { if isActivePane != oldValue { refreshChrome() } } }
 
+    /// Static painted tile material: a vertical gradient with a grain
+    /// wash and a hairline top light, so an opaque tile reads as a
+    /// designed surface instead of a flat black rectangle. All layers
+    /// are static content — they composite once and never re-render
+    /// while the terminal streams.
+    private let tileGradient = CAGradientLayer()
+    private let tileGrain = CALayer()
+    private let tileTopLight = CALayer()
+
     init(pane: Pane, host: Ghostty.SurfaceHostView, prefs: Preferences, tab: Tab?) {
         self.pane = pane
         self.host = host
@@ -547,6 +556,31 @@ final class PaneBox: NSView {
         // Rounded tile behind the surface. masksToBounds stays false so the
         // chrome's focus halo isn't clipped; the surface clips itself below.
         layer?.cornerRadius = Theme.paneCorner
+
+        tileGradient.cornerRadius = Theme.paneCorner
+        tileGradient.masksToBounds = true
+        // Anchored around Theme.paneTile: a touch of top light falling to
+        // a deeper floor, so the tile has depth under a translucent
+        // terminal background.
+        tileGradient.colors = [
+            NSColor(calibratedRed: 0.085, green: 0.095, blue: 0.125, alpha: 1).cgColor,
+            NSColor(calibratedRed: 0.050, green: 0.055, blue: 0.075, alpha: 1).cgColor,
+            NSColor(calibratedRed: 0.035, green: 0.040, blue: 0.058, alpha: 1).cgColor,
+        ]
+        tileGradient.locations = [0, 0.35, 1]
+        tileGradient.startPoint = CGPoint(x: 0.5, y: 0)
+        tileGradient.endPoint = CGPoint(x: 0.5, y: 1)
+        layer?.insertSublayer(tileGradient, at: 0)
+
+        tileGrain.cornerRadius = Theme.paneCorner
+        tileGrain.masksToBounds = true
+        tileGrain.backgroundColor = NSColor(patternImage: Self.grainImage).cgColor
+        tileGrain.opacity = 0.045
+        layer?.insertSublayer(tileGrain, above: tileGradient)
+
+        tileTopLight.backgroundColor = NSColor.white.withAlphaComponent(0.07).cgColor
+        layer?.insertSublayer(tileTopLight, above: tileGrain)
+
         host.wantsLayer = true
         host.layer?.cornerRadius = Theme.paneCorner - 1
         host.layer?.masksToBounds = true
@@ -557,10 +591,37 @@ final class PaneBox: NSView {
     required init?(coder: NSCoder) { nil }
     override var isFlipped: Bool { true }
 
+    /// One shared noise tile; drawn once, repeated as a pattern.
+    private static let grainImage: NSImage = {
+        let side = 96
+        let img = NSImage(size: NSSize(width: side, height: side))
+        img.lockFocus()
+        NSColor.clear.setFill()
+        NSRect(x: 0, y: 0, width: side, height: side).fill()
+        var rng = SystemRandomNumberGenerator()
+        for _ in 0..<900 {
+            let x = Int.random(in: 0..<side, using: &rng)
+            let y = Int.random(in: 0..<side, using: &rng)
+            NSColor.white.withAlphaComponent(.random(in: 0.25...1, using: &rng)).setFill()
+            NSRect(x: x, y: y, width: 1, height: 1).fill()
+        }
+        img.unlockFocus()
+        return img
+    }()
+
     override func layout() {
         super.layout()
-        layer?.backgroundColor = prefs.opaquePanes ? NSColor(Theme.paneTile).cgColor
-                                                    : NSColor.clear.cgColor
+        let solid = prefs.opaquePanes
+        layer?.backgroundColor = NSColor.clear.cgColor
+        tileGradient.isHidden = !solid
+        tileGrain.isHidden = !solid
+        tileTopLight.isHidden = !solid
+        tileGradient.frame = bounds
+        tileGrain.frame = bounds
+        // Hairline light along the tile's top edge, inset past the corners.
+        tileTopLight.frame = CGRect(x: Theme.paneCorner, y: 0,
+                                    width: max(0, bounds.width - Theme.paneCorner * 2),
+                                    height: 1)
         host.frame = bounds.insetBy(dx: 1, dy: 1)
         chrome.frame = bounds
     }
