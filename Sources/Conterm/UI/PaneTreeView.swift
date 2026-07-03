@@ -304,6 +304,16 @@ final class PaneTreeView: NSView {
     // Top-left origin so the tree math matches the model (first = top/left).
     override var isFlipped: Bool { true }
 
+    /// Surfaces tolerate no sibling NSViews: an AppKit divider view next to
+    /// the panes crashed the renderer on pane close. Dividers are drawn in
+    /// `draw(_:)` and hit-tested from `dividers`; chrome lives inside each
+    /// PaneBox. Debug-only (assert compiles out of release).
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        assert(subview is PaneBox,
+               "PaneTreeView hosts PaneBoxes only — draw extra chrome, never add sibling views")
+    }
+
     // The window is movable-by-background; a clear view counts as background,
     // so a divider drag would move the window. Opt this view out — the window
     // stays draggable by its top chrome. (The old SwiftUI divider couldn't do
@@ -541,6 +551,22 @@ final class PaneBox: NSView {
 
     required init?(coder: NSCoder) { nil }
     override var isFlipped: Bool { true }
+
+    /// Mount-once guard: a PaneBox enters its PaneTreeView a single time and
+    /// is only reframed afterwards; removal (pane close) is final. Moving it
+    /// ripples through AppKit's layer hierarchy and detaches the surface's
+    /// IOSurface — the blank-pane failure the AppKit pane tree exists to
+    /// prevent. Debug-only (assert compiles out of release).
+    private var hasMounted = false
+
+    override func viewWillMove(toSuperview newSuperview: NSView?) {
+        super.viewWillMove(toSuperview: newSuperview)
+        guard let newSuperview else { return }   // final detach on pane close
+        assert(!hasMounted,
+               "PaneBox reparented — surviving panes are reframed, never reparented or re-mounted")
+        assert(newSuperview is PaneTreeView, "PaneBox mounted outside a PaneTreeView")
+        hasMounted = true
+    }
 
     /// One shared noise tile; drawn once, repeated as a pattern.
     private static let grainImage: NSImage = {
