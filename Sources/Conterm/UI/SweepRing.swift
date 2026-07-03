@@ -29,7 +29,11 @@ struct SweepRing: NSViewRepresentable {
 
 final class SweepRingView: NSView {
     var glowColor: NSColor = .orange {
-        didSet { if glowColor != oldValue { rebuild() } }
+        didSet {
+            guard glowColor != oldValue else { return }
+            conicTexture = nil
+            rebuild()
+        }
     }
 
     /// Ring passes baked into the mask alpha: tight bright stroke plus
@@ -37,10 +41,23 @@ final class SweepRingView: NSView {
     private static let passes: [(width: CGFloat, alpha: CGFloat)] = [
         (2.2, 1.0), (5.0, 0.34), (9.0, 0.15),
     ]
+    /// Half the widest pass overhangs the capsule stroke path; the mask
+    /// and rotor extend this far past bounds so the outward bloom
+    /// renders instead of clipping at the view edge (the pill carries
+    /// no shadow while working — these halo passes ARE the glow).
+    private static let haloPad: CGFloat = 4
+    /// Fixed pixel size for the conic texture. The gradient is smooth,
+    /// so CA scaling it into any rotor frame is visually free — and the
+    /// texture then never re-renders on a size change (the pill's width
+    /// tracks its label, which changes with every progress bucket).
+    private static let conicPx = 512
 
     private let rotor = CALayer()
     private let ringMask = CALayer()
     private var lastSize: CGSize = .zero
+    private var lastScale: CGFloat = 0
+    /// Rendered once per accent color at `conicPx`.
+    private var conicTexture: CGImage?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -54,36 +71,57 @@ final class SweepRingView: NSView {
     override func layout() {
         super.layout()
         guard bounds.size != lastSize, bounds.width > 0, bounds.height > 0 else { return }
-        lastSize = bounds.size
+        rebuild()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        guard let w = window, w.backingScaleFactor != lastScale else { return }
         rebuild()
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        guard let window else { return }
+        // A rebuild that ran before the first window attach used the
+        // fallback scale; redo it against the real display.
+        if window.backingScaleFactor != lastScale { rebuild() }
         // CA strips animations when the layer leaves a window; re-arm on
         // every attach so the sweep survives chrome refreshes.
-        if window != nil { restartAnimation() }
+        ensureAnimation()
     }
 
     private func rebuild() {
         guard bounds.width > 0, bounds.height > 0 else { return }
         let scale = window?.backingScaleFactor ?? 2
+        lastSize = bounds.size
+        lastScale = scale
+        let pad = Self.haloPad
 
-        // The rotating texture must cover the bounds at any angle.
-        let side = hypot(bounds.width, bounds.height)
+        if conicTexture == nil { conicTexture = Self.conicImage(color: glowColor) }
+
+        // Manually-added sublayers get CA's default implicit actions;
+        // without the guard each reframe animates 0.25 s behind the pill.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        // The rotating texture must cover the mask at any angle.
+        let side = hypot(bounds.width, bounds.height) + pad * 2
         rotor.frame = CGRect(x: bounds.midX - side / 2,
                              y: bounds.midY - side / 2,
                              width: side, height: side)
-        rotor.contents = Self.conicImage(color: glowColor, side: side, scale: scale)
+        rotor.contents = conicTexture
+        ringMask.frame = bounds.insetBy(dx: -pad, dy: -pad)
+        ringMask.contents = Self.ringImage(size: bounds.size, pad: pad, scale: scale)
+        CATransaction.commit()
 
-        ringMask.frame = bounds
-        ringMask.contents = Self.ringImage(size: bounds.size, scale: scale)
-
-        restartAnimation()
+        ensureAnimation()
     }
 
-    private func restartAnimation() {
-        rotor.removeAnimation(forKey: "sweep")
+    /// The spin is added once and kept: re-adding it on a relayout would
+    /// snap the bead back to its start angle every time the pill's label
+    /// changes width.
+    private func ensureAnimation() {
+        guard rotor.animation(forKey: "sweep") == nil else { return }
         let spin = CABasicAnimation(keyPath: "transform.rotation.z")
         spin.fromValue = 0
         spin.toValue = -2 * Double.pi
@@ -100,10 +138,8 @@ final class SweepRingView: NSView {
         rotor.add(spin, forKey: "sweep")
     }
 
-    /// Conic sweep texture, rendered once. Mirrors the old
-    /// AngularGradient stops: dark tail → glow → white bead → glow → dark.
-    private static func conicImage(color: NSColor, side: CGFloat,
-                                   scale: CGFloat) -> CGImage? {
+    /// Conic sweep texture: dark tail → glow → white bead → glow → dark.
+    private static func conicImage(color: NSColor) -> CGImage? {
         let g = CAGradientLayer()
         g.type = .conic
         g.startPoint = CGPoint(x: 0.5, y: 0.5)
@@ -115,7 +151,7 @@ final class SweepRingView: NSView {
                     color.cgColor,
                     color.withAlphaComponent(0).cgColor]
         g.locations = [0, 0.55, 0.78, 0.84, 0.90, 1.0]
-        let px = Int(side * scale)
+        let px = conicPx
         g.frame = CGRect(x: 0, y: 0, width: px, height: px)
         guard let ctx = CGContext(data: nil, width: px, height: px,
                                   bitsPerComponent: 8, bytesPerRow: 0,
@@ -128,9 +164,12 @@ final class SweepRingView: NSView {
 
     /// The capsule ring with its glow falloff baked into one alpha image
     /// (used as a layer mask): a single offscreen pass per frame instead
-    /// of one per glow stroke.
-    private static func ringImage(size: CGSize, scale: CGFloat) -> CGImage? {
-        let w = Int(size.width * scale), h = Int(size.height * scale)
+    /// of one per glow stroke. The image is `pad` larger than the view on
+    /// every side so the outer half of the widest halo pass survives.
+    private static func ringImage(size: CGSize, pad: CGFloat,
+                                  scale: CGFloat) -> CGImage? {
+        let w = Int((size.width + pad * 2) * scale)
+        let h = Int((size.height + pad * 2) * scale)
         guard w > 0, h > 0,
               let ctx = CGContext(data: nil, width: w, height: h,
                                   bitsPerComponent: 8, bytesPerRow: 0,
@@ -138,7 +177,8 @@ final class SweepRingView: NSView {
                                   bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
         else { return nil }
         ctx.scaleBy(x: scale, y: scale)
-        let rect = CGRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)
+        let rect = CGRect(x: pad, y: pad, width: size.width, height: size.height)
+            .insetBy(dx: 1, dy: 1)
         let capsule = CGPath(roundedRect: rect,
                              cornerWidth: rect.height / 2,
                              cornerHeight: rect.height / 2,

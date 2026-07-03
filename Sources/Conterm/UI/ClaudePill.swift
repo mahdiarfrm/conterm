@@ -20,7 +20,6 @@ struct AgentPill: View {
     /// recomposites, so a non-key pane must stay at zero render cost.
     @Environment(\.controlActiveState) private var activeState
 
-    @State private var sweep: Double = 0
     @State private var pulse = false
     /// Mirrors `SystemPressure.wantsLowAnimation` (Low Power Mode or
     /// thermal pressure) so a hot machine sheds the sweep first.
@@ -195,14 +194,12 @@ struct AgentPill: View {
         // gets a chance to start. The animation re-arms via the
         // .onChange(of: windowIsKey) handler when focus returns.
         guard windowIsKey else {
-            sweep = 0
             pulse = false
             return
         }
         if lite {
-            // Lite mode: no sweep, no working-state animation. Only
-            // attention pulses, so a needs-you is still noticeable.
-            sweep = 0
+            // Lite mode: no working-state animation. Only attention
+            // pulses, so a needs-you is still noticeable.
             if attention {
                 pulse = false
                 withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
@@ -216,7 +213,6 @@ struct AgentPill: View {
         if working {
             // No SwiftUI-driven animation while working — the CA ring
             // self-animates and per-frame ViewGraph churn is the cost.
-            sweep = 0
         } else if attention {
             pulse = false
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
