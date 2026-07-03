@@ -51,7 +51,7 @@ final class ThemeCatalog: ObservableObject {
         isLoading = true
         let dir = themesDirectoryURL()
         Task.detached(priority: .userInitiated) {
-            let parsed = await Self.parseAll(in: dir)
+            let parsed = Self.parseAll(in: dir)
             await MainActor.run {
                 self.themes = parsed
                 self.isLoading = false

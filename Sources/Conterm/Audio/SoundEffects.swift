@@ -6,14 +6,15 @@ import SwiftUI
 /// (programmatic writes of the same value are no-ops). Lets every
 /// `Toggle("", isOn: $prefs.x.withSound())` get a click on flip
 /// without an `.onChange` for each one.
-extension Binding where Value: Equatable {
+extension Binding where Value: Equatable & Sendable {
     func withSound(_ effect: SoundEffects.Effect = .toggle) -> Binding<Value> {
         Binding(
             get: { self.wrappedValue },
             set: { newValue in
                 let changed = newValue != self.wrappedValue
                 self.wrappedValue = newValue
-                if changed { SoundEffects.shared.play(effect) }
+                // SwiftUI control writes land on the main actor.
+                if changed { MainActor.assumeIsolated { SoundEffects.shared.play(effect) } }
             }
         )
     }

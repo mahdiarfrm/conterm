@@ -19,11 +19,11 @@ enum DiagnosticLog {
 
     static var isEnabled: Bool { UserDefaults.standard.bool(forKey: defaultsKey) }
 
-    // `handle` and `formatter` are touched only inside `queue`, whose
-    // serialization provides the synchronization the compiler can't see.
+    // `handle` is touched only inside `queue`, whose serialization
+    // provides the synchronization the compiler can't see.
     private static let queue = DispatchQueue(label: "com.conterm.diaglog")
     nonisolated(unsafe) private static var handle: FileHandle?
-    nonisolated(unsafe) private static let formatter: DateFormatter = {
+    private static let formatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
         return f
@@ -47,7 +47,7 @@ enum DiagnosticLog {
             fm.createFile(atPath: fileURL.path, contents: nil)
         }
         guard let h = try? FileHandle(forWritingTo: fileURL) else { return nil }
-        try? h.seekToEnd()
+        _ = try? h.seekToEnd()
         return h
     }
 
