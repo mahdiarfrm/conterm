@@ -22,8 +22,12 @@
 	<string>3.2.2</string>
 	<key>CFBundleVersion</key>
 	<string>322</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Mahdiyar Faramarzpour. MIT License.</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Conterm uses Apple Events to support shell integration.</string>
 	<key>NSHighResolutionCapable</key>
