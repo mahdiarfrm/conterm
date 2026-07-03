@@ -341,12 +341,12 @@ struct LayoutModeSwitcher: View {
     var body: some View {
         HStack(spacing: 2) {
             seg(.horizontal) { Image(systemName: "rectangle.split.1x2")
-                .font(.system(size: 13, weight: .semibold)) }
+                .font(.system(size: 14, weight: .semibold)) }
             seg(.vertical) { Image(systemName: "sidebar.left")
-                .font(.system(size: 13, weight: .semibold)) }
+                .font(.system(size: 14, weight: .semibold)) }
             // The robot art is wider than tall, so it needs a larger box
             // than the SF symbols to read at the same visual size.
-            seg(.agents) { AgentBrandMark(color: iconColor(.agents), size: 20) }
+            seg(.agents) { AgentBrandMark(color: iconColor(.agents), size: 22) }
         }
         .padding(3)
         // The same flat glass-lens bed the other toolbar pills wear, so it
@@ -374,7 +374,9 @@ struct LayoutModeSwitcher: View {
         } label: {
             icon()
                 .foregroundStyle(iconColor(mode))
-                .frame(width: 30, height: 22)
+                // Segment height + the bed's padding lands the switcher at
+                // TabBar.heavyPillHeight, level with the action cluster.
+                .frame(width: 34, height: 24)
                 // Selected segment lifts on a brighter lens (adaptive) so it
                 // reads as picked without an accent blob that goes muddy in
                 // light mode.
