@@ -121,7 +121,7 @@ struct AppView: View {
                         forcedAppearance: prefs.lightGlass ? .aqua : .darkAqua)
             .overlay(
                 (prefs.lightGlass
-                    ? Color(red: 0.90, green: 0.92, blue: 0.96)
+                    ? Theme.backdropLight
                         .opacity(0.10 + 0.35 * prefs.glassiness)
                     : Color(red: 0.05, green: 0.06, blue: 0.09)
                         .opacity(0.20 + 0.40 * prefs.glassiness))
@@ -131,7 +131,7 @@ struct AppView: View {
 
     private var solidBackdrop: some View {
         (prefs.lightGlass
-            ? Color(red: 0.90, green: 0.92, blue: 0.96)
+            ? Theme.backdropLight
             : Color(red: 0.07, green: 0.08, blue: 0.11))
             .opacity(0.92)
             .ignoresSafeArea()

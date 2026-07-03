@@ -1,5 +1,29 @@
 import SwiftUI
 
+/// Caption heading a palette result band (omni recents, SSH sections):
+/// one size-10 secondary style, so the modes' section captions stay
+/// visually consistent. Per-band paddings live at the call sites.
+struct PaletteSectionCaption: View {
+    var text: String
+    var icon: String? = nil
+    var uppercased: Bool = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .semibold))
+            }
+            Text(text)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .textCase(uppercased ? .uppercase : nil)
+                .kerning(uppercased ? 0.5 : 0)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(Theme.textSecondary)
+    }
+}
+
 /// Shared chrome for the palette's floating glass bubbles: panel
 /// background, clip, border, liquid-glass top-edge highlight, drop
 /// shadow. `darken` lays an extra wash over the glass so the input

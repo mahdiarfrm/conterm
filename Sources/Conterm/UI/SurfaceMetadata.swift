@@ -12,6 +12,12 @@ func formatCommandDuration(_ ns: UInt64) -> String {
     return String(format: "%dm %02ds", m, s)
 }
 
+/// POSIX single-quote escaping: wraps `s` in single quotes with every
+/// embedded quote closed, escaped, and reopened.
+func shellQuote(_ s: String) -> String {
+    "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+}
+
 /// Returns a friendly short label for `cwd`. Replaces home dir with
 /// `~`, preserves the `~/` (or `/`) anchor so the user can always tell
 /// which root the path is under, and shows up to the last three path

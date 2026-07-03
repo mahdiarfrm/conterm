@@ -27,6 +27,13 @@ enum Theme {
     /// desktop. Near-black to frame the terminal cells at the rounded edge.
     static let paneTile      = Color(red: 0.05, green: 0.055, blue: 0.075)
 
+    /// Backdrop tint endpoints, shared by the glass-material tints and
+    /// the window backdrops so the light/dark washes agree across the
+    /// glass, blur, and solid modes. Alphas are applied per surface.
+    static let backdropLightNS = NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.96, alpha: 1)
+    static let backdropDarkNS  = NSColor(calibratedRed: 0.06, green: 0.07, blue: 0.10, alpha: 1)
+    static let backdropLight   = Color(nsColor: backdropLightNS)
+
     /// Solid bed for the pane-floating chips (the dir/title pill, the
     /// command-result badge). Opaque so they read as solid chips over the
     /// terminal, a step lighter than `paneTile` for separation.

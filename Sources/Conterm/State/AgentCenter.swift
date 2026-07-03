@@ -504,7 +504,7 @@ final class AgentCenter: ObservableObject {
                         tabLabel: tab.title.isEmpty ? "shell" : tab.title,
                         cwd: pane.cwd,
                         transcriptPath: pane.agentTranscriptPath,
-                        dirLabel: friendlyDir(pane.cwd),
+                        dirLabel: friendlyDirLabel(for: pane.cwd),
                         remoteHost: pane.remoteHost,
                         phase: pane.agent.phase,
                         tool: pane.agent.tool,
@@ -535,14 +535,6 @@ final class AgentCenter: ObservableObject {
         case .ready:       return 3
         case .idle:        return 4
         }
-    }
-
-    private static func friendlyDir(_ cwd: String?) -> String {
-        guard let cwd, !cwd.isEmpty else { return "—" }
-        let home = NSHomeDirectory()
-        if cwd == home { return "~" }
-        let last = (cwd as NSString).lastPathComponent
-        return last.isEmpty ? cwd : last
     }
 
     // MARK: - Jump + control

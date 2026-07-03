@@ -165,16 +165,16 @@ private struct RealLiquidGlass: View {
     @available(macOS 26, *)
     private var clearTint: NSColor {
         light
-            ? NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.96, alpha: 0.12)
-            : NSColor(calibratedRed: 0.06, green: 0.07, blue: 0.10, alpha: 0.06)
+            ? Theme.backdropLightNS.withAlphaComponent(0.12)
+            : Theme.backdropDarkNS.withAlphaComponent(0.06)
     }
 
     /// Heavier tint on the `.regular` (frosted-end) glass.
     @available(macOS 26, *)
     private var regularTint: NSColor {
         light
-            ? NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.96, alpha: 0.28)
-            : NSColor(calibratedRed: 0.06, green: 0.07, blue: 0.10, alpha: 0.14)
+            ? Theme.backdropLightNS.withAlphaComponent(0.28)
+            : Theme.backdropDarkNS.withAlphaComponent(0.14)
     }
 
     @available(macOS 26, *)
@@ -247,8 +247,8 @@ struct PaneLiquidGlass: NSViewRepresentable {
         g.style = .regular
         let a = 0.12 + frostiness * 0.32
         g.tintColor = light
-            ? NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.96, alpha: a)
-            : NSColor(calibratedRed: 0.06, green: 0.07, blue: 0.10, alpha: a)
+            ? Theme.backdropLightNS.withAlphaComponent(a)
+            : Theme.backdropDarkNS.withAlphaComponent(a)
     }
 }
 
