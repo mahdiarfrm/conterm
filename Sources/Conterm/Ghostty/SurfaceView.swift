@@ -326,13 +326,11 @@ extension Ghostty {
             // ProMotion refresh rates automatically.
             guard #available(macOS 14, *) else { return }
             let link = displayLink(target: self, selector: #selector(scrollTick))
-            // Cap at 30Hz. A Metal commit per draw is real work; 30fps
-            // already reads as fluid for scrollback and halves the
-            // scroll-time GPU cost vs an uncapped 60Hz (quartered vs
-            // 120Hz ProMotion).
-            link.preferredFrameRateRange = CAFrameRateRange(minimum: 15,
-                                                             maximum: 30,
-                                                             preferred: 30)
+            // Native refresh, uncapped: scrolling is attended interaction,
+            // and the link only lives for the scroll + a 0.6 s tail, so
+            // full-rate presents cost a burst, not a budget. Sustained
+            // (ambient) output stays coalesced elsewhere — frames are
+            // spent on interaction, saved on ambience.
             link.add(to: .main, forMode: .common)
             displayLink = link
         }
