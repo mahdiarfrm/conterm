@@ -590,6 +590,12 @@ final class PaneBox: NSView {
         super.layout()
         let solid = prefs.opaquePanes
         layer?.backgroundColor = NSColor.clear.cgColor
+        // Manually-added sublayers get CA's default implicit actions
+        // (AppKit only suppresses them for the view's own backing
+        // layer); without the guard the tile trails the pane frame by
+        // 0.25 s through divider drags and live resize.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         tileGradient.isHidden = !solid
         tileGrain.isHidden = !solid
         tileTopLight.isHidden = !solid
@@ -599,6 +605,7 @@ final class PaneBox: NSView {
         tileTopLight.frame = CGRect(x: Theme.paneCorner, y: 0,
                                     width: max(0, bounds.width - Theme.paneCorner * 2),
                                     height: 1)
+        CATransaction.commit()
         host.frame = bounds.insetBy(dx: 1, dy: 1)
         chrome.frame = bounds
     }
