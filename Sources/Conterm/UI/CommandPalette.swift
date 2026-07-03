@@ -586,9 +586,6 @@ struct CommandPalette: View {
             toggle("commandAlerts", "Command alerts",
                    "osc 133 result badge notification finished", .panes, "bell.badge",
                    prefs.commandAlerts) { prefs.commandAlerts = $0 },
-            toggle("agentPillLite", "Lite agent pill",
-                   "reduce animation claude opencode performance", .panes, "sparkle",
-                   prefs.agentPillLite) { prefs.agentPillLite = $0 },
             toggle("lowPowerRendering", "Low power rendering",
                    "vsync battery performance idle", .panes, "bolt.badge.automatic",
                    prefs.lowPowerRendering) {

@@ -14,7 +14,12 @@ import Foundation
 ///   selected, falling back to first)
 @MainActor
 enum SessionStore {
+    /// Test seam: when set, all IO happens at this path instead of the
+    /// real sessions.json.
+    static var pathOverride: String?
+
     static var path: String {
+        if let pathOverride { return pathOverride }
         let home = NSHomeDirectory()
         return "\(home)/.config/conterm/sessions.json"
     }
@@ -130,10 +135,16 @@ enum SessionStore {
                 selectedIndex: selected
             ))
         }
-        // Atomic write. Skip if there's nothing to remember (don't
-        // clobber a previous snapshot with an empty one when the user
-        // closes everything and just quits).
+        // Skip if there's nothing to remember (don't clobber a previous
+        // snapshot with an empty one when the user closes everything and
+        // just quits).
         guard !snap.windows.isEmpty else { return }
+        write(snap)
+    }
+
+    /// Encode + atomically write a snapshot. The IO half of `save`,
+    /// split out so the round-trip is exercisable without live windows.
+    static func write(_ snap: Snapshot) {
         let dir = (path as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir,
                                                   withIntermediateDirectories: true)

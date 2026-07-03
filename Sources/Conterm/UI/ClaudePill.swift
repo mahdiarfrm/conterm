@@ -30,11 +30,15 @@ struct AgentPill: View {
     private var attention: Bool { status.phase == .attention }
     private var windowIsKey: Bool { activeState == .key }
 
-    /// Reduce-motion request: drop the sweep, per-frame blur halo, mark
-    /// spin and glow shadow — the dominant GPU cost over a long working
-    /// session — keeping only the flat bed + a static rim. Forced on
-    /// while the system reports power/thermal pressure.
-    private var lite: Bool { prefs.agentPillLite || systemLite }
+    /// System Reduce Motion: users who ask the OS for no motion get the
+    /// static ring.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The static-ring fallback. Not a user preference — the sweep is
+    /// compositor-cheap (see SweepRing) — but it still yields to the OS
+    /// Reduce Motion setting and to power/thermal pressure, which shed
+    /// the remaining per-frame compositing.
+    private var lite: Bool { reduceMotion || systemLite }
 
     var body: some View {
         HStack(spacing: 9) {

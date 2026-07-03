@@ -290,15 +290,6 @@ struct SettingsPanel: View {
                         }
                     }
                 }
-                SettingsRow(title: "Reduce agent-pill motion",
-                            subtitle: "Calm the agent status pill — no sweeping glow or mark spin. Its states still update.") {
-                    Toggle("", isOn: Binding(
-                        get: { prefs.agentPillLite },
-                        set: { prefs.agentPillLite = $0 }
-                    ).withSound())
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                }
                 SettingsRow(title: "Efficient rendering",
                             subtitle: "Redraw the terminal only when its output changes, not on every screen refresh — a big battery saver, especially with glass on. Fast scrolling may tear slightly. Relaunch to fully apply.") {
                     Toggle("", isOn: Binding(
