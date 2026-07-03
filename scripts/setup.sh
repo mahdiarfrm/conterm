@@ -6,57 +6,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-FORK_REPO="thdxg/ghostty"
+# Pin constants + shared helpers (kit_version, normalize_lib_prefix).
+source scripts/ghostty-pin.sh
+
 XCFRAMEWORK_DIR="GhosttyKit.xcframework"
-
-# Pinned GhosttyKit build. The fork publishes daily `build-YYYY-MM-DD`
-# releases and prunes them after a few weeks, so the pin can outlive its
-# download URL — keep a copy of the tarball somewhere durable. Bump the
-# pin deliberately (Conterm's key-encoding, occlusion, and selection
-# workarounds assume specific libghostty behavior; re-test them), never
-# by tracking the fork's latest release. Override with GHOSTTY_KIT_TAG
-# only while validating a new pin.
-GHOSTTY_KIT_TAG="${GHOSTTY_KIT_TAG:-build-2026-07-01}"
-# Version string embedded in the pinned static library; drift detection.
-GHOSTTY_KIT_VERSION="1.3.2-main-+24c5671"
-# Durable mirror of the pinned tarball, attached to a Conterm release —
-# the fork prunes its daily tags after a few weeks, so the pin must not
-# depend on the upstream URL surviving. When bumping the pin: attach the
-# new tarball to a release (gh release upload) and update this URL with
-# the other two constants.
-GHOSTTY_KIT_MIRROR="https://github.com/mahdiarfrm/conterm/releases/download/v3.2.2/GhosttyKit-${GHOSTTY_KIT_TAG}.tar.gz"
-
-# Embedded `<semver>-<branch>-+<commit>` marker in the macOS slice's
-# static library (name varies across fork builds: libghostty.a,
-# libghostty-internal.a, …).
-kit_version() {
-    local lib
-    lib=$(ls "$1"/macos-arm64_x86_64/lib*.a 2>/dev/null | head -1)
-    [[ -n "$lib" ]] || return 0
-    strings -a "$lib" 2>/dev/null \
-        | grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+-.*\+[0-9a-f]{7,}$' || true
-}
-
-# SwiftPM requires a binary target's static libraries to be lib-prefixed;
-# newer fork builds ship the macOS slice as `ghostty-internal.a`. Rename
-# it and keep the xcframework manifest in sync.
-normalize_lib_prefix() {
-    local slice="$1/macos-arm64_x86_64"
-    [[ -f "$slice/ghostty-internal.a" ]] || return 0
-    mv "$slice/ghostty-internal.a" "$slice/libghostty-internal.a"
-    python3 - "$1/Info.plist" <<'PY'
-import plistlib, sys
-path = sys.argv[1]
-with open(path, "rb") as f:
-    d = plistlib.load(f)
-for lib in d.get("AvailableLibraries", []):
-    if lib.get("LibraryPath") == "ghostty-internal.a":
-        lib["LibraryPath"] = "libghostty-internal.a"
-with open(path, "wb") as f:
-    plistlib.dump(d, f)
-PY
-    echo "OK: renamed ghostty-internal.a -> libghostty-internal.a (SwiftPM lib prefix)"
-}
 
 if [[ -d "$XCFRAMEWORK_DIR" ]]; then
     FOUND=$(kit_version "$XCFRAMEWORK_DIR")
@@ -70,16 +23,16 @@ if [[ -d "$XCFRAMEWORK_DIR" ]]; then
         rm -rf "$XCFRAMEWORK_DIR"
     else
         echo "WARN: local GhosttyKit.xcframework is '${FOUND:-unknown}' but the pin is '${GHOSTTY_KIT_VERSION}'." >&2
-        echo "WARN: either restore the pinned build or update the pin constants in scripts/setup.sh." >&2
+        echo "WARN: either restore the pinned build or update the pin constants in scripts/ghostty-pin.sh." >&2
     fi
 fi
 
 if [[ ! -d "$XCFRAMEWORK_DIR" ]]; then
-    URL="https://github.com/${FORK_REPO}/releases/download/${GHOSTTY_KIT_TAG}/GhosttyKit.xcframework.tar.gz"
+    URL="https://github.com/${GHOSTTY_KIT_REPO}/releases/download/${GHOSTTY_KIT_TAG}/GhosttyKit.xcframework.tar.gz"
 
     echo "Downloading GhosttyKit.xcframework (${GHOSTTY_KIT_TAG}) …"
     if ! curl -fL --progress-bar -o GhosttyKit.xcframework.tar.gz "$URL"; then
-        echo "WARN: ${GHOSTTY_KIT_TAG} is not downloadable from ${FORK_REPO} (daily releases get pruned); trying the mirror." >&2
+        echo "WARN: ${GHOSTTY_KIT_TAG} is not downloadable from ${GHOSTTY_KIT_REPO} (daily releases get pruned); trying the mirror." >&2
         if ! curl -fL --progress-bar -o GhosttyKit.xcframework.tar.gz "$GHOSTTY_KIT_MIRROR"; then
             echo "ERROR: the mirror is unavailable too." >&2
             echo "ERROR: restore the tarball from a local/archived copy, or pick a retained tag" >&2

@@ -20,13 +20,13 @@ jobs:
       - uses: actions/checkout@v4
 
       # The GhosttyKit pin can outlive its download URL (the fork prunes
-      # daily builds), so cache the extracted xcframework. Keyed on
-      # setup.sh: bumping the pin constants invalidates the cache.
+      # daily builds), so cache the extracted xcframework. Keyed on the
+      # fetch script + the pin file: bumping either invalidates the cache.
       - name: Cache GhosttyKit.xcframework
         uses: actions/cache@v4
         with:
           path: GhosttyKit.xcframework
-          key: ghosttykit-${{ hashFiles('scripts/setup.sh') }}
+          key: ghosttykit-${{ hashFiles('scripts/setup.sh', 'scripts/ghostty-pin.sh') }}
 
       # Ghostty.app is not installed on the runner; setup.sh warns and
       # skips the shell-integration/terminfo/default-conf refresh, which

@@ -27,3 +27,4 @@ conterm_video/
 /docs/REMAINING.md
 conterm-monitor-*.log
 archive/
+.build-ghostty/
