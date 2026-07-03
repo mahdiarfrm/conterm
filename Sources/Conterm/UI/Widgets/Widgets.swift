@@ -163,7 +163,13 @@ struct ClockWidget: View {
         }
     }
 
+    /// DateFormatter construction is expensive (locale load) and this
+    /// runs on every TimelineView tick — cache one formatter per
+    /// (24-hour, seconds) combination instead.
+    @MainActor private static var timeCache: [String: DateFormatter] = [:]
     private var timeFormatter: DateFormatter {
+        let key = "\(prefs.clock24Hour)/\(prefs.clockShowSeconds)"
+        if let cached = Self.timeCache[key] { return cached }
         let f = DateFormatter()
         f.locale = .current
         if prefs.clock24Hour {
@@ -171,6 +177,7 @@ struct ClockWidget: View {
         } else {
             f.setLocalizedDateFormatFromTemplate(prefs.clockShowSeconds ? "hmmss" : "hmm")
         }
+        Self.timeCache[key] = f
         return f
     }
     private static let date: DateFormatter = {
