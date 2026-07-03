@@ -253,7 +253,7 @@ struct WelcomeWizard: View {
     @State private var navDirection: Int = 1   // +1 forward, -1 back
 
     @State private var configChoice: ConfigChoice = .useDirectly
-    @State private var pickedSolidGlass = false
+    @State private var pickedGlassMode: Preferences.GlassMode = .glass
     @State private var pickedOpaquePanes = true
     @State private var pickedGlassPanels = false
     @State private var pickedEfficientRendering = true
@@ -306,7 +306,7 @@ struct WelcomeWizard: View {
             // If Ghostty isn't installed, importing isn't an option —
             // default to a clean start.
             if !ghosttyPresent { configChoice = .fresh }
-            pickedSolidGlass = prefs.solidGlass
+            pickedGlassMode = prefs.glassMode
             pickedOpaquePanes = prefs.opaquePanes
             pickedGlassPanels = prefs.liquidGlassPanels
             pickedEfficientRendering = prefs.lowPowerRendering
@@ -691,13 +691,14 @@ struct WelcomeWizard: View {
                 Text("Window")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
-                Picker("", selection: $pickedSolidGlass.withSound()) {
-                    Text("Glass").tag(false)
-                    Text("Solid").tag(true)
+                Picker("", selection: $pickedGlassMode.withSound()) {
+                    Text("Glass").tag(Preferences.GlassMode.glass)
+                    Text("Blur").tag(Preferences.GlassMode.blur)
+                    Text("Solid").tag(Preferences.GlassMode.solid)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                Text("The window is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Solid turns it off for an opaque window.")
+                Text("The window is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Blur is the classic frosted material; Solid is a fully opaque window.")
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -859,7 +860,7 @@ struct WelcomeWizard: View {
 
     private func finish(applyConfig: Bool) {
         if applyConfig {
-            prefs.solidGlass            = pickedSolidGlass
+            prefs.glassMode             = pickedGlassMode
             prefs.opaquePanes           = pickedOpaquePanes
             prefs.liquidGlassPanels     = pickedGlassPanels
             prefs.lowPowerRendering     = pickedEfficientRendering

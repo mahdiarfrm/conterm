@@ -32,6 +32,20 @@ extension CommandPalette {
                 })
             return Item(kw: kw, section: section, cmd: cmd)
         }
+        // Window mode is tri-state (glass / blur / solid), so the row
+        // cycles through the modes — every mode stays reachable from
+        // the search, and no mode is silently discarded on a round trip.
+        func windowModeItem() -> Item {
+            let mode = prefs.glassMode
+            let all = Preferences.GlassMode.allCases
+            let next = all[(all.firstIndex(of: mode)! + 1) % all.count]
+            let cmd = Command(
+                id: "set.glassMode", icon: "macwindow", title: "Window mode",
+                subtitle: "Settings · Appearance · \(mode.rawValue.capitalized) — ↩ switches to \(next.rawValue.capitalized)",
+                shortcut: "", run: { [prefs] in prefs.glassMode = next })
+            return Item(kw: "glass blur solid opaque window mode frost flat",
+                        section: .appearance, cmd: cmd)
+        }
 
         let items: [Item] = [
             // Appearance
@@ -42,9 +56,7 @@ extension CommandPalette {
                    prefs.themeFromConfig) { prefs.themeFromConfig = $0 },
             toggle("lightGlass", "Light glass", "appearance white tint mode bright",
                    .appearance, "sun.max", prefs.lightGlass) { prefs.lightGlass = $0 },
-            toggle("solidGlass", "Solid mode (no glass)",
-                   "opaque disable glass flat window", .appearance, "square.fill",
-                   prefs.solidGlass) { prefs.solidGlass = $0 },
+            windowModeItem(),
             toggle("liquidGlassPanels", "Liquid glass panels",
                    "frosted overlay command palette settings", .appearance, "drop.fill",
                    prefs.liquidGlassPanels) { prefs.liquidGlassPanels = $0 },
@@ -140,5 +152,4 @@ extension CommandPalette {
             || item.section.label.lowercased().contains(ql)
         }.map(\.cmd)
     }
-
 }

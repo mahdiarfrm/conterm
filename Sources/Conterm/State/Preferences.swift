@@ -105,24 +105,17 @@ final class Preferences: ObservableObject {
     /// How the window dresses behind the panes.
     /// - `glass`: one sheet of real Liquid Glass over the desktop.
     /// - `blur`: the classic behind-window frosted material
-    ///   (`NSVisualEffectView`). The window stays non-opaque, but
-    ///   WindowServer caches the blurred desktop instead of re-lensing
-    ///   a live material, so it sits between glass and solid in cost.
-    /// - `solid`: opaque window, no glass anywhere — the full power
-    ///   lever (skips WindowServer's per-present re-blend entirely).
-    ///   Drives the window's opacity in `WindowController`.
+    ///   (`NSVisualEffectView`).
+    /// - `solid`: opaque window, no glass anywhere. Drives the window's
+    ///   opacity in `WindowController`.
+    /// The three measure power-equivalent (docs/POWER-TESTS-2026-07.md
+    /// §1) — the choice is purely visual. Tri-state on purpose: no bool
+    /// facade, so a writer can never collapse `.blur` into another mode.
     enum GlassMode: String, CaseIterable {
         case glass, blur, solid
     }
     @Published var glassMode: GlassMode {
         didSet { ud.set(glassMode.rawValue, forKey: K.glassMode) }
-    }
-    /// Opaque-vs-not view of `glassMode` for call sites that only make
-    /// that distinction (wizard picker, palette toggle). Setting false
-    /// returns to `.glass`.
-    var solidGlass: Bool {
-        get { glassMode == .solid }
-        set { glassMode = newValue ? .solid : .glass }
     }
     /// Use real Liquid Glass (macOS 26 `NSGlassEffectView`) for the modal
     /// overlay panels — Command Palette, Search, Settings, Notifications,

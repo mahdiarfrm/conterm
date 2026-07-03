@@ -84,7 +84,7 @@ struct AppView: View {
     /// tiles, so glass only ever shows where there's no terminal under it
     /// (the top bar + the gaps between panes). It samples the *static*
     /// desktop — never the streaming terminal — so it composites once and
-    /// stays free, clear or frosted (`prefs.glassiness`). `solidGlass`
+    /// stays free, clear or frosted (`prefs.glassiness`). Solid mode
     /// swaps it for a plain opaque backdrop.
     @ViewBuilder
     private var backdrop: some View {
