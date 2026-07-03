@@ -57,19 +57,11 @@ extension CommandPalette {
 
     /// Caption that heads the omni "Recently used" band.
     func omniSectionLabel(_ text: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 9, weight: .semibold))
-            Text(text)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .textCase(.uppercase)
-                .kerning(0.5)
-            Spacer()
-        }
-        .foregroundStyle(Theme.textSecondary)
-        .padding(.horizontal, 10)
-        .padding(.top, 4)
-        .padding(.bottom, 2)
+        PaletteSectionCaption(text: text, icon: "clock.arrow.circlepath",
+                              uppercased: true)
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .padding(.bottom, 2)
     }
 
     /// Hairline between the top picks and the latest-used list.
@@ -648,10 +640,6 @@ extension CommandPalette {
                 "cursor \(shellQuote(cwd)) 2>/dev/null || open -a Cursor \(shellQuote(cwd))"]
             try? task.run()
         }
-    }
-
-    func shellQuote(_ s: String) -> String {
-        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
 }

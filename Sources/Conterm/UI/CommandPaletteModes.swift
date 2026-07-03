@@ -461,20 +461,6 @@ extension CommandPalette {
         }
     }
 
-    /// Friendly label used by SessionRowView. Shadows the same logic
-    /// in TerminalContainer (kept in sync — small helper).
-    @MainActor
-    func friendlyDirLabel(for cwd: String?) -> String {
-        guard let cwd, !cwd.isEmpty else { return "—" }
-        let home = NSHomeDirectory()
-        var p = cwd
-        if p == home { return "~" }
-        if p.hasPrefix(home + "/") { p = "~" + p.dropFirst(home.count) }
-        let parts = p.split(separator: "/").map(String.init)
-        if parts.count <= 3 { return p }
-        return ".../" + parts.suffix(2).joined(separator: "/")
-    }
-
     // MARK: - Shell history mode
 
     /// Loaded once at palette open from `~/.zsh_history` / `~/.bash_history`.
@@ -655,10 +641,7 @@ extension CommandPalette {
     }
 
     func sshSectionHeader(_ label: String) -> some View {
-        Text(label)
-            .font(.system(size: 10, weight: .semibold, design: .rounded))
-            .foregroundStyle(Theme.textSecondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        PaletteSectionCaption(text: label)
             .padding(.horizontal, 12)
             .padding(.top, 8)
             .padding(.bottom, 4)

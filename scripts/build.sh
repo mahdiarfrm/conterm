@@ -121,8 +121,8 @@ if [[ "${PROFILE:-0}" == "1" ]]; then
 fi
 # Explicit designated requirement: TCC matches apps by their designated
 # requirement, and an ad-hoc signature's default DR is the per-build
-# cdhash — so every rebuild used to re-prompt for folder access. Pinning
-# the DR to the bundle identifier keeps privacy approvals across builds.
+# cdhash, which would re-prompt for folder access on every rebuild.
+# Pinning the DR to the bundle identifier keeps approvals across builds.
 DR='designated => identifier "app.conterm.Conterm"'
 if codesign --force --sign - \
     --identifier app.conterm.Conterm \

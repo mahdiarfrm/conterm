@@ -213,16 +213,12 @@ private func restoreCommandLine(resumeSession: String?,
                                 scrollback: String?, cwd: String?) -> String? {
     if let id = resumeSession, !id.isEmpty {
         let dir = cwd ?? NSHomeDirectory()
-        return "cd \(shellSingleQuote(dir)) && claude --resume \(shellSingleQuote(id))"
+        return "cd \(shellQuote(dir)) && claude --resume \(shellQuote(id))"
     }
     if let sb = scrollback, !sb.isEmpty, let path = writeRestoreScrollback(sb) {
-        return "cat \(shellSingleQuote(path)) && rm -f \(shellSingleQuote(path))"
+        return "cat \(shellQuote(path)) && rm -f \(shellQuote(path))"
     }
     return nil
-}
-
-private func shellSingleQuote(_ s: String) -> String {
-    "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }
 
 /// Write the saved scrollback to a cache file for the restore `cat` to print.
