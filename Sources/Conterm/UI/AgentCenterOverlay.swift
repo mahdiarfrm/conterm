@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import SwiftUI
 
 // MARK: - Cheap panel background
@@ -249,7 +250,7 @@ private struct AddAgentMenu: View {
                 }
             }
             Button { open("opencode") } label: {
-                if let mark = Self.menuMark("opencode-mark") {
+                if let mark = Self.menuMark("opencode-mark", luminanceMask: true) {
                     Label { Text("New opencode agent…") } icon: { Image(nsImage: mark) }
                 } else {
                     Label("New opencode agent…",
@@ -274,9 +275,15 @@ private struct AddAgentMenu: View {
     /// menu glyphs are monochrome by convention, and templating keeps
     /// both marks legible on light and dark menus. Pre-sizing matters —
     /// the bridged NSMenuItem draws the NSImage at its point size.
-    private static func menuMark(_ asset: String) -> NSImage? {
-        guard let src = MarkImage.load(asset, template: true),
+    /// `luminanceMask` handles artwork with an opaque background (the
+    /// opencode mark is a white glyph on a solid dark tile, so its alpha
+    /// is a full square): the glyph's brightness becomes the alpha the
+    /// template renders.
+    private static func menuMark(_ asset: String,
+                                 luminanceMask: Bool = false) -> NSImage? {
+        guard var src = MarkImage.load(asset, template: !luminanceMask),
               src.size.height > 0 else { return nil }
+        if luminanceMask, let masked = luminanceGlyph(src) { src = masked }
         let h: CGFloat = 15
         let w = src.size.width / src.size.height * h
         let sized = NSImage(size: NSSize(width: w, height: h), flipped: false) { rect in
@@ -285,6 +292,25 @@ private struct AddAgentMenu: View {
         }
         sized.isTemplate = true
         return sized
+    }
+
+    /// Luminance → alpha: bright pixels become opaque, the dark tile
+    /// becomes transparent, leaving just the glyph for templating.
+    private static func luminanceGlyph(_ src: NSImage) -> NSImage? {
+        var rect = CGRect(origin: .zero, size: src.size)
+        guard let cg = src.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+        else { return nil }
+        let ci = CIImage(cgImage: cg)
+        guard let mono = CIFilter(name: "CIColorControls") else { return nil }
+        mono.setValue(ci, forKey: kCIInputImageKey)
+        mono.setValue(0, forKey: kCIInputSaturationKey)
+        guard let gray = mono.outputImage,
+              let toAlpha = CIFilter(name: "CIMaskToAlpha") else { return nil }
+        toAlpha.setValue(gray, forKey: kCIInputImageKey)
+        guard let out = toAlpha.outputImage,
+              let result = CIContext().createCGImage(out, from: out.extent)
+        else { return nil }
+        return NSImage(cgImage: result, size: src.size)
     }
 
     private func open(_ tool: String) {
