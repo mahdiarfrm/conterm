@@ -109,8 +109,18 @@ echo "==> ad-hoc codesign"
 # choke. Otherwise we get "resource fork, Finder information, or
 # similar detritus not allowed" on subsequent re-signs.
 xattr -cr "$APP"
+# PROFILE=1: grant the task port so Instruments / xctrace can attach
+# and sample (hardened runtime denies it otherwise). Never ship a
+# profile build — debugger access to the process is a security hole.
+ENTITLEMENTS=Resources/Conterm.entitlements
+if [[ "${PROFILE:-0}" == "1" ]]; then
+    ENTITLEMENTS=$(mktemp -t conterm-profile-entitlements)
+    plutil -convert xml1 -o "$ENTITLEMENTS" Resources/Conterm.entitlements
+    plutil -insert 'com\.apple\.security\.get-task-allow' -bool true "$ENTITLEMENTS"
+    echo "PROFILE build: get-task-allow granted (Instruments can attach)"
+fi
 if codesign --force --sign - \
-    --entitlements Resources/Conterm.entitlements \
+    --entitlements "$ENTITLEMENTS" \
     --options runtime \
     "$APP"; then
     echo "OK: signed with entitlements + hardened runtime"
