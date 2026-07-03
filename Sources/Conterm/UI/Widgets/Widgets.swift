@@ -145,7 +145,7 @@ struct ClockWidget: View {
         // TimelineView drives the refresh — no manual timer, and it pauses
         // when the view isn't visible.
         TimelineView(.periodic(from: .now, by: prefs.clockShowSeconds ? 1 : 30)) { ctx in
-            WidgetShell(compact: compact, help: Self.full.string(from: ctx.date), onTap: {}) {
+            WidgetShell(compact: compact, help: fullFormatter.string(from: ctx.date), onTap: {}) {
                 HStack(spacing: compact ? 4 : 5) {
                     widgetIcon("clock", compact: compact)
                     Text(timeFormatter.string(from: ctx.date))
@@ -153,7 +153,7 @@ struct ClockWidget: View {
                         .foregroundStyle(Theme.textPrimary)
                         .monospacedDigit()
                     if prefs.clockShowDate {
-                        Text(Self.date.string(from: ctx.date))
+                        Text(dateFormatter.string(from: ctx.date))
                             .font(.system(size: compact ? 9 : 9.5, design: .rounded))
                             .foregroundStyle(Theme.textSecondary)
                             .monospacedDigit()
@@ -163,29 +163,45 @@ struct ClockWidget: View {
         }
     }
 
-    /// DateFormatter construction is expensive (locale load) and this
-    /// runs on every TimelineView tick — cache one formatter per
-    /// (24-hour, seconds) combination instead.
+    /// DateFormatter construction is expensive (locale load) and these
+    /// run on every TimelineView tick — cache one formatter per format.
+    /// A formatter bakes its locale (and localized pattern) at creation,
+    /// so a system locale/region change drops the whole cache; the time
+    /// zone is resolved at format time and needs no invalidation.
     @MainActor private static var timeCache: [String: DateFormatter] = [:]
-    private var timeFormatter: DateFormatter {
-        let key = "\(prefs.clock24Hour)/\(prefs.clockShowSeconds)"
-        if let cached = Self.timeCache[key] { return cached }
+    @MainActor private static let localeObserver: NSObjectProtocol =
+        NotificationCenter.default.addObserver(
+            forName: NSLocale.currentLocaleDidChangeNotification,
+            object: nil, queue: .main
+        ) { _ in MainActor.assumeIsolated { timeCache.removeAll() } }
+
+    @MainActor
+    private static func cachedFormatter(_ key: String,
+                                        _ build: (DateFormatter) -> Void) -> DateFormatter {
+        _ = localeObserver
+        if let cached = timeCache[key] { return cached }
         let f = DateFormatter()
         f.locale = .current
-        if prefs.clock24Hour {
-            f.dateFormat = prefs.clockShowSeconds ? "HH:mm:ss" : "HH:mm"
-        } else {
-            f.setLocalizedDateFormatFromTemplate(prefs.clockShowSeconds ? "hmmss" : "hmm")
-        }
-        Self.timeCache[key] = f
+        build(f)
+        timeCache[key] = f
         return f
     }
-    private static let date: DateFormatter = {
-        let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("EEEMMMd"); return f
-    }()
-    private static let full: DateFormatter = {
-        let f = DateFormatter(); f.dateStyle = .full; f.timeStyle = .medium; return f
-    }()
+
+    private var timeFormatter: DateFormatter {
+        Self.cachedFormatter("time/\(prefs.clock24Hour)/\(prefs.clockShowSeconds)") { f in
+            if prefs.clock24Hour {
+                f.dateFormat = prefs.clockShowSeconds ? "HH:mm:ss" : "HH:mm"
+            } else {
+                f.setLocalizedDateFormatFromTemplate(prefs.clockShowSeconds ? "hmmss" : "hmm")
+            }
+        }
+    }
+    private var dateFormatter: DateFormatter {
+        Self.cachedFormatter("date") { $0.setLocalizedDateFormatFromTemplate("EEEMMMd") }
+    }
+    private var fullFormatter: DateFormatter {
+        Self.cachedFormatter("full") { $0.dateStyle = .full; $0.timeStyle = .medium }
+    }
 }
 
 // MARK: - Battery
