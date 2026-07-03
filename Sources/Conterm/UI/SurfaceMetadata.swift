@@ -123,7 +123,8 @@ let localHostnames: Set<String> = {
     // can perform blocking DNS resolution.
     var buf = [CChar](repeating: 0, count: 256)
     if gethostname(&buf, buf.count) == 0 {
-        add(String(cString: buf))
+        let bytes = buf.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }
+        add(String(decoding: bytes, as: UTF8.self))
     }
 
     return names
