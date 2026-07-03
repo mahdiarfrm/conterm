@@ -109,8 +109,20 @@ struct AppView: View {
             // there's nothing to flatten for power. The genuine savers are
             // the opaque mode above, renderer occlusion-pause when hidden,
             // and a clear Frost.
-            LiquidGlassBackdrop(glassiness: prefs.glassiness,
-                                light: prefs.lightGlass)
+            if prefs.coolGlass {
+                // Opaque-window glass: the sheet lenses a static snapshot
+                // of the wallpaper painted inside the window instead of
+                // the desktop behind it, so the window can be opaque (see
+                // Preferences.coolGlass).
+                ZStack {
+                    WallpaperUnderlay().ignoresSafeArea()
+                    LiquidGlassBackdrop(glassiness: prefs.glassiness,
+                                        light: prefs.lightGlass)
+                }
+            } else {
+                LiquidGlassBackdrop(glassiness: prefs.glassiness,
+                                    light: prefs.lightGlass)
+            }
         }
     }
 
