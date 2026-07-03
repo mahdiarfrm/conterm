@@ -3,16 +3,16 @@ import SwiftUI
 
 /// The agent pill's working sweep as a pure Core Animation construction.
 ///
-/// The SwiftUI version animated an `AngularGradient`'s angle, which
-/// changes the layer's CONTENTS every frame — CoreGraphics re-shades the
-/// conic per frame even under `drawingGroup()`, and that re-render was
-/// the dominant app-side cost while an agent works. Here the conic
-/// gradient is STATIC content on a `CAGradientLayer`, and only its
-/// `transform.rotation.z` animates — a compositor-side transform of
-/// unchanged pixels, the same trick that makes the mark spin free. The
-/// glow is baked as stacked stroke masks at growing widths and falling
-/// opacities instead of a live blur filter, so nothing re-renders while
-/// the ring sweeps.
+/// Two costs shaped this design. App-side: animating a SwiftUI
+/// `AngularGradient`'s angle (or any SwiftUI `repeatForever`) re-renders
+/// the hosting view's graph every frame on macOS — so the motion lives
+/// entirely in CA, driven by one `transform.rotation.z` animation.
+/// Compositor-side: procedural gradient layers and stacked masks made
+/// WindowServer re-render several offscreen passes per frame — so the
+/// conic gradient is pre-rendered ONCE into a static texture, and the
+/// capsule ring with its whole glow falloff is baked into ONE feathered
+/// mask image. Per frame the render server rotates one unchanged
+/// texture through one unchanged mask.
 struct SweepRing: NSViewRepresentable {
     var color: Color
 
@@ -29,80 +29,33 @@ struct SweepRing: NSViewRepresentable {
 
 final class SweepRingView: NSView {
     var glowColor: NSColor = .orange {
-        didSet { if glowColor != oldValue { rebuildColors() } }
+        didSet { if glowColor != oldValue { rebuild() } }
     }
 
-    /// Ring pass widths/opacities: the tight bright stroke plus two
-    /// soft halos standing in for the old blur glow.
-    private static let passes: [(width: CGFloat, opacity: Float)] = [
+    /// Ring passes baked into the mask alpha: tight bright stroke plus
+    /// two soft halos standing in for a blur glow.
+    private static let passes: [(width: CGFloat, alpha: CGFloat)] = [
         (2.2, 1.0), (5.0, 0.34), (9.0, 0.15),
     ]
 
-    private var wrappers: [CALayer] = []
-    private var gradients: [CAGradientLayer] = []
-    private var masks: [CAShapeLayer] = []
+    private let rotor = CALayer()
+    private let ringMask = CALayer()
     private var lastSize: CGSize = .zero
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        for pass in Self.passes {
-            let wrapper = CALayer()
-            let mask = CAShapeLayer()
-            mask.fillColor = NSColor.clear.cgColor
-            mask.strokeColor = NSColor.white.cgColor
-            mask.lineWidth = pass.width
-            wrapper.mask = mask
-            wrapper.opacity = pass.opacity
-
-            let gradient = CAGradientLayer()
-            gradient.type = .conic
-            gradient.startPoint = CGPoint(x: 0.5, y: 0.5)
-            gradient.endPoint = CGPoint(x: 1.0, y: 0.5)
-            wrapper.addSublayer(gradient)
-
-            layer?.addSublayer(wrapper)
-            wrappers.append(wrapper)
-            gradients.append(gradient)
-            masks.append(mask)
-        }
-        rebuildColors()
+        layer?.mask = ringMask
+        layer?.addSublayer(rotor)
     }
 
     required init?(coder: NSCoder) { nil }
-
-    /// Mirrors the old AngularGradient stops: dark tail → glow → white
-    /// bead → glow → dark.
-    private func rebuildColors() {
-        let g = glowColor.cgColor
-        let clear = glowColor.withAlphaComponent(0).cgColor
-        for gradient in gradients {
-            gradient.colors = [clear, clear, g, NSColor.white.cgColor, g, clear]
-            gradient.locations = [0, 0.55, 0.78, 0.84, 0.90, 1.0]
-        }
-    }
 
     override func layout() {
         super.layout()
         guard bounds.size != lastSize, bounds.width > 0, bounds.height > 0 else { return }
         lastSize = bounds.size
-
-        let capsule = CGPath(roundedRect: bounds.insetBy(dx: 1, dy: 1),
-                             cornerWidth: (bounds.height - 2) / 2,
-                             cornerHeight: (bounds.height - 2) / 2,
-                             transform: nil)
-        // The gradient square must cover the bounds at any rotation.
-        let side = hypot(bounds.width, bounds.height)
-        let gradientFrame = CGRect(x: bounds.midX - side / 2,
-                                   y: bounds.midY - side / 2,
-                                   width: side, height: side)
-        for i in wrappers.indices {
-            wrappers[i].frame = bounds
-            masks[i].frame = bounds
-            masks[i].path = capsule
-            gradients[i].frame = gradientFrame
-        }
-        restartAnimation()
+        rebuild()
     }
 
     override func viewDidMoveToWindow() {
@@ -112,16 +65,90 @@ final class SweepRingView: NSView {
         if window != nil { restartAnimation() }
     }
 
+    private func rebuild() {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        let scale = window?.backingScaleFactor ?? 2
+
+        // The rotating texture must cover the bounds at any angle.
+        let side = hypot(bounds.width, bounds.height)
+        rotor.frame = CGRect(x: bounds.midX - side / 2,
+                             y: bounds.midY - side / 2,
+                             width: side, height: side)
+        rotor.contents = Self.conicImage(color: glowColor, side: side, scale: scale)
+
+        ringMask.frame = bounds
+        ringMask.contents = Self.ringImage(size: bounds.size, scale: scale)
+
+        restartAnimation()
+    }
+
     private func restartAnimation() {
-        for gradient in gradients {
-            gradient.removeAnimation(forKey: "sweep")
-            let spin = CABasicAnimation(keyPath: "transform.rotation.z")
-            spin.fromValue = 0
-            spin.toValue = -2 * Double.pi
-            spin.duration = 1.5
-            spin.repeatCount = .infinity
-            spin.isRemovedOnCompletion = false
-            gradient.add(spin, forKey: "sweep")
+        rotor.removeAnimation(forKey: "sweep")
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0
+        spin.toValue = -2 * Double.pi
+        spin.duration = 1.5
+        spin.repeatCount = .infinity
+        spin.isRemovedOnCompletion = false
+        // Sustained compositing is priced per frame: a continuous 60 fps
+        // animation holds WindowServer at ~25-30 points no matter how
+        // cheap each frame is. 30 fps still reads fluid for a glow sweep
+        // and halves that floor.
+        spin.preferredFrameRateRange = CAFrameRateRange(minimum: 24,
+                                                        maximum: 30,
+                                                        preferred: 30)
+        rotor.add(spin, forKey: "sweep")
+    }
+
+    /// Conic sweep texture, rendered once. Mirrors the old
+    /// AngularGradient stops: dark tail → glow → white bead → glow → dark.
+    private static func conicImage(color: NSColor, side: CGFloat,
+                                   scale: CGFloat) -> CGImage? {
+        let g = CAGradientLayer()
+        g.type = .conic
+        g.startPoint = CGPoint(x: 0.5, y: 0.5)
+        g.endPoint = CGPoint(x: 1.0, y: 0.5)
+        g.colors = [color.withAlphaComponent(0).cgColor,
+                    color.withAlphaComponent(0).cgColor,
+                    color.cgColor,
+                    NSColor.white.cgColor,
+                    color.cgColor,
+                    color.withAlphaComponent(0).cgColor]
+        g.locations = [0, 0.55, 0.78, 0.84, 0.90, 1.0]
+        let px = Int(side * scale)
+        g.frame = CGRect(x: 0, y: 0, width: px, height: px)
+        guard let ctx = CGContext(data: nil, width: px, height: px,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
+        else { return nil }
+        g.render(in: ctx)
+        return ctx.makeImage()
+    }
+
+    /// The capsule ring with its glow falloff baked into one alpha image
+    /// (used as a layer mask): a single offscreen pass per frame instead
+    /// of one per glow stroke.
+    private static func ringImage(size: CGSize, scale: CGFloat) -> CGImage? {
+        let w = Int(size.width * scale), h = Int(size.height * scale)
+        guard w > 0, h > 0,
+              let ctx = CGContext(data: nil, width: w, height: h,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)
+        else { return nil }
+        ctx.scaleBy(x: scale, y: scale)
+        let rect = CGRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)
+        let capsule = CGPath(roundedRect: rect,
+                             cornerWidth: rect.height / 2,
+                             cornerHeight: rect.height / 2,
+                             transform: nil)
+        for pass in passes {
+            ctx.addPath(capsule)
+            ctx.setStrokeColor(NSColor.white.withAlphaComponent(pass.alpha).cgColor)
+            ctx.setLineWidth(pass.width)
+            ctx.strokePath()
         }
+        return ctx.makeImage()
     }
 }

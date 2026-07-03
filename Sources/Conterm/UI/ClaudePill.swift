@@ -138,19 +138,14 @@ struct AgentPill: View {
                 // Template marks get tinted; designed artwork shows
                 // in its own colours.
                 .foregroundStyle(templated ? tint : Color.primary)
-                // Mark spins gently while thinking; skipped in lite
-                // mode and whenever this window isn't key, so a non-key
-                // pane drives no compositor work.
-                .rotationEffect(.degrees(
-                    (working && !lite && windowIsKey)
-                        ? sweep * 360 : 0))
+                // The mark does not spin: any SwiftUI repeatForever
+                // animation re-renders the hosting view's graph every
+                // frame on macOS — the SweepRing carries the working
+                // motion compositor-side instead.
         } else {
             Image(systemName: status.tool.fallbackSymbol)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(tint)
-                .rotationEffect(.degrees(
-                    (working && !lite && windowIsKey)
-                        ? sweep * 360 : 0))
         }
     }
 
@@ -215,10 +210,9 @@ struct AgentPill: View {
             return
         }
         if working {
+            // No SwiftUI-driven animation while working — the CA ring
+            // self-animates and per-frame ViewGraph churn is the cost.
             sweep = 0
-            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                sweep = 1
-            }
         } else if attention {
             pulse = false
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
