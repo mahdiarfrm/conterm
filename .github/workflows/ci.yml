@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & test
+    # macos-26 is the only hosted image with the macOS 26 SDK
+    # (NSGlassEffectView etc.); older images ship Xcode <= 16.
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # The GhosttyKit pin can outlive its download URL (the fork prunes
+      # daily builds), so cache the extracted xcframework. Keyed on
+      # setup.sh: bumping the pin constants invalidates the cache.
+      - name: Cache GhosttyKit.xcframework
+        uses: actions/cache@v4
+        with:
+          path: GhosttyKit.xcframework
+          key: ghosttykit-${{ hashFiles('scripts/setup.sh') }}
+
+      # Ghostty.app is not installed on the runner; setup.sh warns and
+      # skips the shell-integration/terminfo/default-conf refresh, which
+      # build+test don't need.
+      - name: Fetch GhosttyKit
+        run: bash scripts/setup.sh
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: bash scripts/test.sh
