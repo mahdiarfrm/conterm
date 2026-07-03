@@ -21,6 +21,7 @@ conterm_video/
 /scripts/conterm-monitor.sh
 /scripts/diag-wakeups.sh
 /docs/HEAT-AND-BATTERY.md
+/docs/POWER-TESTS-2026-07.md
 /docs/GLASS-REDESIGN.md
 /docs/WIP-AGENT-CENTER.md
 /docs/REMAINING.md
