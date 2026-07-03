@@ -117,15 +117,6 @@ final class Preferences: ObservableObject {
     @Published var glassMode: GlassMode {
         didSet { ud.set(glassMode.rawValue, forKey: K.glassMode) }
     }
-    /// Experiment: Liquid Glass over an OPAQUE window. Paints a static
-    /// snapshot of the desktop wallpaper beneath the glass sheet so the
-    /// material lenses the same picture the live desktop would show,
-    /// while the opaque window skips WindowServer's per-present
-    /// re-blend — glass look at Solid-mode compositor cost. No UI:
-    ///   defaults write app.conterm.Conterm conterm.coolGlass -bool true
-    @Published var coolGlass: Bool {
-        didSet { ud.set(coolGlass, forKey: K.coolGlass) }
-    }
     /// Opaque-vs-not view of `glassMode` for call sites that only make
     /// that distinction (wizard picker, palette toggle). Setting false
     /// returns to `.glass`.
@@ -364,7 +355,6 @@ final class Preferences: ObservableObject {
         static let themeFromConfig  = "conterm.themeFromConfig"
         static let solidGlass        = "conterm.solidGlass"   // pre-glassMode migration source
         static let glassMode         = "conterm.glassMode"
-        static let coolGlass         = "conterm.coolGlass"
         static let liquidGlassPanels = "conterm.liquidGlassPanels"
         static let sshCompatMode    = "conterm.sshCompatMode"
         static let agentPillLite    = "conterm.agentPillLite"
@@ -436,7 +426,6 @@ final class Preferences: ObservableObject {
         self.themeFromConfig        = ud.object(forKey: K.themeFromConfig) as? Bool ?? false
         self.glassMode              = GlassMode(rawValue: ud.string(forKey: K.glassMode) ?? "")
             ?? ((ud.object(forKey: K.solidGlass) as? Bool ?? false) ? .solid : .glass)
-        self.coolGlass              = ud.object(forKey: K.coolGlass) as? Bool ?? false
         self.liquidGlassPanels      = ud.object(forKey: K.liquidGlassPanels) as? Bool ?? false
         self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? false
         self.agentPillLite          = ud.object(forKey: K.agentPillLite) as? Bool ?? false
