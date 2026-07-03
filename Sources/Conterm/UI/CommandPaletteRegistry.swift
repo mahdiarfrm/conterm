@@ -99,11 +99,17 @@ extension CommandPalette {
 
     func refreshOmniSources() {
         refreshSSHRowsIfNeeded()
-        cachedCwdFiles = Self.loadRecentFiles(
-            in: state.selectedTab?.paneTree.activePane?.cwd)
+        // The cwd scan stats and sorts every directory entry — kept off
+        // the open path so a huge directory can't stall the palette
+        // mount; results land in the cache a beat later.
+        let cwd = state.selectedTab?.paneTree.activePane?.cwd
+        Task.detached(priority: .userInitiated) {
+            let files = Self.loadRecentFiles(in: cwd)
+            await MainActor.run { cachedCwdFiles = files }
+        }
     }
 
-    static func loadRecentFiles(in cwd: String?) -> [CwdFile] {
+    nonisolated static func loadRecentFiles(in cwd: String?) -> [CwdFile] {
         guard let cwd, !cwd.isEmpty else { return [] }
         guard let items = try? FileManager.default.contentsOfDirectory(
             at: URL(fileURLWithPath: cwd),
