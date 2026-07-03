@@ -46,6 +46,21 @@ extension Ghostty {
 
         required init?(coder: NSCoder) { nil }
 
+        /// The one PaneBox this host belongs to. A host may be re-boxed only
+        /// after its previous box is gone (weak ref cleared) — two live boxes
+        /// must never trade a host, that's the view recycling that detaches
+        /// the IOSurface. Debug-only (assert compiles out of release).
+        private weak var weldedBox: NSView?
+
+        override func viewWillMove(toSuperview newSuperview: NSView?) {
+            super.viewWillMove(toSuperview: newSuperview)
+            guard let newSuperview else { return }   // detach on close teardown
+            assert(newSuperview is PaneBox, "SurfaceHostView mounted outside a PaneBox")
+            assert(weldedBox == nil || weldedBox === newSuperview,
+                   "SurfaceHostView moved between live PaneBoxes — panes are reframed, never rebuilt")
+            weldedBox = newSuperview
+        }
+
         @objc private func hostFrameDidChange() {
             needsLayout = true
         }
@@ -163,6 +178,37 @@ extension Ghostty {
         }
 
         // MARK: - View lifecycle
+
+        /// libghostty welds the surface to this view (`ghostty_surface_new`
+        /// takes the NSView pointer), so for the surface's whole life the
+        /// view must stay inside its one SurfaceHostView and its one window.
+        /// Detaching is legal only once the handle is gone (close teardown
+        /// nils it before the deferred force-detach). Debug-only (assert
+        /// compiles out of release).
+        private weak var weldedHost: NSView?
+        private weak var weldedWindow: NSWindow?
+
+        override func viewWillMove(toSuperview newSuperview: NSView?) {
+            super.viewWillMove(toSuperview: newSuperview)
+            if let newSuperview {
+                assert(newSuperview is SurfaceHostView,
+                       "SurfaceView mounted outside a SurfaceHostView")
+                assert(weldedHost == nil || weldedHost === newSuperview,
+                       "SurfaceView reparented — the surface is welded to this view for life")
+                weldedHost = newSuperview
+            } else {
+                assert(controller?.handle == nil,
+                       "SurfaceView detached from its host while its surface is live")
+            }
+        }
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            super.viewWillMove(toWindow: newWindow)
+            guard let newWindow, controller?.handle != nil else { return }
+            assert(weldedWindow == nil || weldedWindow === newWindow,
+                   "SurfaceView moved between windows while its surface is live")
+            weldedWindow = newWindow
+        }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
