@@ -417,6 +417,30 @@ final class AppState: ObservableObject {
     /// becomes a no-op without tracking DispatchWorkItems.
     private var occlusionGeneration = 0
 
+    /// Vertical auto-hide: is the floating sidebar currently slid in?
+    /// Driven purely by left-edge / panel hover, never persisted. Lives
+    /// here (not view @State) because the pane deck must reorder below
+    /// the glass while the sidebar floats over the pane area.
+    @Published var sidebarRevealed = false
+
+    /// A modal overlay is on screen. The pane deck (each pane's child
+    /// window) orders below the glass parent while this holds, so the
+    /// overlay reads on top and the glass frosts the terminals behind it
+    /// (see WindowController.syncOverlayOrdering).
+    var overlayCoversPanes: Bool {
+        paletteOpen || settingsOpen || searchOpen || notificationsOpen
+            || agentCenterOpen || launchOverlayVisible
+            || renameTarget != nil || renameGroupID != nil
+            || sidebarRevealed
+    }
+
+    /// An overlay's text field owns the keyboard — nothing may claim
+    /// key/first-responder for a pane surface while this holds.
+    var overlayOwnsKeyboard: Bool {
+        paletteOpen || settingsOpen || searchOpen
+            || renameTarget != nil || renameGroupID != nil
+    }
+
     func syncSurfaceOcclusion() {
         let windowVisible = ownWindow?.occlusionState.contains(.visible) ?? true
         occlusionGeneration &+= 1
@@ -640,27 +664,27 @@ final class AppState: ObservableObject {
     }
 
     private func tryClaimFocus(targetPaneID: UUID) {
-        // Bail if any modal-ish overlay is currently open. Without this
-        // check, a focus retry scheduled by the *previous* close (e.g.
-        // closing search) can fire after the user has *re-opened* the
-        // overlay, pulling focus back to the surface and making typing
-        // land in the terminal instead of the overlay's TextField.
         // Bail while any focused overlay owns the keyboard, otherwise a
-        // stray focus retry yanks first responder back to the terminal
-        // and typing lands there instead of the overlay's TextField.
-        if paletteOpen || settingsOpen || searchOpen
-           || renameTarget != nil || renameGroupID != nil {
-            return
-        }
+        // stray focus retry (scheduled by a previous overlay close) yanks
+        // first responder back to the terminal and typing lands there
+        // instead of the overlay's TextField.
+        if overlayOwnsKeyboard { return }
         guard let tab = selectedTab,
               // Bail if the active pane changed mid-retry — don't
               // fight against legitimate focus changes.
               tab.paneTree.activePaneID == targetPaneID,
               let pane = tab.paneTree.activePane,
               let view = pane.controller?.view,
-              let window = view.window,
-              window.isKeyWindow
+              let window = view.window
         else { return }
+        // The surface lives in its own pane window; claim key for it as
+        // long as this window family (glass parent + deck) is frontmost —
+        // never steal from another app.
+        let familyKey = window.isKeyWindow
+            || (ownWindow?.isKeyWindow ?? false)
+            || (ownWindow?.childWindows ?? []).contains(where: \.isKeyWindow)
+        guard NSApp.isActive, familyKey else { return }
+        if !window.isKeyWindow { window.makeKey() }
         if window.firstResponder === view { return }
         window.makeFirstResponder(view)
     }

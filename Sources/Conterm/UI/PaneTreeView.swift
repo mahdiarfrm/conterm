@@ -258,6 +258,10 @@ final class PaneTreeView: NSView {
 
     /// Live pane container per leaf pane id. Reused across relayouts.
     private var boxes: [UUID: PaneBox] = [:]
+    /// Each box's host window (the opaque-content pane deck). Panes are
+    /// born in their window and never reparented; this view only ever
+    /// moves the windows.
+    private var paneWindows: [UUID: PaneHostWindow] = [:]
     /// Recomputed each layout: divider hit/draw rects + their split node.
     private var dividers: [(rect: CGRect, node: PaneNode, axis: SplitAxis, span: CGRect)] = []
     private var activeID: UUID?
@@ -330,13 +334,22 @@ final class PaneTreeView: NSView {
         let wanted = Set(leaves.map { $0.id })
 
         // Remove panes that are gone. The model already scheduled their
-        // surface free (forceFreeSurface); detaching the box here completes
-        // it deterministically (freeWhenDetached polls window == nil).
+        // surface free (forceFreeSurface); dropping the window's content
+        // here completes it deterministically (freeWhenDetached polls
+        // window == nil, which nil-ing contentView satisfies).
         for (id, box) in boxes where !wanted.contains(id) {
+            if let w = paneWindows[id] {
+                w.parent?.removeChildWindow(w)
+                w.contentView = nil
+                w.orderOut(nil)
+                w.close()
+                paneWindows[id] = nil
+            }
             box.removeFromSuperview()
             boxes[id] = nil
         }
         // Add a box per new pane (reusing the pane's controller if present).
+        // Each box lives in its own pane window from birth.
         for (i, pane) in leaves.enumerated() {
             let box: PaneBox
             if let existing = boxes[pane.id] {
@@ -347,7 +360,10 @@ final class PaneTreeView: NSView {
                 guard let host = controller.hostView else { continue }
                 box = PaneBox(pane: pane, host: host, prefs: prefs, tab: tab)
                 boxes[pane.id] = box
-                addSubview(box)
+                let paneWin = PaneHostWindow(content: box)
+                paneWin.deckOrdering = state.overlayCoversPanes ? .below : .above
+                paneWindows[pane.id] = paneWin
+                attachPaneWindowIfPossible(paneWin)
             }
             box.index = i + 1
             box.isActivePane = (pane.id == activeID)
@@ -357,13 +373,38 @@ final class PaneTreeView: NSView {
         // Pull keyboard focus to the active pane's surface — but only for the
         // selected tab, so a background tab's apply() (e.g. a pane exiting)
         // never yanks focus to a hidden tab. Tab-switch focus is handled by
-        // AppState.select → focusActiveSurface.
+        // AppState.select → focusActiveSurface. The surface lives in its own
+        // pane window, so claim key for it — but never while an overlay owns
+        // the keyboard, and never from another app.
         if tab?.id == state.selectedID, let id = activeID, let box = boxes[id] {
-            DispatchQueue.main.async { [weak box] in
-                guard let box, let w = box.window, w.isKeyWindow else { return }
+            DispatchQueue.main.async { [weak box, weak self] in
+                guard let self, let box, let w = box.window, NSApp.isActive,
+                      !self.state.overlayOwnsKeyboard else { return }
+                let familyKey = w.isKeyWindow
+                    || (w.parent?.isKeyWindow ?? false)
+                    || (w.parent?.childWindows ?? []).contains(where: \.isKeyWindow)
+                guard familyKey else { return }
+                if !w.isKeyWindow { w.makeKey() }
                 w.makeFirstResponder(box.host.surfaceView)
             }
         }
+    }
+
+    /// Attach a pane window as a child of our host window. Boxes created
+    /// before this view is in a window wait for viewDidMoveToWindow.
+    private func attachPaneWindowIfPossible(_ paneWin: PaneHostWindow) {
+        guard let host = window else { return }
+        paneWin.deckParent = host
+        host.addChildWindow(paneWin, ordered: paneWin.deckOrdering)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        for w in paneWindows.values where w.parent == nil {
+            attachPaneWindowIfPossible(w)
+        }
+        needsLayout = true
     }
 
     override func layout() {
@@ -372,7 +413,15 @@ final class PaneTreeView: NSView {
         guard let root = tree?.root else { return }
         var frames: [UUID: CGRect] = [:]
         computeFrames(root, in: bounds, into: &frames)
-        for (id, box) in boxes { if let f = frames[id] { box.frame = f } }
+        // Boxes fill their windows (contentView tracks the frame); this
+        // view only positions the windows, in screen coordinates.
+        if let hostWin = window {
+            for (id, f) in frames {
+                guard let pw = paneWindows[id], !f.isEmpty else { continue }
+                pw.setFrame(hostWin.convertToScreen(convert(f, to: nil)),
+                            display: false)
+            }
+        }
         needsDisplay = true
     }
 

@@ -113,6 +113,17 @@ final class WindowController {
         // Back-link so AppState.closeTab can close THIS window.
         state.ownWindow = win
 
+        // Pane deck ↔ overlay ordering. The panes live in child windows
+        // ABOVE the glass (crisp terminals, no per-present glass re-blend);
+        // a modal overlay needs to read on top of them, so while one is
+        // open the deck flips BELOW the parent — the glass frosts the
+        // terminals and the overlay draws over the glass. The parent also
+        // takes key so the overlay's text field types.
+        state.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.syncOverlayOrdering() }
+            .store(in: &glassCancellables)
+
         // Pause libghostty renderers when this window isn't on screen
         // (other Space / occluded / minimized): streaming content otherwise
         // keeps drawing frames nobody can see. The glass sheet itself is
@@ -151,6 +162,22 @@ final class WindowController {
                 self?.state.focusActiveSurface()
             }
         }
+    }
+
+    /// Current deck placement; only reorders on an actual flip.
+    private var deckBelowParent = false
+
+    private func syncOverlayOrdering() {
+        let below = state.overlayCoversPanes
+        guard below != deckBelowParent else { return }
+        deckBelowParent = below
+        let mode: NSWindow.OrderingMode = below ? .below : .above
+        for child in (window.childWindows ?? []).compactMap({ $0 as? PaneHostWindow }) {
+            child.deckOrdering = mode
+            window.removeChildWindow(child)
+            window.addChildWindow(child, ordered: mode)
+        }
+        if below { window.makeKey() }
     }
 
     isolated deinit {

@@ -8,9 +8,6 @@ struct AppView: View {
     @EnvironmentObject var prefs: Preferences
     @EnvironmentObject var notifications: NotificationStore
 
-    /// Vertical auto-hide: is the floating sidebar currently slid in?
-    /// Driven purely by left-edge / panel hover, never persisted.
-    @State private var sidebarRevealed = false
 
     /// The window's title-bar band height, from the title-bar style mask
     /// (the real system height, not a tuned value). Sidebar modes reserve
@@ -72,8 +69,8 @@ struct AppView: View {
         .onChange(of: state.agentCenterOpen) { _, open in if !open { state.focusActiveSurface() } }
         // Always start collapsed when auto-hide turns on / orientation
         // leaves vertical, so it can't get stuck open.
-        .onChange(of: prefs.autoHideSidebar)  { _, _ in sidebarRevealed = false }
-        .onChange(of: prefs.tabOrientation)   { _, _ in sidebarRevealed = false }
+        .onChange(of: prefs.autoHideSidebar)  { _, _ in state.sidebarRevealed = false }
+        .onChange(of: prefs.tabOrientation)   { _, _ in state.sidebarRevealed = false }
         .onChange(of: state.launchOverlayVisible) { _, vis in if !vis { state.focusActiveSurface() } }
     }
 
@@ -243,8 +240,8 @@ struct AppView: View {
 
     // MARK: - Floating vertical sidebar (auto-hide)
 
-    private func revealSidebar()  { withAnimation(Theme.Spring.soft) { sidebarRevealed = true } }
-    private func hideSidebar()    { withAnimation(Theme.Spring.soft) { sidebarRevealed = false } }
+    private func revealSidebar()  { withAnimation(Theme.Spring.soft) { state.sidebarRevealed = true } }
+    private func hideSidebar()    { withAnimation(Theme.Spring.soft) { state.sidebarRevealed = false } }
 
     /// Off-layout sidebar that slides in over the terminal when the
     /// cursor hits the left edge. Only exists in vertical + auto-hide.
@@ -262,7 +259,7 @@ struct AppView: View {
 
                 // "There's a hidden sidebar here" affordance — a faint
                 // pill on the edge, only while collapsed.
-                if !sidebarRevealed {
+                if !state.sidebarRevealed {
                     Capsule()
                         .fill(Color.white.opacity(0.16))
                         .frame(width: 3, height: 42)
@@ -283,8 +280,8 @@ struct AppView: View {
                     .background(floatingSidebarCard)
                     .padding(.vertical, 8)
                     .padding(.leading, 6)
-                    .offset(x: sidebarRevealed ? 0 : -(prefs.sidebarWidth + 40))
-                    .opacity(sidebarRevealed ? 1 : 0)
+                    .offset(x: state.sidebarRevealed ? 0 : -(prefs.sidebarWidth + 40))
+                    .opacity(state.sidebarRevealed ? 1 : 0)
                     .onHover { hovering in
                         if hovering { revealSidebar() } else { hideSidebar() }
                     }
