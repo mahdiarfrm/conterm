@@ -36,7 +36,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ContermTests",
-            dependencies: ["Conterm"],
+            dependencies: ["Conterm", "GhosttyKit"],
             path: "Tests/ContermTests"
         ),
     ]
