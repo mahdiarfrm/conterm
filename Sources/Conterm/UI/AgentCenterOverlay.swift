@@ -242,11 +242,19 @@ private struct AddAgentMenu: View {
     var body: some View {
         Menu {
             Button { open("claude") } label: {
-                Label("New Claude agent…", systemImage: "sparkle")
+                if let mark = Self.menuMark("claude-mark") {
+                    Label { Text("New Claude agent…") } icon: { Image(nsImage: mark) }
+                } else {
+                    Label("New Claude agent…", systemImage: "sparkle")
+                }
             }
             Button { open("opencode") } label: {
-                Label("New opencode agent…",
-                      systemImage: "chevron.left.forwardslash.chevron.right")
+                if let mark = Self.menuMark("opencode-mark") {
+                    Label { Text("New opencode agent…") } icon: { Image(nsImage: mark) }
+                } else {
+                    Label("New opencode agent…",
+                          systemImage: "chevron.left.forwardslash.chevron.right")
+                }
             }
         } label: {
             Image(systemName: "plus")
@@ -260,6 +268,23 @@ private struct AddAgentMenu: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Open Claude Code or opencode in a directory")
+    }
+
+    /// Bundled agent mark scaled for a menu row and template-rendered:
+    /// menu glyphs are monochrome by convention, and templating keeps
+    /// both marks legible on light and dark menus. Pre-sizing matters —
+    /// the bridged NSMenuItem draws the NSImage at its point size.
+    private static func menuMark(_ asset: String) -> NSImage? {
+        guard let src = MarkImage.load(asset, template: true),
+              src.size.height > 0 else { return nil }
+        let h: CGFloat = 15
+        let w = src.size.width / src.size.height * h
+        let sized = NSImage(size: NSSize(width: w, height: h), flipped: false) { rect in
+            src.draw(in: rect)
+            return true
+        }
+        sized.isTemplate = true
+        return sized
     }
 
     private func open(_ tool: String) {
