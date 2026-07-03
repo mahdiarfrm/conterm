@@ -716,7 +716,7 @@ struct WelcomeWizard: View {
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(Capsule().fill(Theme.accent.opacity(0.16)))
                     }
-                    Text("Each pane rides on solid black instead of letting the glass show through the cells. The desktop never re-composites under a streaming terminal, so it runs much cooler — the right default on a fanless Mac. Turn off for see-through panes if you prefer the look and have the headroom.")
+                    Text("Each pane rides on solid black, framing the terminal cells against the glass. Turn off for see-through panes if you prefer the glass showing through the cells.")
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -744,7 +744,7 @@ struct WelcomeWizard: View {
                     Text("Efficient rendering")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("Redraw only when the terminal changes, not every screen refresh — a big battery saver. Fast scrolling may tear slightly.")
+                    Text("Redraw only when the terminal changes, not every screen refresh. Fast scrolling may tear slightly.")
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)

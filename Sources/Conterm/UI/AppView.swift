@@ -88,27 +88,22 @@ struct AppView: View {
     /// swaps it for a plain opaque backdrop.
     @ViewBuilder
     private var backdrop: some View {
+        // The three modes measure power-equivalent (POWER-TESTS-2026-07
+        // §1) — compositor cost tracks content throughput, not
+        // translucency — so the pick is purely visual.
         switch prefs.glassMode {
         case .solid:
-            // The one opaque escape hatch — also the real work-time power
-            // lever (an opaque window skips WindowServer's per-present
-            // re-blend against the desktop).
+            // Fully opaque window: no desktop read-through anywhere.
             solidBackdrop
         case .blur:
-            // Classic behind-window frosted material. The window stays
-            // non-opaque (the desktop shows through the top bar + gaps),
-            // but WindowServer blurs a cached copy of the desktop rather
-            // than running a live glass material, so per-present cost sits
-            // between glass and solid. Follows-window-active-state flattens
-            // it for free whenever the window isn't key.
+            // Classic behind-window frosted material; the desktop shows
+            // through the top bar + gaps. Follows-window-active-state
+            // flattens it whenever the window isn't key.
             classicBlurBackdrop
         case .glass:
             // Always-on glass. The sheet only ever samples the static
-            // desktop (the panes are opaque tiles on top), so it composites
-            // once and stays free whether the window is focused or not —
-            // there's nothing to flatten for power. The genuine savers are
-            // the opaque mode above, renderer occlusion-pause when hidden,
-            // and a clear Frost.
+            // desktop (the panes are opaque tiles on top), so it
+            // composites once whether the window is focused or not.
             LiquidGlassBackdrop(glassiness: prefs.glassiness,
                                 light: prefs.lightGlass)
         }

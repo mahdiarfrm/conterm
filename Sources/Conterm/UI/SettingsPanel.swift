@@ -224,7 +224,7 @@ struct SettingsPanel: View {
             // Glass
             card {
                 SettingsRow(title: "Window",
-                            subtitle: "Glass is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Blur is the classic frosted material — lighter on the compositor than live glass. Solid is a fully opaque window, the coolest-running of the three.") {
+                            subtitle: "Glass is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Blur is the classic frosted material; Solid is a fully opaque window. The three cost the same — pick by look.") {
                     Picker("", selection: Binding(
                         get: { prefs.glassMode },
                         set: { prefs.glassMode = $0 }
@@ -238,7 +238,7 @@ struct SettingsPanel: View {
                     .frame(width: 210)
                 }
                 SettingsRow(title: "Solid panes",
-                            subtitle: "Paint panes on solid black instead of letting the glass show through the cells. Far cooler on fanless Macs — the desktop never re-composites under a streaming pane — so it's on by default. Off lets a translucent terminal reveal the glass behind it.") {
+                            subtitle: "Paint panes on solid black instead of letting the glass show through the cells. Off lets a translucent terminal reveal the glass behind it.") {
                     Toggle("", isOn: $prefs.opaquePanes.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()
@@ -291,7 +291,7 @@ struct SettingsPanel: View {
                     }
                 }
                 SettingsRow(title: "Efficient rendering",
-                            subtitle: "Redraw the terminal only when its output changes, not on every screen refresh — a big battery saver, especially with glass on. Fast scrolling may tear slightly. Relaunch to fully apply.") {
+                            subtitle: "Redraw the terminal only when its output changes, not on every screen refresh. Fast scrolling may tear slightly. Relaunch to fully apply.") {
                     Toggle("", isOn: Binding(
                         get: { prefs.lowPowerRendering },
                         set: { newValue in
