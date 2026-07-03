@@ -360,9 +360,7 @@ final class GitStatusModel: ObservableObject {
 
     /// Point the model at the active pane's directory; refreshes on change.
     func update(cwd: String?) {
-        guard cwd != self.cwd else { return }
-        self.cwd = cwd
-        refresh(force: true)
+        refresh(target: cwd)
     }
 
     private func start() {
@@ -375,18 +373,28 @@ final class GitStatusModel: ObservableObject {
         }
         t.tolerance = 0.5
         timer = t
-        refresh(force: true)
+        refresh()
     }
     private func stop() { timer?.invalidate(); timer = nil }
 
-    private func refresh(force: Bool = false) {
-        let target = cwdProvider?() ?? cwd
+    private func refresh() {
+        refresh(target: cwdProvider?() ?? cwd)
+    }
+
+    private func refresh(target: String?) {
+        guard let target, !target.isEmpty else {
+            cwd = target
+            snap = Snapshot()
+            return
+        }
         let changed = target != cwd
-        cwd = target
-        guard let target, !target.isEmpty else { snap = Snapshot(); return }
-        guard !loading else { return }
         let now = CACurrentMediaTime()
-        guard force || changed || now - lastComputeAt >= Self.recomputeEvery else { return }
+        guard changed || now - lastComputeAt >= Self.recomputeEvery else { return }
+        // A change landing mid-compute stays uncommitted (`cwd` keeps
+        // the old value), so the completion below and every 2 s tick
+        // retry it until the compute slot is free.
+        guard !loading else { return }
+        cwd = target
         lastComputeAt = now
         loading = true
         Task.detached(priority: .utility) {
@@ -395,6 +403,8 @@ final class GitStatusModel: ObservableObject {
                 self.loading = false
                 // Drop a result whose cwd has since changed.
                 if self.cwd == target, s != self.snap { self.snap = s }
+                // Pick up a cd that landed while this compute ran.
+                self.refresh()
             }
         }
     }
