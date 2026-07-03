@@ -19,6 +19,12 @@ XCFRAMEWORK_DIR="GhosttyKit.xcframework"
 GHOSTTY_KIT_TAG="${GHOSTTY_KIT_TAG:-build-2026-07-01}"
 # Version string embedded in the pinned static library; drift detection.
 GHOSTTY_KIT_VERSION="1.3.2-main-+24c5671"
+# Durable mirror of the pinned tarball, attached to a Conterm release —
+# the fork prunes its daily tags after a few weeks, so the pin must not
+# depend on the upstream URL surviving. When bumping the pin: attach the
+# new tarball to a release (gh release upload) and update this URL with
+# the other two constants.
+GHOSTTY_KIT_MIRROR="https://github.com/mahdiarfrm/conterm/releases/download/v3.2.2/GhosttyKit-${GHOSTTY_KIT_TAG}.tar.gz"
 
 # Embedded `<semver>-<branch>-+<commit>` marker in the macOS slice's
 # static library (name varies across fork builds: libghostty.a,
@@ -56,19 +62,30 @@ if [[ -d "$XCFRAMEWORK_DIR" ]]; then
     FOUND=$(kit_version "$XCFRAMEWORK_DIR")
     if [[ "$FOUND" == "$GHOSTTY_KIT_VERSION" ]]; then
         echo "GhosttyKit.xcframework present (${FOUND}) — matches pin."
+    elif [[ -n "${CI:-}" ]]; then
+        # CI must never build (or re-cache) an off-pin xcframework;
+        # discard it and re-fetch. Local trees only warn — a developer
+        # may be deliberately validating a new build.
+        echo "CI: local GhosttyKit.xcframework is '${FOUND:-unknown}', pin is '${GHOSTTY_KIT_VERSION}' — refetching." >&2
+        rm -rf "$XCFRAMEWORK_DIR"
     else
         echo "WARN: local GhosttyKit.xcframework is '${FOUND:-unknown}' but the pin is '${GHOSTTY_KIT_VERSION}'." >&2
         echo "WARN: either restore the pinned build or update the pin constants in scripts/setup.sh." >&2
     fi
-else
+fi
+
+if [[ ! -d "$XCFRAMEWORK_DIR" ]]; then
     URL="https://github.com/${FORK_REPO}/releases/download/${GHOSTTY_KIT_TAG}/GhosttyKit.xcframework.tar.gz"
 
     echo "Downloading GhosttyKit.xcframework (${GHOSTTY_KIT_TAG}) …"
     if ! curl -fL --progress-bar -o GhosttyKit.xcframework.tar.gz "$URL"; then
-        echo "ERROR: ${GHOSTTY_KIT_TAG} is not downloadable from ${FORK_REPO} (daily releases get pruned)." >&2
-        echo "ERROR: restore the tarball from a local/archived copy, or pick a retained tag" >&2
-        echo "ERROR: (GHOSTTY_KIT_TAG=build-YYYY-MM-DD bash scripts/setup.sh) and re-test before updating the pin." >&2
-        exit 1
+        echo "WARN: ${GHOSTTY_KIT_TAG} is not downloadable from ${FORK_REPO} (daily releases get pruned); trying the mirror." >&2
+        if ! curl -fL --progress-bar -o GhosttyKit.xcframework.tar.gz "$GHOSTTY_KIT_MIRROR"; then
+            echo "ERROR: the mirror is unavailable too." >&2
+            echo "ERROR: restore the tarball from a local/archived copy, or pick a retained tag" >&2
+            echo "ERROR: (GHOSTTY_KIT_TAG=build-YYYY-MM-DD bash scripts/setup.sh) and re-test before updating the pin." >&2
+            exit 1
+        fi
     fi
 
     echo "Extracting …"
@@ -79,6 +96,11 @@ else
     FOUND=$(kit_version "$XCFRAMEWORK_DIR")
     if [[ "$FOUND" == "$GHOSTTY_KIT_VERSION" ]]; then
         echo "OK: $(du -sh GhosttyKit.xcframework | cut -f1) (${FOUND})"
+    elif [[ -n "${CI:-}" ]]; then
+        # A republished tag with different contents must fail loudly in
+        # CI before the cache freezes it under the pin's key.
+        echo "ERROR: downloaded build reports '${FOUND:-unknown}', pin expects '${GHOSTTY_KIT_VERSION}'." >&2
+        exit 1
     else
         echo "WARN: downloaded build reports '${FOUND:-unknown}', pin expects '${GHOSTTY_KIT_VERSION}'." >&2
         echo "WARN: update GHOSTTY_KIT_TAG + GHOSTTY_KIT_VERSION together once the new build is validated." >&2
