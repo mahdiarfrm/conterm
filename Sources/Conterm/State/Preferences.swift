@@ -278,16 +278,6 @@ final class Preferences: ObservableObject {
             ud.set(sshCompatMode, forKey: K.sshCompatMode)
         }
     }
-    /// Render the per-pane agent status pill (Claude Code / opencode)
-    /// with reduced animations: a static colored border instead of
-    /// the rotating mark, sweep glow, and attention pulse. The pill
-    /// still shows ready / thinking / needs-you states; it just stops
-    /// continuously redrawing, which lowers GPU cost during long
-    /// agent sessions.
-    @Published var agentPillLite: Bool {
-        didSet { ud.set(agentPillLite, forKey: K.agentPillLite) }
-    }
-
     /// Write internal diagnostics to ~/Library/Logs/Conterm/conterm.log.
     /// A development aid, OFF by default. `clog` reads this same
     /// UserDefaults key directly (via `DiagnosticLog`) so the logging
@@ -357,7 +347,6 @@ final class Preferences: ObservableObject {
         static let glassMode         = "conterm.glassMode"
         static let liquidGlassPanels = "conterm.liquidGlassPanels"
         static let sshCompatMode    = "conterm.sshCompatMode"
-        static let agentPillLite    = "conterm.agentPillLite"
         static let actionAccent     = "conterm.actionAccent"
         static let newTabAccent     = "conterm.newTabAccent"
         static let opaquePanes      = "conterm.opaquePanes"
@@ -428,7 +417,6 @@ final class Preferences: ObservableObject {
             ?? ((ud.object(forKey: K.solidGlass) as? Bool ?? false) ? .solid : .glass)
         self.liquidGlassPanels      = ud.object(forKey: K.liquidGlassPanels) as? Bool ?? false
         self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? false
-        self.agentPillLite          = ud.object(forKey: K.agentPillLite) as? Bool ?? false
         self.actionAccent           = ActionAccent(
             rawValue: ud.string(forKey: K.actionAccent) ?? ActionAccent.red.rawValue
         ) ?? .red
