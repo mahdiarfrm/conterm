@@ -111,7 +111,8 @@ enum Theme {
     // Geometry tokens shared across the chrome.
     static let windowCorner:    CGFloat = 18
     static let paneCorner:      CGFloat = 12
-    static let pillCorner:      CGFloat = 10
+    // Near-capsule on a ~28 pt tab pill; corners read round, not boxy.
+    static let pillCorner:      CGFloat = 14
     static let tabBarHeight:    CGFloat = 38
 
     // Springs — three flavors that get reused everywhere.
