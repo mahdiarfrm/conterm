@@ -129,10 +129,49 @@ struct WidgetShell<Content: View>: View {
 }
 
 /// Leading glyph for a widget pill — monochrome ambient chrome.
-private func widgetIcon(_ symbol: String, compact: Bool) -> some View {
+func widgetIcon(_ symbol: String, compact: Bool) -> some View {
     Image(systemName: symbol)
         .font(.system(size: compact ? 8.5 : 9.5, weight: .medium))
         .foregroundStyle(Theme.textSecondary)
+}
+
+/// Thin separator between two chips inside one pill.
+func widgetChipDivider() -> some View {
+    RoundedRectangle(cornerRadius: 0.5)
+        .fill(Theme.stroke)
+        .frame(width: 1, height: 12)
+}
+
+/// Locate a CLI tool that GUI apps can't find via PATH (Homebrew, Docker
+/// Desktop, and Nix all install outside the default GUI environment).
+func locateWidgetTool(_ name: String) -> String? {
+    let home = NSHomeDirectory()
+    let candidates = [
+        "/opt/homebrew/bin/\(name)",
+        "/usr/local/bin/\(name)",
+        "/usr/bin/\(name)",
+        "\(home)/.docker/bin/\(name)",
+        "/run/current-system/sw/bin/\(name)",
+    ]
+    return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+}
+
+/// Run a tool to completion off the main thread; nil on launch failure or
+/// non-zero exit so callers fall back to "nothing to show".
+nonisolated func runWidgetTool(_ path: String, _ args: [String],
+                               cwd: String? = nil) -> String? {
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: path)
+    p.arguments = args
+    if let cwd { p.currentDirectoryURL = URL(fileURLWithPath: cwd) }
+    let out = Pipe()
+    p.standardOutput = out
+    p.standardError = Pipe()
+    do { try p.run() } catch { return nil }
+    let data = out.fileHandleForReading.readDataToEndOfFile()
+    p.waitUntilExit()
+    guard p.terminationStatus == 0 else { return nil }
+    return String(data: data, encoding: .utf8)
 }
 
 // MARK: - Clock
