@@ -33,6 +33,24 @@ final class UpdateChecker: ObservableObject {
     @Published private(set) var latest: Release?
 
     private let repo = "mahdiarfrm/conterm"
+    private var dailyTimer: Timer?
+
+    /// Re-check once a day while the app stays running — long-lived
+    /// sessions otherwise only ever see the launch check. `enabled` is
+    /// read at each tick so the Settings toggle applies without a
+    /// relaunch; the wide tolerance lets the system coalesce the wake.
+    func beginDailyChecks(enabled: @escaping @MainActor () -> Bool) {
+        guard dailyTimer == nil else { return }
+        let t = Timer.scheduledTimer(withTimeInterval: 24 * 3600,
+                                     repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, enabled() else { return }
+                self.checkInBackground()
+            }
+        }
+        t.tolerance = 3600
+        dailyTimer = t
+    }
 
     var currentVersion: String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0"

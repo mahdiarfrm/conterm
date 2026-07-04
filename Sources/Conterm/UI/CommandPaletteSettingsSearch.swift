@@ -148,8 +148,8 @@ extension CommandPalette {
                    .launch, "speaker.wave.2", prefs.launchSoundEnabled) { prefs.launchSoundEnabled = $0 },
             toggle("soundEffects", "UI sound effects", "clicks sounds feedback",
                    .launch, "speaker.wave.1", prefs.soundEffectsEnabled) { prefs.soundEffectsEnabled = $0 },
-            toggle("autoCheckUpdates", "Check for updates on launch",
-                   "github release new version", .launch, "arrow.down.circle",
+            toggle("autoCheckUpdates", "Check for updates automatically",
+                   "github release new version daily", .launch, "arrow.down.circle",
                    prefs.autoCheckUpdates) { prefs.autoCheckUpdates = $0 },
             // Shortcuts / config / about
             open("shortcuts", "Keyboard shortcuts", "keys bindings hotkeys",
