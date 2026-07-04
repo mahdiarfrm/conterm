@@ -78,11 +78,6 @@ final class AppState: ObservableObject {
     /// note in edit mode).
     @Published var paletteDeleteTick: Int = 0
 
-    /// Scrollback search overlay (per-window). When `searchOpen` is true,
-    /// the active pane gets a top-anchored search bar + match list.
-    /// `searchSnapshot` is the scrollback text captured the moment the
-    /// overlay opened — we don't re-read live so the result list stays
-    /// stable while the user types and the shell keeps scrolling.
     /// Notification-center glass panel (bell button next to search).
     @Published var notificationsOpen: Bool = false
 
@@ -96,9 +91,21 @@ final class AppState: ObservableObject {
     enum AgentCenterTab: String { case live, activity }
     @Published var agentCenterTab: AgentCenterTab = .live
 
+    /// Find bar (per-window). Terminal scope drives libghostty's search
+    /// engine — the renderer highlights matches and scrolls to the
+    /// selection, and the active pane mirrors count/selected. The
+    /// conversation scope searches the pane's agent transcript instead:
+    /// a Claude Code fullscreen session lives on the alternate screen,
+    /// so its conversation never enters scrollback and the transcript
+    /// is the only searchable record of it.
+    enum SearchScope: String { case terminal, conversation }
     @Published var searchOpen: Bool = false
     @Published var searchQuery: String = ""
-    @Published var searchSnapshot: String = ""
+    @Published var searchScope: SearchScope = .terminal
+    /// The pane the current find session targets, captured at open —
+    /// switching panes mid-search must end THIS pane's session, not
+    /// whichever pane is active by then.
+    weak var searchPane: Pane?
 
     /// First-run setup wizard visibility (this window only). Shown once
     /// after the launch animation until the user completes or skips it.
@@ -286,23 +293,65 @@ final class AppState: ObservableObject {
         SoundEffects.shared.play(.paletteOpen)
     }
 
-    /// Open / close the scrollback-search overlay. On open, snapshots the
-    /// active pane's scrollback so the result list isn't a moving target
-    /// while the user types.
+    /// ⌘F / toolbar toggle for the find bar.
     func toggleSearch() {
-        if searchOpen {
-            withAnimation(Theme.Spring.snappy) { searchOpen = false }
+        if searchOpen { closeSearch() } else { openSearch(prefill: nil) }
+    }
+
+    /// Open the find bar, optionally seeded with a needle (the core's
+    /// `search_selection` path). Scope defaults to whatever can actually
+    /// see the pane's content: an agent on the alternate screen keeps
+    /// its conversation in the transcript, not scrollback.
+    func openSearch(prefill: String?) {
+        if let prefill, !prefill.isEmpty {
+            searchQuery = prefill
+        } else if !searchOpen {
             searchQuery = ""
-            searchSnapshot = ""
-            focusActiveSurface()
-            SoundEffects.shared.play(.paletteClose)
-        } else {
-            let snap = selectedTab?.paneTree.activePane?.controller?.readScrollback() ?? ""
-            searchSnapshot = snap
-            searchQuery = ""
-            withAnimation(Theme.Spring.bouncy) { searchOpen = true }
-            SoundEffects.shared.play(.paletteOpen)
         }
+        let pane = selectedTab?.paneTree.activePane
+        searchPane = pane
+        if prefill == nil, let pane, pane.agent.phase != .idle,
+           pane.noScrollback, pane.agentTranscriptPath != nil {
+            searchScope = .conversation
+        } else {
+            searchScope = .terminal
+        }
+        guard !searchOpen else { return }
+        withAnimation(Theme.Spring.bouncy) { searchOpen = true }
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    /// Close the bar and end the core session (clears the in-terminal
+    /// highlights).
+    func closeSearch() {
+        guard searchOpen else { return }
+        (searchPane ?? selectedTab?.paneTree.activePane)?.controller?.endSearch()
+        dismissSearchBar()
+    }
+
+    /// Core-initiated end (an `end_search` keybind fired inside the
+    /// terminal): hide the bar without echoing `end_search` back.
+    func searchEndedByCore() {
+        guard searchOpen else { return }
+        dismissSearchBar()
+    }
+
+    private func dismissSearchBar() {
+        withAnimation(Theme.Spring.snappy) { searchOpen = false }
+        searchQuery = ""
+        searchPane = nil
+        focusActiveSurface()
+        SoundEffects.shared.play(.paletteClose)
+    }
+
+    /// ⌘G / ⌘⇧G. Consumed (true) only while a search session is live,
+    /// so the key otherwise reaches the terminal untouched.
+    @discardableResult
+    func navigateSearch(next: Bool) -> Bool {
+        guard let pane = searchPane ?? selectedTab?.paneTree.activePane,
+              pane.searchTotal != nil else { return false }
+        pane.controller?.navigateSearch(next: next)
+        return true
     }
 
     var selectedTab: Tab? {

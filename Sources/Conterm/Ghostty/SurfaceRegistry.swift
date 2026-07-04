@@ -88,6 +88,22 @@ extension Ghostty {
                 let f = action.action.command_finished
                 decoded = .commandFinished(exitCode: Int(f.exit_code),
                                            durationNs: f.duration)
+            case GHOSTTY_ACTION_SEARCH_TOTAL:
+                // -1 encodes "no active search" (Zig side sends ?usize).
+                let t = action.action.search_total.total
+                decoded = .searchTotal(t >= 0 ? Int(t) : nil)
+            case GHOSTTY_ACTION_SEARCH_SELECTED:
+                let s = action.action.search_selected.selected
+                decoded = .searchSelected(s >= 0 ? Int(s) : nil)
+            case GHOSTTY_ACTION_START_SEARCH:
+                let n = action.action.start_search.needle
+                decoded = .startSearch(n.map { String(cString: $0) })
+            case GHOSTTY_ACTION_END_SEARCH:
+                decoded = .endSearch
+            case GHOSTTY_ACTION_SCROLLBAR:
+                let sb = action.action.scrollbar
+                decoded = .scrollbar(total: sb.total, offset: sb.offset,
+                                     len: sb.len)
             default:
                 decoded = nil
             }

@@ -63,6 +63,21 @@ final class Pane: ObservableObject, Identifiable {
     /// transcript). Plain var: AgentCenter reads it on its refresh tick.
     var agentTranscriptPath: String?
 
+    /// Live core-search state for this pane: match count and 1-based
+    /// selected index, mirrored from libghostty's search engine. Both
+    /// nil while no search session is active — the engine clears them
+    /// itself on `end_search`.
+    @Published var searchTotal: Int?
+    @Published var searchSelected: Int?
+
+    /// True when the terminal has no scrollback rows beyond the
+    /// viewport (scrollbar total == len). Alternate-screen TUIs (vim,
+    /// Claude Code fullscreen) always look like this, so combined with
+    /// an active agent it identifies a fullscreen agent session — a
+    /// freshly cleared primary screen matches too, which is why this
+    /// is a hint, never a hard gate on its own.
+    @Published var noScrollback = false
+
     /// Result of the most recently finished foreground command in this
     /// pane, from libghostty's OSC 133 command-end mark. Drives the
     /// transient result badge in the pane's bottom corner. Each finished
