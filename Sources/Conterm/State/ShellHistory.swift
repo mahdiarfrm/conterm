@@ -50,6 +50,33 @@ enum ShellHistory {
         return unique.prefix(cap).map { HistoryEntry(command: $0.command, date: $0.date) }
     }
 
+    /// Per-day command activity for the session-stats widget. Only zsh
+    /// extended-history entries carry timestamps, so bash and plain zsh
+    /// history contribute nothing — callers treat an empty result as
+    /// "no data" and hide. Unlike `loadAll` this keeps duplicates
+    /// (every run counts) and reads the whole file.
+    struct Activity {
+        /// startOfDay → number of commands run that day.
+        var dayCounts: [Date: Int] = [:]
+        /// Raw command lines run today, for top-command ranking.
+        var todayCommands: [String] = []
+    }
+
+    static func activity(now: Date = Date()) -> Activity {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        guard let lines = readLines("\(home)/.zsh_history") else { return Activity() }
+        let cal = Calendar.current
+        let todayStart = cal.startOfDay(for: now)
+        var act = Activity()
+        for entry in parseZsh(lines) {
+            guard let date = entry.date else { continue }
+            let day = cal.startOfDay(for: date)
+            act.dayCounts[day, default: 0] += 1
+            if day == todayStart { act.todayCommands.append(entry.command) }
+        }
+        return act
+    }
+
     private static func readLines(_ path: String) -> [String]? {
         // zsh's history can contain bytes that aren't valid UTF-8
         // (because the file is stored in the shell's locale, often
