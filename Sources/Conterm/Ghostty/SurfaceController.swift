@@ -493,19 +493,50 @@ extension Ghostty {
 
         // MARK: - Search (core engine)
 
+        /// Latest scrollbar geometry, kept for search recentering.
+        private var scrollOffset: UInt64 = 0
+        /// Deadline of the post-jump recenter window; a viewport move
+        /// inside it is treated as the engine jumping to a match.
+        private var recenterUntil: CFTimeInterval = 0
+        /// True while our own recenter scroll is in flight, so its
+        /// scrollbar echo isn't mistaken for another engine jump.
+        private var recentering = false
+
         /// Start or update the core scrollback search. The engine runs on
         /// libghostty's search thread, highlights matches in the renderer,
         /// and reports counts back through `onSearchTotal` /
         /// `onSearchSelected`. An empty needle cancels the search (but
         /// not the app's find UI — that's `endSearch`).
         func search(_ needle: String) {
+            recenterUntil = CACurrentMediaTime() + 0.3
             performBindingAction("search:\(needle)")
         }
 
         /// Step the selected match; the renderer scrolls it into view.
         func navigateSearch(next: Bool) {
+            recenterUntil = CACurrentMediaTime() + 0.3
             performBindingAction(next ? "navigate_search:next"
                                       : "navigate_search:previous")
+        }
+
+        /// The engine scrolls an off-viewport match to the TOP row of
+        /// the viewport (search thread: `screen.scroll(pin)`), and a
+        /// match already on screen doesn't move at all. Reading position
+        /// belongs mid-pane, so a viewport jump inside the post-search
+        /// window gets nudged half a page up — the buffer top clamps
+        /// that safely. Two jumps are left alone: one clamped to the
+        /// buffer bottom (the match sits somewhere in the visible lower
+        /// rows, and an upward nudge could push it off-screen), and one
+        /// landing on row zero (nothing above to reveal).
+        private func recenterIfNeeded(total: UInt64, offset: UInt64, len: UInt64) {
+            defer { scrollOffset = offset }
+            if recentering { recentering = false; return }
+            guard CACurrentMediaTime() < recenterUntil,
+                  offset != scrollOffset else { return }
+            recenterUntil = 0
+            guard offset > 0, offset + len < total else { return }
+            recentering = true
+            performBindingAction("scroll_page_fractional:-0.45")
         }
 
         /// End the search session and clear the in-terminal highlights.
@@ -636,6 +667,7 @@ extension Ghostty {
                 onEndSearch?()
 
             case .scrollbar(let total, let offset, let len):
+                recenterIfNeeded(total: total, offset: offset, len: len)
                 onScrollbar?(total, offset, len)
             }
         }
