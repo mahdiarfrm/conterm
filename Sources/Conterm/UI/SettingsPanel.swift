@@ -790,7 +790,7 @@ struct SettingsPanel: View {
             }
             card {
                 SettingsRow(title: "Automatic updates",
-                            subtitle: "Check GitHub for a newer release each time Conterm launches. Silent — only the toolbar pill lights up.") {
+                            subtitle: "Check GitHub for a newer release at launch and once a day while running. Silent — only the toolbar pill lights up.") {
                     Toggle("", isOn: $prefs.autoCheckUpdates.withSound()).labelsHidden()
                 }
                 SettingsRow(title: "Check now",

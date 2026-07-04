@@ -137,6 +137,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 UpdateChecker.shared.checkInBackground()
             }
         }
+        // Long-lived sessions re-check daily; the launch check only
+        // covers fresh starts. The pref is read at each tick, so the
+        // Settings toggle applies without a relaunch.
+        UpdateChecker.shared.beginDailyChecks { [weak prefs] in
+            prefs?.autoCheckUpdates ?? false
+        }
     }
 
     /// Menu / manual "Check for Updates…". Always reports its result.
