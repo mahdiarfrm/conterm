@@ -340,7 +340,7 @@ struct SettingsPanel: View {
                     Toggle("", isOn: $prefs.hideTabBarSingleTab.withSound()).labelsHidden()
                 }
                 SettingsRow(title: "Widgets",
-                            subtitle: "Stats, clock, battery, git, agents — enable and reorder them in the Widgets tab.") {
+                            subtitle: "Stats, clock, git, GitHub, ping, notes, pixel pet, and more — enable and reorder them in the Widgets tab.") {
                     Button("Widgets…") {
                         withAnimation(Theme.Spring.snappy) { section = .widgets }
                     }
@@ -356,7 +356,7 @@ struct SettingsPanel: View {
     private var widgets: some View {
         VStack(alignment: .leading, spacing: 14) {
             sectionHeader("Widgets",
-                          subtitle: "Glanceable pills in the tab bar / sidebar. Enable the ones you want, drag with the arrows to reorder. Git and Agents hide themselves when there's nothing to show.")
+                          subtitle: "Glanceable pills in the tab bar / sidebar. Enable the ones you want, drag with the arrows to reorder. Git, GitHub, Contexts, and Session stats hide themselves when there's nothing to show.")
             card {
                 ForEach(Array(orderedWidgets.enumerated()), id: \.element.id) { idx, kind in
                     widgetRow(kind, index: idx, count: orderedWidgets.count)
