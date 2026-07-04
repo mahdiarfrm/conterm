@@ -9,31 +9,50 @@ import SwiftUI
 /// reads as one family via the shared `WidgetShell` chrome.
 enum WidgetKind: String, CaseIterable, Identifiable {
     case systemStats, clock, battery, gitStatus
+    case notes, ping, sessionStats, contexts, github, pixelPet
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .systemStats: return "System stats"
-        case .clock:       return "Clock"
-        case .battery:     return "Battery"
-        case .gitStatus:   return "Git status"
+        case .systemStats:  return "System stats"
+        case .clock:        return "Clock"
+        case .battery:      return "Battery"
+        case .gitStatus:    return "Git status"
+        case .notes:        return "Notes"
+        case .ping:         return "Ping"
+        case .sessionStats: return "Session stats"
+        case .contexts:     return "Contexts"
+        case .github:       return "GitHub"
+        case .pixelPet:     return "Pixel pet"
         }
     }
     var subtitle: String {
         switch self {
-        case .systemStats: return "CPU, memory, and network."
-        case .clock:       return "Time, optionally date and seconds."
-        case .battery:     return "Charge, charging state, time left."
-        case .gitStatus:   return "Branch + dirty/ahead/behind for the active pane's repo."
+        case .systemStats:  return "CPU, memory, and network."
+        case .clock:        return "Time, optionally date and seconds."
+        case .battery:      return "Charge, charging state, time left."
+        case .gitStatus:    return "Branch + dirty/ahead/behind for the active pane's repo."
+        case .notes:        return "Note count at a glance; click to capture and edit."
+        case .ping:         return "Latency to 8.8.8.8 with a small history graph."
+        case .sessionStats: return "Commands today, top command, and your day streak."
+        case .contexts:     return "kubectl context and running Docker containers."
+        case .github:       return "PR review + checks for the active repo (uses gh)."
+        case .pixelPet:     return "A tiny companion that naps, blinks, and watches your agents."
         }
     }
     /// SF Symbol for the settings list.
     var icon: String {
         switch self {
-        case .systemStats: return "chart.bar"
-        case .clock:       return "clock"
-        case .battery:     return "battery.100"
-        case .gitStatus:   return "arrow.triangle.branch"
+        case .systemStats:  return "chart.bar"
+        case .clock:        return "clock"
+        case .battery:      return "battery.100"
+        case .gitStatus:    return "arrow.triangle.branch"
+        case .notes:        return "note.text"
+        case .ping:         return "dot.radiowaves.left.and.right"
+        case .sessionStats: return "flame"
+        case .contexts:     return "helm"
+        case .github:       return "checkmark.seal"
+        case .pixelPet:     return "pawprint"
         }
     }
 }
@@ -69,10 +88,16 @@ struct WidgetRail: View {
     @ViewBuilder
     private func widget(_ kind: WidgetKind) -> some View {
         switch kind {
-        case .systemStats: SystemStatsWidget(compact: compact)
-        case .clock:       ClockWidget(compact: compact)
-        case .battery:     BatteryWidget(compact: compact)
-        case .gitStatus:   GitWidget(compact: compact)
+        case .systemStats:  SystemStatsWidget(compact: compact)
+        case .clock:        ClockWidget(compact: compact)
+        case .battery:      BatteryWidget(compact: compact)
+        case .gitStatus:    GitWidget(compact: compact)
+        case .notes:        NotesWidget(compact: compact)
+        case .ping:         PingWidget(compact: compact)
+        case .sessionStats: SessionStatsWidget(compact: compact)
+        case .contexts:     ContextsWidget(compact: compact)
+        case .github:       GitHubWidget(compact: compact)
+        case .pixelPet:     PixelPetWidget(compact: compact)
         }
     }
 }
