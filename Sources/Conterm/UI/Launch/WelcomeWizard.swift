@@ -685,12 +685,9 @@ struct WelcomeWizard: View {
 
     private var glassSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("Glass", systemImage: "square.on.square")
+            sectionTitle("Window", systemImage: "macwindow")
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Window")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
                 Picker("", selection: $pickedGlassMode.withSound()) {
                     Text("Glass").tag(Preferences.GlassMode.glass)
                     Text("Blur").tag(Preferences.GlassMode.blur)
@@ -698,7 +695,9 @@ struct WelcomeWizard: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                Text("The window is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Blur is the classic frosted material; Solid is a fully opaque window.")
+                // The caption tracks the selection so each mode explains
+                // itself. The three modes cost the same — look only.
+                Text(Self.modeCaption(pickedGlassMode))
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -752,6 +751,17 @@ struct WelcomeWizard: View {
             }
             .toggleStyle(.switch)
             .tint(Theme.accent)
+        }
+    }
+
+    private static func modeCaption(_ mode: Preferences.GlassMode) -> String {
+        switch mode {
+        case .glass:
+            return "One sheet of Liquid Glass over the desktop; the panes sit on it as opaque tiles. Depth comes from the real backdrop refracting through."
+        case .blur:
+            return "The classic frosted material — the desktop diffused into a soft, even wash behind the window."
+        case .solid:
+            return "A fully opaque window. Maximum contrast, nothing showing through."
         }
     }
 
