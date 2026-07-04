@@ -137,7 +137,7 @@ private func loadTint(_ v: Double, warn: Double, hi: Double) -> Color {
 
 /// Tiny historical-samples line chart. Pure SwiftUI Shape so it
 /// rasterizes on the GPU and animates cheaply.
-private struct Sparkline: Shape {
+struct Sparkline: Shape {
     var samples: [Double]
     var maxValue: Double = 100
 
