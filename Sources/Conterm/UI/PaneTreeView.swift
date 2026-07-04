@@ -149,6 +149,24 @@ func makePaneSurface(pane: Pane,
             }
         }
     }
+    // Search callbacks run on the main actor already (SurfaceRegistry
+    // hops before handle(decoded:)); no extra dispatch needed.
+    controller.onSearchTotal = { [weak pane] total in
+        if pane?.searchTotal != total { pane?.searchTotal = total }
+    }
+    controller.onSearchSelected = { [weak pane] selected in
+        if pane?.searchSelected != selected { pane?.searchSelected = selected }
+    }
+    controller.onStartSearch = { [weak state] needle in
+        state?.openSearch(prefill: needle)
+    }
+    controller.onEndSearch = { [weak state] in
+        state?.searchEndedByCore()
+    }
+    controller.onScrollbar = { [weak pane] total, _, len in
+        let flat = total == len
+        if pane?.noScrollback != flat { pane?.noScrollback = flat }
+    }
     controller.onCommandFinished = { [weak pane, weak owningTab, weak state, notifications, prefs] exitCode, durationNs in
         DispatchQueue.main.async {
             guard let pane else { return }

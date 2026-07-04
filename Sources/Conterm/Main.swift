@@ -493,6 +493,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // stray ";7;13~" CSI sequence) but let it propagate through
             // AppKit so global shortcuts (e.g. a window-tiling app's
             // maximize) still receive it.
+            // ⌘G / ⌘⇧G: step the find matches while a search session is
+            // live; otherwise the key reaches the terminal untouched.
+            if cmd && !opt && !ctrl && key == "g" {
+                if self.state.navigateSearch(next: !shift) { return nil }
+                return event
+            }
             // Everything else below uses plain ⌘ (no other mods).
             guard cmd, !opt, !ctrl, !shift else { return event }
             switch key {
@@ -515,6 +521,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self.state.toggleSearch()
                 NSApp.keyWindow?.makeFirstResponder(nil)
                 return nil
+            case "e":
+                // Use selection for find. The core takes the needle and
+                // reports back via START_SEARCH, which opens the bar
+                // pre-filled. No selection → the key stays with the app.
+                if self.state.selectedTab?.paneTree.activePane?.controller?
+                    .performBindingAction("search_selection") == true {
+                    NSApp.keyWindow?.makeFirstResponder(nil)
+                    return nil
+                }
+                return event
             default:  return event
             }
         }

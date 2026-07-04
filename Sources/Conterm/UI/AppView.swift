@@ -376,28 +376,26 @@ struct AppView: View {
 
     @ViewBuilder
     private var searchOverlay: some View {
+        // No backdrop: the match highlights live in the terminal's own
+        // renderer, so the find bar floats top-trailing while the pane
+        // stays fully visible and interactive underneath.
         if state.searchOpen {
-            ZStack {
-                // Soft dim, not the heavy backdrop the palette uses —
-                // search needs the terminal still readable behind it.
-                Color.black.opacity(0.18)
-                    .ignoresSafeArea()
-                    .onTapGesture { state.toggleSearch() }
-                    .transition(.opacity.animation(.easeOut(duration: 0.18)))
-                VStack {
+            VStack {
+                HStack {
+                    Spacer()
                     SearchOverlay()
-                        .padding(.top, 70)
+                        .padding(.top, 52)
+                        .padding(.trailing, 14)
                         .transition(.asymmetric(
-                            insertion: .scale(scale: 0.96, anchor: .top)
+                            insertion: .scale(scale: 0.96, anchor: .topTrailing)
                                 .combined(with: .opacity)
                                 .animation(.spring(response: 0.4,
                                                     dampingFraction: 0.78)),
                             removal: .opacity
                                 .animation(.easeOut(duration: 0.15))
                         ))
-                    Spacer()
                 }
-                .frame(maxWidth: .infinity)
+                Spacer()
             }
         }
     }

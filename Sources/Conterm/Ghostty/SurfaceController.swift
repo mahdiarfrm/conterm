@@ -78,6 +78,21 @@ extension Ghostty {
         /// finished" notification.
         var onCommandFinished: ((Int, UInt64) -> Void)?
 
+        /// Core search-engine reports: match total (nil = no active
+        /// search) and 1-based selected-match index (nil = none).
+        var onSearchTotal:    ((Int?) -> Void)?
+        var onSearchSelected: ((Int?) -> Void)?
+        /// Core asks the app to open its find UI (a `start_search` /
+        /// `search_selection` keybind fired inside the terminal). The
+        /// needle is non-nil when a selection seeded the search.
+        var onStartSearch: ((String?) -> Void)?
+        /// Core asks the app to hide its find UI.
+        var onEndSearch: (() -> Void)?
+        /// Scrollbar geometry (total rows, viewport offset, viewport
+        /// rows). `total == len` means there is no scrollback — the
+        /// terminal is on the alternate screen or freshly cleared.
+        var onScrollbar: ((UInt64, UInt64, UInt64) -> Void)?
+
         /// Initial working directory for the shell. Set by TerminalContainer
         /// before `start(view:)` from the owning Pane's `startingDir`.
         /// Read once when libghostty creates the surface and ignored
@@ -476,6 +491,28 @@ extension Ghostty {
         func copySelection() { performBindingAction("copy_to_clipboard") }
         func paste()         { performBindingAction("paste_from_clipboard") }
 
+        // MARK: - Search (core engine)
+
+        /// Start or update the core scrollback search. The engine runs on
+        /// libghostty's search thread, highlights matches in the renderer,
+        /// and reports counts back through `onSearchTotal` /
+        /// `onSearchSelected`. An empty needle cancels the search (but
+        /// not the app's find UI — that's `endSearch`).
+        func search(_ needle: String) {
+            performBindingAction("search:\(needle)")
+        }
+
+        /// Step the selected match; the renderer scrolls it into view.
+        func navigateSearch(next: Bool) {
+            performBindingAction(next ? "navigate_search:next"
+                                      : "navigate_search:previous")
+        }
+
+        /// End the search session and clear the in-terminal highlights.
+        func endSearch() {
+            performBindingAction("end_search")
+        }
+
         /// True when there's a selection to copy (so the menu can grey
         /// out Copy when nothing is selected).
         func hasSelection() -> Bool {
@@ -502,47 +539,6 @@ extension Ghostty {
 
         // MARK: - Reading
 
-        /// Read the entire scrollback (and current viewport) as a UTF-8
-        /// string. Returns "" if libghostty has nothing to give us
-        /// (brand-new surface, etc.). The caller owns the returned
-        /// String — we copy out of the libghostty buffer and free it
-        /// before returning.
-        func readScrollback() -> String {
-            guard let h = handle else { return "" }
-            // POINT_SCREEN spans the full primary screen INCLUDING
-            // scrollback. TOP_LEFT snaps to the earliest retained
-            // scrollback row; BOTTOM_RIGHT snaps to the last visible
-            // row. With COORD_TOP_LEFT / COORD_BOTTOM_RIGHT the x/y
-            // values are ignored — Ghostty's own SurfaceView passes
-            // 0/0 for both, so we mirror that exactly.
-            let topLeft = ghostty_point_s(
-                tag: GHOSTTY_POINT_SCREEN,
-                coord: GHOSTTY_POINT_COORD_TOP_LEFT,
-                x: 0, y: 0)
-            let bottomRight = ghostty_point_s(
-                tag: GHOSTTY_POINT_SCREEN,
-                coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT,
-                x: 0, y: 0)
-            let sel = ghostty_selection_s(
-                top_left: topLeft,
-                bottom_right: bottomRight,
-                rectangle: false)
-            var out = ghostty_text_s()
-            guard ghostty_surface_read_text(h, sel, &out) else { return "" }
-            defer { ghostty_surface_free_text(h, &out) }
-            guard let cstr = out.text, out.text_len > 0 else { return "" }
-            // `out.text` is `const char*` (UnsafePointer<CChar>?). Rebind
-            // to UInt8 for String's UTF8 decoder; we hand the explicit
-            // text_len so embedded NULs in scrollback don't truncate
-            // (which `String(cString:)` would).
-            return cstr.withMemoryRebound(to: UInt8.self,
-                                           capacity: Int(out.text_len)) { ptr in
-                String(decoding: UnsafeBufferPointer(start: ptr,
-                                                      count: Int(out.text_len)),
-                       as: UTF8.self)
-            }
-        }
-
         // MARK: - Callbacks (dispatched via SurfaceRegistry)
 
         /// Owned, Sendable decode of the libghostty actions we care
@@ -563,6 +559,16 @@ extension Ghostty {
             /// OSC 133 command end. `exitCode` is -1 when unreported;
             /// `durationNs` is the command's wall-clock time in ns.
             case commandFinished(exitCode: Int, durationNs: UInt64)
+            /// Search-engine match count; nil when no search is active.
+            case searchTotal(Int?)
+            /// 1-based selected-match index; nil when none is selected.
+            case searchSelected(Int?)
+            /// Core requests the find UI, optionally seeded with a needle.
+            case startSearch(String?)
+            /// Core requests the find UI be hidden.
+            case endSearch
+            /// Scrollbar geometry: total rows, offset, viewport rows.
+            case scrollbar(total: UInt64, offset: UInt64, len: UInt64)
         }
 
         func handle(decoded: DecodedAction) {
@@ -616,6 +622,21 @@ extension Ghostty {
 
             case .commandFinished(let exitCode, let durationNs):
                 onCommandFinished?(exitCode, durationNs)
+
+            case .searchTotal(let total):
+                onSearchTotal?(total)
+
+            case .searchSelected(let selected):
+                onSearchSelected?(selected)
+
+            case .startSearch(let needle):
+                onStartSearch?(needle)
+
+            case .endSearch:
+                onEndSearch?()
+
+            case .scrollbar(let total, let offset, let len):
+                onScrollbar?(total, offset, len)
             }
         }
 
