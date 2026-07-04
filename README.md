@@ -55,6 +55,12 @@ https://github.com/user-attachments/assets/afbe93e9-9741-46d3-9eef-1c7b0d62ab64
   comes back exactly where you left it on relaunch.
 - **File drops** — drag a file or image onto a pane to insert its shell-quoted
   path at the cursor.
+- **Find in scrollback** (`⌘F`) — the terminal's own search engine highlights
+  every match and centers the one you step to (`⌘G` / `⌘⇧G`; `⌘E` searches the
+  selection). Panes running Claude Code add a *Conversation* scope over the
+  session transcript — the only way to search a fullscreen session, whose
+  conversation never touches scrollback — and can hand the query to Claude
+  Code's own transcript search.
 
 ### Command palette (`⌘K`)
 
@@ -93,9 +99,9 @@ One search over everything:
 
 ### Updates and backups
 
-- **Automatic updates** — checked from GitHub on launch; a Liquid Glass pill
-  appears in the toolbar when a new release is out, or run *Check for Updates*
-  any time. No external service involved.
+- **Automatic updates** — checked from GitHub at launch and once a day while
+  running; a Liquid Glass pill appears in the toolbar when a new release is
+  out, or run *Check for Updates* any time. No external service involved.
 - **Backup & restore** — save your sessions, app settings, and Conterm +
   Ghostty config to a single file, and restore them on another machine
   (*Settings → Config*).
@@ -106,10 +112,11 @@ One search over everything:
   with a Clear↔Frosted slider and light/dark tint, plus an opaque Solid mode
   when you want it. On macOS 14–15 the app runs fully with plain (non-glass)
   chrome.
-- **Live system stats** — optional CPU / RAM / network sparklines in the tab
-  bar, with a popover for detailed graphs.
-- **Scrollback search** (`⌘F`), **SSH-host detection** in the pane chrome, and
-  synthesized UI sound effects.
+- **Widgets** — glanceable pills in the tab bar or sidebar: system stats,
+  clock, battery, git status, GitHub PR checks, ping, notes, session streaks,
+  kubectl / Docker contexts, and a pixel cat. Enable and reorder them in
+  *Settings → Widgets*.
+- **SSH-host detection** in the pane chrome, and synthesized UI sound effects.
 
 ## Install
 
@@ -134,10 +141,10 @@ xattr -dr com.apple.quarantine /Applications/Conterm.app
 
 ## Updating
 
-Conterm checks GitHub for new releases on launch and shows an update pill in
-the toolbar when one is available — click it to install and relaunch. You can
-also trigger it from **Conterm → Check for Updates** or *Settings → Config*,
-and turn the automatic check off there.
+Conterm checks GitHub for new releases at launch and once a day while running,
+and shows an update pill in the toolbar when one is available — click it to
+install and relaunch. You can also trigger it from **Conterm → Check for
+Updates** or *Settings → Config*, and turn the automatic check off there.
 
 ## Keyboard shortcuts
 
@@ -151,7 +158,9 @@ and turn the automatic check off there.
 | `⌘↑` / `⌘↓` | Jump to previous / next prompt |
 | `⌘K` | Command palette |
 | `⌘⇧A` | Agent command center |
-| `⌘F` | Search scrollback |
+| `⌘F` | Find in scrollback / Claude conversation |
+| `⌘G` / `⌘⇧G` | Next / previous match |
+| `⌘E` | Use selection for find |
 | `⌘,` | Settings |
 | `Esc` | Dismiss palette / settings / search |
 
