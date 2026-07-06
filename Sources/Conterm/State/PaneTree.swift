@@ -70,6 +70,13 @@ final class Pane: ObservableObject, Identifiable {
     @Published var searchTotal: Int?
     @Published var searchSelected: Int?
 
+    /// kubectl context this pane's shell was switched to via the
+    /// widget's session-scoped export (KUBECONFIG overlay typed into
+    /// the shell). nil = the pane follows the global kubeconfig.
+    /// Best-effort: a manual `unset KUBECONFIG` in the shell isn't
+    /// visible to us, so this reflects the last widget action.
+    @Published var kubeSessionContext: String?
+
     /// True when the terminal has no scrollback rows beyond the
     /// viewport (scrollbar total == len). Alternate-screen TUIs (vim,
     /// Claude Code fullscreen) always look like this, so combined with
