@@ -1,6 +1,45 @@
 import AppKit
 import SwiftUI
 
+/// Circular affordance beside an SSH pane's title pill — the visible
+/// route to Host Overview (the pane's context menu carries the same
+/// action). Its iridescent ring is the same spectrum as the overview
+/// card's rim, so the button promises the surface it opens.
+struct HostInfoButton: View {
+    var action: () -> Void
+    /// Light chrome tint: additive blend vanishes on light backdrops,
+    /// so the ring draws normally there.
+    var light: Bool = false
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "info")
+                .font(.system(size: 8.5, weight: .bold))
+                .foregroundStyle(hovering ? Theme.textPrimary : Theme.textSecondary)
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(Theme.recessedWash))
+                .overlay(
+                    Circle()
+                        .strokeBorder(
+                            AngularGradient(
+                                gradient: Gradient(colors: Theme.iridescent),
+                                center: .center, angle: .degrees(-40)),
+                            lineWidth: 1)
+                        .blendMode(light ? .normal : .plusLighter)
+                )
+                .shadow(color: Theme.sshAccent.opacity(hovering ? 0.55 : 0.22),
+                        radius: hovering ? 5 : 3)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(hovering ? 1.12 : 1.0)
+        .animation(Theme.Spring.snappy, value: hovering)
+        .onHover { hovering = $0 }
+        .help("Host Overview")
+    }
+}
+
 struct PaneTitleBar: View {
     let dirLabel: String
     /// Non-nil when the pane is inside an ssh session — shown

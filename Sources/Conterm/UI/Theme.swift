@@ -115,6 +115,18 @@ enum Theme {
         light: NSColor(white: 0.0, alpha: 0.06),
         dark:  NSColor(white: 0.0, alpha: 0.18))
 
+    /// Spectrum for iridescent rims — light caught in a glass edge.
+    /// Shared by the Host Overview card and its pane affordance so the
+    /// button visually promises the surface it opens.
+    static let iridescent: [Color] = [
+        Color(red: 0.55, green: 0.85, blue: 1.00).opacity(0.55),
+        Color(red: 0.72, green: 0.58, blue: 1.00).opacity(0.35),
+        Color(red: 1.00, green: 0.62, blue: 0.78).opacity(0.42),
+        Color(red: 1.00, green: 0.85, blue: 0.55).opacity(0.30),
+        Color(red: 0.58, green: 0.95, blue: 0.80).opacity(0.38),
+        Color(red: 0.55, green: 0.85, blue: 1.00).opacity(0.55),
+    ]
+
     // Geometry tokens shared across the chrome.
     static let windowCorner:    CGFloat = 18
     static let paneCorner:      CGFloat = 12

@@ -7,6 +7,14 @@ struct AppView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Preferences
     @EnvironmentObject var notifications: NotificationStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Host Overview presentation state (see `hostOverviewOverlay`):
+    /// the request keeps rendering through the despawn animation, and
+    /// the real glass material mounts only while settled.
+    @State private var hostOverviewShown: AppState.HostOverviewRequest?
+    @State private var hostOverviewVisible = false
+    @State private var hostOverviewGlass = false
 
     /// Vertical auto-hide: is the floating sidebar currently slid in?
     /// Driven purely by left-edge / panel hover, never persisted.
@@ -47,6 +55,7 @@ struct AppView: View {
             // exit on screen.
             searchOverlay.id("overlay.search").zIndex(10)
             notificationsOverlay.id("overlay.notifications").zIndex(11)
+            hostOverviewOverlay.id("overlay.hostOverview").zIndex(12)
             agentCenterOverlay.id("overlay.agentCenter").zIndex(14)
             renameOverlay.id("overlay.rename").zIndex(12)
             groupRenameOverlay.id("overlay.groupRename").zIndex(13)
@@ -396,6 +405,62 @@ struct AppView: View {
                         ))
                 }
                 Spacer()
+            }
+        }
+    }
+
+    /// Host Overview: centered glass card over a soft dim, presented by
+    /// explicit animated state rather than a transition — the card must
+    /// condense out of a blur, and blur only animates reliably while
+    /// everything on screen is SwiftUI-drawn (the real glass material
+    /// mounts once the animation settles; see `glassLive`). `.id(target)`
+    /// gives each target its own probe lifecycle.
+    @ViewBuilder
+    private var hostOverviewOverlay: some View {
+        Group {
+            if let request = hostOverviewShown {
+                ZStack {
+                    Color.black.opacity(0.25)
+                        .ignoresSafeArea()
+                        .onTapGesture { state.closeHostOverview() }
+                        .opacity(hostOverviewVisible ? 1 : 0)
+                    VStack {
+                        Spacer(minLength: 44)
+                        HostOverviewOverlay(target: request.target,
+                                            glassLive: hostOverviewGlass)
+                            .id(request.target)
+                            .scaleEffect(hostOverviewVisible ? 1.0 : 1.05)
+                            .blur(radius: hostOverviewVisible || reduceMotion
+                                  ? 0 : 16)
+                            .opacity(hostOverviewVisible ? 1 : 0)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .onChange(of: state.hostOverview) { _, new in
+            if let new {
+                hostOverviewShown = new
+                hostOverviewGlass = false
+                // Let the dissolved state render one frame so there's
+                // something to animate FROM.
+                DispatchQueue.main.async {
+                    withAnimation(reduceMotion
+                                  ? .easeOut(duration: 0.20)
+                                  : .spring(response: 0.50, dampingFraction: 0.85)) {
+                        hostOverviewVisible = true
+                    }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                    if state.hostOverview != nil { hostOverviewGlass = true }
+                }
+            } else {
+                hostOverviewGlass = false
+                withAnimation(.easeIn(duration: 0.22)) { hostOverviewVisible = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
+                    if state.hostOverview == nil { hostOverviewShown = nil }
+                }
             }
         }
     }
