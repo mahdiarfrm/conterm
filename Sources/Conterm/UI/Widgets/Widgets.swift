@@ -9,7 +9,7 @@ import SwiftUI
 /// reads as one family via the shared `WidgetShell` chrome.
 enum WidgetKind: String, CaseIterable, Identifiable {
     case systemStats, clock, battery, gitStatus
-    case notes, ping, sessionStats, contexts, github, pixelPet
+    case notes, ping, sessionStats, kubernetes, containers, github, pixelPet
     var id: String { rawValue }
 
     var title: String {
@@ -21,7 +21,8 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .notes:        return "Notes"
         case .ping:         return "Ping"
         case .sessionStats: return "Session stats"
-        case .contexts:     return "Contexts"
+        case .kubernetes:   return "Kubernetes"
+        case .containers:   return "Containers"
         case .github:       return "GitHub"
         case .pixelPet:     return "Pixel pet"
         }
@@ -35,7 +36,8 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .notes:        return "Note count at a glance; click to capture and edit."
         case .ping:         return "Latency to 8.8.8.8 with a small history graph."
         case .sessionStats: return "Commands today, top command, and your day streak."
-        case .contexts:     return "kubectl context and running Docker containers."
+        case .kubernetes:   return "Current kubectl context — click to switch; prod turns red."
+        case .containers:   return "Running containers by runtime — Docker, Podman, containerd."
         case .github:       return "PR review + checks for the active repo (uses gh)."
         case .pixelPet:     return "A tiny companion that naps, blinks, and watches your agents."
         }
@@ -50,7 +52,8 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .notes:        return "note.text"
         case .ping:         return "dot.radiowaves.left.and.right"
         case .sessionStats: return "flame"
-        case .contexts:     return "helm"
+        case .kubernetes:   return "helm"
+        case .containers:   return "shippingbox"
         case .github:       return "checkmark.seal"
         case .pixelPet:     return "pawprint"
         }
@@ -73,11 +76,11 @@ struct WidgetRail: View {
     var body: some View {
         Group {
             if compact {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 4) {
                     ForEach(kinds) { widget($0) }
                 }
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: 5) {
                     ForEach(kinds) { widget($0) }
                 }
             }
@@ -95,10 +98,50 @@ struct WidgetRail: View {
         case .notes:        NotesWidget(compact: compact)
         case .ping:         PingWidget(compact: compact)
         case .sessionStats: SessionStatsWidget(compact: compact)
-        case .contexts:     ContextsWidget(compact: compact)
+        case .kubernetes:   KubernetesWidget(compact: compact)
+        case .containers:   ContainersWidget(compact: compact)
         case .github:       GitHubWidget(compact: compact)
         case .pixelPet:     PixelPetWidget(compact: compact)
         }
+    }
+}
+
+// MARK: - Active-pane observation
+
+/// Renders content against the live focused pane, observing all three
+/// layers of identity: the selected tab (AppState), that tab's focused
+/// pane (PaneTree.activePaneID), and the pane's own published state.
+/// Anything that reads the active pane through AppState alone goes
+/// stale the moment focus moves between panes — AppState doesn't
+/// republish for intra-tab focus changes.
+struct ActivePaneReader<Content: View>: View {
+    @EnvironmentObject private var state: AppState
+    @ViewBuilder var content: (Pane?) -> Content
+
+    var body: some View {
+        if let tree = state.selectedTab?.paneTree {
+            TreeLayer(tree: tree, content: content)
+        } else {
+            content(nil)
+        }
+    }
+
+    private struct TreeLayer: View {
+        @ObservedObject var tree: PaneTree
+        let content: (Pane?) -> Content
+        var body: some View {
+            if let pane = tree.activePane {
+                PaneLayer(pane: pane, content: content)
+            } else {
+                content(nil)
+            }
+        }
+    }
+
+    private struct PaneLayer: View {
+        @ObservedObject var pane: Pane
+        let content: (Pane?) -> Content
+        var body: some View { content(pane) }
     }
 }
 
@@ -115,7 +158,10 @@ struct WidgetShell<Content: View>: View {
     @ViewBuilder var content: Content
 
     @State private var hovering = false
-    private var pillHeight: CGFloat { compact ? 23 : 27 }
+    /// Full-size pills match TabBar.heavyPillHeight so every pill in the
+    /// toolbar row shares one silhouette; compact stays slim for the
+    /// sidebar rail.
+    private var pillHeight: CGFloat { compact ? 21 : 30 }
 
     var body: some View {
         Button(action: onTap) {
@@ -134,7 +180,7 @@ struct WidgetShell<Content: View>: View {
     @ViewBuilder
     private var shell: some View {
         let base = content
-            .padding(.horizontal, compact ? 8 : 10)
+            .padding(.horizontal, compact ? 7 : 9)
             .frame(height: pillHeight)
             .background(Capsule(style: .continuous).fill(Theme.recessedWash))
         if #available(macOS 26, *) {
@@ -160,6 +206,43 @@ func widgetIcon(_ symbol: String, compact: Bool) -> some View {
         .foregroundStyle(Theme.textSecondary)
 }
 
+/// Shared scaffold for widget popovers: one header treatment, one
+/// divider, one set of paddings — every pill's popover reads as the
+/// same family regardless of what it contains.
+struct WidgetPopoverChrome<Trailing: View, Content: View>: View {
+    let title: String
+    var width: CGFloat = 260
+    @ViewBuilder var trailing: Trailing
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                Spacer(minLength: 8)
+                trailing
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
+            Divider().opacity(0.45)
+            content
+        }
+        .frame(width: width)
+    }
+}
+
+/// Small counter chip for a popover header ("3 running", "12/17").
+func widgetPopoverChip(_ text: String) -> some View {
+    Text(text)
+        .font(.system(size: 10, weight: .medium, design: .monospaced))
+        .foregroundStyle(Theme.textSecondary)
+        .padding(.horizontal, 6).padding(.vertical, 2)
+        .background(Capsule().fill(Theme.stroke))
+}
+
 /// Thin separator between two chips inside one pill.
 func widgetChipDivider() -> some View {
     RoundedRectangle(cornerRadius: 0.5)
@@ -182,13 +265,19 @@ func locateWidgetTool(_ name: String) -> String? {
 }
 
 /// Run a tool to completion off the main thread; nil on launch failure or
-/// non-zero exit so callers fall back to "nothing to show".
+/// non-zero exit so callers fall back to "nothing to show". `env` entries
+/// overlay the inherited environment.
 nonisolated func runWidgetTool(_ path: String, _ args: [String],
-                               cwd: String? = nil) -> String? {
+                               cwd: String? = nil,
+                               env: [String: String]? = nil) -> String? {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: path)
     p.arguments = args
     if let cwd { p.currentDirectoryURL = URL(fileURLWithPath: cwd) }
+    if let env {
+        p.environment = ProcessInfo.processInfo.environment
+            .merging(env) { _, new in new }
+    }
     let out = Pipe()
     p.standardOutput = out
     p.standardError = Pipe()
@@ -529,9 +618,14 @@ struct GitWidget: View {
     @StateObject private var model = GitStatusModel()
     var compact: Bool
 
-    private var cwd: String? { state.selectedTab?.paneTree.activePane?.cwd }
-
     var body: some View {
+        ActivePaneReader { pane in
+            inner(cwd: pane?.cwd)
+        }
+    }
+
+    @ViewBuilder
+    private func inner(cwd: String?) -> some View {
         Group {
             if model.snap.inRepo, let branch = model.snap.branch {
                 WidgetShell(compact: compact, help: help, onTap: {}) {
