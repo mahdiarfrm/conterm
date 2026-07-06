@@ -354,6 +354,152 @@ final class AppState: ObservableObject {
         return true
     }
 
+    /// Host Overview overlay: nil when closed. `paneHost` is what the
+    /// pane detected; `target` is what ssh actually dials — they differ
+    /// when the login user matters (root@host) or an override is saved.
+    struct HostOverviewRequest: Equatable {
+        let paneHost: String
+        var target: String
+    }
+    @Published var hostOverview: HostOverviewRequest?
+
+    private static let hostTargetOverridesKey = "conterm.hostOverview.targets"
+
+    func openHostOverview(paneHost: String) {
+        let req = HostOverviewRequest(paneHost: paneHost,
+                                      target: Self.resolveHostTarget(paneHost))
+        withAnimation(Theme.Spring.bouncy) { hostOverview = req }
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    /// Best ssh target for a detected host: a saved override first, then
+    /// the user's own most recent `ssh` invocation of that host (which
+    /// carries the login — `root@web-01`), then the bare host.
+    private static func resolveHostTarget(_ host: String) -> String {
+        let overrides = UserDefaults.standard
+            .dictionary(forKey: hostTargetOverridesKey) as? [String: String]
+        if let t = overrides?[host], !t.isEmpty { return t }
+        if let match = SSHHistory.recentTargets(limit: 50)
+            .first(where: { $0 == host || $0.hasSuffix("@\(host)") }) {
+            return match
+        }
+        return host
+    }
+
+    /// Re-probe as a different target and remember it for this host.
+    func retryHostOverview(as newTarget: String) {
+        guard var req = hostOverview, !newTarget.isEmpty else { return }
+        var map = (UserDefaults.standard
+            .dictionary(forKey: Self.hostTargetOverridesKey) as? [String: String]) ?? [:]
+        map[req.paneHost] = newTarget
+        UserDefaults.standard.set(map, forKey: Self.hostTargetOverridesKey)
+        req.target = newTarget
+        hostOverview = req
+    }
+
+    func closeHostOverview() {
+        guard hostOverview != nil else { return }
+        withAnimation(Theme.Spring.snappy) { hostOverview = nil }
+        focusActiveSurface()
+        SoundEffects.shared.play(.paletteClose)
+    }
+
+    /// Session-scoped kubectl switch: pins the context in the focused
+    /// pane's shell via a KUBECONFIG overlay, leaving the global file
+    /// untouched. Local panes point at an overlay on this machine; an
+    /// SSH pane gets a remote-native one-liner that materializes the
+    /// overlay in the server's mktemp — a local path would mean nothing
+    /// there. Sent through the paste path (bracketed paste inserts
+    /// verbatim; per-key typing can drop characters on a remote pty),
+    /// and the visible line doubles as the receipt of what happened.
+    /// Shell family a pane's session commands must speak. The pane's
+    /// title usually names an interactive fish/csh; a local pane also
+    /// falls back to $SHELL. Remote panes default to POSIX — the safe
+    /// bet on servers. zsh is special: Conterm's bundled shell
+    /// integration carries a preexec hook there, enabling the silent
+    /// side-channel path.
+    private enum PaneShell { case posix, zsh, fish, csh }
+
+    private func detectShell(for pane: Pane) -> PaneShell {
+        let title = (pane.controller?.title ?? "").lowercased()
+        if title.contains("fish") { return .fish }
+        if title.contains("csh") { return .csh }
+        if pane.remoteHost == nil {
+            let shell = (ProcessInfo.processInfo.environment["SHELL"] ?? "").lowercased()
+            if shell.hasSuffix("fish") { return .fish }
+            if shell.hasSuffix("csh") { return .csh }
+            if shell.hasSuffix("zsh") { return .zsh }
+        }
+        return .posix
+    }
+
+
+    /// Local panes only — the overlay file lives on this machine, so
+    /// exporting its path inside an SSH session would point at nothing
+    /// (the popover disables switching there). The one visible line is
+    /// unavoidable: a shell's environment only changes through its own
+    /// stdin. It's kept short ($HOME-relative) and led with a space so
+    /// history-skip configs drop it.
+    func switchKubeContextInActivePane(_ name: String) {
+        guard let pane = selectedTab?.paneTree.activePane,
+              pane.remoteHost == nil,
+              let ctrl = pane.controller else { return }
+        // Context names come from the kubeconfig; strip anything that
+        // could escape the shell quoting all the same.
+        let safe = name.filter { $0 != "\"" && $0 != "'" && $0 != "\\" && $0 != "$" }
+        guard let overlay = KubeContextWatch.sessionOverlay(for: safe) else { return }
+        let shell = detectShell(for: pane)
+        if shell == .zsh,
+           KubeContextWatch.writeSessionFile(
+               paneID: pane.id,
+               content: ([overlay] + KubeContextWatch.configPaths())
+                   .joined(separator: ":")) {
+            // The preexec hook applies it before the pane's next command;
+            // nothing is typed into the terminal.
+            pane.kubeSessionContext = safe
+            focusActiveSurface()
+            return
+        }
+        // Non-zsh shells have no hook — fall back to the visible export,
+        // $HOME-shortened and space-led so history-skip configs drop it.
+        let home = NSHomeDirectory()
+        let paths = ([overlay] + KubeContextWatch.configPaths())
+            .map { $0.hasPrefix(home) ? "$HOME" + $0.dropFirst(home.count) : $0 }
+            .joined(separator: ":")
+        let cmd: String
+        switch shell {
+        case .posix, .zsh: cmd = " export KUBECONFIG=\"\(paths)\""
+        case .fish:        cmd = " set -gx KUBECONFIG \"\(paths)\""
+        case .csh:         cmd = " setenv KUBECONFIG \"\(paths)\""
+        }
+        ctrl.sendText(cmd)
+        ctrl.sendReturn()
+        pane.kubeSessionContext = safe
+        focusActiveSurface()
+    }
+
+    /// Undo a session switch: drop the pane's KUBECONFIG override so it
+    /// follows the global kubeconfig again.
+    func resetKubeSessionInActivePane() {
+        guard let pane = selectedTab?.paneTree.activePane,
+              let ctrl = pane.controller else { return }
+        let shell = detectShell(for: pane)
+        if shell == .zsh,
+           KubeContextWatch.writeSessionFile(paneID: pane.id, content: "") {
+            pane.kubeSessionContext = nil
+            focusActiveSurface()
+            return
+        }
+        switch shell {
+        case .posix, .zsh: ctrl.sendText(" unset KUBECONFIG")
+        case .fish:        ctrl.sendText(" set -e KUBECONFIG")
+        case .csh:         ctrl.sendText(" unsetenv KUBECONFIG")
+        }
+        ctrl.sendReturn()
+        pane.kubeSessionContext = nil
+        focusActiveSurface()
+    }
+
     var selectedTab: Tab? {
         tabs.first(where: { $0.id == selectedID })
     }
