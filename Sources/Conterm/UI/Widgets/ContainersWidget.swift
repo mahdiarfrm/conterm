@@ -29,10 +29,13 @@ final class ContainerRuntimesModel: ObservableObject {
     private var loading = false
 
     /// Label + resolved CLI path for each runtime present on disk.
-    nonisolated private static let runtimes: [(label: String, path: String)] =
-        [("Docker", "docker"), ("Podman", "podman"), ("containerd", "nerdctl")]
-            .compactMap { pair in
-                locateWidgetTool(pair.1).map { (pair.0, $0) }
+    /// `apple` marks Apple's `container` CLI, which lists as JSON
+    /// instead of the docker-style template the other three share.
+    nonisolated private static let runtimes: [(label: String, path: String, apple: Bool)] =
+        [("Docker", "docker", false), ("Podman", "podman", false),
+         ("containerd", "nerdctl", false), ("Apple", "container", true)]
+            .compactMap { entry in
+                locateWidgetTool(entry.1).map { (entry.0, $0, entry.2) }
             }
 
     init() {
@@ -73,20 +76,28 @@ final class ContainerRuntimesModel: ObservableObject {
         Task.detached(priority: .utility) {
             var found: [RuntimeGroup] = []
             for rt in Self.runtimes {
-                // docker/podman/nerdctl share the ps template syntax; a
-                // dead daemon exits non-zero and excludes the runtime.
-                guard let out = runWidgetTool(rt.path, ["ps", "--format",
-                    "{{.Names}}\t{{.Image}}\t{{.Status}}"]) else { continue }
-                let containers: [Container] = out
-                    .split(whereSeparator: \.isNewline).compactMap { line in
-                        let f = line.split(separator: "\t",
-                                           omittingEmptySubsequences: false)
-                        guard let name = f.first, !name.isEmpty else { return nil }
-                        return Container(name: String(name),
-                                         image: f.count > 1 ? String(f[1]) : "",
-                                         status: f.count > 2 ? String(f[2]) : "")
+                let containers: [Container]?
+                if rt.apple {
+                    containers = runWidgetTool(rt.path, ["ls", "--format", "json"])
+                        .flatMap(Self.parseAppleContainers)
+                } else {
+                    // docker/podman/nerdctl share the ps template syntax;
+                    // a dead daemon exits non-zero and drops the runtime.
+                    containers = runWidgetTool(rt.path, ["ps", "--format",
+                        "{{.Names}}\t{{.Image}}\t{{.Status}}"]).map { out in
+                        out.split(whereSeparator: \.isNewline).compactMap { line in
+                            let f = line.split(separator: "\t",
+                                               omittingEmptySubsequences: false)
+                            guard let name = f.first, !name.isEmpty else { return nil }
+                            return Container(name: String(name),
+                                             image: f.count > 1 ? String(f[1]) : "",
+                                             status: f.count > 2 ? String(f[2]) : "")
+                        }
                     }
-                found.append(RuntimeGroup(name: rt.label, containers: containers))
+                }
+                if let containers {
+                    found.append(RuntimeGroup(name: rt.label, containers: containers))
+                }
             }
             let groups = found
             await MainActor.run {
@@ -96,6 +107,34 @@ final class ContainerRuntimesModel: ObservableObject {
                 if self.total != total { self.total = total }
                 if self.groups != groups { self.groups = groups }
             }
+        }
+    }
+}
+
+extension ContainerRuntimesModel {
+    /// Apple's `container ls --format json`: entries nest identity under
+    /// `configuration` (id + image reference) with a top-level status.
+    /// Field names are matched tolerantly — flat `id`/`image` variants
+    /// parse too — and non-running rows are dropped in case an all-list
+    /// ever comes back.
+    nonisolated static func parseAppleContainers(_ out: String) -> [Container]? {
+        guard let data = out.data(using: .utf8),
+              let arr = (try? JSONSerialization.jsonObject(with: data))
+                as? [[String: Any]] else { return nil }
+        return arr.compactMap { obj in
+            let cfg = obj["configuration"] as? [String: Any]
+            guard let name = (cfg?["id"] as? String) ?? (obj["id"] as? String),
+                  !name.isEmpty else { return nil }
+            let status = ((obj["status"] as? String) ?? "").lowercased()
+            if !status.isEmpty, status != "running" { return nil }
+            var image = ""
+            if let img = cfg?["image"] as? [String: Any] {
+                image = (img["reference"] as? String) ?? ""
+            } else if let s = (cfg?["image"] as? String) ?? (obj["image"] as? String) {
+                image = s
+            }
+            return Container(name: name, image: image,
+                             status: status.isEmpty ? "" : status)
         }
     }
 }

@@ -110,8 +110,8 @@ One search over everything:
   pane's border. Click to switch context: by default a switch applies to
   the focused pane only (exported silently into that shell), so new panes
   start on your default — or flip one toggle to make switches global.
-- **Containers** — running containers across Docker, Podman, and
-  containerd in one pill, grouped by runtime in its popover.
+- **Containers** — running containers across Docker, Podman, containerd,
+  and Apple's `container` in one pill, grouped by runtime in its popover.
 
 ### Updates and backups
 
@@ -131,8 +131,8 @@ One search over everything:
 - **Widgets** — glanceable pills in the tab bar or sidebar: system stats,
   clock, battery, git status, GitHub PR checks, ping, notes, session streaks,
   the kubectl context (with a click-to-switch popover), containers across
-  runtimes (Docker, Podman, containerd), and a pixel cat. Enable and reorder
-  them in *Settings → Widgets*.
+  runtimes (Docker, Podman, containerd, Apple's container), and a pixel cat.
+  Enable and reorder them in *Settings → Widgets*.
 - **SSH-host detection** in the pane chrome, and synthesized UI sound effects.
 
 ## Install
