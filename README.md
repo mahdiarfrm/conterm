@@ -97,6 +97,22 @@ One search over everything:
   when a command fails or takes a while, a notification when a long command
   finishes while you've stepped away, and `⌘↑` / `⌘↓` to jump between prompts.
 
+### Hosts & clusters
+
+- **Host Overview** — right-click an SSH pane (or click the ⓘ beside its
+  title pill) for a glass briefing on the machine: load, memory, disks,
+  network, containers, VMs, Kubernetes, crons and timers, failed units,
+  recent journal and kernel errors, logins, and pending updates — gathered
+  in one key-authenticated SSH round trip. A status gem sums the host:
+  green up, amber wants attention, red in trouble.
+- **Kubernetes context** — a tab-bar pill shows where kubectl points;
+  production contexts turn it red and put a red glow on the focused
+  pane's border. Click to switch context: by default a switch applies to
+  the focused pane only (exported silently into that shell), so new panes
+  start on your default — or flip one toggle to make switches global.
+- **Containers** — running containers across Docker, Podman, and
+  containerd in one pill, grouped by runtime in its popover.
+
 ### Updates and backups
 
 - **Automatic updates** — checked from GitHub at launch and once a day while
@@ -114,8 +130,9 @@ One search over everything:
   chrome.
 - **Widgets** — glanceable pills in the tab bar or sidebar: system stats,
   clock, battery, git status, GitHub PR checks, ping, notes, session streaks,
-  kubectl / Docker contexts, and a pixel cat. Enable and reorder them in
-  *Settings → Widgets*.
+  the kubectl context (with a click-to-switch popover), containers across
+  runtimes (Docker, Podman, containerd), and a pixel cat. Enable and reorder
+  them in *Settings → Widgets*.
 - **SSH-host detection** in the pane chrome, and synthesized UI sound effects.
 
 ## Install
