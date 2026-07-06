@@ -347,6 +347,7 @@ final class Preferences: ObservableObject {
         static let hasCompletedSetup = "conterm.hasCompletedSetup"
         static let paletteOrder      = "conterm.paletteCommandOrder"
         static let hiddenPaletteCommands = "conterm.hiddenPaletteCommands"
+        static let paletteSeeds     = "conterm.paletteSeeds"
         static let hideTabBarSingleTab = "conterm.hideTabBarSingleTab"
         static let showPaneTitleBar = "conterm.showPaneTitleBar"
         static let commandAlerts    = "conterm.commandAlerts"
@@ -410,8 +411,27 @@ final class Preferences: ObservableObject {
                                at: anchor.map { $0 + 1 } ?? storedOrder.endIndex)
             ud.set(storedOrder, forKey: K.paletteOrder)
         }
+        if !storedOrder.isEmpty, !storedOrder.contains("open_vscode") {
+            let anchor = storedOrder.firstIndex(of: "open_cursor")
+            storedOrder.insert("open_vscode",
+                               at: anchor.map { $0 + 1 } ?? storedOrder.endIndex)
+            ud.set(storedOrder, forKey: K.paletteOrder)
+        }
         self.paletteCommandOrder    = storedOrder
-        self.hiddenPaletteCommands  = Set(ud.stringArray(forKey: K.hiddenPaletteCommands) ?? [])
+        // Commands that ship hidden are seeded into the stored set
+        // exactly once (recorded in paletteSeeds), so unhiding them in
+        // Settings ▸ Palette sticks across launches.
+        var hiddenCommands = Set(ud.stringArray(forKey: K.hiddenPaletteCommands) ?? [])
+        var seeds = Set(ud.stringArray(forKey: K.paletteSeeds) ?? [])
+        let shipHidden = ["open_vscode"]
+        if !shipHidden.allSatisfy(seeds.contains) {
+            for id in shipHidden where seeds.insert(id).inserted {
+                hiddenCommands.insert(id)
+            }
+            ud.set(Array(hiddenCommands), forKey: K.hiddenPaletteCommands)
+            ud.set(Array(seeds), forKey: K.paletteSeeds)
+        }
+        self.hiddenPaletteCommands  = hiddenCommands
         self.hideTabBarSingleTab    = ud.object(forKey: K.hideTabBarSingleTab) as? Bool ?? false
         self.showPaneTitleBar       = ud.object(forKey: K.showPaneTitleBar) as? Bool ?? true
         self.commandAlerts          = ud.object(forKey: K.commandAlerts) as? Bool ?? true
