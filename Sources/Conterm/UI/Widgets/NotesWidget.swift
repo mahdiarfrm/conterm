@@ -91,7 +91,7 @@ private struct NotesPopover: View {
                 .buttonStyle(.plain)
                 .help("New note")
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 14)
             .padding(.vertical, 9)
             Divider().opacity(0.5)
             if notes.notes.isEmpty {
@@ -221,7 +221,7 @@ private struct NotesWidgetRow: View {
                     .help("Delete note")
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 14)
             .padding(.vertical, 6)
             .contentShape(Rectangle())
             .background(hovering ? Theme.selectionFill : .clear)

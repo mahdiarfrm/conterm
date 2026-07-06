@@ -193,9 +193,14 @@ struct GitHubWidget: View {
     @StateObject private var model = GitHubModel()
     var compact: Bool
 
-    private var cwd: String? { state.selectedTab?.paneTree.activePane?.cwd }
-
     var body: some View {
+        ActivePaneReader { pane in
+            inner(cwd: pane?.cwd)
+        }
+    }
+
+    @ViewBuilder
+    private func inner(cwd: String?) -> some View {
         Group {
             if model.snap.hasData {
                 WidgetShell(compact: compact, help: help, onTap: open) {

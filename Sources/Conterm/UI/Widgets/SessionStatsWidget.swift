@@ -177,28 +177,33 @@ private struct SessionStatsPopover: View {
     var snap: SessionStatsModel.Snapshot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Terminal activity")
-                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
-            Sparkline(samples: snap.lastTwoWeeks,
-                      maxValue: max(1, snap.lastTwoWeeks.max() ?? 1))
-                .frame(width: 220, height: 40)
-                .foregroundStyle(Theme.accent)
-            Text("Last 14 days")
-                .font(.system(size: 9.5, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-            VStack(alignment: .leading, spacing: 5) {
-                row("Today", "\(snap.today) commands")
-                if let top = snap.topCommand {
-                    row("Top today", "\(top) ×\(snap.topCount)")
+        WidgetPopoverChrome(title: "Terminal activity", width: 250, trailing: {
+            widgetPopoverChip("\(snap.streak)d streak")
+        }) {
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Sparkline(samples: snap.lastTwoWeeks,
+                              maxValue: max(1, snap.lastTwoWeeks.max() ?? 1))
+                        .frame(height: 40)
+                        .frame(maxWidth: .infinity)
+                        .foregroundStyle(Theme.accent)
+                    Text("Last 14 days")
+                        .font(.system(size: 9.5, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
                 }
-                row("Streak", "\(snap.streak) day\(snap.streak == 1 ? "" : "s")")
-                row("Best day", "\(snap.bestDay) commands")
-                row("Days tracked", "\(snap.trackedDays)")
+                VStack(alignment: .leading, spacing: 6) {
+                    row("Today", "\(snap.today) commands")
+                    if let top = snap.topCommand {
+                        row("Top today", "\(top) ×\(snap.topCount)")
+                    }
+                    row("Streak", "\(snap.streak) day\(snap.streak == 1 ? "" : "s")")
+                    row("Best day", "\(snap.bestDay) commands")
+                    row("Days tracked", "\(snap.trackedDays)")
+                }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
-        .padding(14)
     }
 
     private func row(_ label: String, _ value: String) -> some View {
