@@ -37,7 +37,7 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .ping:         return "Latency to 8.8.8.8 with a small history graph."
         case .sessionStats: return "Commands today, top command, and your day streak."
         case .kubernetes:   return "Current kubectl context — click to switch; prod turns red."
-        case .containers:   return "Running containers by runtime — Docker, Podman, containerd."
+        case .containers:   return "Running containers by runtime — Docker, Podman, containerd, Apple."
         case .github:       return "PR review + checks for the active repo (uses gh)."
         case .pixelPet:     return "A tiny companion that naps, blinks, and watches your agents."
         }
