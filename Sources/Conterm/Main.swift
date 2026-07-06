@@ -84,6 +84,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // use-after-free seen after long locked stretches.
         _ = PowerState.shared
         notes = NotesStore()
+        // Pane ids are minted per process — pending kube session files
+        // from any previous run are unconsumable.
+        KubeContextWatch.sweepSessionFiles()
         themes = ThemeCatalog()
         fonts = FontCatalog()
         notifications = NotificationStore()
