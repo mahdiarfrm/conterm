@@ -366,6 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if self.state.paletteOpen      { self.state.paletteEscTick &+= 1; return nil }
                 if self.state.settingsOpen     { self.state.toggleSettings();     return nil }
                 if self.state.searchOpen       { self.state.toggleSearch();       return nil }
+                if self.state.hostOverview != nil { self.state.closeHostOverview(); return nil }
                 if self.state.agentCenterOpen  { self.state.toggleAgentCenter();  return nil }
                 return event
             }

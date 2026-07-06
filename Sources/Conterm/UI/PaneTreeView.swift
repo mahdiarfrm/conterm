@@ -20,6 +20,7 @@ func makePaneSurface(pane: Pane,
     controller.hostView = host
     view.controller = controller
     controller.startingDir = pane.startingDir
+    controller.paneID = pane.id
     pane.controller = controller
 
     let owningTab = state.tabs.first { tab in
@@ -166,6 +167,11 @@ func makePaneSurface(pane: Pane,
     controller.onScrollbar = { [weak pane] total, _, len in
         let flat = total == len
         if pane?.noScrollback != flat { pane?.noScrollback = flat }
+    }
+    controller.hostOverviewTarget = { [weak pane] in pane?.remoteHost }
+    controller.onHostOverview = { [weak pane, weak state] in
+        guard let host = pane?.remoteHost else { return }
+        state?.openHostOverview(paneHost: host)
     }
     controller.onCommandFinished = { [weak pane, weak owningTab, weak state, notifications, prefs] exitCode, durationNs in
         DispatchQueue.main.async {
@@ -637,11 +643,29 @@ final class PaneBox: NSView {
 struct PaneChrome: View {
     @ObservedObject var pane: Pane
     @ObservedObject var prefs: Preferences
+    // The kubectl context is machine-global, so the danger tint keys off
+    // one shared watch. Only real context changes republish, so this
+    // costs the chrome nothing between switches.
+    @ObservedObject private var kube = KubeContextWatch.shared
     var isActive: Bool
     var index: Int
     var recomputeAgentPhase: () -> Void
     @State private var commandBadge: Pane.CommandResult?
     @State private var attentionGen = 0
+
+    /// Focus-halo tint: red while this pane's kubectl points at
+    /// production — its session override when set, the global context
+    /// otherwise. SSH panes are exempt: their kubectl is the remote's,
+    /// so the local context says nothing about them. The focused pane
+    /// is where the next command lands, so it carries the warning;
+    /// inactive panes stay neutral to keep the signal sharp.
+    private var paneKubeDanger: Bool {
+        pane.remoteHost == nil
+            && KubeContextWatch.isDanger(pane.kubeSessionContext ?? kube.current)
+    }
+    private var focusTint: Color {
+        paneKubeDanger ? Color(red: 1.0, green: 0.30, blue: 0.30) : Theme.highlight
+    }
 
     var body: some View {
         let corner = Theme.paneCorner
@@ -662,9 +686,10 @@ struct PaneChrome: View {
                                   lineWidth: isActive ? 1 : 0.5)
                 if isActive {
                     RoundedRectangle(cornerRadius: corner + 2, style: .continuous)
-                        .strokeBorder(Theme.highlight.opacity(0.18), lineWidth: 3)
+                        .strokeBorder(focusTint.opacity(paneKubeDanger ? 0.30 : 0.18),
+                                      lineWidth: 3)
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
-                        .strokeBorder(Theme.highlight.opacity(0.75), lineWidth: 1.5)
+                        .strokeBorder(focusTint.opacity(0.75), lineWidth: 1.5)
                 }
                 if pane.agent.phase != .idle {
                     AgentPill(status: pane.agent)
@@ -679,13 +704,20 @@ struct PaneChrome: View {
             }
             .allowsHitTesting(false)
 
-            // The title-bar pill stays interactive (tap toggles collapse).
+            // The title-bar pill stays interactive (tap toggles collapse);
+            // SSH panes gain the Host Overview affordance beside it.
             if prefs.showPaneTitleBar {
-                PaneTitleBar(dirLabel: friendlyDirLabel(for: pane.cwd),
-                             remoteHost: pane.remoteHost,
-                             index: index, isActive: isActive)
-                    .padding(.top, 10).padding(.trailing, 12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                HStack(spacing: 6) {
+                    if pane.remoteHost != nil {
+                        HostInfoButton(action: { pane.controller?.onHostOverview?() },
+                                       light: prefs.lightGlass)
+                    }
+                    PaneTitleBar(dirLabel: friendlyDirLabel(for: pane.cwd),
+                                 remoteHost: pane.remoteHost,
+                                 index: index, isActive: isActive)
+                }
+                .padding(.top, 10).padding(.trailing, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
         }
         .animation(Theme.Spring.snappy, value: pane.agent)
