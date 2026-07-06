@@ -356,7 +356,7 @@ struct SettingsPanel: View {
     private var widgets: some View {
         VStack(alignment: .leading, spacing: 14) {
             sectionHeader("Widgets",
-                          subtitle: "Glanceable pills in the tab bar / sidebar. Enable the ones you want, drag with the arrows to reorder. Git, GitHub, Contexts, and Session stats hide themselves when there's nothing to show.")
+                          subtitle: "Glanceable pills in the tab bar / sidebar. Enable the ones you want, drag with the arrows to reorder. Git, GitHub, Kubernetes, Containers, and Session stats hide themselves when there's nothing to show.")
             card {
                 ForEach(Array(orderedWidgets.enumerated()), id: \.element.id) { idx, kind in
                     widgetRow(kind, index: idx, count: orderedWidgets.count)
@@ -395,6 +395,34 @@ struct SettingsPanel: View {
                     }
                     SettingsRow(title: "Date", subtitle: "Show the weekday and date.") {
                         Toggle("", isOn: $prefs.clockShowDate.withSound()).labelsHidden()
+                    }
+                }
+            }
+            if prefs.isWidgetEnabled(WidgetKind.kubernetes.rawValue) {
+                card {
+                    Text("Kubernetes")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SettingsRow(title: "Production patterns",
+                                subtitle: "Comma-separated, case-insensitive substrings. A kubectl context whose name contains one turns red — pill, context list, and the focused pane's glow. Also editable from the pill's gear.") {
+                        TextField("prod", text: $prefs.kubeDangerPatterns)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(width: 180)
+                    }
+                    SettingsRow(title: "Kubeconfig paths",
+                                subtitle: "Colon-separated files to read (first file's current-context wins, like kubectl). Empty uses $KUBECONFIG, then ~/.kube/config.") {
+                        TextField("~/.kube/config", text: $prefs.kubeConfigPaths)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(width: 180)
+                    }
+                    SettingsRow(title: "Remember context switches",
+                                subtitle: "Off: switching from the widget exports KUBECONFIG into the focused pane only — new panes start on the default context. On: switches write the global kubeconfig.") {
+                        Toggle("", isOn: $prefs.kubeRememberContext.withSound())
+                            .toggleStyle(.switch)
+                            .labelsHidden()
                     }
                 }
             }
