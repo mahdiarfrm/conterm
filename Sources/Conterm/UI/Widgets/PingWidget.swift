@@ -169,28 +169,36 @@ private struct PingPopover: View {
     @ObservedObject var model: PingModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Latency · \(PingModel.host)")
-                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
-            if model.history.isEmpty {
-                Text(model.failStreak >= 3 ? "Unreachable" : "Measuring…")
-                    .font(.system(size: 11.5, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-            } else {
-                Sparkline(samples: model.history,
-                          maxValue: max(50, (model.history.max() ?? 50) * 1.15))
-                    .frame(width: 220, height: 44)
-                    .foregroundStyle(Theme.accent)
-                HStack(spacing: 14) {
-                    stat("now", model.latestMs)
-                    stat("avg", model.history.reduce(0, +) / Double(model.history.count))
-                    stat("min", model.history.min())
-                    stat("max", model.history.max())
+        WidgetPopoverChrome(title: "Latency", width: 250, trailing: {
+            widgetPopoverChip(PingModel.host)
+        }) {
+            VStack(alignment: .leading, spacing: 10) {
+                if model.history.isEmpty {
+                    Text(model.failStreak >= 3 ? "Unreachable" : "Measuring…")
+                        .font(.system(size: 11.5, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                } else {
+                    Sparkline(samples: model.history,
+                              maxValue: max(50, (model.history.max() ?? 50) * 1.15))
+                        .frame(height: 44)
+                        .frame(maxWidth: .infinity)
+                        .foregroundStyle(Theme.accent)
+                    HStack(spacing: 0) {
+                        stat("now", model.latestMs)
+                        Spacer()
+                        stat("avg", model.history.reduce(0, +) / Double(model.history.count))
+                        Spacer()
+                        stat("min", model.history.min())
+                        Spacer()
+                        stat("max", model.history.max())
+                    }
                 }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
-        .padding(14)
     }
 
     private func stat(_ label: String, _ value: Double?) -> some View {
