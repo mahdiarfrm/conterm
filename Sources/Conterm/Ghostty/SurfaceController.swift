@@ -93,11 +93,24 @@ extension Ghostty {
         /// terminal is on the alternate screen or freshly cleared.
         var onScrollbar: ((UInt64, UInt64, UInt64) -> Void)?
 
+        /// The pane's SSH target when one is live (nil for local shells)
+        /// and the action opening its Host Overview — both feed the
+        /// surface's right-click menu.
+        var hostOverviewTarget: (() -> String?)?
+        var onHostOverview: (() -> Void)?
+
         /// Initial working directory for the shell. Set by TerminalContainer
         /// before `start(view:)` from the owning Pane's `startingDir`.
         /// Read once when libghostty creates the surface and ignored
         /// afterwards (the shell's own pwd takes over).
         var startingDir: String?
+
+        /// Owning pane's id, exported into the shell as CONTERM_PANE_ID
+        /// so Conterm's shell-integration hooks can address this pane
+        /// through side-channel files (e.g. the silent kubectl session
+        /// switch). Set before `start(view:)`; read once at surface
+        /// creation.
+        var paneID: UUID?
 
         /// Two-phase init: storage first, then `start(view:)` to create the
         /// libghostty surface once we can take `Unmanaged.passUnretained(self)`.
@@ -139,16 +152,29 @@ extension Ghostty {
             let boxPtr = Unmanaged.passRetained(SurfaceUserdata(self)).toOpaque()
             cfg.userdata = boxPtr
 
-            // Pass a starting cwd to libghostty. `withCString` keeps the C
-            // string alive across the surface_new call (libghostty copies it).
-            let result: ghostty_surface_t?
-            if let dir = startingDir, !dir.isEmpty {
-                result = dir.withCString { ptr -> ghostty_surface_t? in
-                    cfg.working_directory = ptr
-                    return ghostty_surface_new(app.handle, &cfg)
+            // Pass a starting cwd + the pane-id env tag to libghostty.
+            // The nested `withCString`s keep every C string alive across
+            // the surface_new call (libghostty copies them).
+            func withDir<R>(_ body: (UnsafePointer<CChar>?) -> R) -> R {
+                if let dir = startingDir, !dir.isEmpty {
+                    return dir.withCString { body($0) }
                 }
-            } else {
-                result = ghostty_surface_new(app.handle, &cfg)
+                return body(nil)
+            }
+            let result: ghostty_surface_t? = withDir { dirPtr in
+                if let dirPtr { cfg.working_directory = dirPtr }
+                return "CONTERM_PANE_ID".withCString { keyPtr in
+                    (paneID?.uuidString ?? "").withCString { valPtr in
+                        var envVar = ghostty_env_var_s(key: keyPtr, value: valPtr)
+                        return withUnsafeMutablePointer(to: &envVar) { envPtr in
+                            if paneID != nil {
+                                cfg.env_vars = envPtr
+                                cfg.env_var_count = 1
+                            }
+                            return ghostty_surface_new(app.handle, &cfg)
+                        }
+                    }
+                }
             }
             guard let s = result else {
                 // Surface never took ownership of the box — reclaim its +1.
