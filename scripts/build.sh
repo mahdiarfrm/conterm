@@ -77,6 +77,14 @@ cp Resources/ghostty-default.conf "$APP/Contents/Resources/ghostty-default.conf"
 # inject ZDOTDIR/ENV for shell-integration.
 if [[ -d Resources/ghostty ]]; then
     cp -R Resources/ghostty "$APP/Contents/Resources/ghostty"
+    # Conterm's own zsh hooks ride the same integration entry point.
+    # Appended into the BUILT bundle only, so setup.sh can regenerate
+    # Resources/ghostty from Ghostty.app without losing them.
+    ZSH_INTEGRATION="$APP/Contents/Resources/ghostty/shell-integration/zsh/ghostty-integration"
+    if [[ -f "$ZSH_INTEGRATION" && -f Resources/conterm-integration.zsh ]]; then
+        cat Resources/conterm-integration.zsh >> "$ZSH_INTEGRATION"
+        echo "OK: appended conterm zsh hooks to shell integration"
+    fi
     echo "OK: bundled Resources/ghostty ($(du -sh "$APP/Contents/Resources/ghostty" | cut -f1))"
 fi
 
