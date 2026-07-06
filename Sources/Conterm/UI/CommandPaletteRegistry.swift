@@ -434,6 +434,12 @@ extension CommandPalette {
                     subtitle: "Open this pane's directory in Cursor",
                     shortcut: "",
                     run: { openCurrentDir(in: .cursor) }),
+            Command(id: "open_vscode", icon: "chevron.left.forwardslash.chevron.right",
+                    assetName: "vscode-mark",
+                    title: "Open in VS Code",
+                    subtitle: "Open this pane's directory in VS Code",
+                    shortcut: "",
+                    run: { openCurrentDir(in: .vscode) }),
             Command(id: "sessions", icon: "rectangle.3.group",
                     title: "Sessions",
                     subtitle: "Jump to any pane in any window",
@@ -563,6 +569,7 @@ extension CommandPalette {
     static let catalog: [(id: String, title: String, icon: String)] = [
         ("reveal_finder",    "Open in Finder",              "folder"),
         ("open_cursor",      "Open in Cursor",              "cursorarrow"),
+        ("open_vscode",      "Open in VS Code",             "chevron.left.forwardslash.chevron.right"),
         ("sessions",         "Sessions",                    "rectangle.3.group"),
         ("ssh_hosts",        "SSH",                         "network"),
         ("tab_groups",       "Tab Groups",                  "square.stack.3d.up"),
@@ -618,7 +625,7 @@ extension CommandPalette {
 
     // MARK: - Open-current-dir actions
 
-    enum OpenTarget { case finder, cursor }
+    enum OpenTarget { case finder, cursor, vscode }
 
     func openCurrentDir(in target: OpenTarget) {
         // Pull cwd from the active pane in the active tab.
@@ -638,6 +645,12 @@ extension CommandPalette {
             task.launchPath = "/usr/bin/env"
             task.arguments = ["sh", "-c",
                 "cursor \(shellQuote(cwd)) 2>/dev/null || open -a Cursor \(shellQuote(cwd))"]
+            try? task.run()
+        case .vscode:
+            let task = Process()
+            task.launchPath = "/usr/bin/env"
+            task.arguments = ["sh", "-c",
+                "code \(shellQuote(cwd)) 2>/dev/null || open -a 'Visual Studio Code' \(shellQuote(cwd))"]
             try? task.run()
         }
     }
