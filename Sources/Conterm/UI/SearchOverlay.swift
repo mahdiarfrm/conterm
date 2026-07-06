@@ -15,8 +15,13 @@ struct SearchOverlay: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        if let pane = state.searchPane {
-            SearchBar(pane: pane)
+        // ActivePaneReader supplies the LIVE focus so the bar can close
+        // on a pane switch — observing AppState alone misses intra-tab
+        // focus changes entirely.
+        ActivePaneReader { active in
+            if let pane = state.searchPane {
+                SearchBar(pane: pane, activePaneID: active?.id)
+            }
         }
     }
 }
@@ -24,6 +29,8 @@ struct SearchOverlay: View {
 private struct SearchBar: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var pane: Pane
+    /// Live focus from ActivePaneReader (nil when no pane is focused).
+    var activePaneID: UUID?
     @StateObject private var transcript = TranscriptSearchModel()
     @FocusState private var queryFocused: Bool
     @State private var selectedHit: Int?
@@ -68,7 +75,7 @@ private struct SearchBar: View {
         }
         .onChange(of: state.searchQuery) { _, q in queryChanged(q) }
         .onChange(of: state.searchScope) { old, new in scopeChanged(old, new) }
-        .onChange(of: state.selectedTab?.paneTree.activePane?.id) { _, newID in
+        .onChange(of: activePaneID) { _, newID in
             // The session is welded to its pane; a pane/tab switch ends
             // it rather than silently retargeting.
             if newID != pane.id { state.closeSearch() }
@@ -418,7 +425,7 @@ private struct TranscriptHitRow: View {
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isSelected ? Theme.accentSoft
-                      : hovering ? Color.white.opacity(0.05) : .clear)
+                      : hovering ? Theme.selectionFill : .clear)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
