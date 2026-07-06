@@ -222,6 +222,34 @@ final class Preferences: ObservableObject {
     @Published var clockShowDate: Bool {
         didSet { ud.set(clockShowDate, forKey: K.clockShowDate) }
     }
+    /// Contexts: comma-separated substrings (case-insensitive) that mark
+    /// a kubectl context as production — red pill text, PROD badge, and
+    /// the focused pane's glow all key off a match.
+    @Published var kubeDangerPatterns: String {
+        didSet {
+            ud.set(kubeDangerPatterns, forKey: K.kubeDangerPatterns)
+            // Deferred: this fires mid-keystroke from a TextField binding,
+            // and the watch republishes to every pane's chrome — publishing
+            // inside the same view update is an AttributeGraph hazard.
+            DispatchQueue.main.async { KubeContextWatch.shared.settingsChanged() }
+        }
+    }
+    /// Contexts: explicit kubeconfig paths, colon-separated. Empty falls
+    /// back to $KUBECONFIG (rarely visible to a GUI app) and then
+    /// ~/.kube/config.
+    @Published var kubeConfigPaths: String {
+        didSet {
+            ud.set(kubeConfigPaths, forKey: K.kubeConfigPaths)
+            DispatchQueue.main.async { KubeContextWatch.shared.settingsChanged() }
+        }
+    }
+    /// Off (default): a context switch from the widget applies only to
+    /// the focused pane — exported into that shell's KUBECONFIG — so
+    /// new panes start on the default context. On: switches write the
+    /// global kubeconfig and stick everywhere.
+    @Published var kubeRememberContext: Bool {
+        didSet { ud.set(kubeRememberContext, forKey: K.kubeRememberContext) }
+    }
 
     /// Whether a widget kind is in the enabled rail.
     func isWidgetEnabled(_ id: String) -> Bool { enabledWidgets.contains(id) }
@@ -331,6 +359,9 @@ final class Preferences: ObservableObject {
         static let clock24Hour      = "conterm.clock24Hour"
         static let clockShowSeconds = "conterm.clockShowSeconds"
         static let clockShowDate    = "conterm.clockShowDate"
+        static let kubeDangerPatterns = "conterm.kubeDangerPatterns"
+        static let kubeConfigPaths  = "conterm.kubeConfigPaths"
+        static let kubeRememberContext = "conterm.kubeRememberContext"
         static let autoHideSidebar  = "conterm.autoHideSidebar"
         static let lowPowerRendering = "conterm.lowPowerRendering"
         static let useDefaultConfig = "conterm.useDefaultConfig"
@@ -393,6 +424,15 @@ final class Preferences: ObservableObject {
         var widgets = ud.stringArray(forKey: K.enabledWidgets)
             ?? ((ud.object(forKey: K.showSystemStats) as? Bool ?? true) ? ["systemStats"] : [])
         widgets.removeAll { $0 == "agentStatus" }
+        // Superseded widget ids stay valid across updates: the combined
+        // `contexts` maps to kubernetes + containers in place, and
+        // `docker` to its runtime-agnostic successor.
+        if let i = widgets.firstIndex(of: "contexts") {
+            widgets.replaceSubrange(i...i, with: ["kubernetes", "containers"])
+        }
+        if let i = widgets.firstIndex(of: "docker") {
+            widgets[i] = "containers"
+        }
         self.enabledWidgets = widgets
         ud.set(widgets, forKey: K.enabledWidgets)
         self.statsShowCPU           = ud.object(forKey: K.statsShowCPU) as? Bool ?? true
@@ -401,6 +441,9 @@ final class Preferences: ObservableObject {
         self.clock24Hour            = ud.object(forKey: K.clock24Hour) as? Bool ?? false
         self.clockShowSeconds       = ud.object(forKey: K.clockShowSeconds) as? Bool ?? false
         self.clockShowDate          = ud.object(forKey: K.clockShowDate) as? Bool ?? false
+        self.kubeDangerPatterns     = ud.string(forKey: K.kubeDangerPatterns) ?? "prod"
+        self.kubeConfigPaths        = ud.string(forKey: K.kubeConfigPaths) ?? ""
+        self.kubeRememberContext    = ud.object(forKey: K.kubeRememberContext) as? Bool ?? false
         self.autoHideSidebar        = ud.object(forKey: K.autoHideSidebar) as? Bool ?? false
         self.lowPowerRendering      = ud.object(forKey: K.lowPowerRendering) as? Bool ?? true
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
