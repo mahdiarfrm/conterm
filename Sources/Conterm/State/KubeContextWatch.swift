@@ -224,6 +224,27 @@ final class KubeContextWatch: ObservableObject {
                                    encoding: .utf8)) != nil
     }
 
+    /// Drop a pane's pending one-shot file — a switch made in a pane
+    /// that closes before running another command would otherwise
+    /// orphan it (pane ids are never reused, so it could only rot).
+    nonisolated static func removeSessionFile(paneID: UUID) {
+        try? FileManager.default.removeItem(
+            atPath: "\(NSHomeDirectory())/.conterm/k8s/pane-\(paneID.uuidString)")
+    }
+
+    /// Launch-time sweep of every pane file: ids are minted fresh each
+    /// process, so files from any earlier run are unconsumable litter.
+    /// The per-context overlay yamls stay — they're stable, reused, and
+    /// may be referenced by KUBECONFIG in shells that outlived a pane.
+    nonisolated static func sweepSessionFiles() {
+        let dir = "\(NSHomeDirectory())/.conterm/k8s"
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir)
+        else { return }
+        for name in names where name.hasPrefix("pane-") {
+            try? FileManager.default.removeItem(atPath: "\(dir)/\(name)")
+        }
+    }
+
     /// Tiny kubeconfig whose only job is to pin `current-context`.
     /// Prepended to KUBECONFIG in one pane's shell, it wins the merge
     /// (kubectl takes current-context from the first file that sets it)

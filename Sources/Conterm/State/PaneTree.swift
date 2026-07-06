@@ -5,6 +5,12 @@ import SwiftUI
 @MainActor
 final class Pane: ObservableObject, Identifiable {
     let id: UUID = UUID()
+
+    deinit {
+        // A kube session file written after this pane's last command
+        // has no consumer once the pane is gone.
+        KubeContextWatch.removeSessionFile(paneID: id)
+    }
     /// NOT @Published — nothing observes this property changing, and
     /// @Published's internal CurrentValueSubject can retain the
     /// value through subscriber lifetimes that outlive the Pane.
