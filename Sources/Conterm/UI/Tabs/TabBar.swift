@@ -375,7 +375,10 @@ struct TabBar: View {
     /// bell, search, ⌘K) live together in ONE unified dark Liquid Glass
     /// bar with a hairline border — the macOS 26 grouped-toolbar look.
     private var fusedToolbarCluster: some View {
-        HStack(spacing: 8) {
+        // One gap everywhere: matches WidgetRail's internal spacing so
+        // widget pills, the update pill, the layout switcher, and the
+        // action bar read as one evenly-set row.
+        HStack(spacing: 5) {
             // Stats are informational; drop them when narrow so the higher-
             // priority ⌘K / action pills aren't pushed off the bar.
             if orientation == .horizontal, !hideStats, !prefs.enabledWidgets.isEmpty {
