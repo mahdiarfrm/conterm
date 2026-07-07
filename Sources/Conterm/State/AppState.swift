@@ -404,6 +404,31 @@ final class AppState: ObservableObject {
         SoundEffects.shared.play(.paletteClose)
     }
 
+    /// Ansible cockpit overlay: a pane's live/parked run, or the
+    /// machine's persisted last report. nil when closed.
+    enum AnsibleCockpitTarget: Equatable {
+        case pane(UUID)
+        case lastReport
+    }
+    @Published var ansibleCockpit: AnsibleCockpitTarget?
+
+    func openAnsibleCockpit(paneID: UUID) {
+        withAnimation(Theme.Spring.bouncy) { ansibleCockpit = .pane(paneID) }
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    func openAnsibleLastReport() {
+        withAnimation(Theme.Spring.bouncy) { ansibleCockpit = .lastReport }
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    func closeAnsibleCockpit() {
+        guard ansibleCockpit != nil else { return }
+        withAnimation(Theme.Spring.snappy) { ansibleCockpit = nil }
+        focusActiveSurface()
+        SoundEffects.shared.play(.paletteClose)
+    }
+
     /// Session-scoped kubectl switch: pins the context in the focused
     /// pane's shell via a KUBECONFIG overlay, leaving the global file
     /// untouched. Local panes point at an overlay on this machine; an

@@ -8,8 +8,11 @@ final class Pane: ObservableObject, Identifiable {
 
     deinit {
         // A kube session file written after this pane's last command
-        // has no consumer once the pane is gone.
+        // has no consumer once the pane is gone, and an ansible report
+        // without its pane has nowhere to jump to.
         KubeContextWatch.removeSessionFile(paneID: id)
+        let paneID = id
+        Task { @MainActor in AnsibleCenter.shared.clear(paneID: paneID) }
     }
     /// NOT @Published — nothing observes this property changing, and
     /// @Published's internal CurrentValueSubject can retain the
