@@ -20,6 +20,25 @@ _conterm_kube_preexec() {
 }
 preexec_functions+=(_conterm_kube_preexec)
 
+# Rollout watcher: when a command that redeploys a workload starts,
+# leave a marker naming this shell's kubeconfig and the command line;
+# the app resolves the target deployments and follows the rollout.
+_conterm_rollout_preexec() {
+    [[ -n "$CONTERM_PANE_ID" ]] || return 0
+    case "$1" in
+        kubectl\ *|*/kubectl\ *|sudo\ kubectl\ *) ;;
+        *) return 0 ;;
+    esac
+    case " $1 " in
+        *" rollout restart "*|*" set image "*|*" scale "*|*" apply "*) ;;
+        *) return 0 ;;
+    esac
+    mkdir -p "$HOME/.conterm/k8s"
+    { print -r -- "${KUBECONFIG:-}"; print -r -- "$1"; } \
+        > "$HOME/.conterm/k8s/rollout-$CONTERM_PANE_ID"
+}
+preexec_functions+=(_conterm_rollout_preexec)
+
 # Ansible cockpit: when a playbook command starts, point Ansible's
 # additional-callback path at Conterm's bundled plugin and give it this
 # pane's feed file. Console output is untouched — the plugin mirrors

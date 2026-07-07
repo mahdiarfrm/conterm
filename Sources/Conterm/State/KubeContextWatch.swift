@@ -234,13 +234,15 @@ final class KubeContextWatch: ObservableObject {
 
     /// Launch-time sweep of every pane file: ids are minted fresh each
     /// process, so files from any earlier run are unconsumable litter.
-    /// The per-context overlay yamls stay — they're stable, reused, and
-    /// may be referenced by KUBECONFIG in shells that outlived a pane.
+    /// Rollout markers from an earlier run go too — the commands they
+    /// describe are long past. The per-context overlay yamls stay —
+    /// they're stable, reused, and may be referenced by KUBECONFIG in
+    /// shells that outlived a pane.
     nonisolated static func sweepSessionFiles() {
         let dir = "\(NSHomeDirectory())/.conterm/k8s"
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir)
         else { return }
-        for name in names where name.hasPrefix("pane-") {
+        for name in names where name.hasPrefix("pane-") || name.hasPrefix("rollout-") {
             try? FileManager.default.removeItem(atPath: "\(dir)/\(name)")
         }
     }
@@ -263,6 +265,21 @@ final class KubeContextWatch: ObservableObject {
         guard (try? body.write(toFile: path, atomically: true, encoding: .utf8)) != nil
         else { return nil }
         return path
+    }
+
+    /// current-context resolved the way kubectl resolves an explicit
+    /// KUBECONFIG list: the first file that sets one wins. Lets the
+    /// rollout watcher honor a pane's session overlay.
+    nonisolated static func currentContext(inConfigList list: String) -> String? {
+        for raw in list.split(separator: ":") {
+            let path = NSString(string: String(raw)).expandingTildeInPath
+            guard let yaml = try? String(contentsOfFile: path, encoding: .utf8)
+            else { continue }
+            if let current = parse(yaml).current, !current.isEmpty {
+                return current
+            }
+        }
+        return nil
     }
 
     // MARK: - Parse
