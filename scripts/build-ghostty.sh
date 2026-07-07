@@ -45,6 +45,17 @@ git -C "$WORK" checkout --quiet -B main "$GHOSTTY_KIT_COMMIT"
 # fork's shallow CI checkout produced.
 git -C "$WORK" config core.abbrev 7
 
+# Conterm-local patches on top of the pin (patches/ghostty/*.patch),
+# applied to a pristine tree so re-runs stay idempotent. The version
+# marker doesn't change — patched builds are distinguishable only by
+# the archive tarball name and the patches/ dir at build time.
+git -C "$WORK" checkout --quiet -- .
+for p in patches/ghostty/*.patch; do
+    [[ -e "$p" ]] || continue
+    echo "==> applying ${p##*/}"
+    git -C "$WORK" apply "$PWD/$p"
+done
+
 # zig discovers the SDK by probing `xcrun --show-sdk-path` — even for
 # compiling its own build runner, before --sysroot applies — and cannot
 # read a libSystem.tbd newer than itself (zig 0.15 against the macOS 26
