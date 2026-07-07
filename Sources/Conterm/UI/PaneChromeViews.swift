@@ -14,11 +14,15 @@ struct HostInfoButton: View {
 
     var body: some View {
         Button(action: action) {
+            // Floats over the terminal bed, which stays dark in both
+            // appearances — adaptive text colors go near-black in light
+            // mode and vanish here, so the glyph keeps fixed on-dark
+            // tones (same rule as the pane title pill).
             Image(systemName: "info")
                 .font(.system(size: 8.5, weight: .bold))
-                .foregroundStyle(hovering ? Theme.textPrimary : Theme.textSecondary)
+                .foregroundStyle(Color.white.opacity(hovering ? 0.95 : 0.72))
                 .frame(width: 18, height: 18)
-                .background(Circle().fill(Theme.recessedWash))
+                .background(Circle().fill(Theme.paneTitleBar))
                 .overlay(
                     Circle()
                         .strokeBorder(
@@ -246,6 +250,63 @@ private struct KeybindChip: View {
 /// a green check + duration on success, a red ✗ + exit code on
 /// failure, a neutral clock when the shell reported no exit code.
 /// Matches the title pill's glass styling so the two read as a set.
+/// Transient scp badge for a drop on an SSH pane: a spinner while the
+/// transfer runs, then a brief verdict flash.
+struct UploadBadge: View {
+    let upload: Pane.Upload
+
+    private var tint: Color {
+        switch upload.phase {
+        case .uploading: return Theme.sshAccent
+        case .done:      return Color(red: 0.45, green: 0.86, blue: 0.55)
+        case .failed:    return Color(red: 1.0, green: 0.42, blue: 0.42)
+        }
+    }
+    private var label: String {
+        switch upload.phase {
+        case .uploading: return "Uploading \(upload.label)…"
+        case .done:      return "Uploaded \(upload.label)"
+        case .failed:    return "Upload failed"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if upload.phase == .uploading {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.6)
+                    .frame(width: 11, height: 11)
+            } else {
+                Image(systemName: upload.phase == .done
+                      ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(tint)
+            }
+            Text(label)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.white.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            ZStack {
+                Capsule(style: .continuous).fill(Theme.paneTitleBar)
+                Capsule(style: .continuous)
+                    .fill(tint.opacity(0.16))
+                    .blendMode(.plusLighter)
+            }
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(tint.opacity(0.45), lineWidth: 0.6)
+        )
+        .frame(maxWidth: 280)
+    }
+}
+
 struct CommandBadge: View {
     let result: Pane.CommandResult
     @EnvironmentObject var prefs: Preferences
