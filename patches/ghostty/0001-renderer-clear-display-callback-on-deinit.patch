@@ -1,0 +1,15 @@
+diff --git a/src/renderer/Metal.zig b/src/renderer/Metal.zig
+index 6c7432d..602b330 100644
+--- a/src/renderer/Metal.zig
++++ b/src/renderer/Metal.zig
+@@ -156,6 +156,10 @@ pub fn init(alloc: Allocator, opts: rendererpkg.Options) !Metal {
+ }
+ 
+ pub fn deinit(self: *Metal) void {
++    // The layer is retained by the host view's layer tree and can outlive
++    // this renderer. Clear the display callback so a display pass after
++    // teardown finds null instead of a pointer into freed renderer state.
++    self.layer.setDisplayCallback(null, null);
+     self.queue.release();
+     self.device.release();
+     self.layer.release();
