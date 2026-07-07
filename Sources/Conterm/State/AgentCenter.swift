@@ -15,6 +15,9 @@ struct AgentUsage: Equatable {
     /// activity", shown as a relative age so you can tell which agent has
     /// been grinding (or waiting) longest.
     var lastActivity: Date?
+    /// Transcript file's creation time — the session's start, so cost can
+    /// be shown as a burn rate.
+    var firstActivity: Date?
     var inputTokens: Int = 0
     var outputTokens: Int = 0
     var cacheCreateTokens: Int = 0
@@ -210,8 +213,9 @@ final class AgentTranscriptStore: @unchecked Sendable {
         accumulate(into: &st)
         states[path] = st
         var usage = st.snapshot()
-        usage.lastActivity = (try? FileManager.default
-            .attributesOfItem(atPath: path))?[.modificationDate] as? Date
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+        usage.lastActivity = attrs?[.modificationDate] as? Date
+        usage.firstActivity = attrs?[.creationDate] as? Date
         usage.subAgents = liveSubAgents(forMain: path)
         return usage
     }
@@ -449,6 +453,9 @@ final class AgentCenter: ObservableObject {
     /// synchronous roster pass and the async read, and `entries` is only
     /// republished when something actually changed.
     func refresh() {
+        // The CLI's background sessions ride the same tick; its own
+        // cache keeps the subprocess spawns far apart.
+        BackgroundAgents.shared.refresh()
         let prior = Dictionary(entries.map { ($0.id, $0.usage) },
                                uniquingKeysWith: { a, _ in a })
         var roster = Self.buildRoster()
@@ -538,6 +545,27 @@ final class AgentCenter: ObservableObject {
     }
 
     // MARK: - Jump + control
+
+    /// The id visited by the last `jumpToNextAttention`, so repeated
+    /// invocations walk the whole inbox instead of bouncing on one agent.
+    private var lastAttentionJump: UUID?
+
+    /// Jump to the next agent that needs you — the attention-inbox
+    /// keyboard loop: invoke, respond, invoke again.
+    func jumpToNextAttention() {
+        refresh()
+        let blocked = entries.filter { $0.phase == .attention }
+        guard !blocked.isEmpty else { return }
+        let next: AgentCenterEntry
+        if let last = lastAttentionJump,
+           let i = blocked.firstIndex(where: { $0.id == last }) {
+            next = blocked[(i + 1) % blocked.count]
+        } else {
+            next = blocked[0]
+        }
+        lastAttentionJump = next.id
+        jump(to: next)
+    }
 
     /// Bring the agent's window forward, select its tab + pane, and pull
     /// keyboard focus (the surface mounts a beat after the window keys).
