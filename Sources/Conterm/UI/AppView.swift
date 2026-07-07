@@ -56,6 +56,7 @@ struct AppView: View {
             searchOverlay.id("overlay.search").zIndex(10)
             notificationsOverlay.id("overlay.notifications").zIndex(11)
             hostOverviewOverlay.id("overlay.hostOverview").zIndex(12)
+            ansibleCockpitOverlay.id("overlay.ansible").zIndex(13)
             agentCenterOverlay.id("overlay.agentCenter").zIndex(14)
             renameOverlay.id("overlay.rename").zIndex(12)
             groupRenameOverlay.id("overlay.groupRename").zIndex(13)
@@ -461,6 +462,33 @@ struct AppView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) {
                     if state.hostOverview == nil { hostOverviewShown = nil }
                 }
+            }
+        }
+    }
+
+    /// Ansible cockpit: centered card over a soft dim, same restrained
+    /// presentation as the palette family.
+    @ViewBuilder
+    private var ansibleCockpitOverlay: some View {
+        if let target = state.ansibleCockpit {
+            ZStack {
+                Color.black.opacity(0.22)
+                    .ignoresSafeArea()
+                    .onTapGesture { state.closeAnsibleCockpit() }
+                    .transition(.opacity.animation(.easeOut(duration: 0.18)))
+                VStack {
+                    Spacer(minLength: 44)
+                    AnsibleCockpitOverlay(target: target)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.95, anchor: .center)
+                                .combined(with: .opacity)
+                                .animation(.spring(response: 0.40,
+                                                   dampingFraction: 0.80)),
+                            removal: .opacity.animation(.easeOut(duration: 0.15))
+                        ))
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
             }
         }
     }

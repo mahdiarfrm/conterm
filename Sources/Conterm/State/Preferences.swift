@@ -348,6 +348,7 @@ final class Preferences: ObservableObject {
         static let paletteOrder      = "conterm.paletteCommandOrder"
         static let hiddenPaletteCommands = "conterm.hiddenPaletteCommands"
         static let paletteSeeds     = "conterm.paletteSeeds"
+        static let widgetSeeds      = "conterm.widgetSeeds"
         static let hideTabBarSingleTab = "conterm.hideTabBarSingleTab"
         static let showPaneTitleBar = "conterm.showPaneTitleBar"
         static let commandAlerts    = "conterm.commandAlerts"
@@ -453,6 +454,13 @@ final class Preferences: ObservableObject {
         if let i = widgets.firstIndex(of: "docker") {
             widgets[i] = "containers"
         }
+        // Self-hiding widgets that ship enabled get appended exactly
+        // once (recorded in widgetSeeds), so removing them sticks.
+        var widgetSeeds = Set(ud.stringArray(forKey: K.widgetSeeds) ?? [])
+        for id in ["ansible"] where widgetSeeds.insert(id).inserted {
+            if !widgets.contains(id) { widgets.append(id) }
+        }
+        ud.set(Array(widgetSeeds), forKey: K.widgetSeeds)
         self.enabledWidgets = widgets
         ud.set(widgets, forKey: K.enabledWidgets)
         self.statsShowCPU           = ud.object(forKey: K.statsShowCPU) as? Bool ?? true
