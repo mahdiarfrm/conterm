@@ -419,7 +419,7 @@ struct SettingsPanel: View {
                             .frame(width: 180)
                     }
                     SettingsRow(title: "Watch cluster",
-                                subtitle: "Poll kubectl for pod health across all namespaces every 45 seconds: a health gem on the pill, and notifications when a pod enters CrashLoopBackOff / ImagePullBackOff / Error.") {
+                                subtitle: "Poll kubectl across all namespaces every 45 seconds: a health gem on the pill (red = node down, amber = pod trouble), and notifications for crash-looping pods and NotReady nodes.") {
                         Toggle("", isOn: $prefs.kubeWatchCluster.withSound())
                             .toggleStyle(.switch)
                             .labelsHidden()

@@ -1,12 +1,12 @@
 import AppKit
 import SwiftUI
 
-/// Opt-in watch on the current cluster's pods: one lazy `kubectl get
-/// pods -A` poll feeds the Kubernetes pill's health gem and warning
-/// notifications (a pod entering CrashLoopBackOff / ImagePullBackOff /
-/// Error, anywhere in the cluster). Network polling, so it runs only
-/// while the Watch-cluster preference is on, the app is active, and a
-/// context exists.
+/// Opt-in watch on the current cluster: a lazy poll of pods (all
+/// namespaces) and nodes feeds the Kubernetes pill's health gem and
+/// warning notifications — a pod entering CrashLoopBackOff /
+/// ImagePullBackOff / Error, or a node going NotReady. Network
+/// polling, so it runs only while the Watch-cluster preference is on,
+/// the app is active, and a context exists.
 @MainActor
 final class ClusterPulse: ObservableObject {
     static let shared = ClusterPulse()
@@ -26,6 +26,9 @@ final class ClusterPulse: ObservableObject {
     }
 
     @Published private(set) var pods: [Pod] = []
+    /// Nodes currently not Ready. Severity tiering: a misbehaving pod
+    /// is attention, a lost node is critical.
+    @Published private(set) var nodesNotReady: [String] = []
     /// Nil until the first successful poll of the current context.
     @Published private(set) var polledAt: Date?
 
@@ -81,11 +84,13 @@ final class ClusterPulse: ObservableObject {
     var pending: Int { pods.lazy.filter { $0.health == .pending }.count }
     var bad: [Pod] { pods.filter { $0.health == .bad } }
 
-    /// Overall gem for the pill; nil = no data yet.
+    /// Overall gem for the pill; nil = no data yet. Red is reserved
+    /// for cluster-critical (a node down); pod trouble — crash loops,
+    /// image pulls, pending — is the amber tier.
     var overall: Health? {
         guard polledAt != nil else { return nil }
-        if !bad.isEmpty { return .bad }
-        if pending > 0 { return .pending }
+        if !nodesNotReady.isEmpty { return .bad }
+        if !bad.isEmpty || pending > 0 { return .pending }
         return .good
     }
 
@@ -132,6 +137,7 @@ final class ClusterPulse: ObservableObject {
             poll()
         } else {
             pods = []
+            nodesNotReady = []
             polledAt = nil
             announced = []
         }
@@ -153,7 +159,7 @@ final class ClusterPulse: ObservableObject {
               let kubectl = KubeContextWatch.kubectlPath,
               let context = KubeContextWatch.shared.current else {
             if KubeContextWatch.shared.current == nil, polledAt != nil {
-                pods = []; polledAt = nil; announced = []
+                pods = []; nodesNotReady = []; polledAt = nil; announced = []
             }
             return
         }
@@ -161,6 +167,7 @@ final class ClusterPulse: ObservableObject {
         if scope != scopeKey {
             scopeKey = scope
             pods = []
+            nodesNotReady = []
             polledAt = nil
             announced = []
         }
@@ -169,12 +176,22 @@ final class ClusterPulse: ObservableObject {
             .joined(separator: ":")]
         // Pin the context (the kubeconfig's current-context can move
         // between the read and the subprocess) and watch ALL
-        // namespaces — a crashloop in kube-system matters too.
+        // namespaces — a crashloop in kube-system matters too. The
+        // request timeout keeps an unreachable cluster from leaving
+        // kubectl processes hanging around.
         let args = ["get", "pods", "--no-headers", "-A",
-                    "--context", context]
+                    "--request-timeout=10s", "--context", context]
         Task.detached(priority: .utility) {
             let out = runWidgetTool(kubectl, args, env: env)
             let parsed = out.map(Self.parse)
+            let nodesOut = runWidgetTool(kubectl,
+                ["get", "nodes", "--no-headers", "--request-timeout=10s",
+                 "--context", context],
+                env: env)
+            let down = nodesOut.map { text in
+                Self.parseNodes(text).filter { !Self.nodeIsReady($0.status) }
+                    .map(\.name)
+            }
             await MainActor.run {
                 self.loading = false
                 guard scope == self.scopeKey else { return }
@@ -184,12 +201,23 @@ final class ClusterPulse: ObservableObject {
                 // already-broken cluster shouldn't ring twelve bells.
                 let baseline = self.polledAt == nil
                 self.polledAt = Date()
-                if self.pods != parsed {
-                    self.announceNewTrouble(parsed, suppress: baseline)
-                    self.pods = parsed
+                let downNodes = down ?? self.nodesNotReady
+                if self.pods != parsed || self.nodesNotReady != downNodes {
+                    self.announceNewTrouble(parsed, nodesDown: downNodes,
+                                            suppress: baseline)
+                    if self.pods != parsed { self.pods = parsed }
+                    if self.nodesNotReady != downNodes {
+                        self.nodesNotReady = downNodes
+                    }
                 }
             }
         }
+    }
+
+    /// A node's STATUS column reads Ready, NotReady, or a comma list
+    /// like Ready,SchedulingDisabled — down means no Ready part.
+    nonisolated static func nodeIsReady(_ status: String) -> Bool {
+        status.split(separator: ",").contains("Ready")
     }
 
     /// Fetch the Overview for an EXPLICIT context, all namespaces —
@@ -201,8 +229,9 @@ final class ClusterPulse: ObservableObject {
         overviewLoading = true
         let env = ["KUBECONFIG": KubeContextWatch.configPaths()
             .joined(separator: ":")]
-        let scopedArgs = ["--context", context, "-A"]
-        let contextOnly = ["--context", context]
+        let scopedArgs = ["--context", context, "-A",
+                          "--request-timeout=15s"]
+        let contextOnly = ["--context", context, "--request-timeout=15s"]
         Task.detached(priority: .userInitiated) {
             var o = Overview(context: context)
             if let out = runWidgetTool(kubectl,
@@ -332,10 +361,21 @@ final class ClusterPulse: ObservableObject {
         }
     }
 
-    /// One notification per pod+status incident; recovery clears the
-    /// slot so a relapse announces again.
-    private func announceNewTrouble(_ parsed: [Pod], suppress: Bool) {
+    /// One notification per incident (pod+status, or a node going
+    /// down); recovery clears the slot so a relapse announces again.
+    private func announceNewTrouble(_ parsed: [Pod], nodesDown: [String],
+                                    suppress: Bool) {
         var current = Set<String>()
+        for node in nodesDown {
+            let key = "node/\(node)|NotReady"
+            current.insert(key)
+            if announced.insert(key).inserted, !suppress {
+                notifications?.post(tool: .generic,
+                                    title: "Node down",
+                                    message: "\(node) is NotReady")
+                SoundEffects.shared.play(.error)
+            }
+        }
         for pod in parsed where pod.health == .bad {
             let key = "\(pod.namespace)/\(pod.name)|\(pod.status)"
             current.insert(key)
