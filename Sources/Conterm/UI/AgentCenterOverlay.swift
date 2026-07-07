@@ -140,9 +140,13 @@ private struct AgentBanner<Icon: View>: View {
 private struct AgentRosterList: View {
     @EnvironmentObject var state: AppState
     @ObservedObject private var center = AgentCenter.shared
+    @ObservedObject private var background = BackgroundAgents.shared
 
     var body: some View {
-        if center.entries.isEmpty {
+        // Headless background sessions keep the roster alive — a
+        // `claude --bg` run with no pane agents is the case that
+        // matters most.
+        if center.entries.isEmpty && background.sessions.isEmpty {
             EmptyAgents()
         } else {
             ScrollView {
@@ -182,6 +186,7 @@ struct AgentSidebar: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Preferences
     @ObservedObject private var center = AgentCenter.shared
+    @ObservedObject private var background = BackgroundAgents.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -206,7 +211,7 @@ struct AgentSidebar: View {
             .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
 
             // Floating cards.
-            if center.entries.isEmpty {
+            if center.entries.isEmpty && background.sessions.isEmpty {
                 EmptyAgents().frame(maxHeight: .infinity)
             } else {
                 ScrollView(showsIndicators: false) {
@@ -453,6 +458,7 @@ private struct GroupedRoster: View {
     /// of the agents sidebar (vs the rail, where cards sit on a panel bed).
     var floating: Bool = false
     var onJump: (AgentCenterEntry) -> Void
+    @ObservedObject private var background = BackgroundAgents.shared
 
     var body: some View {
         let groups = groupedByWorktree(entries)
@@ -468,6 +474,87 @@ private struct GroupedRoster: View {
                                  floating: floating) { onJump(entry) }
                 }
             }
+            // Sessions running outside any pane (`claude --bg`); a
+            // session already visible as a pane is filtered by its
+            // transcript path carrying the sessionId.
+            let headless = background.sessions.filter { s in
+                !entries.contains { $0.transcriptPath?.contains(s.id) == true }
+            }
+            if !headless.isEmpty {
+                BackgroundSessionsBand(sessions: headless, floating: floating)
+            }
+        }
+    }
+}
+
+/// Headless `claude --bg` sessions with a resume affordance — resuming
+/// opens a pane running `claude --resume <id>` in the session's cwd.
+private struct BackgroundSessionsBand: View {
+    let sessions: [BackgroundAgents.Session]
+    var floating: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(sessions.count == 1 ? "1 BACKGROUND SESSION"
+                                     : "\(sessions.count) BACKGROUND SESSIONS")
+                .font(.system(size: 9, weight: .bold))
+                .tracking(0.5)
+                .foregroundStyle(Theme.textSecondary.opacity(0.8))
+            ForEach(sessions) { session in row(session) }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(floating ? AnyShapeStyle(Theme.panelBed)
+                               : AnyShapeStyle(Theme.selectionFill.opacity(0.45)))
+                .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .strokeBorder(Theme.stroke, lineWidth: 0.75))
+        )
+        .shadow(color: floating ? .black.opacity(0.28) : .clear,
+                radius: floating ? 9 : 0, y: floating ? 4 : 0)
+    }
+
+    private func row(_ session: BackgroundAgents.Session) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(stateColor(session.state))
+                .frame(width: 6, height: 6)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(session.name)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                Text("\(friendlyDirLabel(for: session.cwd)) · \(session.state)")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            Button {
+                SoundEffects.shared.play(.click)
+                guard let wc = (NSApp.delegate as? AppDelegate)?.windows
+                    .first(where: { $0.window.isKeyWindow })
+                    ?? (NSApp.delegate as? AppDelegate)?.windows.first
+                else { return }
+                BackgroundAgents.shared.resume(session, in: wc.state)
+            } label: {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Theme.selectionFill))
+            }
+            .buttonStyle(.plain)
+            .help("Resume in a new tab")
+        }
+    }
+
+    private func stateColor(_ state: String) -> Color {
+        switch state {
+        case "blocked": return Theme.warning
+        case "busy":    return Color(red: 0.45, green: 0.85, blue: 0.55)
+        default:        return Theme.textSecondary.opacity(0.6)
         }
     }
 }
@@ -597,6 +684,27 @@ private struct AgentRowView: View {
         }
     }
 
+    /// Find-in-conversation for THIS agent: jump to its pane, then
+    /// open the find bar pinned to the transcript scope. Rides the
+    /// reply row beside the phase actions — the header and metrics
+    /// lines can't spare the width.
+    private var searchButton: some View {
+        Button {
+            AgentCenter.shared.jump(to: entry)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                entry.owningState?.openConversationSearch()
+            }
+        } label: {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 28, height: 28)
+                .background(Capsule().fill(Theme.selectionFill))
+        }
+        .buttonStyle(.plain)
+        .help("Search this agent's conversation")
+    }
+
     /// Metrics + recency on one quiet line: "$0.085 · 12.6k tok · Opus · 2m".
     /// Recency (transcript mtime age) ticks via a gentle TimelineView so it
     /// stays current without a roster refresh — it's the signal for which
@@ -674,6 +782,14 @@ private struct AgentRowView: View {
 
     private func metricsLine(_ u: AgentUsage) -> String {
         var parts = [money(u.estCost), compactTokens(u.totalTokens) + " tok"]
+        // Burn rate once a session is old enough for the division to
+        // mean something (young sessions read as absurd $/h spikes).
+        if let start = u.firstActivity, u.estCost > 0 {
+            let hours = Date().timeIntervalSince(start) / 3600
+            if hours > 0.25 {
+                parts.append(money(u.estCost / hours) + "/h")
+            }
+        }
         if let m = shortModel(u.model) { parts.append(m) }
         return parts.joined(separator: "  ·  ")
     }
@@ -763,6 +879,7 @@ private struct AgentRowView: View {
                 .background(Capsule().fill(Theme.selectionFill))
                 .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 0.75))
             if reply.isEmpty {
+                if entry.tool == .claude { searchButton }
                 phaseActions
             } else {
                 Button(action: send) {
