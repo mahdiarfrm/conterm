@@ -428,6 +428,24 @@ final class Preferences: ObservableObject {
                                at: anchor.map { $0 + 1 } ?? storedOrder.endIndex)
             ud.set(storedOrder, forKey: K.paletteOrder)
         }
+        if !storedOrder.isEmpty, !storedOrder.contains("fleet_run") {
+            let anchor = storedOrder.firstIndex(of: "ssh_hosts")
+            storedOrder.insert("fleet_run",
+                               at: anchor.map { $0 + 1 } ?? storedOrder.endIndex)
+            ud.set(storedOrder, forKey: K.paletteOrder)
+        }
+        if !storedOrder.isEmpty, !storedOrder.contains("clipboard_history") {
+            let anchor = storedOrder.firstIndex(of: "shell_history")
+            storedOrder.insert("clipboard_history",
+                               at: anchor.map { $0 + 1 } ?? storedOrder.endIndex)
+            ud.set(storedOrder, forKey: K.paletteOrder)
+        }
+        if !storedOrder.isEmpty, !storedOrder.contains("agent_next") {
+            let anchor = storedOrder.firstIndex(of: "agents")
+            storedOrder.insert("agent_next",
+                               at: anchor.map { $0 + 1 } ?? storedOrder.endIndex)
+            ud.set(storedOrder, forKey: K.paletteOrder)
+        }
         self.paletteCommandOrder    = storedOrder
         // Commands that ship hidden are seeded into the stored set
         // exactly once (recorded in paletteSeeds), so unhiding them in
@@ -466,6 +484,8 @@ final class Preferences: ObservableObject {
         }
         // Self-hiding widgets that ship enabled get appended exactly
         // once (recorded in widgetSeeds), so removing them sticks.
+        // Only self-hiding widgets earn a seed — an always-visible pill
+        // (public IP) stays off until the user turns it on.
         var widgetSeeds = Set(ud.stringArray(forKey: K.widgetSeeds) ?? [])
         for id in ["ansible"] where widgetSeeds.insert(id).inserted {
             if !widgets.contains(id) { widgets.append(id) }

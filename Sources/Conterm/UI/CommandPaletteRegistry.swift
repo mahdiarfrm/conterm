@@ -458,6 +458,26 @@ extension CommandPalette {
                             state.paletteMode = .sshHosts
                         }
                     }),
+            // runCommand already closes the palette before run() fires.
+            Command(id: "fleet_run", icon: "antenna.radiowaves.left.and.right",
+                    title: "Fleet Run",
+                    subtitle: "One command across many hosts — a pane per host",
+                    shortcut: "",
+                    run: { state.openFleetRun() }),
+            Command(id: "clipboard_history", icon: "doc.on.clipboard",
+                    title: "Clipboard History",
+                    subtitle: "Recent copies from panes — paste one back",
+                    shortcut: "",
+                    run: {
+                        withAnimation(Theme.Spring.soft) {
+                            state.paletteMode = .clipboard
+                        }
+                    }),
+            Command(id: "agent_next", icon: "bell.badge",
+                    title: "Next Blocked Agent",
+                    subtitle: "Jump to the next agent waiting on you; repeat to cycle",
+                    shortcut: "",
+                    run: { AgentCenter.shared.jumpToNextAttention() }),
             Command(id: "tab_groups", icon: "square.stack.3d.up",
                     title: "Tab Groups",
                     subtitle: "Create, rename, recolor & reorder groups",
@@ -572,9 +592,12 @@ extension CommandPalette {
         ("open_vscode",      "Open in VS Code",             "chevron.left.forwardslash.chevron.right"),
         ("sessions",         "Sessions",                    "rectangle.3.group"),
         ("ssh_hosts",        "SSH",                         "network"),
+        ("fleet_run",        "Fleet Run",                   "antenna.radiowaves.left.and.right"),
         ("tab_groups",       "Tab Groups",                  "square.stack.3d.up"),
         ("shell_history",    "Shell History",               "clock.arrow.circlepath"),
+        ("clipboard_history", "Clipboard History",          "doc.on.clipboard"),
         ("agents",           "Agents",                      RobotGlyph.iconName),
+        ("agent_next",       "Next Blocked Agent",          "bell.badge"),
         ("notes",            "Notes",                       "note.text"),
         ("new_note",         "New Note",                    "square.and.pencil"),
         ("new_tab",          "New Tab",                     "plus.square.on.square"),
@@ -594,7 +617,8 @@ extension CommandPalette {
         // (ssh/history close it via runInNewTab/runHistory, notes
         // switch mode) must not be double-toggled.
         let staysOpen = ["notes", "new_note", "sessions", "agents",
-                         "shell_history", "ssh_hosts", "tab_groups"]
+                         "shell_history", "ssh_hosts", "tab_groups",
+                         "clipboard_history"]
         let managesPalette = command.id.hasPrefix("ssh.")
             || command.id.hasPrefix("hist.")
             || command.id.hasPrefix("note.")
