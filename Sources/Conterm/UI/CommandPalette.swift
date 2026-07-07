@@ -167,6 +167,8 @@ struct CommandPalette: View {
             barBubble("Fuzzy-search your shell history…", "clock.arrow.circlepath")
         case .sshHosts:
             barBubble("Filter SSH hosts…", "network")
+        case .clipboard:
+            barBubble("Search recent copies…", "doc.on.clipboard")
         }
     }
 
@@ -195,6 +197,8 @@ struct CommandPalette: View {
                     shellHistoryView
                 case .sshHosts:
                     sshHostsView
+                case .clipboard:
+                    clipboardView
                 case .groups:
                     groupsView
                 }
@@ -221,6 +225,8 @@ struct CommandPalette: View {
             withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
         case .sshHosts:
             withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
+        case .clipboard:
+            withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
         case .groups:
             withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
         }
@@ -235,6 +241,7 @@ struct CommandPalette: View {
         case .agents:          jumpToFocusedAgent();      SoundEffects.shared.play(.paletteConfirm)
         case .shellHistory:    runFocusedHistoryEntry();  SoundEffects.shared.play(.paletteConfirm)
         case .sshHosts:        connectFocusedSSHHost();   SoundEffects.shared.play(.paletteConfirm)
+        case .clipboard:       pasteFocusedClipboardEntry(); SoundEffects.shared.play(.paletteConfirm)
         case .groups:          break  // managed via inline buttons
         }
     }
@@ -249,6 +256,7 @@ struct CommandPalette: View {
         case .agents:    count = filteredAgents.count
         case .shellHistory: count = filteredShellHistory.count
         case .sshHosts:     count = filteredSSHRows.count
+        case .clipboard:    count = filteredClipboard.count
         case .groups:    return
         }
         guard count > 0 else { state.paletteFocusedIndex = 0; return }
@@ -289,6 +297,8 @@ struct CommandPalette: View {
             case .shellHistory:
                 keyHint("esc")
             case .sshHosts:
+                keyHint("esc")
+            case .clipboard:
                 keyHint("esc")
             case .groups:
                 keyHint("esc")

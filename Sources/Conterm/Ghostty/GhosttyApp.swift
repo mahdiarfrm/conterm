@@ -574,6 +574,7 @@ extension Ghostty {
                         let pb = NSPasteboard.general
                         pb.clearContents()
                         pb.setString(str, forType: .string)
+                        ClipboardHistory.shared.record(str)
                     }
                     return
                 }
