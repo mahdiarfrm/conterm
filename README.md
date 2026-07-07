@@ -141,13 +141,18 @@ Download the latest `.dmg` from the
 [Releases page](https://github.com/mahdiarfrm/conterm/releases/latest), open it,
 and drag `Conterm.app` into `Applications`.
 
-**First launch:** Conterm is ad-hoc codesigned (open-source, not notarized
+**First launch:** Conterm is self-signed (open-source, not notarized
 through a paid Apple Developer account), so the first launch needs one step:
 right-click `Conterm.app` → **Open** → **Open**. If macOS still refuses:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Conterm.app
 ```
+
+macOS may then ask for access to folders like Documents or Downloads —
+that's your shell and its tools (git, kubectl, claude) reading files
+there, which is what a terminal does. Approve once; the grant survives
+updates.
 
 ### Requirements
 
