@@ -115,15 +115,25 @@ struct AppView: View {
 
     /// The Frost slider maps to a tint wash over the material, so the
     /// clear↔frosted axis keeps meaning in blur mode too.
+    ///
+    /// Plate density keys off Solid panes. Solid: the backdrop shows
+    /// only in the top bar + gaps, so the dense `.underWindowBackground`
+    /// plate and the darker wash floor carry the chrome look.
+    /// See-through: the backdrop is the pane background itself, and a
+    /// translucent terminal transmits only a fraction of it — the
+    /// material must stay the thin HUD plate with a near-zero wash
+    /// floor or nothing reads through the cells.
     private var classicBlurBackdrop: some View {
-        GlassBackground(material: .underWindowBackground,
+        let seeThroughPanes = !prefs.opaquePanes
+        return GlassBackground(material: seeThroughPanes ? .hudWindow
+                                                         : .underWindowBackground,
                         forcedAppearance: prefs.lightGlass ? .aqua : .darkAqua)
             .overlay(
                 (prefs.lightGlass
                     ? Theme.backdropLight
-                        .opacity(0.10 + 0.35 * prefs.glassiness)
+                        .opacity((seeThroughPanes ? 0.04 : 0.10) + 0.35 * prefs.glassiness)
                     : Color(red: 0.05, green: 0.06, blue: 0.09)
-                        .opacity(0.20 + 0.40 * prefs.glassiness))
+                        .opacity((seeThroughPanes ? 0.06 : 0.20) + 0.40 * prefs.glassiness))
             )
             .ignoresSafeArea()
     }
