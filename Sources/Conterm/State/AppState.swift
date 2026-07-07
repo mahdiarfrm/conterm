@@ -429,6 +429,24 @@ final class AppState: ObservableObject {
         SoundEffects.shared.play(.paletteClose)
     }
 
+    /// Cluster Overview overlay (per-window), fed by ClusterPulse's
+    /// context-pinned fetch — the card shows the context that was
+    /// clicked, never "whatever current-context is by now".
+    @Published var clusterOverviewOpen = false
+
+    func openClusterOverview(context: String) {
+        ClusterPulse.shared.fetchOverview(context: context)
+        withAnimation(Theme.Spring.bouncy) { clusterOverviewOpen = true }
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    func closeClusterOverview() {
+        guard clusterOverviewOpen else { return }
+        withAnimation(Theme.Spring.snappy) { clusterOverviewOpen = false }
+        focusActiveSurface()
+        SoundEffects.shared.play(.paletteClose)
+    }
+
     /// Session-scoped kubectl switch: pins the context in the focused
     /// pane's shell via a KUBECONFIG overlay, leaving the global file
     /// untouched. Local panes point at an overlay on this machine; an

@@ -250,6 +250,15 @@ final class Preferences: ObservableObject {
     @Published var kubeRememberContext: Bool {
         didSet { ud.set(kubeRememberContext, forKey: K.kubeRememberContext) }
     }
+    /// Cluster pulse: poll kubectl for pod health across all
+    /// namespaces (pill gem, warning notifications). Off by default —
+    /// it's network traffic against the cluster.
+    @Published var kubeWatchCluster: Bool {
+        didSet {
+            ud.set(kubeWatchCluster, forKey: K.kubeWatchCluster)
+            DispatchQueue.main.async { ClusterPulse.shared.settingsChanged() }
+        }
+    }
 
     /// Whether a widget kind is in the enabled rail.
     func isWidgetEnabled(_ id: String) -> Bool { enabledWidgets.contains(id) }
@@ -364,6 +373,7 @@ final class Preferences: ObservableObject {
         static let kubeDangerPatterns = "conterm.kubeDangerPatterns"
         static let kubeConfigPaths  = "conterm.kubeConfigPaths"
         static let kubeRememberContext = "conterm.kubeRememberContext"
+        static let kubeWatchCluster = "conterm.kubeWatchCluster"
         static let autoHideSidebar  = "conterm.autoHideSidebar"
         static let lowPowerRendering = "conterm.lowPowerRendering"
         static let useDefaultConfig = "conterm.useDefaultConfig"
@@ -472,6 +482,7 @@ final class Preferences: ObservableObject {
         self.kubeDangerPatterns     = ud.string(forKey: K.kubeDangerPatterns) ?? "prod"
         self.kubeConfigPaths        = ud.string(forKey: K.kubeConfigPaths) ?? ""
         self.kubeRememberContext    = ud.object(forKey: K.kubeRememberContext) as? Bool ?? false
+        self.kubeWatchCluster       = ud.object(forKey: K.kubeWatchCluster) as? Bool ?? false
         self.autoHideSidebar        = ud.object(forKey: K.autoHideSidebar) as? Bool ?? false
         self.lowPowerRendering      = ud.object(forKey: K.lowPowerRendering) as? Bool ?? true
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
