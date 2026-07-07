@@ -9,6 +9,7 @@ import SwiftUI
 struct ClusterOverviewOverlay: View {
     @EnvironmentObject var state: AppState
     @ObservedObject private var pulse = ClusterPulse.shared
+    @ObservedObject private var helm = HelmReleases.shared
     let glassLive: Bool
 
     private var overview: ClusterPulse.Overview? { pulse.overview }
@@ -105,6 +106,7 @@ struct ClusterOverviewOverlay: View {
                 Button {
                     if let o = overview {
                         pulse.fetchOverview(context: o.context)
+                        helm.refresh(context: o.context, force: true)
                     }
                     SoundEffects.shared.play(.click)
                 } label: {
@@ -164,12 +166,17 @@ struct ClusterOverviewOverlay: View {
         .help("Narrow the card to one namespace")
     }
 
+    /// Red is cluster-critical only: a node down, or a workload fully
+    /// dark. Pod-level trouble — crash loops, image pulls, short
+    /// deployments — is amber.
     private var gemColor: Color {
         guard let o = overview else { return Theme.textSecondary.opacity(0.5) }
-        let bad = o.pods.contains { $0.health == .bad }
-        let pending = o.pods.contains { $0.health == .pending }
-        if bad { return Color.red.opacity(0.95) }
-        if pending { return Theme.warning }
+        let nodeDown = o.nodes.contains { !ClusterPulse.nodeIsReady($0.status) }
+        let outage = o.deployments.contains { $0.desired > 0 && $0.ready == 0 }
+        if nodeDown || outage { return Color.red.opacity(0.95) }
+        let trouble = o.pods.contains { $0.health != .good }
+            || o.deployments.contains { $0.ready < $0.desired }
+        if trouble { return Theme.warning }
         return Color(red: 0.45, green: 0.85, blue: 0.55)
     }
 
@@ -211,13 +218,17 @@ struct ClusterOverviewOverlay: View {
                     hairline
                 }
                 workloadsBand(o).rollUp(delay: 0.11)
+                if !filteredReleases.isEmpty {
+                    hairline
+                    helmBand.rollUp(delay: 0.17)
+                }
                 if !o.services.isEmpty {
                     hairline
-                    servicesBand(o).rollUp(delay: 0.17)
+                    servicesBand(o).rollUp(delay: 0.23)
                 }
                 if !o.events.isEmpty {
                     hairline
-                    eventsBand(o).rollUp(delay: 0.23)
+                    eventsBand(o).rollUp(delay: 0.29)
                 }
             }
             .padding(.bottom, 6)
@@ -278,7 +289,7 @@ struct ClusterOverviewOverlay: View {
             ForEach(o.nodes) { node in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Circle()
-                        .fill(node.status == "Ready"
+                        .fill(ClusterPulse.nodeIsReady(node.status)
                               ? Color(red: 0.45, green: 0.85, blue: 0.55)
                               : Color.red.opacity(0.95))
                         .frame(width: 5, height: 5)
@@ -493,6 +504,76 @@ struct ClusterOverviewOverlay: View {
         case .good:    return Color(red: 0.35, green: 0.68, blue: 0.45)
         case .pending: return Theme.warning
         case .bad:     return Color.red.opacity(0.92)
+        }
+    }
+
+    // MARK: Helm
+
+    /// Releases for the card's context, narrowed by the namespace chip
+    /// like every other band.
+    private var filteredReleases: [HelmReleases.Release] {
+        guard let ns = effectiveFilter else { return helm.releases }
+        return helm.releases.filter { $0.namespace == ns }
+    }
+
+    private var helmBand: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                if let mark = CommandRow.bundledTemplateImage(named: "helm-mark") {
+                    Image(nsImage: mark)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 10, height: 10)
+                        .foregroundStyle(Theme.textSecondary.opacity(0.7))
+                } else {
+                    Image(systemName: "helm")
+                        .font(.system(size: 8.5, weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary.opacity(0.7))
+                }
+                Text("HELM RELEASES · \(filteredReleases.count)")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .kerning(1.3)
+                    .foregroundStyle(Theme.textSecondary.opacity(0.7))
+            }
+            ForEach(filteredReleases) { release in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Circle()
+                        .fill(helmStatusColor(release.status))
+                        .frame(width: 6, height: 6)
+                    namespacedName(release.namespace, release.name)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(width: 210, alignment: .leading)
+                    Text(release.chart)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 8)
+                    Text("rev \(release.revision)")
+                        .font(.system(size: 9.5, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .monospacedDigit()
+                    Text(release.status)
+                        .font(.system(size: 9.5, design: .rounded))
+                        .foregroundStyle(helmStatusColor(release.status))
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private func helmStatusColor(_ status: String) -> Color {
+        switch status {
+        case "deployed":
+            return Color(red: 0.45, green: 0.85, blue: 0.55)
+        case let s where s.hasPrefix("pending"):
+            return Theme.warning
+        case "uninstalling", "superseded":
+            return Theme.warning
+        default:
+            return Color.red.opacity(0.9)
         }
     }
 
