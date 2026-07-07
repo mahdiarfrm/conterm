@@ -99,6 +99,11 @@ extension Ghostty {
         var hostOverviewTarget: (() -> String?)?
         var onHostOverview: (() -> Void)?
 
+        /// Dropped file paths, offered before the local path-paste.
+        /// Returns true when consumed (SSH panes upload via scp);
+        /// false lets the drop fall through to the plain paste.
+        var onFileDrop: (([String]) -> Bool)?
+
         /// Initial working directory for the shell. Set by TerminalContainer
         /// before `start(view:)` from the owning Pane's `startingDir`.
         /// Read once when libghostty creates the surface and ignored

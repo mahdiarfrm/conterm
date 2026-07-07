@@ -52,6 +52,7 @@ struct AppView: View {
             clusterOverviewOverlay.id("overlay.cluster").zIndex(13)
             agentCenterOverlay.id("overlay.agentCenter").zIndex(14)
             renameOverlay.id("overlay.rename").zIndex(12)
+            fleetRunOverlay.id("overlay.fleet").zIndex(12)
             groupRenameOverlay.id("overlay.groupRename").zIndex(13)
             paletteOverlay.id("overlay.palette").zIndex(20)
             settingsOverlay.id("overlay.settings").zIndex(21)
@@ -477,6 +478,32 @@ struct AppView: View {
                         removal: .opacity.animation(.easeOut(duration: 0.14))))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        }
+    }
+
+    @ViewBuilder
+    private var fleetRunOverlay: some View {
+        if state.fleetRunOpen {
+            ZStack {
+                Color.black.opacity(0.28)
+                    .ignoresSafeArea()
+                    .onTapGesture { state.closeFleetRun() }
+                    .transition(.opacity.animation(.easeOut(duration: 0.18)))
+                VStack {
+                    FleetRunOverlay()
+                        .padding(.top, 90)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.96, anchor: .top)
+                                .combined(with: .opacity)
+                                .animation(.spring(response: 0.4,
+                                                    dampingFraction: 0.78)),
+                            removal: .opacity
+                                .animation(.easeOut(duration: 0.15))
+                        ))
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            }
         }
     }
 

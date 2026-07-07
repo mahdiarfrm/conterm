@@ -169,6 +169,10 @@ func makePaneSurface(pane: Pane,
         if pane?.noScrollback != flat { pane?.noScrollback = flat }
     }
     controller.hostOverviewTarget = { [weak pane] in pane?.remoteHost }
+    controller.onFileDrop = { [weak pane, weak state] paths in
+        guard let pane, let state else { return false }
+        return state.uploadDroppedFiles(paths, to: pane)
+    }
     controller.onHostOverview = { [weak pane, weak state] in
         guard let host = pane?.remoteHost else { return }
         state?.openHostOverview(paneHost: host)
@@ -702,6 +706,16 @@ struct PaneChrome: View {
                     CommandBadge(result: badge)
                         .padding(.bottom, 10).padding(.trailing, 12)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                }
+                // scp drop-upload: bottom-center, clear of the command
+                // badge (trailing) and the ansible pill (leading).
+                if let upload = pane.upload {
+                    UploadBadge(upload: upload)
+                        .padding(.bottom, 10)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity,
+                               alignment: .bottom)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        .animation(Theme.Spring.snappy, value: upload)
                 }
             }
             .allowsHitTesting(false)

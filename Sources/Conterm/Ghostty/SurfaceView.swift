@@ -971,6 +971,10 @@ extension Ghostty {
             }
 
             guard !paths.isEmpty else { return false }
+            // An SSH pane's shell can't read local paths — offer the
+            // drop to the scp upload path first. Local panes decline,
+            // keeping the plain path-paste that agents rely on.
+            if controller?.onFileDrop?(paths) == true { return true }
             // One bracketed paste per path. An agent that attaches a single
             // dropped image (Claude Code recognizes one image path per drop)
             // sees each path as its own drop and attaches them all; a single
