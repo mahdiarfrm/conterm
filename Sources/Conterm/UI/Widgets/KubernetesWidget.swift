@@ -25,6 +25,7 @@ struct KubernetesWidget: View {
 private struct KubePillCore: View {
     @ObservedObject private var kube = KubeContextWatch.shared
     @ObservedObject private var pulse = ClusterPulse.shared
+    @ObservedObject private var rollout = RolloutWatch.shared
     @EnvironmentObject private var prefs: Preferences
     @EnvironmentObject private var state: AppState
     let session: String?
@@ -81,6 +82,7 @@ private struct KubePillCore: View {
                         }
                     }
                 }
+                .overlay(rolloutHalo)
                 .popover(isPresented: $showingPopover, arrowEdge: .top) {
                     // Environment objects don't reliably cross into the
                     // popover's window — hand everything over explicitly.
@@ -97,6 +99,37 @@ private struct KubePillCore: View {
         case .good:    return Color(red: 0.45, green: 0.85, blue: 0.55)
         case .pending: return Theme.warning
         case .bad:     return Color.red.opacity(0.95)
+        }
+    }
+
+    private var pillRollout: RolloutWatch.Rollout? {
+        guard let ctx = effective else { return nil }
+        let mine = rollout.rollouts.filter { $0.context == ctx }
+        return mine.first { $0.phase == .progressing } ?? mine.last
+    }
+
+    /// Rollout progress worn by the pill itself: its capsule outline
+    /// fills clockwise with ready/desired and glows — accent while
+    /// rolling, green at done, red when stalled. Static between
+    /// samples; the sweep animates only when a counter moves.
+    @ViewBuilder
+    private var rolloutHalo: some View {
+        if let r = pillRollout {
+            let tint = haloTint(r)
+            Capsule(style: .continuous)
+                .trim(from: 0, to: r.phase == .done ? 1 : max(0.08, r.fraction))
+                .stroke(tint, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                .shadow(color: tint.opacity(0.85), radius: 3)
+                .animation(Theme.Spring.soft, value: r.fraction)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func haloTint(_ r: RolloutWatch.Rollout) -> Color {
+        switch r.phase {
+        case .progressing: return Theme.accent
+        case .done:        return Color(red: 0.45, green: 0.85, blue: 0.55)
+        case .stalled:     return Color.red.opacity(0.95)
         }
     }
 
@@ -125,6 +158,7 @@ private struct KubePillCore: View {
 /// instead of pushing it around.
 private struct KubernetesPopover: View {
     @ObservedObject private var kube = KubeContextWatch.shared
+    @ObservedObject private var rollout = RolloutWatch.shared
     @ObservedObject var prefs: Preferences
     let state: AppState
     /// The focused pane's override at open time; drives checkmarks and
@@ -174,6 +208,10 @@ private struct KubernetesPopover: View {
 
     private var contextsPage: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !rollout.rollouts.isEmpty {
+                rolloutsSection
+                Divider().opacity(0.45)
+            }
             // Hug short lists — a ScrollView greedily takes its whole
             // max height, leaving the popover with dead space.
             if kube.contexts.count <= 7 {
@@ -214,6 +252,58 @@ private struct KubernetesPopover: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var rolloutsSection: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("ROLLOUTS")
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .kerning(1.3)
+                .foregroundStyle(Theme.textSecondary.opacity(0.7))
+            ForEach(rollout.rollouts) { r in
+                HStack(spacing: 8) {
+                    RolloutRing(rollout: r)
+                        .frame(width: 11, height: 11)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(r.name)
+                            .font(.system(size: 11, weight: .medium,
+                                          design: .monospaced))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text(rolloutDetail(r))
+                            .font(.system(size: 9.5, design: .rounded))
+                            .foregroundStyle(rolloutTint(r))
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Text("\(r.ready)/\(r.desired)")
+                        .font(.system(size: 10.5, weight: .medium,
+                                      design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .monospacedDigit()
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+    }
+
+    private func rolloutDetail(_ r: RolloutWatch.Rollout) -> String {
+        let scope = "\(KubeContextWatch.shortLabel(r.context)) · \(r.namespace)"
+        switch r.phase {
+        case .progressing:      return scope + " · rolling"
+        case .done:             return scope + " · rolled out"
+        case .stalled(let why): return scope + " · " + why
+        }
+    }
+
+    private func rolloutTint(_ r: RolloutWatch.Rollout) -> Color {
+        switch r.phase {
+        case .progressing: return Theme.textSecondary
+        case .done:        return Color(red: 0.45, green: 0.85, blue: 0.55)
+        case .stalled:     return Color.red.opacity(0.95)
         }
     }
 
@@ -387,5 +477,34 @@ private struct ContextRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+    }
+}
+
+/// Progress ring for a rollout: sweep = ready/desired, full green at
+/// done, red when stalled. Static between samples — the sweep animates
+/// only when a counter actually moves.
+private struct RolloutRing: View {
+    let rollout: RolloutWatch.Rollout
+
+    private var tint: Color {
+        switch rollout.phase {
+        case .progressing: return Theme.accent
+        case .done:        return Color(red: 0.45, green: 0.85, blue: 0.55)
+        case .stalled:     return Color.red.opacity(0.95)
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Theme.stroke, lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: rollout.phase == .done
+                      ? 1 : max(0.07, rollout.fraction))
+                .stroke(tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(Theme.Spring.soft, value: rollout.fraction)
+        }
+        .padding(1)
     }
 }
