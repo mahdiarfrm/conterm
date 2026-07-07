@@ -1,12 +1,13 @@
 import AppKit
 import SwiftUI
 
-/// Current kubectl context as a pill: cluster-ish short label, a red
-/// dot + red text when the context matches a production pattern, and
-/// a cyan helm when the focused pane carries a session override (its
-/// shell was switched away from the global default). Clicking opens
-/// the switcher; its gear exposes the patterns and kubeconfig paths
-/// inline. Hidden when no kubeconfig exists.
+/// Current kubectl context as a pill: cluster-short label, a red dot +
+/// red text when the context matches a production pattern, a cyan helm
+/// while the focused pane runs a session override (dormant inside
+/// SSH), and — while the cluster watch is on — a health gem for the
+/// global cluster. Clicking opens the switcher; every context row
+/// carries a matrix button opening the Cluster Overview for THAT
+/// context; the gear swaps the popover to a full settings page.
 struct KubernetesWidget: View {
     var compact: Bool
 
@@ -23,6 +24,7 @@ struct KubernetesWidget: View {
 
 private struct KubePillCore: View {
     @ObservedObject private var kube = KubeContextWatch.shared
+    @ObservedObject private var pulse = ClusterPulse.shared
     @EnvironmentObject private var prefs: Preferences
     @EnvironmentObject private var state: AppState
     let session: String?
@@ -68,6 +70,15 @@ private struct KubePillCore: View {
                                              : Theme.textPrimary)
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
+                        // Cluster health gem — only while the watch has
+                        // data AND the pill shows the global context;
+                        // the pulse watches the global cluster, so a
+                        // session-override label must not wear its gem.
+                        if session == nil, let health = pulse.overall {
+                            Circle()
+                                .fill(gemColor(health))
+                                .frame(width: 5, height: 5)
+                        }
                     }
                 }
                 .popover(isPresented: $showingPopover, arrowEdge: .top) {
@@ -78,6 +89,14 @@ private struct KubePillCore: View {
                                       paneIsRemote: paneIsRemote)
                 }
             }
+        }
+    }
+
+    private func gemColor(_ health: ClusterPulse.Health) -> Color {
+        switch health {
+        case .good:    return Color(red: 0.45, green: 0.85, blue: 0.55)
+        case .pending: return Theme.warning
+        case .bad:     return Color.red.opacity(0.95)
         }
     }
 
@@ -92,13 +111,18 @@ private struct KubePillCore: View {
             s += " / \(ns)"
         }
         if isDanger { s += " ⚠ production" }
+        if session == nil, pulse.overall != nil {
+            s += " · \(pulse.good) running"
+            if !pulse.bad.isEmpty { s += " · \(pulse.bad.count) in trouble" }
+        }
         return s + " — click to switch"
     }
 }
 
-/// Context switcher: full context names, current one checked, production
-/// ones red. The gear opens the danger patterns + kubeconfig paths right
-/// here — configuration lives where the state is looked at.
+/// Two-page popover: the context switcher (each row switches on click
+/// and opens that context's Cluster Overview from its matrix button),
+/// and a full settings page the gear swaps in — replacing the list
+/// instead of pushing it around.
 private struct KubernetesPopover: View {
     @ObservedObject private var kube = KubeContextWatch.shared
     @ObservedObject var prefs: Preferences
@@ -110,50 +134,58 @@ private struct KubernetesPopover: View {
     /// inside an SSH session, so switching is disabled there.
     let paneIsRemote: Bool
     @Environment(\.dismiss) private var dismiss
-    @State private var showingConfig = false
+
+    private enum Page { case contexts, settings }
+    @State private var page: Page = .contexts
 
     private var effectiveCurrent: String? { sessionContext ?? kube.current }
 
     var body: some View {
-        WidgetPopoverChrome(title: "Kubernetes", width: 290, trailing: {
-            if let ns = kube.currentNamespace {
+        WidgetPopoverChrome(title: page == .settings ? "Kubernetes settings"
+                                                     : "Kubernetes",
+                            width: 300, trailing: {
+            if page == .contexts, let ns = kube.currentNamespace {
                 widgetPopoverChip(ns)
             }
             Button {
-                // Static insertion — an animated size change inside an
-                // NSPopover is a crash-prone AppKit path; the popover
-                // may resize, but never mid-animation.
-                showingConfig.toggle()
+                // Page swap, not accordion — the popover replaces its
+                // content instead of pushing the list down. Static, no
+                // animated resize (a crash-prone NSPopover path).
+                page = page == .settings ? .contexts : .settings
                 SoundEffects.shared.play(.toggle)
             } label: {
-                Image(systemName: "gearshape")
+                Image(systemName: page == .settings ? "chevron.left" : "gearshape")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(showingConfig ? Theme.textPrimary
-                                                   : Theme.textSecondary)
+                    .foregroundStyle(Theme.textSecondary)
                     .frame(width: 20, height: 20)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Production patterns and kubeconfig paths")
+            .help(page == .settings ? "Back to contexts" : "Kubernetes settings")
         }) {
-            if showingConfig {
-                configSection
-                Divider().opacity(0.45)
+            switch page {
+            case .settings: settingsPage
+            case .contexts: contextsPage
             }
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(kube.contexts) { ctx in
-                        ContextRow(context: ctx,
-                                   isCurrent: ctx.name == effectiveCurrent,
-                                   isSwitching: ctx.name == kube.switching,
-                                   switchable: canSwitch) {
-                            switchTo(ctx.name)
-                        }
-                    }
+        }
+    }
+
+    // MARK: Contexts page
+
+    private var contextsPage: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Hug short lists — a ScrollView greedily takes its whole
+            // max height, leaving the popover with dead space.
+            if kube.contexts.count <= 7 {
+                VStack(spacing: 0) { contextRows }
+                    .padding(.vertical, 6)
+            } else {
+                ScrollView {
+                    VStack(spacing: 0) { contextRows }
+                        .padding(.vertical, 6)
                 }
-                .padding(.vertical, 6)
+                .frame(maxHeight: 300)
             }
-            .frame(maxHeight: 260)
             if sessionContext != nil {
                 Divider().opacity(0.45)
                 Button {
@@ -185,6 +217,21 @@ private struct KubernetesPopover: View {
         }
     }
 
+    private var contextRows: some View {
+        ForEach(kube.contexts) { ctx in
+            ContextRow(context: ctx,
+                       isCurrent: ctx.name == effectiveCurrent,
+                       isSwitching: ctx.name == kube.switching,
+                       switchable: canSwitch,
+                       action: { switchTo(ctx.name) },
+                       showMatrix: {
+                           SoundEffects.shared.play(.click)
+                           state.openClusterOverview(context: ctx.name)
+                           dismiss()
+                       })
+        }
+    }
+
     /// Session switches type into the focused pane, so they don't need
     /// kubectl — but they do need a local shell; global switches need
     /// kubectl.
@@ -201,7 +248,7 @@ private struct KubernetesPopover: View {
         if paneIsRemote {
             return "This pane is inside SSH — session switching only works in local shells. The gear's Remember toggle switches the global kubeconfig instead."
         }
-        return "Switches apply to the focused pane only; new panes start on the default context. The gear can make them stick."
+        return "Switches apply to the focused pane only; new panes start on the default context. The ⊞ button opens a context's Cluster Overview."
     }
 
     private func switchTo(_ name: String) {
@@ -214,8 +261,24 @@ private struct KubernetesPopover: View {
         }
     }
 
-    private var configSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    // MARK: Settings page
+
+    private var settingsPage: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $prefs.kubeWatchCluster) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Watch cluster")
+                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Poll pod health every 45 s — pill gem and warning notifications.")
+                        .font(.system(size: 9.5, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary.opacity(0.8))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .tint(Theme.accent)
             Toggle(isOn: $prefs.kubeRememberContext) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Remember switches")
@@ -267,10 +330,15 @@ private struct ContextRow: View {
     let isSwitching: Bool
     let switchable: Bool
     let action: () -> Void
+    let showMatrix: () -> Void
     @State private var hovering = false
 
     var body: some View {
-        Button(action: action) {
+        // The row button always stays enabled so the nested matrix
+        // button works on any row; the switch action gates itself.
+        Button {
+            if switchable && !isCurrent { action() }
+        } label: {
             HStack(spacing: 8) {
                 Image(systemName: isCurrent ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 10, weight: .medium))
@@ -300,14 +368,24 @@ private struct ContextRow: View {
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(Capsule().fill(Color.red.opacity(0.14)))
                 }
+                // The matrix button: this row's cluster, briefed.
+                Button(action: showMatrix) {
+                    Image(systemName: "square.grid.3x3.middle.filled")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(hovering ? Theme.accent : Theme.textSecondary)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Cluster Overview for \(context.name)")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 7)
             .contentShape(Rectangle())
-            .background(hovering && switchable ? Theme.selectionFill : .clear)
+            .background(hovering && switchable && !isCurrent
+                        ? Theme.selectionFill : .clear)
         }
         .buttonStyle(.plain)
-        .disabled(!switchable || isCurrent)
         .onHover { hovering = $0 }
     }
 }
