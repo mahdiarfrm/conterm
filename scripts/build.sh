@@ -113,7 +113,7 @@ if [[ -f "$APP/Contents/Resources/cursor-mark.png" ]]; then
     echo "OK: bundled flat app resources (cursor-mark.png, …)"
 fi
 
-echo "==> ad-hoc codesign"
+echo "==> codesign"
 # Strip extended attrs (resource forks etc.) so codesign doesn't
 # choke. Otherwise we get "resource fork, Finder information, or
 # similar detritus not allowed" on subsequent re-signs.
@@ -128,22 +128,41 @@ if [[ "${PROFILE:-0}" == "1" ]]; then
     plutil -insert 'com\.apple\.security\.get-task-allow' -bool true "$ENTITLEMENTS"
     echo "PROFILE build: get-task-allow granted (Instruments can attach)"
 fi
-# Explicit designated requirement: TCC matches apps by their designated
-# requirement, and an ad-hoc signature's default DR is the per-build
-# cdhash, which would re-prompt for folder access on every rebuild.
-# Pinning the DR to the bundle identifier keeps approvals across builds.
-DR='designated => identifier "app.conterm.Conterm"'
-if codesign --force --sign - \
-    --identifier app.conterm.Conterm \
-    --requirements "=$DR" \
-    --entitlements "$ENTITLEMENTS" \
-    --options runtime \
-    "$APP"; then
-    echo "OK: signed with entitlements + hardened runtime"
+# TCC keys folder-access grants to the app's designated requirement.
+# A certificate-anchored signature ("Conterm Signing", created once by
+# scripts/make-signing-cert.sh) keeps one requirement across builds,
+# so macOS asks for each folder once and remembers. The ad-hoc
+# fallback pins an identifier-only requirement, but TCC won't trust a
+# requirement any unsigned build could self-claim — expect re-prompts
+# after every rebuild until the cert exists.
+IDENTITY="Conterm Signing"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
+    if codesign --force --sign "$IDENTITY" \
+        --identifier app.conterm.Conterm \
+        --entitlements "$ENTITLEMENTS" \
+        --options runtime \
+        --timestamp=none \
+        "$APP"; then
+        echo "OK: signed with '$IDENTITY' (stable TCC identity)"
+    else
+        echo "WARN: '$IDENTITY' signing failed — falling back to ad-hoc." >&2
+        codesign --force --sign - --identifier app.conterm.Conterm \
+            --entitlements "$ENTITLEMENTS" --options runtime "$APP"
+    fi
 else
-    echo "WARN: entitlements/hardened-runtime signing failed — falling back to a" >&2
-    echo "      bare ad-hoc sign (NO entitlements, NO hardened runtime)." >&2
-    codesign --force --sign - "$APP"
+    DR='designated => identifier "app.conterm.Conterm"'
+    if codesign --force --sign - \
+        --identifier app.conterm.Conterm \
+        --requirements "=$DR" \
+        --entitlements "$ENTITLEMENTS" \
+        --options runtime \
+        "$APP"; then
+        echo "OK: ad-hoc signed (run scripts/make-signing-cert.sh once to stop TCC re-prompts)"
+    else
+        echo "WARN: entitlements/hardened-runtime signing failed — falling back to a" >&2
+        echo "      bare ad-hoc sign (NO entitlements, NO hardened runtime)." >&2
+        codesign --force --sign - "$APP"
+    fi
 fi
 
 echo "OK: ./$APP"
