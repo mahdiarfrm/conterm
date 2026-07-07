@@ -441,7 +441,14 @@ struct SettingsPanel: View {
         let position = prefs.enabledWidgets.firstIndex(of: kind.rawValue)
         return HStack(spacing: 10) {
             Group {
-                if kind.icon == RobotGlyph.iconName {
+                if let asset = kind.markAsset,
+                   let img = CommandRow.bundledTemplateImage(named: asset) {
+                    Image(nsImage: img)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 13, height: 13)
+                        .foregroundStyle(Theme.textSecondary)
+                } else if kind.icon == RobotGlyph.iconName {
                     RobotGlyph(color: Theme.textSecondary, size: 14)
                 } else {
                     Image(systemName: kind.icon)

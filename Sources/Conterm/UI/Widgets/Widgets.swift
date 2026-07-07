@@ -9,7 +9,7 @@ import SwiftUI
 /// reads as one family via the shared `WidgetShell` chrome.
 enum WidgetKind: String, CaseIterable, Identifiable {
     case systemStats, clock, battery, gitStatus
-    case notes, ping, sessionStats, kubernetes, containers, github, pixelPet
+    case notes, ping, sessionStats, kubernetes, containers, ansible, github, pixelPet
     var id: String { rawValue }
 
     var title: String {
@@ -23,6 +23,7 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .sessionStats: return "Session stats"
         case .kubernetes:   return "Kubernetes"
         case .containers:   return "Containers"
+        case .ansible:      return "Ansible"
         case .github:       return "GitHub"
         case .pixelPet:     return "Pixel pet"
         }
@@ -38,10 +39,17 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .sessionStats: return "Commands today, top command, and your day streak."
         case .kubernetes:   return "Current kubectl context — click to switch; prod turns red."
         case .containers:   return "Running containers by runtime — Docker, Podman, containerd, Apple."
+        case .ansible:      return "Live playbook runs — click for the cockpit."
         case .github:       return "PR review + checks for the active repo (uses gh)."
         case .pixelPet:     return "A tiny companion that naps, blinks, and watches your agents."
         }
     }
+    /// Bundled monochrome mark (template-tinted) that replaces the SF
+    /// symbol wherever this kind draws an icon; nil → use `icon`.
+    var markAsset: String? {
+        self == .ansible ? "ansible-mark" : nil
+    }
+
     /// SF Symbol for the settings list.
     var icon: String {
         switch self {
@@ -54,6 +62,7 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .sessionStats: return "flame"
         case .kubernetes:   return "helm"
         case .containers:   return "shippingbox"
+        case .ansible:      return "circle.grid.3x3"
         case .github:       return "checkmark.seal"
         case .pixelPet:     return "pawprint"
         }
@@ -100,6 +109,7 @@ struct WidgetRail: View {
         case .sessionStats: SessionStatsWidget(compact: compact)
         case .kubernetes:   KubernetesWidget(compact: compact)
         case .containers:   ContainersWidget(compact: compact)
+        case .ansible:      AnsibleWidget(compact: compact)
         case .github:       GitHubWidget(compact: compact)
         case .pixelPet:     PixelPetWidget(compact: compact)
         }

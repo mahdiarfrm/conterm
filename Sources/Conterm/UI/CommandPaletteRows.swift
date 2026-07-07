@@ -371,8 +371,9 @@ struct CommandRow: View {
     /// AirDropped / quarantined / translocated copies — it crashed the
     /// whole app the instant ⌘K rendered this row. We only ever read
     /// the flat copy in `Bundle.main` (Contents/Resources/<name>.png).
+    /// Also used by widgets that carry a brand mark (ansible, cursor…).
     @MainActor
-    fileprivate static func bundledTemplateImage(named name: String) -> NSImage? {
+    static func bundledTemplateImage(named name: String) -> NSImage? {
         if let cached = imageCache[name] { return cached }
         let img: NSImage? = {
             guard let url = Bundle.main.url(forResource: name,

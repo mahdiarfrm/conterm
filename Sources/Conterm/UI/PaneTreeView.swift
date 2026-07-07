@@ -647,6 +647,8 @@ struct PaneChrome: View {
     // one shared watch. Only real context changes republish, so this
     // costs the chrome nothing between switches.
     @ObservedObject private var kube = KubeContextWatch.shared
+    // Run state republishes at most once per tail tick.
+    @ObservedObject private var ansible = AnsibleCenter.shared
     var isActive: Bool
     var index: Int
     var recomputeAgentPhase: () -> Void
@@ -703,6 +705,21 @@ struct PaneChrome: View {
                 }
             }
             .allowsHitTesting(false)
+
+            // Ansible run badge — interactive, opens the cockpit;
+            // retires a minute after the run ends.
+            if let run = ansible.runs[pane.id], !run.badgeDismissed {
+                AnsiblePill(run: run) {
+                    (NSApp.delegate as? AppDelegate)?.windows.first { wc in
+                        wc.state.tabs.contains { t in
+                            t.paneTree.root.leaves().contains { $0.id == pane.id }
+                        }
+                    }?.state.openAnsibleCockpit(paneID: pane.id)
+                }
+                .padding(.bottom, 10).padding(.leading, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity,
+                       alignment: .bottomLeading)
+            }
 
             // The title-bar pill stays interactive (tap toggles collapse);
             // SSH panes gain the Host Overview affordance beside it.
