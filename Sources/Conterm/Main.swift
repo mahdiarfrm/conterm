@@ -90,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         themes = ThemeCatalog()
         fonts = FontCatalog()
         notifications = NotificationStore()
+        AnsibleCenter.shared.notifications = notifications
         tabGroups = TabGroupStore.shared
 
         // If the agent integrations are enabled, rewrite their on-disk
@@ -370,6 +371,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if self.state.settingsOpen     { self.state.toggleSettings();     return nil }
                 if self.state.searchOpen       { self.state.toggleSearch();       return nil }
                 if self.state.hostOverview != nil { self.state.closeHostOverview(); return nil }
+                if self.state.ansibleCockpit != nil { self.state.closeAnsibleCockpit(); return nil }
                 if self.state.agentCenterOpen  { self.state.toggleAgentCenter();  return nil }
                 return event
             }
