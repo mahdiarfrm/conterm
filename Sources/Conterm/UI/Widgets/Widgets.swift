@@ -10,6 +10,7 @@ import SwiftUI
 enum WidgetKind: String, CaseIterable, Identifiable {
     case systemStats, clock, battery, gitStatus
     case notes, ping, sessionStats, kubernetes, containers, ansible, github, pixelPet
+    case publicIP
     var id: String { rawValue }
 
     var title: String {
@@ -26,6 +27,7 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .ansible:      return "Ansible"
         case .github:       return "GitHub"
         case .pixelPet:     return "Pixel pet"
+        case .publicIP:     return "Public IP"
         }
     }
     var subtitle: String {
@@ -42,6 +44,7 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .ansible:      return "Live playbook runs — click for the cockpit."
         case .github:       return "PR review + checks for the active repo (uses gh)."
         case .pixelPet:     return "A tiny companion that naps, blinks, and watches your agents."
+        case .publicIP:     return "Your public IP, VPN-aware; re-checks on network changes and notifies when it moves."
         }
     }
     /// Bundled monochrome mark (template-tinted) that replaces the SF
@@ -65,6 +68,7 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .ansible:      return "circle.grid.3x3"
         case .github:       return "checkmark.seal"
         case .pixelPet:     return "pawprint"
+        case .publicIP:     return "globe"
         }
     }
 }
@@ -112,6 +116,7 @@ struct WidgetRail: View {
         case .ansible:      AnsibleWidget(compact: compact)
         case .github:       GitHubWidget(compact: compact)
         case .pixelPet:     PixelPetWidget(compact: compact)
+        case .publicIP:     PublicIPWidget(compact: compact)
         }
     }
 }
@@ -268,6 +273,9 @@ func locateWidgetTool(_ name: String) -> String? {
         "/opt/homebrew/bin/\(name)",
         "/usr/local/bin/\(name)",
         "/usr/bin/\(name)",
+        // Native installers (claude, uv-style tools) land here.
+        "\(home)/.local/bin/\(name)",
+        "\(home)/bin/\(name)",
         "\(home)/.docker/bin/\(name)",
         "/run/current-system/sw/bin/\(name)",
     ]
