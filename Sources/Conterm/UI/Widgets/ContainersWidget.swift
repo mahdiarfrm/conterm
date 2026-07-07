@@ -16,6 +16,15 @@ final class ContainerRuntimesModel: ObservableObject {
     struct RuntimeGroup: Identifiable, Equatable {
         var id: String { name }
         let name: String
+        /// CLI command word typed into panes (docker / podman /
+        /// nerdctl / container) — the shell resolves it, so pane
+        /// commands stay readable.
+        let cli: String
+        /// Resolved binary path for background actions (restart).
+        let path: String
+        /// Apple's `container` CLI: swift-argument-parser flags (no
+        /// combined -it) and a different logs syntax.
+        let apple: Bool
         var containers: [Container]
     }
 
@@ -28,14 +37,15 @@ final class ContainerRuntimesModel: ObservableObject {
     private var inactiveObs: NSObjectProtocol?
     private var loading = false
 
-    /// Label + resolved CLI path for each runtime present on disk.
+    /// Label + CLI + resolved path for each runtime present on disk.
     /// `apple` marks Apple's `container` CLI, which lists as JSON
     /// instead of the docker-style template the other three share.
-    nonisolated private static let runtimes: [(label: String, path: String, apple: Bool)] =
+    nonisolated private static let runtimes: [(label: String, cli: String,
+                                               path: String, apple: Bool)] =
         [("Docker", "docker", false), ("Podman", "podman", false),
          ("containerd", "nerdctl", false), ("Apple", "container", true)]
             .compactMap { entry in
-                locateWidgetTool(entry.1).map { (entry.0, $0, entry.2) }
+                locateWidgetTool(entry.1).map { (entry.0, entry.1, $0, entry.2) }
             }
 
     init() {
@@ -55,6 +65,14 @@ final class ContainerRuntimesModel: ObservableObject {
         timer?.invalidate()
         if let activeObs { NotificationCenter.default.removeObserver(activeObs) }
         if let inactiveObs { NotificationCenter.default.removeObserver(inactiveObs) }
+    }
+
+    /// External nudge after a mutating action (restart): re-list soon,
+    /// giving the daemon a moment to settle.
+    func poke(after seconds: Double = 1.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+            Task { @MainActor in self.refresh() }
+        }
     }
 
     private func start() {
@@ -96,7 +114,9 @@ final class ContainerRuntimesModel: ObservableObject {
                     }
                 }
                 if let containers {
-                    found.append(RuntimeGroup(name: rt.label, containers: containers))
+                    found.append(RuntimeGroup(name: rt.label, cli: rt.cli,
+                                              path: rt.path, apple: rt.apple,
+                                              containers: containers))
                 }
             }
             let groups = found
@@ -141,6 +161,7 @@ extension ContainerRuntimesModel {
 
 struct ContainersWidget: View {
     @StateObject private var model = ContainerRuntimesModel()
+    @EnvironmentObject private var state: AppState
     var compact: Bool
     @State private var showingPopover = false
 
@@ -163,7 +184,9 @@ struct ContainersWidget: View {
                     }
                 }
                 .popover(isPresented: $showingPopover, arrowEdge: .top) {
-                    ContainersPopover(model: model)
+                    // Environment objects don't reliably cross into the
+                    // popover's window — hand AppState over explicitly.
+                    ContainersPopover(model: model, state: state)
                 }
             }
         }
@@ -177,9 +200,11 @@ struct ContainersWidget: View {
 
 private struct ContainersPopover: View {
     @ObservedObject var model: ContainerRuntimesModel
+    let state: AppState
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        WidgetPopoverChrome(title: "Containers", width: 280, trailing: {
+        WidgetPopoverChrome(title: "Containers", width: 300, trailing: {
             widgetPopoverChip("\(model.total ?? 0) running")
         }) {
             ScrollView {
@@ -212,33 +237,111 @@ private struct ContainersPopover: View {
                 .padding(.vertical, 4)
         } else {
             ForEach(group.containers, id: \.name) { c in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Circle()
-                        .fill(Color(red: 0.45, green: 0.85, blue: 0.55))
-                        .frame(width: 5, height: 5)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(c.name)
-                            .font(.system(size: 12, weight: .medium,
-                                          design: .rounded))
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(1)
-                        HStack(spacing: 0) {
-                            Text(c.image)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            if !c.status.isEmpty {
-                                Text("  ·  \(c.status)")
-                                    .lineLimit(1)
-                            }
-                        }
-                        .font(.system(size: 10, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
+                ContainerRow(container: c, group: group,
+                             shellIn: { openShell(group, c) },
+                             tailLogs: { openLogs(group, c) },
+                             restart: { restart(group, c) })
             }
         }
+    }
+
+    // MARK: Actions
+
+    private func openShell(_ group: ContainerRuntimesModel.RuntimeGroup,
+                           _ c: ContainerRuntimesModel.Container) {
+        // Apple's CLI (swift-argument-parser) needs its short flags split.
+        let cmd = group.apple
+            ? "\(group.cli) exec -i -t \(c.name) sh"
+            : "\(group.cli) exec -it \(c.name) sh"
+        SoundEffects.shared.play(.click)
+        dismiss()
+        state.openTabRunning(command: cmd, title: c.name)
+    }
+
+    private func openLogs(_ group: ContainerRuntimesModel.RuntimeGroup,
+                          _ c: ContainerRuntimesModel.Container) {
+        let cmd = group.apple
+            ? "\(group.cli) logs --follow \(c.name)"
+            : "\(group.cli) logs -f --tail 200 \(c.name)"
+        SoundEffects.shared.play(.click)
+        dismiss()
+        state.openTabRunning(command: cmd, title: "\(c.name) logs")
+    }
+
+    private func restart(_ group: ContainerRuntimesModel.RuntimeGroup,
+                         _ c: ContainerRuntimesModel.Container) {
+        SoundEffects.shared.play(.click)
+        let path = group.path
+        let name = c.name
+        Task.detached(priority: .utility) {
+            _ = runWidgetTool(path, ["restart", name])
+        }
+        model.poke(after: 2)
+    }
+}
+
+/// One container with hover actions: shell into it, tail its logs
+/// (each opens a new tab running the command), restart it in the
+/// background. Apple's CLI has no restart verb, so that action hides.
+private struct ContainerRow: View {
+    let container: ContainerRuntimesModel.Container
+    let group: ContainerRuntimesModel.RuntimeGroup
+    let shellIn: () -> Void
+    let tailLogs: () -> Void
+    let restart: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Circle()
+                .fill(Color(red: 0.45, green: 0.85, blue: 0.55))
+                .frame(width: 5, height: 5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(container.name)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                HStack(spacing: 0) {
+                    Text(container.image)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if !container.status.isEmpty {
+                        Text("  ·  \(container.status)")
+                            .lineLimit(1)
+                    }
+                }
+                .font(.system(size: 10, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+            }
+            Spacer(minLength: 8)
+            if hovering {
+                HStack(spacing: 2) {
+                    action("terminal", help: "Shell into \(container.name)",
+                           run: shellIn)
+                    action("text.alignleft", help: "Tail logs", run: tailLogs)
+                    if !group.apple {
+                        action("arrow.clockwise", help: "Restart", run: restart)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .background(hovering ? Theme.selectionFill : .clear)
+        .onHover { hovering = $0 }
+    }
+
+    private func action(_ symbol: String, help: String,
+                        run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }
