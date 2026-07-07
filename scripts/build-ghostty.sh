@@ -17,16 +17,6 @@ source scripts/ghostty-pin.sh
 WORK=".build-ghostty"
 OUT="$WORK/macos/GhosttyKit.xcframework"
 
-if ! command -v zig >/dev/null; then
-    echo "ERROR: zig not found — install ${GHOSTTY_KIT_ZIG}" >&2
-    echo "ERROR: (https://ziglang.org/download/ or 'brew install zig')." >&2
-    exit 1
-fi
-FOUND_ZIG="$(zig version)"
-if [[ "$FOUND_ZIG" != "$GHOSTTY_KIT_ZIG" ]]; then
-    echo "WARN: zig ${FOUND_ZIG} — the pin builds with ${GHOSTTY_KIT_ZIG}; ghostty's build.zig may refuse it." >&2
-fi
-
 # Tagless on purpose: ghostty's build derives its version from
 # `git describe`, and the fork's `build-YYYY-MM-DD` tags land exactly
 # on build commits — a non-vX.Y.Z tag match panics the build. The
@@ -55,6 +45,30 @@ for p in patches/ghostty/*.patch; do
     echo "==> applying ${p##*/}"
     git -C "$WORK" apply "$PWD/$p"
 done
+
+# zig: the pin builds with exactly ${GHOSTTY_KIT_ZIG}. Use the system
+# zig when it matches; otherwise fetch the pinned toolchain from
+# ziglang.org (shasum-verified against its download index) into the
+# checkout, which is gitignored and survives between runs. Lives after
+# the clone because `git clone` needs the directory empty.
+if ! command -v zig >/dev/null || [[ "$(zig version)" != "$GHOSTTY_KIT_ZIG" ]]; then
+    ARCH="$(uname -m)"
+    [[ "$ARCH" == "arm64" ]] && ARCH=aarch64
+    ZIG_DIR="$WORK/.zig-${GHOSTTY_KIT_ZIG}-${ARCH}"
+    if [[ ! -x "$ZIG_DIR/zig" ]]; then
+        echo "==> fetching zig ${GHOSTTY_KIT_ZIG} (${ARCH}-macos)"
+        INFO="$(curl -fsSL https://ziglang.org/download/index.json \
+            | python3 -c "import json,sys; d=json.load(sys.stdin)[\"${GHOSTTY_KIT_ZIG}\"][\"${ARCH}-macos\"]; print(d[\"tarball\"], d[\"shasum\"])")"
+        URL="${INFO%% *}"; SHA="${INFO##* }"
+        curl -fsSL --retry 3 -o "$WORK/zig.tar.xz" "$URL"
+        echo "$SHA  $WORK/zig.tar.xz" | shasum -a 256 -c - > /dev/null
+        mkdir -p "$ZIG_DIR"
+        tar xf "$WORK/zig.tar.xz" -C "$ZIG_DIR" --strip-components 1
+        rm "$WORK/zig.tar.xz"
+    fi
+    export PATH="$(cd "$ZIG_DIR" && pwd):$PATH"
+fi
+echo "==> zig $(zig version)"
 
 # zig discovers the SDK by probing `xcrun --show-sdk-path` — even for
 # compiling its own build runner, before --sysroot applies — and cannot
