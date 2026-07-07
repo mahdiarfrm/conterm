@@ -13,13 +13,48 @@ struct ClusterOverviewOverlay: View {
 
     private var overview: ClusterPulse.Overview? { pulse.overview }
 
+    /// Namespace the card is narrowed to; nil shows the whole cluster.
+    /// The fetch always spans all namespaces, so narrowing is a pure
+    /// client-side filter — switching costs nothing.
+    @State private var nsFilter: String?
+
+    /// Every namespace present in the fetched data, `default` first.
+    private var namespaces: [String] {
+        guard let o = overview else { return [] }
+        var names = Set(o.pods.map(\.namespace))
+        names.formUnion(o.deployments.map(\.namespace))
+        names.formUnion(o.services.map(\.namespace))
+        names.formUnion(o.events.map(\.namespace))
+        return names.sorted { a, b in
+            if a == "default" { return true }
+            if b == "default" { return false }
+            return a < b
+        }
+    }
+
+    /// The selection, unless a refresh dropped that namespace.
+    private var effectiveFilter: String? {
+        guard let f = nsFilter, namespaces.contains(f) else { return nil }
+        return f
+    }
+
+    private func filtered(_ o: ClusterPulse.Overview) -> ClusterPulse.Overview {
+        guard let ns = effectiveFilter else { return o }
+        var f = o
+        f.pods = o.pods.filter { $0.namespace == ns }
+        f.deployments = o.deployments.filter { $0.namespace == ns }
+        f.services = o.services.filter { $0.namespace == ns }
+        f.events = o.events.filter { $0.namespace == ns }
+        return f
+    }
+
     var body: some View {
         BriefingCard(glassLive: glassLive) {
             VStack(spacing: 0) {
                 header
                 hairline
                 if let o = overview {
-                    content(o)
+                    content(filtered(o))
                 } else {
                     VStack(spacing: 10) {
                         ProgressView()
@@ -32,6 +67,7 @@ struct ClusterOverviewOverlay: View {
                 }
             }
         }
+        .onChange(of: overview?.context) { _, _ in nsFilter = nil }
     }
 
     // MARK: Header
@@ -60,6 +96,7 @@ struct ClusterOverviewOverlay: View {
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(Theme.textSecondary.opacity(0.7))
             }
+            if !namespaces.isEmpty { namespaceMenu }
             if pulse.overviewLoading {
                 ProgressView()
                     .controlSize(.small)
@@ -94,6 +131,39 @@ struct ClusterOverviewOverlay: View {
         .padding(.bottom, 12)
     }
 
+    /// Namespace narrowing chip: a menu of everything the fetch saw.
+    private var namespaceMenu: some View {
+        Menu {
+            Picker("Namespace", selection: $nsFilter) {
+                Text("All namespaces").tag(String?.none)
+                Divider()
+                ForEach(namespaces, id: \.self) { ns in
+                    Text(ns).tag(String?.some(ns))
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "line.3.horizontal.decrease")
+                    .font(.system(size: 8.5, weight: .semibold))
+                Text(effectiveFilter ?? "all namespaces")
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .semibold))
+            }
+            .foregroundStyle(effectiveFilter == nil
+                             ? Theme.textSecondary : Theme.accent)
+            .padding(.horizontal, 8).padding(.vertical, 3.5)
+            .background(Capsule().fill(Theme.stroke))
+            .contentShape(Capsule())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Narrow the card to one namespace")
+    }
+
     private var gemColor: Color {
         guard let o = overview else { return Theme.textSecondary.opacity(0.5) }
         let bad = o.pods.contains { $0.health == .bad }
@@ -104,12 +174,13 @@ struct ClusterOverviewOverlay: View {
     }
 
     private var headerLine: String {
-        guard let o = overview else { return "fetching cluster state" }
+        guard let raw = overview else { return "fetching cluster state" }
+        let o = filtered(raw)
         var parts: [String] = []
-        if KubeContextWatch.shortLabel(o.context) != o.context {
-            parts.append(o.context)
+        if KubeContextWatch.shortLabel(raw.context) != raw.context {
+            parts.append(raw.context)
         }
-        parts.append("all namespaces")
+        parts.append(effectiveFilter.map { "namespace \($0)" } ?? "all namespaces")
         parts.append("\(o.pods.count) pod\(o.pods.count == 1 ? "" : "s")")
         parts.append("\(o.nodes.count) node\(o.nodes.count == 1 ? "" : "s")")
         if !o.services.isEmpty {
@@ -301,7 +372,8 @@ struct ClusterOverviewOverlay: View {
         let bad = o.pods.lazy.filter { $0.health == .bad }.count
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                bandLabel("shippingbox", "WORKLOADS · ALL NAMESPACES")
+                bandLabel("shippingbox",
+                          "WORKLOADS · \(effectiveFilter?.uppercased() ?? "ALL NAMESPACES")")
                 Spacer()
                 Text(bad > 0 ? "\(running) running · \(bad) in trouble"
                              : "\(running) running")
@@ -311,7 +383,8 @@ struct ClusterOverviewOverlay: View {
                     .monospacedDigit()
             }
             if o.pods.isEmpty && o.deployments.isEmpty {
-                Text("No pods in this cluster.")
+                Text(effectiveFilter == nil ? "No pods in this cluster."
+                                            : "No pods in this namespace.")
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
             }
@@ -327,10 +400,13 @@ struct ClusterOverviewOverlay: View {
         let byWorkload = Dictionary(grouping: group.pods,
                                     by: { workloadKey($0.name) })
         return VStack(alignment: .leading, spacing: 6) {
-            Text(group.name)
-                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                .foregroundStyle(Theme.textSecondary.opacity(0.55))
-                .padding(.top, 2)
+            // The band label already names a narrowed namespace.
+            if effectiveFilter == nil {
+                Text(group.name)
+                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary.opacity(0.55))
+                    .padding(.top, 2)
+            }
             ForEach(group.deployments) { dep in
                 workloadRow(dep, pods: byWorkload[dep.name] ?? [])
             }
@@ -379,7 +455,7 @@ struct ClusterOverviewOverlay: View {
                 .monospacedDigit()
                 .frame(width: 32, alignment: .trailing)
         }
-        .padding(.leading, 10)
+        .padding(.leading, effectiveFilter == nil ? 10 : 0)
     }
 
     private func barePodRow(_ pod: ClusterPulse.Pod) -> some View {
@@ -409,7 +485,7 @@ struct ClusterOverviewOverlay: View {
                 .foregroundStyle(Theme.textSecondary.opacity(0.75))
                 .monospacedDigit()
         }
-        .padding(.leading, 10)
+        .padding(.leading, effectiveFilter == nil ? 10 : 0)
     }
 
     private func podColor(_ health: ClusterPulse.Health) -> Color {
