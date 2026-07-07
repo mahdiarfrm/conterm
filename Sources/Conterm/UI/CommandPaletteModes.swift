@@ -543,6 +543,128 @@ extension CommandPalette {
         Self.runInActivePane(state: state, command: entry.command)
     }
 
+    // MARK: - Clipboard mode
+
+    var filteredClipboard: [ClipboardHistory.Entry] {
+        let all = ClipboardHistory.shared.entries
+        guard !query.isEmpty else { return all }
+        let q = query.lowercased()
+        return all.filter { $0.text.lowercased().contains(q) }
+    }
+
+    @ViewBuilder var clipboardView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 2) {
+                    let rows = filteredClipboard
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, entry in
+                        clipboardRow(entry: entry,
+                                     isFocused: index == state.paletteFocusedIndex)
+                            .id("clip-\(index)")
+                            .onTapGesture { pasteClipboard(entry) }
+                            .onHover { hovering in
+                                if hovering && state.paletteHoverArmed {
+                                    state.paletteFocusedIndex = index
+                                }
+                            }
+                    }
+                    if rows.isEmpty {
+                        Text(query.isEmpty
+                             ? "Nothing copied from a pane yet — copies land here for this session."
+                             : "Nothing matches “\(query)”.")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(Theme.textSecondary)
+                            .padding(20)
+                    } else if query.isEmpty {
+                        Button {
+                            ClipboardHistory.shared.clear()
+                            SoundEffects.shared.play(.click)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 10, weight: .medium))
+                                Text("Clear history")
+                                    .font(.system(size: 11, weight: .medium,
+                                                  design: .rounded))
+                                Spacer()
+                            }
+                            .foregroundStyle(Theme.textSecondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(8)
+            }
+            .frame(maxHeight: 360)
+            .onChange(of: state.paletteFocusedIndex) { _, i in
+                withAnimation(.easeOut(duration: 0.12)) {
+                    proxy.scrollTo("clip-\(i)", anchor: .center)
+                }
+            }
+        }
+    }
+
+    func clipboardRow(entry: ClipboardHistory.Entry,
+                      isFocused: Bool) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "doc.on.clipboard")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(isFocused ? Theme.accent : Theme.textSecondary)
+                .frame(width: 18)
+            Text(entry.preview)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer()
+            if entry.lineCount > 1 {
+                Text("\(entry.lineCount) lines")
+                    .font(.system(size: 9.5, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().fill(Theme.stroke))
+            }
+            Text(Self.clipRelative.localizedString(for: entry.at,
+                                                   relativeTo: Date()))
+                .font(.system(size: 10, design: .rounded))
+                .foregroundStyle(Theme.textSecondary.opacity(0.75))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isFocused ? Theme.selectionFill : .clear)
+        )
+    }
+
+    private static let clipRelative: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
+
+    func pasteFocusedClipboardEntry() {
+        let rows = filteredClipboard
+        guard !rows.isEmpty else { return }
+        var i = state.paletteFocusedIndex % rows.count
+        if i < 0 { i += rows.count }
+        pasteClipboard(rows[i])
+    }
+
+    /// Re-arm the system clipboard with the entry and paste it into
+    /// the focused pane (bracketed, no trailing newline — nothing runs
+    /// until the user hits Return).
+    func pasteClipboard(_ entry: ClipboardHistory.Entry) {
+        state.togglePalette()
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(entry.text, forType: .string)
+        state.selectedTab?.paneTree.activePane?.controller?.sendText(entry.text)
+    }
+
     // MARK: - SSH hosts mode
 
     /// Parsed once per process from ~/.ssh/config (and any Include

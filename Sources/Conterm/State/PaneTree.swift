@@ -41,6 +41,16 @@ final class Pane: ObservableObject, Identifiable {
     /// `exit` the ssh session).
     @Published var remoteHost: String?
 
+    /// Live scp state for a file dropped on this (SSH) pane, rendered
+    /// as a pane badge. Set by AppState.uploadDroppedFiles; cleared
+    /// shortly after the transfer settles.
+    struct Upload: Equatable {
+        enum Phase: Equatable { case uploading, done, failed }
+        var label: String
+        var phase: Phase
+    }
+    @Published var upload: Upload?
+
     /// Initial working directory to pass to libghostty when this
     /// pane's surface is created. Set when the pane is born from a
     /// split or a "new tab" inheriting from another active pane.
@@ -345,8 +355,10 @@ final class PaneTree: ObservableObject {
     }
 
     /// Returns false if all panes are gone (caller should close the tab).
+    /// `firstFraction` sets the surviving pane's share — fleet grids
+    /// pass 1/remaining so N sequential splits come out even.
     @discardableResult
-    func split(axis: SplitAxis) -> Bool {
+    func split(axis: SplitAxis, firstFraction: CGFloat = 0.5) -> Bool {
         guard let activeLeafNode = root.findLeaf(of: activePaneID) else { return false }
         guard case .leaf(let existing) = activeLeafNode.kind else { return false }
 
@@ -365,7 +377,7 @@ final class PaneTree: ObservableObject {
             activeLeafNode.kind = .split(axis: axis,
                                           first: oldLeafNode,
                                           second: newLeafNode)
-            activeLeafNode.firstFraction = 0.5
+            activeLeafNode.firstFraction = min(max(firstFraction, 0.1), 0.9)
             self.activePaneID = newPane.id
         }
         SoundEffects.shared.play(.paneAdd)

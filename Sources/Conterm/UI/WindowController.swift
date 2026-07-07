@@ -40,6 +40,7 @@ final class WindowController {
             showLaunchOverlay: showLaunchOverlay,
             restore: restore
         )
+        state.notificationStore = notifications
 
         let root = AppView()
             .environmentObject(state)

@@ -127,6 +127,7 @@ final class AppState: ObservableObject {
         case agents                // panes with a live agent, needs-you first
         case shellHistory          // fuzzy-search the user's zsh/bash history
         case sshHosts              // pick an ssh host (recents first, then all)
+        case clipboard             // recent copies from panes (session-only)
         case groups                // manage tab groups: rename / recolor / reorder
 
         /// The note editor owns all text-navigation keys (Return, arrows,
@@ -321,6 +322,15 @@ final class AppState: ObservableObject {
         SoundEffects.shared.play(.paletteOpen)
     }
 
+    /// Open the find bar pinned to the focused pane's agent
+    /// conversation — the Agent Center's per-agent search.
+    func openConversationSearch() {
+        openSearch(prefill: nil)
+        if selectedTab?.paneTree.activePane?.agentTranscriptPath != nil {
+            searchScope = .conversation
+        }
+    }
+
     /// Close the bar and end the core session (clears the in-terminal
     /// highlights).
     func closeSearch() {
@@ -404,6 +414,157 @@ final class AppState: ObservableObject {
         SoundEffects.shared.play(.paletteClose)
     }
 
+    // MARK: - Remote file drop (scp)
+
+    weak var notificationStore: NotificationStore?
+
+    /// A file dropped on an SSH pane uploads to the pane's remote
+    /// working directory instead of pasting a meaningless local path;
+    /// on success the remote paths are typed at the prompt — the same
+    /// affordance a local drop gives (and what agents read). Returns
+    /// false when the pane isn't remote, so the caller falls back to
+    /// the local path-paste.
+    func uploadDroppedFiles(_ paths: [String], to pane: Pane) -> Bool {
+        guard let host = pane.remoteHost, !paths.isEmpty else { return false }
+        let target = Self.resolveHostTarget(host)
+        // The pane's cwd is the remote directory only once the remote
+        // shell has reported OSC 7; a path still under the LOCAL home
+        // is a stale local report, so those uploads land in the remote
+        // $HOME instead.
+        let cwd = pane.cwd ?? ""
+        let dir = (cwd.hasPrefix("/") && !cwd.hasPrefix(NSHomeDirectory()))
+            ? cwd : ""
+        let names = paths.map { ($0 as NSString).lastPathComponent }
+        let label = names.count == 1 ? names[0] : "\(names.count) files"
+        pane.upload = Pane.Upload(label: label, phase: .uploading)
+        Task.detached(priority: .userInitiated) {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/scp")
+            p.arguments = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                           "-q"] + paths
+                + ["\(target):\(dir.isEmpty ? "" : dir + "/")"]
+            let err = Pipe()
+            p.standardOutput = FileHandle.nullDevice
+            p.standardError = err
+            do {
+                try p.run()
+            } catch {
+                await MainActor.run {
+                    Self.settleUpload(pane, label: label, phase: .failed)
+                    self.notificationStore?.post(tool: .generic,
+                                                 title: "Upload failed",
+                                                 message: error.localizedDescription)
+                    SoundEffects.shared.play(.error)
+                }
+                return
+            }
+            p.waitUntilExit()
+            let stderr = String(data: err.fileHandleForReading.readDataToEndOfFile(),
+                                encoding: .utf8) ?? ""
+            let status = p.terminationStatus
+            await MainActor.run {
+                if status == 0 {
+                    Self.settleUpload(pane, label: label, phase: .done)
+                    for name in names {
+                        let remote = dir.isEmpty ? name : dir + "/" + name
+                        pane.controller?.sendText(Self.quoteForShell(remote) + " ")
+                    }
+                    self.notificationStore?.post(tool: .generic,
+                        title: "Uploaded to \(target)",
+                        message: "\(names.joined(separator: ", ")) → \(dir.isEmpty ? "~" : dir)")
+                    SoundEffects.shared.play(.notify)
+                } else {
+                    Self.settleUpload(pane, label: label, phase: .failed)
+                    let detail = stderr.split(whereSeparator: \.isNewline)
+                        .first.map(String.init) ?? "scp exited \(status)"
+                    self.notificationStore?.post(tool: .generic,
+                                                 title: "Upload failed",
+                                                 message: detail)
+                    SoundEffects.shared.play(.error)
+                }
+            }
+        }
+        return true
+    }
+
+    /// Flip the pane's upload badge to its verdict, then retire it —
+    /// unless a newer drop has already replaced it.
+    private static func settleUpload(_ pane: Pane, label: String,
+                                     phase: Pane.Upload.Phase) {
+        let settled = Pane.Upload(label: label, phase: phase)
+        pane.upload = settled
+        DispatchQueue.main.asyncAfter(deadline: .now()
+                                      + (phase == .failed ? 4.0 : 2.5)) {
+            if pane.upload == settled { pane.upload = nil }
+        }
+    }
+
+    // MARK: - Fleet run
+
+    /// Fleet-run overlay: pick hosts + one command.
+    @Published var fleetRunOpen = false
+
+    func openFleetRun() {
+        withAnimation(Theme.Spring.bouncy) { fleetRunOpen = true }
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    func closeFleetRun() {
+        guard fleetRunOpen else { return }
+        withAnimation(Theme.Spring.snappy) { fleetRunOpen = false }
+        focusActiveSurface()
+        SoundEffects.shared.play(.paletteClose)
+    }
+
+    /// One command across many hosts: a new tab splits into a pane per
+    /// host — even columns, a second row once hosts outnumber three —
+    /// and each pane runs `ssh -t host 'command'`. An empty command
+    /// just connects everywhere.
+    func fleetRun(targets: [String], command: String) {
+        guard !targets.isEmpty else { return }
+        closeFleetRun()
+        let tab = addTab(title: "fleet · \(targets.count)")
+        let tree = tab.paneTree
+        guard let first = tree.activePane else { return }
+
+        let n = targets.count
+        let columns = n <= 3 ? n : Int((Double(n) / 2).rounded(.up))
+        var panes: [Pane] = [first]
+        // Columns: each split keeps 1/remaining for the surviving pane,
+        // so the row comes out even.
+        for remaining in stride(from: columns, through: 2, by: -1) {
+            if let last = panes.last { tree.focus(last) }
+            tree.split(axis: .horizontal,
+                       firstFraction: 1.0 / CGFloat(remaining))
+            if let pane = tree.activePane { panes.append(pane) }
+        }
+        // Second row: the leftmost columns gain a bottom pane until
+        // every host has one.
+        for i in 0..<(n - columns) {
+            tree.focus(panes[i])
+            tree.split(axis: .vertical)
+            if let pane = tree.activePane { panes.append(pane) }
+        }
+
+        let remote = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        for (pane, target) in zip(panes, targets) {
+            let line = remote.isEmpty
+                ? "ssh \(target)"
+                : "ssh -t \(target) \(Self.quoteForShell(remote))"
+            Self.sendWhenMounted(pane, command: line)
+        }
+        if let firstPane = panes.first { tree.focus(firstPane) }
+    }
+
+    /// Single-quote-wrap for POSIX shells; safe for spaces, `$`,
+    /// backticks, glob chars. Embedded `'` becomes `'\''`.
+    nonisolated private static func quoteForShell(_ s: String) -> String {
+        if s.range(of: #"[^A-Za-z0-9_/.\-]"#, options: .regularExpression) == nil {
+            return s
+        }
+        return "'" + s.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+    }
+
     /// Ansible cockpit overlay: a pane's live/parked run, or the
     /// machine's persisted last report. nil when closed.
     enum AnsibleCockpitTarget: Equatable {
@@ -436,6 +597,7 @@ final class AppState: ObservableObject {
 
     func openClusterOverview(context: String) {
         ClusterPulse.shared.fetchOverview(context: context)
+        HelmReleases.shared.refresh(context: context)
         withAnimation(Theme.Spring.bouncy) { clusterOverviewOpen = true }
         SoundEffects.shared.play(.paletteOpen)
     }
@@ -571,17 +733,16 @@ final class AppState: ObservableObject {
         return tab
     }
 
-    /// Open a new tab whose first pane starts in `dir` and immediately runs
-    /// an agent CLI (`claude` / `opencode`). Backs the agents sidebar's
-    /// "add agent" action. The launch command is sent once the pane's
-    /// surface mounts (retry-poll, same as the palette's run-in-new-tab).
+    /// Open a new tab and run `command` in its first pane. The command
+    /// is sent once the pane's surface mounts (retry-poll, same as the
+    /// palette's run-in-new-tab).
     @discardableResult
-    func openAgent(command: String, in dir: String) -> Tab {
+    func openTabRunning(command: String, title: String? = nil,
+                        in dir: String? = nil) -> Tab {
         let inUse = Set(tabs.compactMap { Int($0.indexLabel.dropFirst("Terminal ".count)) })
         var n = 1
         while inUse.contains(n) { n += 1 }
-        let leaf = (dir as NSString).lastPathComponent
-        let tab = Tab(indexLabel: "Terminal \(n)", customTitle: leaf.isEmpty ? nil : leaf)
+        let tab = Tab(indexLabel: "Terminal \(n)", customTitle: title)
         tab.paneTree.root.leaves().first?.startingDir = dir
         withAnimation(Theme.Spring.crisp) {
             tabs.append(tab)
@@ -589,22 +750,38 @@ final class AppState: ObservableObject {
         }
         focusActiveSurface()
         SoundEffects.shared.play(.tabAdd)
+        if let pane = tab.paneTree.activePane {
+            Self.sendWhenMounted(pane, command: command)
+        }
+        return tab
+    }
 
-        var attempts = 0
-        func sendWhenReady() {
-            attempts += 1
-            if let ctrl = tab.paneTree.activePane?.controller {
-                ctrl.typeText(command)
-                ctrl.sendReturn()
-                return
-            }
-            guard attempts < 40 else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                Task { @MainActor in sendWhenReady() }
+    /// Type a command into a pane as soon as its surface mounts
+    /// (retry-poll — surfaces attach a few runloop ticks after the
+    /// pane exists).
+    private static func sendWhenMounted(_ pane: Pane, command: String,
+                                        attempts: Int = 0) {
+        if let ctrl = pane.controller {
+            ctrl.typeText(command)
+            ctrl.sendReturn()
+            return
+        }
+        guard attempts < 40 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            Task { @MainActor in
+                sendWhenMounted(pane, command: command, attempts: attempts + 1)
             }
         }
-        sendWhenReady()
-        return tab
+    }
+
+    /// Open a new tab whose first pane starts in `dir` and immediately runs
+    /// an agent CLI (`claude` / `opencode`). Backs the agents sidebar's
+    /// "add agent" action.
+    @discardableResult
+    func openAgent(command: String, in dir: String) -> Tab {
+        let leaf = (dir as NSString).lastPathComponent
+        return openTabRunning(command: command,
+                              title: leaf.isEmpty ? nil : leaf, in: dir)
     }
 
     func closeTab(_ tab: Tab) {
