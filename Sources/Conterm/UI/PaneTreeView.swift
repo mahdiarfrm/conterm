@@ -215,11 +215,12 @@ func makePaneSurface(pane: Pane,
     pane.startingDir = nil
     state.syncSurfaceOcclusion()
 
-    // Session restore. libghostty ignores the surface `command`/`initial_input`
-    // config in this build, so we drive restore through the input path (same as
-    // a paste): once the shell is up, type a setup line. For an agent pane that
-    // resumes the session (`claude --resume`); otherwise it replays the saved
-    // scrollback. cwd alone (working_directory) covers a plain pane.
+    // Session restore, driven through the input path (same as a paste): once
+    // the shell is up, type a setup line. For an agent pane that resumes the
+    // session (`claude --resume`); otherwise it replays the saved scrollback.
+    // cwd alone (working_directory) covers a plain pane. The surface `command`
+    // config would replace the shell (`/bin/sh -c`, wait-after-command forced)
+    // rather than run a line inside it, so the input path stays the mechanism.
     if let cmd = restoreCommandLine(resumeSession: resumeSession,
                                     scrollback: scrollback,
                                     cwd: pane.cwd) {
