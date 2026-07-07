@@ -9,6 +9,7 @@ struct AnsibleCockpitOverlay: View {
     @EnvironmentObject var state: AppState
     @ObservedObject private var center = AnsibleCenter.shared
     let target: AppState.AnsibleCockpitTarget
+    let glassLive: Bool
 
     private var run: AnsibleCenter.Run? {
         switch target {
@@ -18,51 +19,40 @@ struct AnsibleCockpitOverlay: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let run {
-                header(run)
-                Divider().opacity(0.4)
-                content(run)
-            } else {
-                Text("No playbook run to show yet.")
-                    .font(.system(size: 11.5, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(40)
+        BriefingCard(glassLive: glassLive, width: 620) {
+            VStack(spacing: 0) {
+                if let run {
+                    header(run)
+                    Divider().opacity(0.4)
+                    content(run)
+                } else {
+                    Text("No playbook run to show yet.")
+                        .font(.system(size: 11.5, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(40)
+                }
             }
         }
-        .background(OverlayPanelBackground(cornerRadius: 16))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Theme.strokeStrong, lineWidth: 1)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(
-                    LinearGradient(colors: [Color.white.opacity(0.28), .clear],
-                                   startPoint: .top, endPoint: .center),
-                    lineWidth: 1)
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
-        )
-        .shadow(color: .black.opacity(0.45), radius: 22, x: 0, y: 10)
-        .frame(width: 620)
     }
 
     // MARK: Header
 
     private func header(_ run: AnsibleCenter.Run) -> some View {
         HStack(spacing: 10) {
-            Circle()
-                .fill(gemColor(run))
-                .frame(width: 8, height: 8)
-                .shadow(color: gemColor(run).opacity(0.8), radius: 5)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(run.playbook)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 9) {
+                    Circle()
+                        .fill(gemColor(run))
+                        .frame(width: 9, height: 9)
+                        .shadow(color: gemColor(run).opacity(0.8), radius: 5)
+                    Text(run.playbook)
+                        .font(.system(size: 21, weight: .bold, design: .rounded))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
                 Text(headerLine(run))
-                    .font(.system(size: 10.5, design: .rounded))
+                    .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)
             }
@@ -89,8 +79,9 @@ struct AnsibleCockpitOverlay: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 18)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
     }
 
     private func gemColor(_ run: AnsibleCenter.Run) -> Color {
@@ -128,18 +119,18 @@ struct AnsibleCockpitOverlay: View {
         // whole max height, leaving a small run floating in dead space.
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                matrixBand(run)
+                matrixBand(run).rollUp(delay: 0.05)
                 if !run.tasks.isEmpty {
                     hairline
-                    tasksBand(run)
+                    tasksBand(run).rollUp(delay: 0.11)
                 }
                 if !run.changes.isEmpty {
                     hairline
-                    changesBand(run)
+                    changesBand(run).rollUp(delay: 0.17)
                 }
                 if !run.failures.isEmpty {
                     hairline
-                    failuresBand(run)
+                    failuresBand(run).rollUp(delay: 0.23)
                 }
             }
             .padding(.bottom, 6)

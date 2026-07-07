@@ -23,62 +23,15 @@ struct HostOverviewOverlay: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            switch probe.phase {
-            case .loading: loading
-            case .failed(let message): failed(message)
-            case .loaded(let info): content(info)
+        BriefingCard(glassLive: glassLive) {
+            VStack(spacing: 0) {
+                header
+                switch probe.phase {
+                case .loading: loading
+                case .failed(let message): failed(message)
+                case .loaded(let info): content(info)
+                }
             }
-        }
-        .background(panelBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Theme.strokeStrong, lineWidth: 1)
-        )
-        .overlay(
-            // Iridescent rim — a faint static spectrum, additive so it
-            // reads as light caught in the glass edge rather than a
-            // painted border.
-            // Additive blend disappears against a light backdrop, so the
-            // light tint draws the spectrum normally.
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(
-                    AngularGradient(gradient: Gradient(colors: Theme.iridescent),
-                                    center: .center, angle: .degrees(-40)),
-                    lineWidth: 1.2)
-                .blendMode(prefs.lightGlass ? .normal : .plusLighter)
-                .allowsHitTesting(false)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(
-                    LinearGradient(colors: [Color.white.opacity(0.30), .clear],
-                                   startPoint: .top, endPoint: .center),
-                    lineWidth: 1
-                )
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
-        )
-        .shadow(color: .black.opacity(0.5), radius: 26, x: 0, y: 12)
-        .frame(width: 680)
-    }
-
-    /// The real material on macOS 26, mounted only at rest (see
-    /// `glassLive`); while animating — and on older systems — a
-    /// near-opaque solid tuned to read like the frosted material, so
-    /// the swap at settle is barely perceptible.
-    @ViewBuilder
-    private var panelBackground: some View {
-        if glassLive, #available(macOS 26, *) {
-            PaneLiquidGlass(cornerRadius: 18, frostiness: 0.55,
-                            light: prefs.lightGlass)
-        } else {
-            (prefs.lightGlass
-                ? Color(red: 0.94, green: 0.95, blue: 0.97)
-                : Color(red: 0.06, green: 0.065, blue: 0.08))
-                .opacity(0.96)
         }
     }
 
