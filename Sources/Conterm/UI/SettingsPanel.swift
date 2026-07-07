@@ -418,6 +418,12 @@ struct SettingsPanel: View {
                             .font(.system(size: 11, design: .monospaced))
                             .frame(width: 180)
                     }
+                    SettingsRow(title: "Watch cluster",
+                                subtitle: "Poll kubectl for pod health across all namespaces every 45 seconds: a health gem on the pill, and notifications when a pod enters CrashLoopBackOff / ImagePullBackOff / Error.") {
+                        Toggle("", isOn: $prefs.kubeWatchCluster.withSound())
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                    }
                     SettingsRow(title: "Remember context switches",
                                 subtitle: "Off: switching from the widget exports KUBECONFIG into the focused pane only — new panes start on the default context. On: switches write the global kubeconfig.") {
                         Toggle("", isOn: $prefs.kubeRememberContext.withSound())
