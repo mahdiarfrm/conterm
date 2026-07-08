@@ -16,10 +16,11 @@
   <a href="https://github.com/mahdiarfrm/conterm/issues">Report a bug</a>
 </p>
 
-**Conterm** is a macOS terminal built on [Ghostty's](https://github.com/ghostty-org/ghostty)
-engine, adding Liquid Glass chrome, splittable panes, a multi-source `⌘K`
-command palette, and a command center for AI coding agents like Claude Code
-and opencode.
+**Conterm** is a native macOS terminal built on
+[Ghostty's](https://github.com/ghostty-org/ghostty) engine. It adds a `⌘K`
+command palette, vertical tabs and tab groups, widgets, notifications, a
+command center for AI coding agents like Claude Code and opencode, and
+live overviews of your SSH hosts, Kubernetes clusters, and containers.
 
 > Conterm is an independent frontend built on **libghostty**. It is not
 > affiliated with the Ghostty project. The terminal engine (rendering, parsing,
