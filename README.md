@@ -243,6 +243,19 @@ open ./Conterm.app
 `scripts/build.sh` produces a release, arm64, ad-hoc-codesigned `Conterm.app`
 with the bundled config, terminfo, and icon.
 
+`setup.sh` fetches the prebuilt GhosttyKit at the pinned commit. Official
+releases instead ship a GhosttyKit built from source with the local patches
+in `patches/ghostty/` (currently a renderer-teardown fix,
+[reported upstream](https://github.com/ghostty-org/ghostty/discussions/13242)).
+To build that kit yourself:
+
+```bash
+bash scripts/build-ghostty.sh install   # clone pin, apply patches, zig build, install
+```
+
+The script fetches the pinned zig toolchain on its own if needed; the pin
+constants live in `scripts/ghostty-pin.sh`.
+
 ## How it fits together
 
 Conterm is a SwiftUI + AppKit app that drives libghostty through
