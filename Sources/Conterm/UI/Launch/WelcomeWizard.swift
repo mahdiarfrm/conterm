@@ -705,16 +705,9 @@ struct WelcomeWizard: View {
 
             Toggle(isOn: $pickedOpaquePanes.withSound()) {
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text("Solid panes")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Theme.textPrimary)
-                        Text("RECOMMENDED")
-                            .font(.system(size: 8, weight: .bold, design: .rounded))
-                            .foregroundStyle(Theme.accent)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(Capsule().fill(Theme.accent.opacity(0.16)))
-                    }
+                    Text("Solid panes")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.textPrimary)
                     Text(pickedGlassMode == .solid
                             ? "The Solid window is fully opaque, so panes always ride on it — pick Glass or Blur for see-through panes."
                             : "Each pane rides on solid black, framing the terminal cells against the glass. Turn off for see-through panes if you prefer the glass showing through the cells.")
