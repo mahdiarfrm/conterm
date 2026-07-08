@@ -54,7 +54,9 @@ https://github.com/user-attachments/assets/afbe93e9-9741-46d3-9eef-1c7b0d62ab64
 - **Session restore** — every window, tab, pane, split, and working directory
   comes back exactly where you left it on relaunch.
 - **File drops** — drag a file or image onto a pane to insert its shell-quoted
-  path at the cursor.
+  path at the cursor. Drop one on an SSH pane and it's uploaded instead —
+  `scp` to the remote working directory, a badge on the pane while it
+  transfers, and the remote path typed at the prompt.
 - **Find in scrollback** (`⌘F`) — the terminal's own search engine highlights
   every match and centers the one you step to (`⌘G` / `⌘⇧G`; `⌘E` searches the
   selection). Panes running Claude Code add a *Conversation* scope over the
@@ -67,9 +69,10 @@ https://github.com/user-attachments/assets/afbe93e9-9741-46d3-9eef-1c7b0d62ab64
 One search over everything:
 
 - A single query reaches app commands, **shell history** (re-run any zsh/bash
-  command), your `~/.ssh/config` hosts (with `Include` support), the active
-  pane's **recently modified files**, built-in **notes**, and **every open
-  pane across every window**.
+  command), **clipboard history** (recent copies from panes — session-only,
+  never written to disk), your `~/.ssh/config` hosts (with `Include` support),
+  the active pane's **recently modified files**, built-in **notes**, and
+  **every open pane across every window**.
 - A **live calculator** in the search bar — arithmetic, `0x`/`0b`/`0o`
   literals, re-basing (`255 in hex`), and unit conversions across data sizes,
   time, length, mass, volume, and temperature.
@@ -87,9 +90,12 @@ One search over everything:
   installed non-destructively.
 - **Command center** (`⌘⇧A`) — a docked rail listing every running agent across
   all windows, *needs you* first. Each card shows its branch, the task it's
-  working on, live cost / tokens / model, and how long since it last acted —
-  with jump-to-pane and an inline reply / accept / interrupt. A toolbar pill
-  appears with the running count.
+  working on, live cost / burn rate / tokens / model, and how long since it
+  last acted — with jump-to-pane, search-in-conversation, and an inline
+  reply / accept / interrupt. `claude --bg` background sessions join the
+  roster with one-click resume, and a *Next Blocked Agent* palette command
+  cycles through the agents waiting on you. A toolbar pill appears with the
+  running count.
 - **Agents layout** — a third window layout whose sidebar *is* the live agent
   roster; an **Add agent** button opens Claude Code or opencode in a directory
   you pick, and a panes dropdown jumps to any open pane.
@@ -105,13 +111,31 @@ One search over everything:
   recent journal and kernel errors, logins, and pending updates — gathered
   in one key-authenticated SSH round trip. A status gem sums the host:
   green up, amber wants attention, red in trouble.
+- **Fleet run** — pick hosts in the palette, type one command, and get a
+  tab with a pane per host running it over SSH — or leave the command empty
+  to just connect everywhere.
 - **Kubernetes context** — a tab-bar pill shows where kubectl points;
   production contexts turn it red and put a red glow on the focused
   pane's border. Click to switch context: by default a switch applies to
   the focused pane only (exported silently into that shell), so new panes
   start on your default — or flip one toggle to make switches global.
+  Rollouts (`rollout restart`, `set image`, `scale`, `apply`) trace a
+  progress rim around the pill as replicas come ready — green on
+  completion, red on a stall, with notifications for both.
+- **Cluster Overview** — every context row in the Kubernetes popover opens
+  a briefing card on that cluster: nodes with pressure bars, workloads with
+  per-pod health dots and ready bars, services, Helm releases, and recent
+  warning events, across every namespace — a header chip narrows to one.
+  An optional watcher polls pod health in the background, sums it in a
+  status gem on the pill, and notifies when a pod starts crash-looping.
 - **Containers** — running containers across Docker, Podman, containerd,
-  and Apple's `container` in one pill, grouped by runtime in its popover.
+  and Apple's `container` in one pill, grouped by runtime in its popover;
+  hover a row to shell in, tail its logs, or restart it.
+- **Ansible cockpit** — running `ansible-playbook` in a pane mirrors the
+  run (console untouched) into a live hosts × tasks matrix: per-cell
+  results, task durations with a slowest callout, the changed footprint,
+  and a failure feed with messages. A widget tracks runs across all
+  windows and keeps the machine's most recent report across relaunches.
 
 ### Updates and backups
 
@@ -129,10 +153,11 @@ One search over everything:
   when you want it. On macOS 14–15 the app runs fully with plain (non-glass)
   chrome.
 - **Widgets** — glanceable pills in the tab bar or sidebar: system stats,
-  clock, battery, git status, GitHub PR checks, ping, notes, session streaks,
-  the kubectl context (with a click-to-switch popover), containers across
-  runtimes (Docker, Podman, containerd, Apple's container), and a pixel cat.
-  Enable and reorder them in *Settings → Widgets*.
+  clock, battery, git status, GitHub PR checks, ping, public IP (VPN-aware),
+  notes, session streaks, Ansible runs, the kubectl context (with a
+  click-to-switch popover), containers across runtimes (Docker, Podman,
+  containerd, Apple's container), and a pixel cat. Enable and reorder them
+  in *Settings → Widgets*.
 - **SSH-host detection** in the pane chrome, and synthesized UI sound effects.
 
 ## Install
