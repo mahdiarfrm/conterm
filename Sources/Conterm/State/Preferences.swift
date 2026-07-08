@@ -328,9 +328,10 @@ final class Preferences: ObservableObject {
     }
 
     /// Paint each pane on a solid opaque backing instead of letting a
-    /// translucent terminal reveal the glass behind it. The desktop never
-    /// re-composites under a streaming pane, so this is markedly cooler on
-    /// fanless Macs — ON by default.
+    /// translucent terminal reveal the window material behind it. Purely
+    /// visual — translucent panes measure power-equivalent to opaque ones
+    /// (docs/POWER-TESTS-2026-07.md §1) — OFF by default so the chosen
+    /// material shows through the cells.
     @Published var opaquePanes: Bool {
         didSet { ud.set(opaquePanes, forKey: K.opaquePanes) }
     }
@@ -509,7 +510,8 @@ final class Preferences: ObservableObject {
         self.lightGlass             = ud.object(forKey: K.lightGlass) as? Bool ?? false
         self.themeFromConfig        = ud.object(forKey: K.themeFromConfig) as? Bool ?? false
         self.glassMode              = GlassMode(rawValue: ud.string(forKey: K.glassMode) ?? "")
-            ?? ((ud.object(forKey: K.solidGlass) as? Bool ?? false) ? .solid : .glass)
+            ?? (ud.object(forKey: K.solidGlass) as? Bool).map { $0 ? GlassMode.solid : .glass }
+            ?? .blur
         self.liquidGlassPanels      = ud.object(forKey: K.liquidGlassPanels) as? Bool ?? false
         self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? false
         self.actionAccent           = ActionAccent(
@@ -518,7 +520,7 @@ final class Preferences: ObservableObject {
         self.newTabAccent           = ActionAccent(
             rawValue: ud.string(forKey: K.newTabAccent) ?? ActionAccent.yellow.rawValue
         ) ?? .yellow
-        self.opaquePanes            = ud.object(forKey: K.opaquePanes) as? Bool ?? true
+        self.opaquePanes            = ud.object(forKey: K.opaquePanes) as? Bool ?? false
         self.diagnosticLogging      = ud.object(forKey: K.diagnosticLogging) as? Bool ?? false
         refreshPaneBlurFromConfig()
         NotificationCenter.default.addObserver(
