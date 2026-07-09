@@ -957,17 +957,9 @@ extension Ghostty {
 
             // Fall back to raw bitmap data — Safari/web drags, pasted
             // screenshots in Slack, etc. Materialize each as PNG.
-            if paths.isEmpty {
-                if let png = pb.data(forType: .png) {
-                    if let p = Self.persistDroppedImage(png, ext: "png") {
-                        paths.append(p)
-                    }
-                } else if let tiff = pb.data(forType: .tiff),
-                          let png = Self.tiffToPNG(tiff) {
-                    if let p = Self.persistDroppedImage(png, ext: "png") {
-                        paths.append(p)
-                    }
-                }
+            if paths.isEmpty,
+               let p = ImagePaste.materializePNG(from: pb, prefix: "drop") {
+                paths.append(p)
             }
 
             guard !paths.isEmpty else { return false }
@@ -982,7 +974,7 @@ extension Ghostty {
             // space keeps a plain shell receiving them as separate, quoted
             // arguments on one line.
             for path in paths {
-                controller?.sendText(Self.shellQuote(path) + " ")
+                controller?.sendText(ImagePaste.shellQuote(path) + " ")
             }
             return true
         }
@@ -994,39 +986,52 @@ extension Ghostty {
                 ? .copy : []
         }
 
-        /// Single-quote-wrap a path for POSIX shells; safe for spaces,
-        /// `$`, backticks, glob chars. Embedded `'` becomes `'\''`.
-        private static func shellQuote(_ s: String) -> String {
-            if s.range(of: #"[^A-Za-z0-9_/.\-]"#, options: .regularExpression) == nil {
-                return s
-            }
-            return "'" + s.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
-        }
+    }
+}
 
-        /// Writes a dropped bitmap into the Conterm cache so an agent
-        /// can read it after the drop. Filenames are timestamped so a
-        /// quick succession of drops doesn't collide.
-        private static func persistDroppedImage(_ data: Data, ext: String) -> String? {
-            let base = FileManager.default.urls(for: .cachesDirectory,
-                                                in: .userDomainMask).first
-                ?? URL(fileURLWithPath: NSTemporaryDirectory())
-            let dir = base.appendingPathComponent("conterm/dnd",
-                                                  isDirectory: true)
-            try? FileManager.default.createDirectory(at: dir,
-                                                     withIntermediateDirectories: true)
-            let stamp = Int(Date().timeIntervalSince1970 * 1000)
-            let url = dir.appendingPathComponent("drop-\(stamp).\(ext)")
-            do {
-                try data.write(to: url, options: .atomic)
-                return url.path
-            } catch {
-                return nil
-            }
+/// Bitmap-to-path plumbing shared by the drop handler and the paste
+/// clipboard callback: both resolve "image data without a backing
+/// file" to a shell-quoted PNG path an agent (Claude Code, opencode)
+/// can read verbatim.
+@MainActor
+enum ImagePaste {
+    /// Single-quote-wrap a path for POSIX shells; safe for spaces,
+    /// `$`, backticks, glob chars. Embedded `'` becomes `'\''`.
+    static func shellQuote(_ s: String) -> String {
+        if s.range(of: #"[^A-Za-z0-9_/.\-]"#, options: .regularExpression) == nil {
+            return s
         }
+        return "'" + s.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+    }
 
-        private static func tiffToPNG(_ tiff: Data) -> Data? {
-            guard let rep = NSBitmapImageRep(data: tiff) else { return nil }
-            return rep.representation(using: .png, properties: [:])
+    /// Bitmap data on `pb` (png preferred, tiff converted) written into
+    /// the Conterm cache as a PNG; returns the absolute path. Filenames
+    /// are timestamped so a quick succession doesn't collide.
+    static func materializePNG(from pb: NSPasteboard, prefix: String) -> String? {
+        let png: Data?
+        if let data = pb.data(forType: .png) {
+            png = data
+        } else if let tiff = pb.data(forType: .tiff),
+                  let rep = NSBitmapImageRep(data: tiff) {
+            png = rep.representation(using: .png, properties: [:])
+        } else {
+            png = nil
+        }
+        guard let png else { return nil }
+        let base = FileManager.default.urls(for: .cachesDirectory,
+                                            in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let dir = base.appendingPathComponent("conterm/dnd",
+                                              isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir,
+                                                 withIntermediateDirectories: true)
+        let stamp = Int(Date().timeIntervalSince1970 * 1000)
+        let url = dir.appendingPathComponent("\(prefix)-\(stamp).png")
+        do {
+            try png.write(to: url, options: .atomic)
+            return url.path
+        } catch {
+            return nil
         }
     }
 }

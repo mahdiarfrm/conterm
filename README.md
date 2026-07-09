@@ -54,10 +54,12 @@ https://github.com/user-attachments/assets/afbe93e9-9741-46d3-9eef-1c7b0d62ab64
   collapsible folders.
 - **Session restore** — every window, tab, pane, split, and working directory
   comes back exactly where you left it on relaunch.
-- **File drops** — drag a file or image onto a pane to insert its shell-quoted
-  path at the cursor. Drop one on an SSH pane and it's uploaded instead —
-  `scp` to the remote working directory, a badge on the pane while it
-  transfers, and the remote path typed at the prompt.
+- **File drops & image paste** — drag a file or image onto a pane to insert
+  its shell-quoted path at the cursor; `⌘V` with an image on the clipboard
+  (browser "Copy Image", screenshot tools) pastes the same way, so agents
+  like Claude Code can read it. Drop or paste on an SSH pane and it's
+  uploaded instead — `scp` to the remote working directory, a badge on the
+  pane while it transfers, and the remote path typed at the prompt.
 - **Find in scrollback** (`⌘F`) — the terminal's own search engine highlights
   every match and centers the one you step to (`⌘G` / `⌘⇧G`; `⌘E` searches the
   selection). Panes running Claude Code add a *Conversation* scope over the
