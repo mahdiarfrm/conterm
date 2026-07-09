@@ -552,7 +552,20 @@ extension Ghostty {
                 // An explicit free between the callback and this hop nils
                 // the handle; never pass a NULL surface into libghostty.
                 guard let h = controller.handle else { return }
-                let text = NSPasteboard.general.string(forType: .string) ?? ""
+                let pb = NSPasteboard.general
+                var text = pb.string(forType: .string) ?? ""
+                // An image-only clipboard (browser "Copy Image",
+                // screenshot tools) has no string form, so paste would
+                // send nothing. Materialize the bitmap as a PNG and
+                // paste its shell-quoted path — the same contract as an
+                // image drop, including the scp offer for SSH panes.
+                // Copies that carry text alongside a bitmap rendition
+                // (office apps) keep pasting their text.
+                if text.isEmpty,
+                   let path = ImagePaste.materializePNG(from: pb, prefix: "paste"),
+                   controller.onFileDrop?([path]) != true {
+                    text = ImagePaste.shellQuote(path) + " "
+                }
                 text.withCString { ptr in
                     ghostty_surface_complete_clipboard_request(h, ptr, st, false)
                 }
