@@ -540,10 +540,10 @@ private struct GroupedRoster: View {
     }
 }
 
-/// Headless `claude --bg` sessions with resume and delete affordances.
+/// Headless `claude --bg` sessions with resume and stop affordances.
 /// Resuming opens a pane running `claude --resume <id>` in the
-/// session's cwd; deleting clears the job-registry entry while the
-/// transcript keeps the session resumable by id.
+/// session's cwd; stopping runs `claude stop <id>` — the session's
+/// process ends but its conversation stays resumable.
 private struct BackgroundSessionsBand: View {
     let sessions: [BackgroundAgents.Session]
     var floating: Bool = false
@@ -597,7 +597,7 @@ private struct BackgroundSessionsBand: View {
                     .background(Circle().fill(Theme.selectionFill))
             }
             .buttonStyle(.plain)
-            .help("Delete (stays resumable via claude --resume)")
+            .help("Stop the session (stays resumable via claude --resume)")
             Button {
                 SoundEffects.shared.play(.click)
                 guard let wc = (NSApp.delegate as? AppDelegate)?.windows
