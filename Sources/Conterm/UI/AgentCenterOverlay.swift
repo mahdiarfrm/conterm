@@ -199,6 +199,7 @@ struct AgentSidebar: View {
                     AgentBrandMark(color: Theme.accent, size: 18)
                 }
                 Spacer(minLength: 4)
+                SidebarNotificationBell()
                 PanesMenu()
                 AddAgentMenu()
             }
@@ -335,6 +336,47 @@ private struct AddAgentMenu: View {
 
 /// A quiet dropdown of every pane in this window — agent mode replaces the
 /// tab bar, so this is how you still see and jump to your panes.
+/// Bell in the agents-sidebar title pill — the layout has no tab bar,
+/// so this is its route to the notification center. Same toggle as the
+/// toolbar bell, restyled to the sidebar's capsule controls.
+private struct SidebarNotificationBell: View {
+    @EnvironmentObject var state: AppState
+    @EnvironmentObject var notifications: NotificationStore
+
+    var body: some View {
+        Button {
+            withAnimation(Theme.Spring.bouncy) {
+                state.notificationsOpen.toggle()
+            }
+            SoundEffects.shared.play(
+                state.notificationsOpen ? .paletteOpen : .paletteClose)
+            NSApp.keyWindow?.makeFirstResponder(nil)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: notifications.unreadCount > 0
+                      ? "bell.badge.fill" : "bell")
+                    .font(.system(size: 11.5, weight: .semibold))
+                if notifications.unreadCount > 0 {
+                    Text("\(min(notifications.unreadCount, 99))")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        // Rigid: sidebar compression must not ellipsize the count.
+                        .fixedSize()
+                }
+            }
+            .foregroundStyle(notifications.unreadCount > 0
+                ? Theme.accent : Theme.textSecondary)
+            .frame(height: 26)
+            .padding(.horizontal, 9)
+            .background(Capsule().fill(Theme.selectionFill))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .help("Notifications")
+    }
+}
+
 private struct PanesMenu: View {
     @EnvironmentObject var state: AppState
 
