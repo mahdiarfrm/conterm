@@ -1230,8 +1230,9 @@ footer{
         <h2>Command palette.</h2>
         <p>
           One launcher for commands, sessions across every window,
-          SSH hosts, shell history, notes, tab groups, and quick
-          "open in Finder / Cursor". Reorderable, keyboard-first.
+          SSH hosts, shell and clipboard history, notes, tab groups,
+          and quick "open in Finder / Cursor". Fleet run turns one
+          command into a pane per SSH host. Reorderable, keyboard-first.
         </p>
         <div class="sub">
           <span>fuzzy</span>
@@ -1323,9 +1324,11 @@ footer{
           Claude Code and opencode are detected per-pane with a live
           "ready / thinking / needs you" pill. The command center gathers
           every running agent across every window into one roster — each
-          with its task, git branch, and live token count and cost — so you
-          can jump to a pane, reply, or interrupt without hunting for it.
-          A dedicated Agents layout turns the sidebar into the roster.
+          with its task, git branch, and live cost, burn rate, and token
+          count — so you can jump to a pane, reply, or interrupt without
+          hunting for it. Background sessions join the roster with
+          one-click resume, and a dedicated Agents layout turns the
+          sidebar into the roster.
         </p>
         <div class="sub">
           <span>tokens · cost</span>
@@ -1387,10 +1390,12 @@ footer{
         <div class="row-c"><span>Split down</span><div class="keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>D</kbd></div></div>
         <div class="row-c"><span>Jump tab N</span><div class="keys"><kbd>⌘</kbd><kbd>1…9</kbd></div></div>
         <div class="row-c"><span>Focus pane N</span><div class="keys"><kbd>⌥</kbd><kbd>1…9</kbd></div></div>
+        <div class="row-c"><span>Prev / next prompt</span><div class="keys"><kbd>⌘</kbd><kbd>↑</kbd> <span class="plus">/</span> <kbd>⌘</kbd><kbd>↓</kbd></div></div>
       </div>
       <div class="col">
         <h4>Palette &amp; Search</h4>
         <div class="row-c"><span>Command palette</span><div class="keys"><kbd>⌘</kbd><kbd>K</kbd></div></div>
+        <div class="row-c"><span>Agent center</span><div class="keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>A</kbd></div></div>
         <div class="row-c"><span>Search scrollback</span><div class="keys"><kbd>⌘</kbd><kbd>F</kbd></div></div>
         <div class="row-c"><span>Settings</span><div class="keys"><kbd>⌘</kbd><kbd>,</kbd></div></div>
         <div class="row-c"><span>Dismiss overlay</span><div class="keys"><kbd>Esc</kbd></div></div>
