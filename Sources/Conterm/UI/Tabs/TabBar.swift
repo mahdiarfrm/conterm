@@ -483,7 +483,9 @@ private struct ShortcutHintButton: View {
     /// surface — the button renders bare (no own pill, no hover scale).
     var bare: Bool = false
     /// Compact = "⌘K" only (no "commands" label), for the narrow
-    /// vertical sidebar bar.
+    /// vertical sidebar bar. When false the pill still sizes itself:
+    /// full label when the cluster has room, ⌘K-only when it doesn't —
+    /// never a truncated label in between.
     var compact: Bool = false
 
     var body: some View {
@@ -494,24 +496,41 @@ private struct ShortcutHintButton: View {
             // does in the AppDelegate event monitor.
             NSApp.keyWindow?.makeFirstResponder(nil)
         } label: {
-            HStack(spacing: 5) {
-                Text("⌘K")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                if !compact {
-                    Text("commands")
-                        .font(.system(size: 11, design: .rounded))
+            Group {
+                if compact {
+                    hint(labelled: false)
+                } else {
+                    ViewThatFits(in: .horizontal) {
+                        hint(labelled: true)
+                        hint(labelled: false)
+                    }
                 }
             }
-            .foregroundStyle(toolbarIconColor(hovering: hovering, onRed: onRedPill))
-            .padding(.horizontal, bare ? 6 : 11)
-            .frame(height: TabBar.toolbarPillHeight)
-            .glassPill(enabled: !bare)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .scaleEffect(hovering ? 1.12 : 1.0)
         .animation(Theme.Spring.snappy, value: hovering)
+    }
+
+    /// One rendering of the pill. `.fixedSize()` keeps the text rigid so
+    /// ViewThatFits measures it honestly — a compressible Text "fits"
+    /// any width by ellipsizing, which defeats the full/compact choice.
+    private func hint(labelled: Bool) -> some View {
+        HStack(spacing: 5) {
+            Text("⌘K")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            if labelled {
+                Text("commands")
+                    .font(.system(size: 11, design: .rounded))
+            }
+        }
+        .fixedSize()
+        .foregroundStyle(toolbarIconColor(hovering: hovering, onRed: onRedPill))
+        .padding(.horizontal, bare ? 6 : 11)
+        .frame(height: TabBar.toolbarPillHeight)
+        .glassPill(enabled: !bare)
     }
 }
 
@@ -572,6 +591,8 @@ private struct AgentToolbarPill: View {
                         Text("\(center.runningCount)")
                             .font(.system(size: 10, weight: .bold, design: .rounded))
                             .monospacedDigit()
+                            // Rigid: toolbar compression must not ellipsize the count.
+                            .fixedSize()
                             .foregroundStyle(tint)
                     }
                     .padding(.horizontal, bare ? 6 : 9)
@@ -629,6 +650,8 @@ private struct NotificationBell: View {
                     Text("\(min(notifications.unreadCount, 99))")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .monospacedDigit()
+                        // Rigid: toolbar compression must not ellipsize the count.
+                        .fixedSize()
                         // Fixed width so 1 vs 99 doesn't resize the pill
                         // (and re-morph the GlassEffectContainer). The
                         // pill grows once when the count first appears,
