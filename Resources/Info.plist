@@ -21,28 +21,28 @@
 	<key>CFBundleShortVersionString</key>
 	<string>3.8.3</string>
 	<key>CFBundleVersion</key>
-	<string>383</string>
+	<string>384</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
-	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 Mahdiyar Faramarzpour. MIT License.</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Conterm uses Apple Events to support shell integration.</string>
-	<key>NSDocumentsFolderUsageDescription</key>
-	<string>Conterm is a terminal: your shell and the tools it runs (git, kubectl, helm, claude) read files here on your behalf.</string>
 	<key>NSDesktopFolderUsageDescription</key>
+	<string>Conterm is a terminal: your shell and the tools it runs (git, kubectl, helm, claude) read files here on your behalf.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
 	<string>Conterm is a terminal: your shell and the tools it runs (git, kubectl, helm, claude) read files here on your behalf.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
 	<string>Conterm is a terminal: your shell and the tools it runs (git, kubectl, helm, claude) read files here on your behalf.</string>
-	<key>NSNetworkVolumesUsageDescription</key>
-	<string>Conterm is a terminal: your shell and the tools it runs (git, kubectl, helm, claude) read files here on your behalf.</string>
-	<key>NSRemovableVolumesUsageDescription</key>
-	<string>Conterm is a terminal: your shell and the tools it runs (git, kubectl, helm, claude) read files here on your behalf.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Mahdiyar Faramarzpour. MIT License.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Conterm is a terminal: your shell and the tools it runs (git, kubectl, helm, claude) read files here on your behalf.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Conterm is a terminal: your shell and the tools it runs (git, kubectl, helm, claude) read files here on your behalf.</string>
 </dict>
 </plist>
