@@ -731,6 +731,64 @@ kbd{
 .agent-mock .card .meta{color: rgba(255,255,255,.78); margin-top:6px}
 .agent-mock .card .foot{color: rgba(255,255,255,.42); margin-top:7px; letter-spacing:.2px}
 
+/* ── Visual E: host & cluster overview ── */
+.host-mock{
+  position:absolute; inset:24px;
+  display:flex; flex-direction:column; gap:10px;
+  font-family: var(--mono); font-size:11.5px;
+}
+/* Briefing card stays dark in either theme, like the roster cards.
+   Gem and dot use the app's real status colours. */
+.host-mock .hcard{
+  flex:1;
+  background: rgba(10,10,14,.86);
+  border: 1px solid var(--hairline-2);
+  border-radius: 10px;
+  padding: 13px 15px;
+}
+.host-mock .top{display:flex; align-items:center; gap:9px}
+.host-mock .gem{
+  width:9px; height:9px; border-radius:50%;
+  background:#5ad57f; box-shadow:0 0 10px rgba(90,213,127,.65);
+}
+.host-mock .name{color:#fff; font-weight:600}
+.host-mock .up{
+  margin-left:auto; font-size:10px; padding:2px 9px; border-radius:999px;
+  color:rgba(255,255,255,.55); border:1px solid rgba(255,248,230,.12);
+}
+.host-mock .meter{display:flex; align-items:center; gap:10px; margin-top:10px}
+.host-mock .meter span{color:rgba(255,255,255,.5); width:56px}
+.host-mock .meter .track{
+  flex:1; height:5px; border-radius:999px;
+  background:rgba(255,255,255,.09); overflow:hidden;
+}
+.host-mock .meter .track i{
+  display:block; height:100%; border-radius:999px;
+  background:rgba(255,248,230,.55);
+}
+.host-mock .meter em{
+  color:rgba(255,255,255,.75); font-style:normal;
+  width:70px; text-align:right;
+}
+.host-mock .facts{display:flex; gap:7px; flex-wrap:wrap; margin-top:13px}
+.host-mock .facts span{
+  font-size:10.5px; color:rgba(255,255,255,.55);
+  padding:3px 9px; border-radius:999px;
+  border:1px solid rgba(255,248,230,.12);
+}
+.host-mock .strip{
+  display:flex; align-items:center; gap:9px;
+  background: rgba(10,10,14,.86);
+  border:1px solid var(--hairline-2);
+  border-radius:10px;
+  padding:10px 13px;
+  color:rgba(255,255,255,.62);
+}
+.host-mock .strip .dotk{
+  width:7px; height:7px; border-radius:50%;
+  background:#7db4ff; box-shadow:0 0 8px rgba(125,180,255,.55);
+}
+
 /* ─────────────────────────────────────────────────────────────
    CHEATSHEET
 ───────────────────────────────────────────────────────────── */
@@ -1369,11 +1427,55 @@ footer{
     </div>
   </section>
 
+  <section class="feature wrap" id="hosts">
+    <div class="row">
+      <div class="copy reveal">
+        <div class="num"><span class="chip">05</span> Hosts</div>
+        <h2>Host &amp; cluster overviews.</h2>
+        <p>
+          Right-click an SSH pane for a briefing on the machine —
+          load, memory, disks, containers, failed units — gathered
+          in one round trip. Kubectl contexts open the same card for
+          the cluster, and ansible-playbook runs mirror into a live
+          hosts × tasks matrix.
+        </p>
+        <div class="sub">
+          <span>ssh</span>
+          <span>kubernetes</span>
+          <span>ansible</span>
+        </div>
+      </div>
+      <div class="visual reveal">
+        <div class="host-mock">
+          <div class="hcard">
+            <div class="top">
+              <span class="gem"></span>
+              <span class="name">deploy@web-01</span>
+              <span class="up">up 41 days</span>
+            </div>
+            <div class="meter"><span>load</span><div class="track"><i style="width:32%"></i></div><em>0.64</em></div>
+            <div class="meter"><span>memory</span><div class="track"><i style="width:58%"></i></div><em>4.6 / 8 GB</em></div>
+            <div class="meter"><span>disk /</span><div class="track"><i style="width:71%"></i></div><em>71%</em></div>
+            <div class="facts">
+              <span>7 containers</span>
+              <span>k8s · prod-eu</span>
+              <span>0 failed units</span>
+            </div>
+          </div>
+          <div class="strip">
+            <span class="dotk"></span>
+            ansible · deploy.yml — task 12/14 · 2 changed
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ CHEATSHEET ============ -->
   <section class="cheat wrap" id="cheat">
     <div class="head reveal">
       <div>
-        <div class="num"><span class="chip">05</span> Keys</div>
+        <div class="num"><span class="chip">06</span> Keys</div>
         <h2>The whole app in one card.</h2>
       </div>
       <p>
@@ -1432,7 +1534,7 @@ footer{
 
   <!-- ============ DOWNLOAD ============ -->
   <section class="download wrap" id="download">
-    <div class="num"><span class="chip">06</span> Get it</div>
+    <div class="num"><span class="chip">07</span> Get it</div>
     <h2>Ready to <span class="grad">try Conterm</span>?</h2>
     <p class="lede">
       Download the latest release, drag it to Applications, and
