@@ -15,6 +15,8 @@ final class BackgroundAgents: ObservableObject {
 
     struct Session: Identifiable, Equatable {
         let id: String          // full sessionId (what --resume takes)
+        /// Short job id — the `~/.claude/jobs/<shortID>` registry key.
+        let shortID: String
         let name: String
         let cwd: String
         /// blocked / busy / idle — as reported by the CLI.
@@ -56,6 +58,26 @@ final class BackgroundAgents: ObservableObject {
                              title: session.name, in: session.cwd)
     }
 
+    /// Delete a session from the background list by removing its
+    /// `~/.claude/jobs/<shortID>` registry entry — that directory IS
+    /// the listing. The transcript under ~/.claude/projects is
+    /// untouched, so the session stays resumable by id. Dropped
+    /// eagerly so the row leaves the roster without waiting a refresh.
+    func remove(_ session: Session) {
+        sessions.removeAll { $0.id == session.id }
+        // shortID comes from parsed CLI JSON — never let it traverse
+        // outside the jobs registry.
+        let short = session.shortID
+        guard !short.isEmpty, short.range(
+            of: "^[A-Za-z0-9-]+$", options: .regularExpression) != nil
+        else { return }
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/jobs/\(short)", isDirectory: true)
+        Task.detached(priority: .utility) {
+            try? FileManager.default.removeItem(at: dir)
+        }
+    }
+
     /// `claude agents --json`: array of sessions; interactive ones are
     /// already panes somewhere, so only true background entries count.
     nonisolated static func parse(_ out: String) -> [Session]? {
@@ -67,6 +89,8 @@ final class BackgroundAgents: ObservableObject {
                   let sid = obj["sessionId"] as? String, !sid.isEmpty
             else { return nil }
             return Session(id: sid,
+                           shortID: (obj["id"] as? String)
+                               ?? String(sid.prefix(8)),
                            name: (obj["name"] as? String) ?? "Background agent",
                            cwd: (obj["cwd"] as? String) ?? NSHomeDirectory(),
                            state: (obj["state"] as? String)
