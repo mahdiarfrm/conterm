@@ -413,7 +413,7 @@ struct WelcomeWizard: View {
                 .font(.system(size: 13, design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Six short steps: config source, look, tabs, widgets, sound, then you're in.")
+            Text("Config source, look, tabs, widgets, sound — then you're in.")
                 .font(.system(size: 12, design: .rounded))
                 .foregroundStyle(Theme.textSecondary.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
