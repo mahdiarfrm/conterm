@@ -240,7 +240,7 @@ struct SettingsPanel: View {
                 SettingsRow(title: "Solid panes",
                             subtitle: prefs.glassMode == .solid
                                 ? "The Solid window is fully opaque, so panes always ride on it — pick Glass or Blur for see-through panes."
-                                : "Paint panes on solid black instead of letting the glass show through the cells. Off lets a translucent terminal reveal the glass behind it.") {
+                                : "Paint panes on solid black instead of letting the window material show through the cells. Off lets a translucent terminal reveal the window behind it.") {
                     Toggle("", isOn: $prefs.opaquePanes.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()

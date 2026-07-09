@@ -710,7 +710,7 @@ struct WelcomeWizard: View {
                         .foregroundStyle(Theme.textPrimary)
                     Text(pickedGlassMode == .solid
                             ? "The Solid window is fully opaque, so panes always ride on it — pick Glass or Blur for see-through panes."
-                            : "Each pane rides on solid black, framing the terminal cells against the glass. Turn off for see-through panes if you prefer the glass showing through the cells.")
+                            : "Each pane rides on solid black, framing the terminal cells against the window. Turn off for see-through panes that let the window material show through the cells.")
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
