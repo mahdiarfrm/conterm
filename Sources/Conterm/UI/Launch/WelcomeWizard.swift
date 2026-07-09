@@ -253,13 +253,14 @@ struct WelcomeWizard: View {
     @State private var navDirection: Int = 1   // +1 forward, -1 back
 
     @State private var configChoice: ConfigChoice = .useDirectly
-    @State private var pickedGlassMode: Preferences.GlassMode = .glass
-    @State private var pickedOpaquePanes = true
+    // Window mode, solid panes, tab orientation, and light/dark bind
+    // straight to prefs: the window repaints beneath the wizard, so each
+    // pick previews itself. Skip is offered only on the welcome step,
+    // before any live-bound control is reachable, so none of them needs a
+    // restore path. The picks below change nothing visible while the
+    // wizard is up; they are applied on Get Started.
     @State private var pickedGlassPanels = false
     @State private var pickedEfficientRendering = true
-    // Tab orientation + light/dark are now bound directly to prefs
-    // for live preview, so they have no local @State mirror. The two
-    // remaining picks below are applied only on Get Started.
     @State private var pickedLaunchAnim = true
     @State private var pickedSoundEffects = true
     /// Widget kinds (WidgetKind rawValues) the user wants in the tab bar.
@@ -306,8 +307,6 @@ struct WelcomeWizard: View {
             // If Ghostty isn't installed, importing isn't an option —
             // default to a clean start.
             if !ghosttyPresent { configChoice = .fresh }
-            pickedGlassMode = prefs.glassMode
-            pickedOpaquePanes = prefs.opaquePanes
             pickedGlassPanels = prefs.liquidGlassPanels
             pickedEfficientRendering = prefs.lowPowerRendering
             pickedLaunchAnim    = prefs.launchAnimationEnabled
@@ -688,7 +687,7 @@ struct WelcomeWizard: View {
             sectionTitle("Window", systemImage: "macwindow")
 
             VStack(alignment: .leading, spacing: 6) {
-                Picker("", selection: $pickedGlassMode.withSound()) {
+                Picker("", selection: $prefs.glassMode.withSound()) {
                     Text("Glass").tag(Preferences.GlassMode.glass)
                     Text("Blur").tag(Preferences.GlassMode.blur)
                     Text("Solid").tag(Preferences.GlassMode.solid)
@@ -697,18 +696,18 @@ struct WelcomeWizard: View {
                 .labelsHidden()
                 // The caption tracks the selection so each mode explains
                 // itself. The three modes cost the same — look only.
-                Text(Self.modeCaption(pickedGlassMode))
+                Text(Self.modeCaption(prefs.glassMode))
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Toggle(isOn: $pickedOpaquePanes.withSound()) {
+            Toggle(isOn: $prefs.opaquePanes.withSound()) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Solid panes")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
-                    Text(pickedGlassMode == .solid
+                    Text(prefs.glassMode == .solid
                             ? "The Solid window is fully opaque, so panes always ride on it — pick Glass or Blur for see-through panes."
                             : "Each pane rides on solid black, framing the terminal cells against the window. Turn off for see-through panes that let the window material show through the cells.")
                         .font(.system(size: 11, design: .rounded))
@@ -718,7 +717,7 @@ struct WelcomeWizard: View {
             }
             .toggleStyle(.switch)
             .tint(Theme.accent)
-            .disabled(pickedGlassMode == .solid)
+            .disabled(prefs.glassMode == .solid)
 
             Toggle(isOn: $pickedGlassPanels.withSound()) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -866,12 +865,11 @@ struct WelcomeWizard: View {
 
     private func finish(applyConfig: Bool) {
         if applyConfig {
-            prefs.glassMode             = pickedGlassMode
-            prefs.opaquePanes           = pickedOpaquePanes
             prefs.liquidGlassPanels     = pickedGlassPanels
             prefs.lowPowerRendering     = pickedEfficientRendering
-            // tabOrientation + lightGlass are already current — both
-            // pickers write straight to prefs for live preview.
+            // glassMode, opaquePanes, tabOrientation, and lightGlass are
+            // already current — those controls write straight to prefs
+            // for live preview.
             prefs.launchAnimationEnabled = pickedLaunchAnim
             prefs.soundEffectsEnabled   = pickedSoundEffects
             // Enabled widgets in canonical order; preserve any prior order
