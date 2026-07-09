@@ -27,12 +27,18 @@ struct TabBar: View {
     var orientation: Preferences.TabOrientation = .horizontal
 
     /// Measured width of the horizontal bar, used to shed toolbar width
-    /// before the labelled pills would be pushed off a narrow window. Two
-    /// breakpoints — stats drop first, then the pills compact — so there's
-    /// no width band where the full ⌘K label overflows and clips.
+    /// before the labelled pills would be pushed off a narrow window.
+    /// The pills compact at the wider breakpoint and the stats rail drops
+    /// at the narrower one: dropping the rail hands its width back to the
+    /// cluster, so the ⌘K label must already be compact or `ViewThatFits`
+    /// re-expands it as the window keeps shrinking. With no stats rail on
+    /// screen no width is ever handed back, so the pills can hold their
+    /// labels down to the lower bound.
     @State private var barWidth: CGFloat = 0
-    private var hideStats: Bool    { barWidth > 0 && barWidth < 1080 }
-    private var compactPills: Bool { barWidth > 0 && barWidth < 940 }
+    private var hideStats: Bool { barWidth > 0 && barWidth < 1080 }
+    private var compactPills: Bool {
+        barWidth > 0 && barWidth < (prefs.enabledWidgets.isEmpty ? 940 : 1180)
+    }
 
     var body: some View {
         Group {
