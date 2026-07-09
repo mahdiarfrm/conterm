@@ -15,7 +15,7 @@ final class BackgroundAgents: ObservableObject {
 
     struct Session: Identifiable, Equatable {
         let id: String          // full sessionId (what --resume takes)
-        /// Short job id — the `~/.claude/jobs/<shortID>` registry key.
+        /// Short id — what `claude stop <id>` / `claude attach <id>` take.
         let shortID: String
         let name: String
         let cwd: String
@@ -58,23 +58,21 @@ final class BackgroundAgents: ObservableObject {
                              title: session.name, in: session.cwd)
     }
 
-    /// Delete a session from the background list by removing its
-    /// `~/.claude/jobs/<shortID>` registry entry — that directory IS
-    /// the listing. The transcript under ~/.claude/projects is
-    /// untouched, so the session stays resumable by id. Dropped
-    /// eagerly so the row leaves the roster without waiting a refresh.
+    /// Stop a background session via `claude stop <shortID>` — the
+    /// CLI's documented control (agent view's Ctrl+X). The session's
+    /// process ends and it leaves the default `agents --json` listing;
+    /// the conversation is kept and stays resumable via
+    /// `claude --resume`. Dropped eagerly so the row leaves the roster
+    /// without waiting a refresh.
     func remove(_ session: Session) {
         sessions.removeAll { $0.id == session.id }
-        // shortID comes from parsed CLI JSON — never let it traverse
-        // outside the jobs registry.
+        guard let claude = Self.claudePath else { return }
         let short = session.shortID
         guard !short.isEmpty, short.range(
             of: "^[A-Za-z0-9-]+$", options: .regularExpression) != nil
         else { return }
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude/jobs/\(short)", isDirectory: true)
         Task.detached(priority: .utility) {
-            try? FileManager.default.removeItem(at: dir)
+            _ = runWidgetTool(claude, ["stop", short])
         }
     }
 
