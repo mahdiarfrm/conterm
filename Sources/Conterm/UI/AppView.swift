@@ -439,31 +439,36 @@ struct AppView: View {
         }
     }
 
-    /// Notification center. Anchored top-trailing so it reads as
-    /// dropping out of the bell pill. Soft dim — terminal stays
-    /// readable behind it (same restraint as search, not the palette).
+    /// Notification center. Anchored to the bell that opens it so it
+    /// reads as dropping out of the pill: top-trailing for the toolbar
+    /// bell, bottom-leading in agents mode (whose bell sits beside the
+    /// sidebar's layout switcher). Soft dim — terminal stays readable
+    /// behind it (same restraint as search, not the palette).
     @ViewBuilder
     private var notificationsOverlay: some View {
         if state.notificationsOpen {
-            ZStack(alignment: .topTrailing) {
+            let agents = prefs.tabOrientation == .agents
+            let corner: Alignment = agents ? .bottomLeading : .topTrailing
+            ZStack(alignment: corner) {
                 Color.black.opacity(0.14)
                     .ignoresSafeArea()
                     .onTapGesture { withAnimation(Theme.Spring.snappy) { state.notificationsOpen = false } }
                     .transition(.opacity.animation(.easeOut(duration: 0.16)))
                 NotificationsOverlay()
-                    .padding(.top, 52)
-                    .padding(.trailing, 16)
+                    .padding(agents ? .bottom : .top, 52)
+                    .padding(agents ? .leading : .trailing, 16)
                     .transition(.asymmetric(
-                        insertion: .scale(scale: 0.94, anchor: .topTrailing)
+                        insertion: .scale(scale: 0.94,
+                                          anchor: agents ? .bottomLeading : .topTrailing)
                             .combined(with: .opacity)
-                            .combined(with: .move(edge: .top))
+                            .combined(with: .move(edge: agents ? .bottom : .top))
                             .animation(.spring(response: 0.40,
                                                 dampingFraction: 0.80)),
                         removal: .opacity
                             .animation(.easeOut(duration: 0.14))
                     ))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: corner)
         }
     }
 

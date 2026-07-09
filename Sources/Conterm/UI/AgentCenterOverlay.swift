@@ -199,7 +199,6 @@ struct AgentSidebar: View {
                     AgentBrandMark(color: Theme.accent, size: 18)
                 }
                 Spacer(minLength: 4)
-                SidebarNotificationBell()
                 PanesMenu()
                 AddAgentMenu()
             }
@@ -226,9 +225,10 @@ struct AgentSidebar: View {
                 .frame(maxHeight: .infinity)
             }
 
-            // Floating layout switcher.
-            HStack {
+            // Floating layout switcher + notification bell.
+            HStack(spacing: 8) {
                 LayoutModeSwitcher()
+                SidebarNotificationBell()
                 Spacer(minLength: 0)
             }
         }
@@ -336,11 +336,14 @@ private struct AddAgentMenu: View {
 
 /// A quiet dropdown of every pane in this window — agent mode replaces the
 /// tab bar, so this is how you still see and jump to your panes.
-/// Bell in the agents-sidebar title pill — the layout has no tab bar,
-/// so this is its route to the notification center. Same toggle as the
-/// toolbar bell, restyled to the sidebar's capsule controls.
+/// Bell beside the layout switcher in the agents sidebar — the layout
+/// has no tab bar, so this is its route to the notification center.
+/// Same toggle as the toolbar bell, wearing the switcher's glass-lens
+/// bed so the bottom row reads as one control group. The panel anchors
+/// bottom-leading in this mode, rising from the bell.
 private struct SidebarNotificationBell: View {
     @EnvironmentObject var state: AppState
+    @EnvironmentObject var prefs: Preferences
     @EnvironmentObject var notifications: NotificationStore
 
     var body: some View {
@@ -355,7 +358,7 @@ private struct SidebarNotificationBell: View {
             HStack(spacing: 4) {
                 Image(systemName: notifications.unreadCount > 0
                       ? "bell.badge.fill" : "bell")
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                 if notifications.unreadCount > 0 {
                     Text("\(min(notifications.unreadCount, 99))")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -366,9 +369,17 @@ private struct SidebarNotificationBell: View {
             }
             .foregroundStyle(notifications.unreadCount > 0
                 ? Theme.accent : Theme.textSecondary)
-            .frame(height: 26)
-            .padding(.horizontal, 9)
-            .background(Capsule().fill(Theme.selectionFill))
+            .padding(.horizontal, 12)
+            // Level with LayoutModeSwitcher (24pt segments + 3pt bed).
+            .frame(height: 30)
+            .background(Capsule().fill(chromeFill(prefs)))
+            .overlay(
+                Capsule().strokeBorder(
+                    LinearGradient(colors: chromeEdge(prefs),
+                                   startPoint: .top, endPoint: .bottom),
+                    lineWidth: 0.5)
+                .blendMode(.plusLighter)
+            )
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
