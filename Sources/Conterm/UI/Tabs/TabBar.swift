@@ -26,6 +26,18 @@ struct TabBar: View {
     /// guarantees each slot draws the correct variant.
     var orientation: Preferences.TabOrientation = .horizontal
 
+    /// Auto-hide slide state (floating sidebar only; inline bars stay
+    /// true). The tab list cascades in row-by-row on reveal while the
+    /// pinned bottom console travels with the panel, so the dock feels
+    /// stable and the list feels alive.
+    var revealed: Bool = true
+
+    /// Hosted on the floating auto-hide card (vs inline in the window).
+    /// The floating card starts below the window's lights pill, so the
+    /// plate's top margin matches its sides; the inline bar instead
+    /// reserves the full lights band at its top.
+    var floatingPanel: Bool = false
+
     /// Measured width of the horizontal bar, used to shed toolbar width
     /// before the labelled pills would be pushed off a narrow window.
     /// The pills compact at the wider breakpoint and the stats rail drops
@@ -87,30 +99,43 @@ struct TabBar: View {
     private var vertical: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
-                // Top clearance: the lights + auto-hide toggle live in
-                // a window-level floating pill (`floatingTopLeftLightsPill`
-                // in AppView). The sidebar leaves room for it plus a
-                // clear gap before the first tab row.
+                // Floating card: the plate's top margin, matching the
+                // sides — the lights pill lives above the card entirely.
+                // Inline: clearance for the window-level lights pill,
+                // which overlaps the sidebar's top.
                 Rectangle()
                     .fill(Color.clear)
-                    .frame(height: 58)
+                    .frame(height: floatingPanel ? 14 : 48)
 
+                // Foreground plate — the sidebar is two stacked surfaces:
+                // every component lands on this raised inner sheet, and
+                // the base card shows around it as a frame, lit by the
+                // aurora, with the plate's drop shadow marking the gap.
+                VStack(alignment: .leading, spacing: 0) {
                 // Scrolls when tabs + group sections overflow the column.
                 // The stats / action cluster below stays pinned. Ungrouped
                 // tabs sit at the top; each tab group is a collapsible folder
                 // with its rows nested under a colored tree guide.
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(ungroupedTabs) { tab in
+                    // Rows are borderless at rest, so a slim gap is enough
+                    // — their own padding carries the rhythm.
+                    VStack(alignment: .leading, spacing: 3) {
+                        let ungrouped = ungroupedTabs
+                        ForEach(Array(ungrouped.enumerated()), id: \.element.id) { i, tab in
                             pillCell(for: tab)
                                 .frame(maxWidth: .infinity)
+                                .modifier(RevealCascade(revealed: revealed, row: i))
                         }
-                        ForEach(tabGroups.groups) { group in
+                        ForEach(Array(tabGroups.groups.enumerated()), id: \.element.id) { i, group in
                             tabFolder(group)
+                                .modifier(RevealCascade(revealed: revealed,
+                                                        row: ungrouped.count + i))
                         }
                         VerticalNewTabRow { _ = state.addTab() }
                             .padding(.top, 6)
                             .padding(.leading, 2)
+                            .modifier(RevealCascade(revealed: revealed,
+                                                    row: ungrouped.count + tabGroups.groups.count))
                     }
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
@@ -120,9 +145,12 @@ struct TabBar: View {
                 .animation(Theme.Spring.soft, value: tabGroups.groups)
 
                 if !prefs.enabledWidgets.isEmpty {
+                    // Wrapping tray of natural-width pills; a clear gap
+                    // on both sides separates it from the scrolling tab
+                    // list and the switcher below.
                     WidgetRail(compact: true)
-                        .padding(.leading, 2)
-                        .padding(.bottom, 8)
+                        .padding(.top, 8)
+                        .padding(.bottom, 10)
                         .transition(.opacity)
                 }
                 // Layout switcher above the bottom action bar.
@@ -146,19 +174,100 @@ struct TabBar: View {
                     .fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 0)
                 }
+                }
+                // Concentric with what sits on it: 14pt inset steps the
+                // plate's 34pt corner down to ~the tab cards' 18pt.
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
+                .background(sidebarPlate)
             }
             .animation(Theme.Spring.snappy, value: prefs.enabledWidgets)
-            // Deeper leading inset so the tab pills sit clear of the
-            // window's left edge.
+            // The base card's margin around the plate — the visible frame.
+            // Trailing is slimmer because the resize handle's 8pt sits
+            // beyond it, evening out the visual gap.
             .padding(.leading, 14)
-            .padding(.trailing, 10)
-            .padding(.bottom, 12)
+            .padding(.trailing, 6)
+            .padding(.bottom, 14)
             .frame(width: prefs.sidebarWidth)
 
             // Drag handle on the trailing edge.
             SidebarResizeHandle(width: $prefs.sidebarWidth)
         }
         .frame(maxHeight: .infinity)
+    }
+
+    /// The raised inner surface. A clear step lighter than the base card
+    /// and nearly opaque, so it casts a real shadow into the gap between
+    /// the two layers; its own top sheen and a hairline rim make it read
+    /// as material catching light, not a flat inset rectangle.
+    private var sidebarPlate: some View {
+        let corner: CGFloat = 34
+        let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
+        let rim = prefs.lightGlass
+            ? [Color.black.opacity(0.10), Color.black.opacity(0.03)]
+            : [Color.white.opacity(0.17), Color.white.opacity(0.04)]
+        return ZStack {
+            // The light between the surfaces: an iridescent bleed around
+            // the plate edge (same spectrum as the Host Overview rim and
+            // the card's aurora), wide and soft, filling the gap. Static
+            // — no per-frame cost.
+            shape
+                .stroke(AngularGradient(colors: Theme.iridescent,
+                                        center: .center, angle: .degrees(-60)),
+                        lineWidth: 7)
+                .blur(radius: 14)
+                .opacity(prefs.lightGlass ? 0.40 : 0.75)
+            // Contact seam: a tight dark line where the plate meets the
+            // gap, so the halo reads as light behind an edge, not a tint.
+            shape
+                .stroke(Color.black.opacity(prefs.lightGlass ? 0.15 : 0.55),
+                        lineWidth: 1.5)
+                .blur(radius: 3)
+            shape
+                .fill(Theme.dynamic(light: NSColor(calibratedWhite: 0.99, alpha: 1.0),
+                                    dark:  NSColor(calibratedRed: 0.10, green: 0.105,
+                                                   blue: 0.125, alpha: 1.0)))
+                .opacity(0.94)
+        }
+            .overlay(
+                // Top light on the plate itself, mirroring the card's
+                // sheen so both surfaces share one light source.
+                LinearGradient(
+                    stops: [.init(color: .white.opacity(0.05), location: 0),
+                            .init(color: .clear, location: 0.22)],
+                    startPoint: .top, endPoint: .bottom)
+                .blendMode(.plusLighter)
+                .clipShape(shape)
+            )
+            .overlay(
+                shape.strokeBorder(
+                    LinearGradient(colors: rim,
+                                   startPoint: .top, endPoint: .bottom),
+                    lineWidth: 0.75)
+            )
+            .shadow(color: .black.opacity(prefs.lightGlass ? 0.20 : 0.55),
+                    radius: 18, x: 0, y: 7)
+    }
+
+    /// Cascade for the auto-hide reveal: each list row fades and slides
+    /// in slightly after the one above it, so the panel's content settles
+    /// like a hand of cards rather than arriving as one printed sheet.
+    /// Hiding is immediate — the panel itself is already sliding away,
+    /// and a delayed exit would smear against it.
+    private struct RevealCascade: ViewModifier {
+        let revealed: Bool
+        let row: Int
+
+        func body(content: Content) -> some View {
+            content
+                .opacity(revealed ? 1 : 0)
+                .offset(x: revealed ? 0 : -16)
+                .animation(
+                    revealed
+                        ? Theme.Spring.soft.delay(0.05 + Double(min(row, 8)) * 0.035)
+                        : .easeOut(duration: 0.10),
+                    value: revealed)
+        }
     }
 
     // MARK: - Tree / folders

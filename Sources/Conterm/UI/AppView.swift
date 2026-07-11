@@ -282,15 +282,24 @@ struct AppView: View {
                 }
 
                 // The panel itself: the real vertical TabBar on a
-                // floating glass card. Slid off-screen when collapsed.
-                TabBar(orientation: .vertical)
-                    .frame(width: prefs.sidebarWidth)
+                // floating glass card. The bar carries its own margins
+                // (they are the base surface's visible frame), so the
+                // card hugs it; +8 covers the trailing resize handle.
+                TabBar(orientation: .vertical, revealed: sidebarRevealed,
+                       floatingPanel: true)
+                    .frame(width: prefs.sidebarWidth + 8)
                     .frame(maxHeight: .infinity)
-                    .padding(.top, 6)
-                    .padding(.bottom, 10)
-                    .padding(.leading, 8)
                     .background(floatingSidebarCard)
-                    .padding(.vertical, 8)
+                    // Keep the inner plate's drop shadow from bleeding
+                    // past the card's corners; the window shadow is cast
+                    // by the clipped composite.
+                    .clipShape(RoundedRectangle(cornerRadius: 40, style: .continuous))
+                    .shadow(color: .black.opacity(0.5), radius: 28, x: 8, y: 0)
+                    // The card starts below the lights pill (pill bottom
+                    // ≈ 40pt) so the pill is unambiguously the window's,
+                    // never straddling the card's corner curve.
+                    .padding(.top, 46)
+                    .padding(.bottom, 8)
                     .padding(.leading, 6)
                     .offset(x: sidebarRevealed ? 0 : -(prefs.sidebarWidth + 40))
                     .opacity(sidebarRevealed ? 1 : 0)
@@ -303,22 +312,67 @@ struct AppView: View {
         }
     }
 
+    /// The sliding panel's material: a sheet of glass lit from the
+    /// top-leading corner it emerges from. A sheen falls diagonally away
+    /// from that corner, the base sinks into shade toward the bottom
+    /// (where the pinned console docks), and the rim highlight follows
+    /// the same light — brightest around the lit corner, gone before the
+    /// trailing edge. Without the ramps the card reads as a flat slab.
     private var floatingSidebarCard: some View {
-        OverlayPanelBackground(cornerRadius: 18)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        OverlayPanelBackground(cornerRadius: 40)
+        // plusLighter only ever brightens — effectively invisible on the
+        // light material, which needs no lift.
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            LinearGradient(
+                stops: [
+                    .init(color: .white.opacity(0.08), location: 0),
+                    .init(color: .white.opacity(0.03), location: 0.30),
+                    .init(color: .clear, location: 0.62),
+                ],
+                startPoint: .topLeading, endPoint: .bottom)
+            .blendMode(.plusLighter)
+        )
+        .overlay(
+            LinearGradient(
+                colors: [.clear,
+                         .black.opacity(prefs.lightGlass ? 0.05 : 0.16)],
+                startPoint: .center, endPoint: .bottom)
+        )
+        // Aurora: two large, static pools of the chrome's iridescent hues
+        // — cyan where the light enters, violet in the shade — so the
+        // panel reads as glass holding light, not a neutral slab. Static
+        // gradients render once; no per-frame cost.
+        .overlay(
+            RadialGradient(
+                colors: [Color(red: 0.55, green: 0.85, blue: 1.0)
+                            .opacity(prefs.lightGlass ? 0.08 : 0.17), .clear],
+                center: UnitPoint(x: 0.12, y: 0.04),
+                startRadius: 0, endRadius: 340)
+            .blendMode(.plusLighter)
+        )
+        .overlay(
+            RadialGradient(
+                colors: [Color(red: 0.72, green: 0.58, blue: 1.0)
+                            .opacity(prefs.lightGlass ? 0.06 : 0.13), .clear],
+                center: UnitPoint(x: 0.92, y: 0.96),
+                startRadius: 0, endRadius: 400)
+            .blendMode(.plusLighter)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 40, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 40, style: .continuous)
                 .strokeBorder(Theme.strokeStrong, lineWidth: 1)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(LinearGradient(colors: [Color.white.opacity(0.28), .clear],
-                                       startPoint: .top, endPoint: .center),
+            RoundedRectangle(cornerRadius: 40, style: .continuous)
+                .stroke(LinearGradient(colors: [Color.white.opacity(0.35), .clear],
+                                       startPoint: .topLeading, endPoint: .center),
                         lineWidth: 1)
                 .blendMode(.plusLighter)
                 .allowsHitTesting(false)
         )
-        .shadow(color: .black.opacity(0.5), radius: 28, x: 8, y: 0)
+        // The window shadow lives on the clipped composite at the call
+        // site — cast here it would be clipped away with the overflow.
     }
 
     /// All tabs stay mounted; we just bring the selected one to the front
