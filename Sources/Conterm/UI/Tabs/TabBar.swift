@@ -298,9 +298,13 @@ struct TabBar: View {
             }
         }
 
+        // The handle draws nothing — the resize cursor is the affordance.
+        // A painted line can't work here: tracking areas only fire on
+        // mouse moves, so when the auto-hide panel slides out from under
+        // a stationary cursor the hover state (and its bright line)
+        // sticks until the next mouse pass.
         final class HandleView: NSView {
             var onDrag: (CGFloat) -> Void = { _ in }
-            private var hovering = false { didSet { needsDisplay = true } }
             private var trackingArea: NSTrackingArea?
 
             override init(frame frameRect: NSRect) {
@@ -335,11 +339,9 @@ struct TabBar: View {
             }
 
             override func mouseEntered(with event: NSEvent) {
-                hovering = true
                 NSCursor.resizeLeftRight.set()
             }
             override func mouseExited(with event: NSEvent) {
-                hovering = false
                 NSCursor.arrow.set()
             }
             override func cursorUpdate(with event: NSEvent) {
@@ -351,15 +353,6 @@ struct TabBar: View {
                 onDrag(event.deltaX)
             }
             override func mouseUp(with event: NSEvent) {}
-
-            override func draw(_ dirtyRect: NSRect) {
-                let lineWidth: CGFloat = hovering ? 1.5 : 0.5
-                let alpha: CGFloat = hovering ? 0.45 : 0.07
-                let x = bounds.width / 2 - lineWidth / 2
-                let r = NSRect(x: x, y: 0, width: lineWidth, height: bounds.height)
-                NSColor(white: 1.0, alpha: alpha).setFill()
-                r.fill()
-            }
         }
     }
 
