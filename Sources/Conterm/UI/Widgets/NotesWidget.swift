@@ -24,11 +24,11 @@ private struct NotesPill: View {
                         showingPopover.toggle()
                         SoundEffects.shared.play(.toggle)
                     }) {
-            HStack(spacing: compact ? 4 : 5) {
-                widgetIcon("note.text", compact: compact)
+            HStack(spacing: 5) {
+                widgetIcon("note.text")
                 if !notes.notes.isEmpty {
                     Text("\(notes.notes.count)")
-                        .font(.system(size: compact ? 10 : 11, weight: .semibold,
+                        .font(.system(size: 11, weight: .semibold,
                                       design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
                         .monospacedDigit()

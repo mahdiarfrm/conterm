@@ -49,7 +49,7 @@ struct SystemStatsWidget: View {
             if net { netChip }
             if !cpu && !mem && !net {
                 Image(systemName: "chart.bar")
-                    .font(.system(size: compact ? 9 : 10, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Theme.textSecondary)
             }
         }
@@ -65,17 +65,20 @@ struct SystemStatsWidget: View {
 
     // Monochrome on the bar — the widget is ambient chrome; the load
     // colors live in the popover's detail graphs.
+    // One type scale in both modes so this pill matches the rest of the
+    // widget family; only the sparkline and inter-chip gaps stay tighter
+    // in compact, so three chips still fit the narrowest sidebar.
     private func metricChip(symbol: String, value: Double,
                             history: [Double]) -> some View {
         HStack(spacing: compact ? 4 : 5) {
             Image(systemName: symbol)
-                .font(.system(size: compact ? 8 : 9, weight: .medium))
+                .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
             Sparkline(samples: history)
-                .frame(width: compact ? 16 : 20, height: compact ? 9 : 11)
+                .frame(width: compact ? 16 : 20, height: 11)
                 .foregroundStyle(Theme.textSecondary)
             Text(String(format: "%.0f%%", min(99, max(0, value))))
-                .font(.system(size: compact ? 10 : 11, weight: .semibold,
+                .font(.system(size: 11, weight: .semibold,
                               design: .rounded))
                 .foregroundStyle(Theme.textPrimary)
                 .monospacedDigit()
@@ -83,36 +86,38 @@ struct SystemStatsWidget: View {
                 // change the pill's size, or every sample relayouts the
                 // whole tab-bar HStack (a real idle-CPU cost seen in
                 // the sample).
-                .frame(width: compact ? 27 : 30, alignment: .trailing)
+                .frame(width: 30, alignment: .trailing)
         }
     }
 
     private var netChip: some View {
         HStack(spacing: compact ? 4 : 5) {
             Image(systemName: "network")
-                .font(.system(size: compact ? 8 : 9, weight: .medium))
+                .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
             VStack(alignment: .trailing, spacing: 0) {
+                // The arrow travels with its number (one hugging pair per
+                // line) and the fixed slot absorbs rate-string growth, so
+                // a rate change can't resize the pill (→ no tab-bar
+                // relayout per sample) and no slack opens inside the pair.
                 HStack(spacing: 2) {
                     Image(systemName: "arrow.down")
-                        .font(.system(size: compact ? 6 : 6.5, weight: .bold))
+                        .font(.system(size: 6.5, weight: .bold))
                     Text(formatRate(stats.netDownKBps))
-                        .font(.system(size: compact ? 8.5 : 9, weight: .semibold,
+                        .font(.system(size: 9, weight: .semibold,
                                       design: .rounded))
                         .monospacedDigit()
-                        // Fixed width so a rate change can't resize the
-                        // pill (→ no tab-bar relayout per sample).
-                        .frame(width: compact ? 32 : 35, alignment: .trailing)
                 }
+                .frame(width: 44, alignment: .trailing)
                 HStack(spacing: 2) {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: compact ? 6 : 6.5, weight: .bold))
+                        .font(.system(size: 6.5, weight: .bold))
                     Text(formatRate(stats.netUpKBps))
-                        .font(.system(size: compact ? 8.5 : 9, weight: .semibold,
+                        .font(.system(size: 9, weight: .semibold,
                                       design: .rounded))
                         .monospacedDigit()
-                        .frame(width: compact ? 32 : 35, alignment: .trailing)
                 }
+                .frame(width: 44, alignment: .trailing)
             }
             .foregroundStyle(Theme.textPrimary)
         }

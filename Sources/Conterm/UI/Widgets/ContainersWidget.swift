@@ -174,10 +174,10 @@ struct ContainersWidget: View {
                                 showingPopover.toggle()
                                 SoundEffects.shared.play(.toggle)
                             }) {
-                    HStack(spacing: compact ? 4 : 5) {
-                        widgetIcon("shippingbox", compact: compact)
+                    HStack(spacing: 5) {
+                        widgetIcon("shippingbox")
                         Text("\(total)")
-                            .font(.system(size: compact ? 10 : 11, weight: .semibold,
+                            .font(.system(size: 11, weight: .semibold,
                                           design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .monospacedDigit()
