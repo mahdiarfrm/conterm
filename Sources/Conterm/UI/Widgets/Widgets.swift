@@ -89,7 +89,10 @@ struct WidgetRail: View {
     var body: some View {
         Group {
             if compact {
-                VStack(alignment: .leading, spacing: 4) {
+                // Sidebar tray: pills keep their natural width and wrap
+                // onto new lines — small ones share a line, wide ones
+                // take their own, none stretch into empty rows.
+                WidgetFlow(spacing: 6) {
                     ForEach(kinds) { widget($0) }
                 }
             } else {
@@ -118,6 +121,62 @@ struct WidgetRail: View {
         case .pixelPet:     PixelPetWidget(compact: compact)
         case .publicIP:     PublicIPWidget(compact: compact)
         }
+    }
+}
+
+/// Leading-aligned wrap for the sidebar tray: subviews keep their
+/// natural size, fill a line left-to-right, and break to a new line
+/// when the next pill would overrun the rail's width. Lines are
+/// vertically centered per-line so mixed-height pills sit level.
+private struct WidgetFlow: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews,
+                      cache: inout ()) -> CGSize {
+        let lines = self.lines(subviews, width: proposal.width ?? .infinity)
+        let width = lines.map(\.width).max() ?? 0
+        let height = lines.map(\.height).reduce(0, +)
+            + spacing * CGFloat(max(lines.count - 1, 0))
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize,
+                       subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for line in lines(subviews, width: bounds.width) {
+            var x = bounds.minX
+            for (view, size) in line.items {
+                view.place(at: CGPoint(x: x, y: y + (line.height - size.height) / 2),
+                           proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += line.height + spacing
+        }
+    }
+
+    private struct Line {
+        var items: [(LayoutSubview, CGSize)] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func lines(_ subviews: Subviews, width maxWidth: CGFloat) -> [Line] {
+        var lines: [Line] = []
+        var line = Line()
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            let needed = line.items.isEmpty ? size.width : line.width + spacing + size.width
+            if !line.items.isEmpty && needed > maxWidth {
+                lines.append(line)
+                line = Line()
+            }
+            line.width = line.items.isEmpty ? size.width
+                                            : line.width + spacing + size.width
+            line.height = max(line.height, size.height)
+            line.items.append((view, size))
+        }
+        if !line.items.isEmpty { lines.append(line) }
+        return lines
     }
 }
 
@@ -174,9 +233,9 @@ struct WidgetShell<Content: View>: View {
 
     @State private var hovering = false
     /// Full-size pills match TabBar.heavyPillHeight so every pill in the
-    /// toolbar row shares one silhouette; compact stays slim for the
-    /// sidebar rail.
-    private var pillHeight: CGFloat { compact ? 21 : 30 }
+    /// toolbar row shares one silhouette; sidebar pills sit just under
+    /// the tab rows' height so the tray reads as part of the column.
+    private var pillHeight: CGFloat { compact ? 26 : 30 }
 
     var body: some View {
         Button(action: onTap) {
@@ -195,7 +254,7 @@ struct WidgetShell<Content: View>: View {
     @ViewBuilder
     private var shell: some View {
         let base = content
-            .padding(.horizontal, compact ? 7 : 9)
+            .padding(.horizontal, 9)
             .frame(height: pillHeight)
             .background(Capsule(style: .continuous).fill(Theme.recessedWash))
         if #available(macOS 26, *) {
@@ -214,10 +273,12 @@ struct WidgetShell<Content: View>: View {
     }
 }
 
-/// Leading glyph for a widget pill — monochrome ambient chrome.
-func widgetIcon(_ symbol: String, compact: Bool) -> some View {
+/// Leading glyph for a widget pill — monochrome ambient chrome. One
+/// size everywhere: the sidebar tray carries the same typography as the
+/// toolbar pills rather than a scaled-down variant.
+func widgetIcon(_ symbol: String) -> some View {
     Image(systemName: symbol)
-        .font(.system(size: compact ? 8.5 : 9.5, weight: .medium))
+        .font(.system(size: 9.5, weight: .medium))
         .foregroundStyle(Theme.textSecondary)
 }
 
@@ -317,15 +378,15 @@ struct ClockWidget: View {
         // when the view isn't visible.
         TimelineView(.periodic(from: .now, by: prefs.clockShowSeconds ? 1 : 30)) { ctx in
             WidgetShell(compact: compact, help: fullFormatter.string(from: ctx.date), onTap: {}) {
-                HStack(spacing: compact ? 4 : 5) {
-                    widgetIcon("clock", compact: compact)
+                HStack(spacing: 5) {
+                    widgetIcon("clock")
                     Text(timeFormatter.string(from: ctx.date))
-                        .font(.system(size: compact ? 10 : 11, weight: .semibold, design: .rounded))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
                         .monospacedDigit()
                     if prefs.clockShowDate {
                         Text(dateFormatter.string(from: ctx.date))
-                            .font(.system(size: compact ? 9 : 9.5, design: .rounded))
+                            .font(.system(size: 9.5, design: .rounded))
                             .foregroundStyle(Theme.textSecondary)
                             .monospacedDigit()
                     }
@@ -452,12 +513,12 @@ struct BatteryWidget: View {
         Group {
             if model.hasBattery {
                 WidgetShell(compact: compact, help: help, onTap: {}) {
-                    HStack(spacing: compact ? 4 : 5) {
+                    HStack(spacing: 5) {
                         Image(systemName: symbol)
-                            .font(.system(size: compact ? 9.5 : 10.5, weight: .medium))
+                            .font(.system(size: 10.5, weight: .medium))
                             .foregroundStyle(tint)
                         Text("\(Int((model.level * 100).rounded()))%")
-                            .font(.system(size: compact ? 10 : 11, weight: .semibold, design: .rounded))
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .monospacedDigit()
                     }
@@ -647,13 +708,15 @@ struct GitWidget: View {
         Group {
             if model.snap.inRepo, let branch = model.snap.branch {
                 WidgetShell(compact: compact, help: help, onTap: {}) {
-                    HStack(spacing: compact ? 4 : 5) {
-                        widgetIcon("arrow.triangle.branch", compact: compact)
+                    HStack(spacing: 5) {
+                        widgetIcon("arrow.triangle.branch")
                         Text(branch)
-                            .font(.system(size: compact ? 10 : 11, weight: .semibold, design: .rounded))
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .lineLimit(1)
-                            .frame(maxWidth: compact ? 70 : 110)
+                            // The sidebar tray affords the branch more
+                            // room than the width-contested toolbar.
+                            .frame(maxWidth: compact ? 150 : 110)
                             .fixedSize(horizontal: true, vertical: false)
                         if model.snap.dirty {
                             Circle()
@@ -681,9 +744,9 @@ struct GitWidget: View {
     private func counter(_ symbol: String, _ n: Int, _ compact: Bool) -> some View {
         HStack(spacing: 1) {
             Image(systemName: symbol)
-                .font(.system(size: compact ? 6.5 : 7, weight: .bold))
+                .font(.system(size: 7, weight: .bold))
             Text("\(n)")
-                .font(.system(size: compact ? 9 : 9.5, weight: .semibold, design: .rounded))
+                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                 .monospacedDigit()
         }
         .foregroundStyle(Theme.textSecondary)

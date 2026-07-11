@@ -138,20 +138,20 @@ struct SessionStatsWidget: View {
                                 showingPopover.toggle()
                                 SoundEffects.shared.play(.toggle)
                             }) {
-                    HStack(spacing: compact ? 4 : 5) {
+                    HStack(spacing: 5) {
                         Image(systemName: "flame")
-                            .font(.system(size: compact ? 8.5 : 9.5, weight: .medium))
+                            .font(.system(size: 9.5, weight: .medium))
                             .foregroundStyle(model.snap.streak >= 3
                                              ? Theme.warning : Theme.textSecondary)
                         Text("\(model.snap.streak)d")
-                            .font(.system(size: compact ? 10 : 11, weight: .semibold,
+                            .font(.system(size: 11, weight: .semibold,
                                           design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .monospacedDigit()
                         widgetChipDivider()
-                        widgetIcon("terminal", compact: compact)
+                        widgetIcon("terminal")
                         Text("\(model.snap.today)")
-                            .font(.system(size: compact ? 10 : 11, weight: .semibold,
+                            .font(.system(size: 11, weight: .semibold,
                                           design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .monospacedDigit()

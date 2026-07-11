@@ -121,16 +121,16 @@ struct PingWidget: View {
                         showingPopover.toggle()
                         SoundEffects.shared.play(.toggle)
                     }) {
-            HStack(spacing: compact ? 4 : 5) {
-                widgetIcon("dot.radiowaves.left.and.right", compact: compact)
+            HStack(spacing: 5) {
+                widgetIcon("dot.radiowaves.left.and.right")
                 if !model.history.isEmpty {
                     Sparkline(samples: model.history.suffix(20).map { $0 },
                               maxValue: sparkMax)
-                        .frame(width: compact ? 16 : 20, height: compact ? 9 : 11)
+                        .frame(width: 20, height: 11)
                         .foregroundStyle(Theme.textSecondary)
                 }
                 Text(valueText)
-                    .font(.system(size: compact ? 10 : 11, weight: .semibold,
+                    .font(.system(size: 11, weight: .semibold,
                                   design: .rounded))
                     .foregroundStyle(tint)
                     .monospacedDigit()

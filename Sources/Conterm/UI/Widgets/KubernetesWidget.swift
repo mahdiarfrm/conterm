@@ -53,9 +53,9 @@ private struct KubePillCore: View {
                                 showingPopover.toggle()
                                 SoundEffects.shared.play(.toggle)
                             }) {
-                    HStack(spacing: compact ? 4 : 5) {
+                    HStack(spacing: 5) {
                         Image(systemName: "helm")
-                            .font(.system(size: compact ? 8.5 : 9.5, weight: .medium))
+                            .font(.system(size: 9.5, weight: .medium))
                             .foregroundStyle(sessionShowing
                                              ? Theme.sshAccent : Theme.textSecondary)
                         if isDanger {
@@ -64,7 +64,7 @@ private struct KubePillCore: View {
                                 .frame(width: 5, height: 5)
                         }
                         Text(KubeContextWatch.shortLabel(ctx))
-                            .font(.system(size: compact ? 10 : 11, weight: .semibold,
+                            .font(.system(size: 11, weight: .semibold,
                                           design: .rounded))
                             .foregroundStyle(isDanger
                                              ? Color.red.opacity(0.95)

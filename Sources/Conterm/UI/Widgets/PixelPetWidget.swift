@@ -77,7 +77,7 @@ struct PixelPetWidget: View {
     var body: some View {
         WidgetShell(compact: compact, help: help, onTap: boop) {
             PetSprite(frame: frame)
-                .frame(width: compact ? 17 : 20, height: compact ? 13 : 15)
+                .frame(width: 20, height: 15)
                 .offset(y: hopping ? -3 : 0)
         }
     }

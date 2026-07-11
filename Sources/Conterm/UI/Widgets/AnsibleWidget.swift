@@ -25,18 +25,16 @@ struct AnsibleWidget: View {
                                 showingPopover.toggle()
                                 SoundEffects.shared.play(.toggle)
                             }) {
-                    HStack(spacing: compact ? 4 : 5) {
+                    HStack(spacing: 5) {
                         if let mark = CommandRow.bundledTemplateImage(named: "ansible-mark") {
                             Image(nsImage: mark)
                                 .resizable()
                                 .interpolation(.high)
-                                .frame(width: compact ? 9 : 10,
-                                       height: compact ? 9 : 10)
+                                .frame(width: 10, height: 10)
                                 .foregroundStyle(pillTint)
                         } else {
                             Image(systemName: "circle.grid.3x3")
-                                .font(.system(size: compact ? 8.5 : 9.5,
-                                              weight: .medium))
+                                .font(.system(size: 9.5, weight: .medium))
                                 .foregroundStyle(pillTint)
                         }
                         // With only the persisted last report left, the
@@ -44,8 +42,7 @@ struct AnsibleWidget: View {
                         // no verdict.
                         if !center.runs.isEmpty {
                             Text(pillText)
-                                .font(.system(size: compact ? 10 : 11,
-                                              weight: .semibold, design: .rounded))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundStyle(Theme.textPrimary)
                                 .monospacedDigit()
                         }

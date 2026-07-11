@@ -204,10 +204,10 @@ struct GitHubWidget: View {
         Group {
             if model.snap.hasData {
                 WidgetShell(compact: compact, help: help, onTap: open) {
-                    HStack(spacing: compact ? 4 : 5) {
-                        widgetIcon("checkmark.seal", compact: compact)
+                    HStack(spacing: 5) {
+                        widgetIcon("checkmark.seal")
                         Text(model.snap.prNumber.map { "#\($0)" } ?? "CI")
-                            .font(.system(size: compact ? 10 : 11, weight: .semibold,
+                            .font(.system(size: 11, weight: .semibold,
                                           design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .monospacedDigit()
@@ -218,12 +218,12 @@ struct GitHubWidget: View {
                         }
                         if let review = reviewGlyph {
                             Image(systemName: review.symbol)
-                                .font(.system(size: compact ? 7 : 7.5, weight: .bold))
+                                .font(.system(size: 7.5, weight: .bold))
                                 .foregroundStyle(review.tint)
                         }
                         if model.snap.prState == "MERGED" {
                             Image(systemName: "arrow.triangle.merge")
-                                .font(.system(size: compact ? 7 : 7.5, weight: .bold))
+                                .font(.system(size: 7.5, weight: .bold))
                                 .foregroundStyle(Color(red: 0.70, green: 0.55, blue: 0.95))
                         }
                     }

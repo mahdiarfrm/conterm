@@ -122,14 +122,14 @@ struct PublicIPWidget: View {
                                 NSPasteboard.general.setString(ip, forType: .string)
                                 SoundEffects.shared.play(.click)
                             }) {
-                    HStack(spacing: compact ? 4 : 5) {
+                    HStack(spacing: 5) {
                         Image(systemName: model.vpn ? "lock.shield.fill" : "globe")
-                            .font(.system(size: compact ? 8.5 : 9.5, weight: .medium))
+                            .font(.system(size: 9.5, weight: .medium))
                             .foregroundStyle(model.vpn
                                              ? Color(red: 0.45, green: 0.85, blue: 0.55)
                                              : Theme.textSecondary)
                         Text(ip)
-                            .font(.system(size: compact ? 10 : 11, weight: .semibold,
+                            .font(.system(size: 11, weight: .semibold,
                                           design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .monospacedDigit()
