@@ -131,8 +131,15 @@ private final class TrafficLightShifter: NSObject {
             NSWindow.didEnterFullScreenNotification,
         ]
         for n in events {
-            let token = nc.addObserver(forName: n, object: window, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.reposition() }
+            // `queue: nil` delivers inline on the posting thread — these
+            // window-geometry notifications always post on the main
+            // thread — so the shift lands in the same turn as AppKit's
+            // own relayout. A queued or Task-deferred reposition instead
+            // trails a live resize by a runloop turn, leaving the buttons
+            // at AppKit's default inset for the length of the drag and
+            // settling to the tab-bar offset only once the stream stops.
+            let token = nc.addObserver(forName: n, object: window, queue: nil) { [weak self] _ in
+                MainActor.assumeIsolated { self?.reposition() }
             }
             observers.append(token)
         }
