@@ -35,10 +35,27 @@ struct TabPill: View {
     /// Re-evaluated on every body so changes propagate.
     private var group: TabGroup? { tabGroups.group(id: tab.groupID) }
 
+    /// Sidebar rows render as session cards: the pane map replaces the
+    /// status dot (agent activity lives on the map's tiles) and a meta
+    /// line under the title says where the session is. The horizontal
+    /// bar keeps the slim dot-and-title pill.
+    private var isSessionCard: Bool {
+        prefs.tabOrientation == .vertical && !compact
+    }
+
     var body: some View {
         HStack(spacing: compact ? 7 : 8) {
-            statusDot
-            titleLabel
+            if isSessionCard {
+                PaneMapThumb(tree: tab.paneTree, isSelected: isSelected,
+                             agentPhase: tab.agentPhase)
+                VStack(alignment: .leading, spacing: 1.5) {
+                    titleLabel
+                    SidebarTabMeta(tree: tab.paneTree, isSelected: isSelected)
+                }
+            } else {
+                statusDot
+                titleLabel
+            }
             Spacer(minLength: 0)
             if !compact { badge }
             closeButton
@@ -48,7 +65,7 @@ struct TabPill: View {
                 .animation(Theme.Spring.snappy, value: hovering)
         }
         .padding(.horizontal, compact ? 10 : 12)
-        .padding(.vertical, compact ? 6 : 7)
+        .padding(.vertical, isSessionCard ? 6 : (compact ? 6 : 7))
         .background(pillBackground)
         // Group accent: a thin coloured bar across the top of the
         // pill when this tab belongs to a group. Browser-style. In the
@@ -93,9 +110,11 @@ struct TabPill: View {
             Divider()
             groupMenu
         }
-        // No hover-scale in the sidebar — scaling rows in a tight list
-        // reads as jitter. Horizontal cards still lift slightly.
-        .scaleEffect(!compact && hovering && !isSelected ? 1.02 : 1.0)
+        // Hover physicality differs by home: horizontal cards lift
+        // slightly; sidebar rows nudge toward the terminal instead —
+        // scaling rows in a tight list reads as jitter.
+        .scaleEffect(!compact && !isSessionCard && hovering && !isSelected ? 1.02 : 1.0)
+        .offset(x: isSessionCard && hovering && !isSelected ? 3 : 0)
         .onHover { hovering = $0 }
         .animation(Theme.Spring.snappy, value: hovering)
         .transition(.asymmetric(
@@ -130,13 +149,15 @@ struct TabPill: View {
                                       lineWidth: 0.5)
                 )
         } else if prefs.tabOrientation == .vertical {
-            // Adaptive opaque bed so the row reads as a crisp card over the
-            // desktop glass rather than a translucent slab. One clean border
-            // (no doubled strokes) keeps the edge smooth in both appearances.
+            // Quiet list, loud selection: resting rows are bare content on
+            // the panel surface — no bed, no border — so the sidebar reads
+            // as one sheet instead of a grid of outlined boxes. Hover
+            // raises a soft wash; only the selected card gets the opaque
+            // bed, top sheen, and border.
             ZStack {
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
                     .fill(Theme.tabBed)
-                    .opacity(isSelected ? 1.0 : (hovering ? 0.6 : 0.26))
+                    .opacity(isSelected ? 1.0 : (hovering ? 0.55 : 0))
                 if isSelected {
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .fill(
@@ -145,16 +166,13 @@ struct TabPill: View {
                                 startPoint: .top, endPoint: .bottom
                             )
                         )
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .strokeBorder(
+                            Theme.dynamic(light: NSColor(white: 0.0, alpha: 0.14),
+                                          dark:  NSColor(white: 1.0, alpha: 0.16)),
+                            lineWidth: 0.75
+                        )
                 }
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .strokeBorder(
-                        isSelected
-                            ? Theme.dynamic(light: NSColor(white: 0.0, alpha: 0.14),
-                                            dark:  NSColor(white: 1.0, alpha: 0.16))
-                            : Theme.dynamic(light: NSColor(white: 0.0, alpha: 0.06),
-                                            dark:  NSColor(white: 1.0, alpha: 0.06)),
-                        lineWidth: 0.75
-                    )
             }
         } else {
             ZStack {
