@@ -488,10 +488,10 @@ private struct ShortcutHintButton: View {
     /// When inside the unified toolbar bar, the bar supplies the glass
     /// surface — the button renders bare (no own pill, no hover scale).
     var bare: Bool = false
-    /// Compact = "⌘K" only (no "commands" label), for the narrow
-    /// vertical sidebar bar. When false the pill still sizes itself:
-    /// full label when the cluster has room, ⌘K-only when it doesn't —
-    /// never a truncated label in between.
+    /// Compact = "⌘K" only (no "commands" label), for the narrow vertical
+    /// sidebar bar and for the horizontal bar below its pill breakpoint.
+    /// The breakpoint alone decides: both glyphs are rigid, so a squeezed
+    /// toolbar truncates the tab titles rather than this label.
     var compact: Bool = false
 
     var body: some View {
@@ -502,17 +502,11 @@ private struct ShortcutHintButton: View {
             // does in the AppDelegate event monitor.
             NSApp.keyWindow?.makeFirstResponder(nil)
         } label: {
-            Group {
-                if compact {
-                    hint(labelled: false)
-                } else {
-                    ViewThatFits(in: .horizontal) {
-                        hint(labelled: true)
-                        hint(labelled: false)
-                    }
-                }
-            }
-            .contentShape(Capsule())
+            hint(labelled: !compact)
+                // Owned here rather than inherited: the pill animates
+                // between its two widths wherever it is hosted.
+                .animation(Theme.Spring.snappy, value: compact)
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
@@ -520,19 +514,23 @@ private struct ShortcutHintButton: View {
         .animation(Theme.Spring.snappy, value: hovering)
     }
 
-    /// One rendering of the pill. `.fixedSize()` keeps the text rigid so
-    /// ViewThatFits measures it honestly — a compressible Text "fits"
-    /// any width by ellipsizing, which defeats the full/compact choice.
+    /// One pill, one identity: the label is inserted and removed in place
+    /// so the enclosing width animation carries the pill between its two
+    /// sizes. Per-`Text` `.fixedSize()` keeps both glyphs rigid — a
+    /// compressible Text would ellipsize instead of yielding width.
     private func hint(labelled: Bool) -> some View {
         HStack(spacing: 5) {
             Text("⌘K")
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .fixedSize()
             if labelled {
                 Text("commands")
                     .font(.system(size: 11, design: .rounded))
+                    .fixedSize()
+                    .transition(.opacity.combined(
+                        with: .scale(scale: 0.9, anchor: .leading)))
             }
         }
-        .fixedSize()
         .foregroundStyle(toolbarIconColor(hovering: hovering, onRed: onRedPill))
         .padding(.horizontal, bare ? 6 : 11)
         .frame(height: TabBar.toolbarPillHeight)
@@ -642,27 +640,22 @@ private struct NotificationBell: View {
                 state.notificationsOpen ? .paletteOpen : .paletteClose)
             NSApp.keyWindow?.makeFirstResponder(nil)
         } label: {
-            // Count is INLINE inside the pill (not an overflowing
-            // top-trailing badge). An overlay badge extended past the
-            // pill's bounds and got clipped once the bell is unioned
-            // into the GlassEffectContainer — keeping the count within
-            // the capsule means nothing can be clipped, and the pill
-            // simply widens to fit.
-            HStack(spacing: 3) {
+            // Count is INLINE inside the capsule, never an overflowing
+            // top-trailing badge: nothing extends past the action bar's
+            // bounds, and the pill simply widens to fit. The digit hugs
+            // the bell on the same 4pt gap the agent pill uses, so the
+            // badged pills sit on one rhythm.
+            HStack(spacing: 4) {
                 Image(systemName: notifications.unreadCount > 0
                       ? "bell.badge.fill" : "bell")
                     .font(.system(size: 12.5, weight: .semibold))
                 if notifications.unreadCount > 0 {
                     Text("\(min(notifications.unreadCount, 99))")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
+                        // Steady width as the count ticks within a digit count.
                         .monospacedDigit()
                         // Rigid: toolbar compression must not ellipsize the count.
                         .fixedSize()
-                        // Fixed width so 1 vs 99 doesn't resize the pill
-                        // (and re-morph the GlassEffectContainer). The
-                        // pill grows once when the count first appears,
-                        // then stays put as the number changes.
-                        .frame(width: 14, alignment: .leading)
                 }
             }
             .foregroundStyle(notifications.unreadCount > 0
