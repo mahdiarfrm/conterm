@@ -25,6 +25,10 @@ conterm_video/
 /docs/GLASS-REDESIGN.md
 /docs/WIP-AGENT-CENTER.md
 /docs/REMAINING.md
+/docs/FIXPLAN.md
+/docs/FOCUS-INDICATOR.md
+/docs/OPS-ROADMAP.md
+/Tests/ContermTests/
 conterm-monitor-*.log
 archive/
 .build-ghostty/

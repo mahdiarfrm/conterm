@@ -1,5 +1,11 @@
 // swift-tools-version:6.0
+import Foundation
 import PackageDescription
+
+// The test suite is local-only (gitignored); declare the target only when
+// its sources exist so clones without it can still load the manifest.
+let hasLocalTests = FileManager.default.fileExists(
+    atPath: Context.packageDirectory + "/Tests/ContermTests")
 
 let package = Package(
     name: "Conterm",
@@ -34,10 +40,11 @@ let package = Package(
             name: "GhosttyKit",
             path: "GhosttyKit.xcframework"
         ),
+    ] + (hasLocalTests ? [
         .testTarget(
             name: "ContermTests",
             dependencies: ["Conterm", "GhosttyKit"],
             path: "Tests/ContermTests"
         ),
-    ]
+    ] : [])
 )
