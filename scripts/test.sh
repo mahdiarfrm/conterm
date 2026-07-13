@@ -9,6 +9,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The suite is local-only (gitignored); checkouts without it have
+# nothing to run.
+if [[ ! -d Tests/ContermTests ]]; then
+    echo "Tests/ContermTests not present; skipping."
+    exit 0
+fi
+
 FW="$(xcode-select -p)/Library/Developer/Frameworks"
 if [[ -d "$FW/Testing.framework" \
       && ! -d "$FW/_Testing_Foundation.framework/Modules/_Testing_Foundation.swiftmodule" ]]; then
