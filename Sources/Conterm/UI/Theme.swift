@@ -128,8 +128,10 @@ enum Theme {
     ]
 
     // Geometry tokens shared across the chrome. Generously rounded —
-    // the chrome's shapes read as soft glass, never boxes.
-    static let windowCorner:    CGFloat = 30
+    // the chrome's shapes read as soft glass, never boxes. The window
+    // corner stays moderate so the curve doesn't crowd whatever sits in
+    // the corners (traffic lights, the collapse chevron).
+    static let windowCorner:    CGFloat = 20
     static let paneCorner:      CGFloat = 24
     // Capsule-adjacent on a ~28 pt tab pill.
     static let pillCorner:      CGFloat = 18

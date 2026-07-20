@@ -6,15 +6,17 @@ import SwiftUI
 /// corners by giving the content view a CALayer mask.
 @MainActor
 enum WindowChrome {
-    /// How far DOWN (in points) to nudge the traffic-light buttons from
-    /// their AppKit-default position so they vertically align with the
-    /// CENTER of our 38pt tab bar (which starts at y=6 from the top of
-    /// the window content).
-    static let trafficLightYOffset: CGFloat = 12
-    /// How far RIGHT to nudge the traffic-light buttons from their
-    /// AppKit-default left edge inset (so they're not flush against
-    /// the rounded window corner).
-    static let trafficLightXOffset: CGFloat = 4
+    /// Traffic-light target geometry, shared with the chrome drawn around
+    /// the buttons. `trafficLightCenterY` is the buttons' circle-center
+    /// distance from the window's top edge — the midline of both the
+    /// horizontal tab bar's 38pt row (starts at y=6) and the floating
+    /// lights pill (32pt tall at y=9). `trafficLightLeftX` is the close
+    /// button's left edge — the pill's inner padding starts there, so the
+    /// capsule wraps the lights symmetrically. Placing to a target (from
+    /// the buttons' real frame size) rather than offsetting AppKit's
+    /// defaults keeps the pill and the lights from drifting apart.
+    static let trafficLightCenterY: CGFloat = 25
+    static let trafficLightLeftX: CGFloat = 14
 
     static func apply(to window: NSWindow) {
         window.titlebarAppearsTransparent = true
@@ -59,8 +61,8 @@ enum WindowChrome {
         // (resize, fullscreen, become-key, etc.), so we hook all
         // those and reposition every time.
         TrafficLightShifter.attach(to: window,
-                                    xOffset: trafficLightXOffset,
-                                    yOffset: trafficLightYOffset)
+                                    centerY: trafficLightCenterY,
+                                    leftX: trafficLightLeftX)
 
         // Install transparent NSView overlays around the window
         // edges. They're 10pt wide (vs AppKit's default ~5pt for
@@ -87,32 +89,34 @@ enum WindowChrome {
     }
 }
 
-/// Reposition the three traffic-light buttons by yOffset (points
-/// DOWN from AppKit's default top-inset) on every window event that
-/// could possibly re-lay them. We keep the AppleSpacing between the
-/// three buttons; we just translate them vertically as a group.
+/// Reposition the three traffic-light buttons to a target geometry
+/// (circle-center y from the window top, close button's left x) on
+/// every window event that could possibly re-lay them. We keep the
+/// AppleSpacing between the three buttons; we translate them as a
+/// group. Targets beat offsets: the placement holds regardless of the
+/// AppKit-default insets or button metrics of the running OS.
 @MainActor
 private final class TrafficLightShifter: NSObject {
     private weak var window: NSWindow?
-    private let xOffset: CGFloat
-    private let yOffset: CGFloat
+    private let centerY: CGFloat
+    private let leftX: CGFloat
     private let key: ObjectIdentifier
     private var observers: [NSObjectProtocol] = []
     private static var attached: [ObjectIdentifier: TrafficLightShifter] = [:]
 
-    static func attach(to window: NSWindow, xOffset: CGFloat, yOffset: CGFloat) {
+    static func attach(to window: NSWindow, centerY: CGFloat, leftX: CGFloat) {
         let key = ObjectIdentifier(window)
         if attached[key] != nil { return }
-        let s = TrafficLightShifter(window: window, xOffset: xOffset, yOffset: yOffset)
+        let s = TrafficLightShifter(window: window, centerY: centerY, leftX: leftX)
         attached[key] = s
         s.register()
         s.reposition()
     }
 
-    init(window: NSWindow, xOffset: CGFloat, yOffset: CGFloat) {
+    init(window: NSWindow, centerY: CGFloat, leftX: CGFloat) {
         self.window = window
-        self.xOffset = xOffset
-        self.yOffset = yOffset
+        self.centerY = centerY
+        self.leftX = leftX
         self.key = ObjectIdentifier(window)
         super.init()
     }
@@ -169,21 +173,21 @@ private final class TrafficLightShifter: NSObject {
             if originalX[type.rawValue] == nil {
                 originalX[type.rawValue] = btn.frame.origin.x
             }
+            // The close button lands on leftX; the others ride along by
+            // the same delta, preserving AppKit's inter-button spacing.
+            let closeX = originalX[NSWindow.ButtonType.closeButton.rawValue]
+                ?? btn.frame.origin.x
             var frame = btn.frame
+            // The titlebar container is pinned to the window's top edge
+            // (fullSizeContentView), so container coordinates measure
+            // from the window top. Unflipped: solve origin.y so the
+            // button's vertical center sits centerY below that edge.
             frame.origin.y = (btn.superview?.bounds.height ?? 0)
-                - btn.frame.height
-                - (defaultTopInset(for: type) + yOffset)
-            frame.origin.x = (originalX[type.rawValue] ?? btn.frame.origin.x) + xOffset
+                - centerY - btn.frame.height / 2
+            frame.origin.x = (originalX[type.rawValue] ?? btn.frame.origin.x)
+                + (leftX - closeX)
             btn.frame = frame
         }
-    }
-
-    /// AppKit's default vertical inset from the title-bar's top edge
-    /// to the top of each traffic-light button. This is the SYSTEM
-    /// default we then add `yOffset` to.
-    private func defaultTopInset(for type: NSWindow.ButtonType) -> CGFloat {
-        // 6 pts is the standard Big-Sur+ inset.
-        return 6
     }
 }
 

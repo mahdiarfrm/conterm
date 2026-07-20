@@ -229,9 +229,14 @@ struct AppView: View {
         // resize.
         if isVertical {
             ZStack(alignment: .topLeading) {
+                // The capsule's midline sits on the lights' circle-center
+                // row, and its 8pt inner padding starts at the close
+                // button's left edge (WindowChrome.trafficLightLeftX =
+                // leading 6 + padding 8) — the lights read as wrapped by
+                // the pill, not floating near it.
                 FloatingLightsAutohidePill()
                     .padding(.leading, 6)
-                    .padding(.top, 8)
+                    .padding(.top, WindowChrome.trafficLightCenterY - 16)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .allowsHitTesting(true)

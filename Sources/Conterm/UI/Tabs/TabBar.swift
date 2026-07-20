@@ -1207,10 +1207,12 @@ struct FloatingLightsAutohidePill: View {
             // SwiftUI prunes `Color.clear.frame(...)` in some layouts
             // (the frame collapses to 0pt), which let the auto-hide
             // icon ride up onto the native traffic lights. A clear
-            // Rectangle keeps the footprint at its intended size.
+            // Rectangle keeps the footprint at its intended size:
+            // 54pt is the lights group's span (close left edge → zoom
+            // right edge, AppKit spacing preserved by the shifter).
             Rectangle()
                 .fill(Color.clear)
-                .frame(width: 60, height: 22)
+                .frame(width: 54, height: 22)
             AutoHideToggleButton(bare: true)
         }
         .padding(.horizontal, 8)
