@@ -134,6 +134,55 @@ struct VerticalNewTabRow: View {
     }
 }
 
+/// Compact "new group" affordance beside the New-tab row (vertical
+/// sidebar). Click: the current tab becomes a fresh group and the
+/// rename/color editor opens. Drop a tab row on it: the dragged tab
+/// becomes a fresh group, named automatically.
+struct NewGroupButton: View {
+    @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var tabGroups: TabGroupStore
+    @State private var hovering = false
+    @State private var targeted = false
+
+    var body: some View {
+        Button {
+            guard let tab = state.selectedTab else { return }
+            let g = tabGroups.create()
+            withAnimation(Theme.Spring.soft) { tabGroups.assign(tab, to: g.id) }
+            state.beginRenameGroup(g.id)
+        } label: {
+            Image(systemName: "folder.badge.plus")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(hovering || targeted ? Theme.textPrimary : Theme.textSecondary)
+                .frame(width: 24, height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(hovering || targeted ? Color.white.opacity(0.10) : .clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(
+                            targeted ? Theme.highlight
+                                     : (hovering ? Color.white.opacity(0.35) : Theme.stroke),
+                            lineWidth: targeted ? 1.5 : 0.5)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .overlay(TabDropCatcher(
+            onTargeted: { targeted = $0 },
+            onDropTab: { id in
+                guard let tab = state.tabs.first(where: { $0.id == id }) else { return }
+                let g = tabGroups.create()
+                withAnimation(Theme.Spring.soft) { tabGroups.assign(tab, to: g.id) }
+            }))
+        .help("New group from current tab — or drop a tab here")
+        .animation(Theme.Spring.snappy, value: hovering)
+        .animation(Theme.Spring.snappy, value: targeted)
+    }
+}
+
 private extension View {
     func pressEvents(onPress: @escaping () -> Void,
                      onRelease: @escaping () -> Void) -> some View {

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// A tab rendered as a *stacked-glass card* — three visible layers:
@@ -21,15 +22,52 @@ struct TabPill: View {
     /// hover/selected wash instead of the full glass card, and no per-pill
     /// group accent — the collapsible section header carries the colour.
     var compact: Bool = false
-    /// Rendered nested under a group folder header (vertical tree view): the
-    /// folder owns the group colour, so the per-pill accent bar is dropped.
+    /// Rendered inside a group container — the sidebar's folder section
+    /// or the horizontal bar's tray — which owns the group colour.
     var inGroupFolder: Bool = false
+    /// Sidebar rows are draggable onto group targets (TabBar wires the
+    /// drop side); the horizontal bar's pills are not.
+    var draggable: Bool = false
+    /// Number-only pill for a width-starved horizontal bar: status dot +
+    /// tab number, no title/badge/close (the context menu still closes).
+    /// TabBar flips every pill at once when labelled pills stop fitting.
+    var mini: Bool = false
+    /// Inline directory line after the title (horizontal pills) — the
+    /// small dim counterpart of the sidebar card's second line. TabBar
+    /// grants it globally while the bar has room for every pill's line.
+    var showDir: Bool = false
 
     @EnvironmentObject var tabGroups: TabGroupStore
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Preferences
     @State private var hovering = false
     @State private var hoveringClose = false
+    /// Live rendered width (horizontal pills only) — drives `squeezed`.
+    @State private var pillWidth: CGFloat = 0
+
+    /// Width of `s` in the pills' system font, semibold — the selected
+    /// weight, so the measure is the upper bound.
+    static func textWidth(_ s: String, size: CGFloat,
+                          design: NSFontDescriptor.SystemDesign = .rounded) -> CGFloat {
+        var font = NSFont.systemFont(ofSize: size, weight: .semibold)
+        if let d = font.fontDescriptor.withDesign(design) {
+            font = NSFont(descriptor: d, size: size) ?? font
+        }
+        return ceil((s as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    /// The bar squeezed this pill below what its title needs, so the
+    /// text gives way to the tab number. Display-only: the layout keeps
+    /// carrying the (invisibly truncated) title, so entering number
+    /// mode never changes the pill's size — the width signal stays
+    /// honest in both directions and can't oscillate.
+    private var squeezed: Bool {
+        guard !mini, !compact, !isSessionCard, pillWidth > 0 else { return false }
+        let title = tab.title.isEmpty ? "shell" : tab.title
+        let needed = Self.textWidth(title, size: 12) + 64
+                   + (index <= 9 ? 41 : 0)
+        return pillWidth < needed
+    }
 
     /// Resolved group for this tab (looked up via TabGroupStore).
     /// Re-evaluated on every body so changes propagate.
@@ -44,8 +82,15 @@ struct TabPill: View {
     }
 
     var body: some View {
-        HStack(spacing: compact ? 7 : 8) {
-            if isSessionCard {
+        HStack(spacing: mini ? 5 : (compact ? 7 : (isSessionCard ? 8 : 7))) {
+            if mini {
+                statusDot
+                Text("\(index)")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
+                    .fixedSize()
+            } else if isSessionCard {
                 PaneMapThumb(tree: tab.paneTree, isSelected: isSelected,
                              agentPhase: tab.agentPhase)
                 VStack(alignment: .leading, spacing: 1.5) {
@@ -54,33 +99,69 @@ struct TabPill: View {
                 }
             } else {
                 statusDot
-                titleLabel
+                // Directory line UNDER the title (like the sidebar
+                // cards), not beside it — stacked, it costs no width
+                // and just head-truncates to the pill's size.
+                VStack(alignment: .leading, spacing: 1) {
+                    titleLabel
+                    if showDir, !compact {
+                        SidebarTabMeta(tree: tab.paneTree, isSelected: isSelected,
+                                       size: 8.5, dimmed: true)
+                    }
+                }
+                .opacity(squeezed ? 0 : 1)
             }
-            Spacer(minLength: 0)
-            if !compact { badge }
-            closeButton
-                .opacity(hovering ? 1 : 0)
-                .allowsHitTesting(hovering)
-                .frame(width: hovering ? 18 : 0)
-                .animation(Theme.Spring.snappy, value: hovering)
+            if !mini {
+                if compact || isSessionCard {
+                    // Sidebar rows fill a fixed column width — push the
+                    // trailing controls to the row's edge.
+                    Spacer(minLength: 0)
+                    if !compact { badge }
+                    closeButton
+                        .opacity(hovering ? 1 : 0)
+                        .allowsHitTesting(hovering)
+                        .frame(width: hovering ? 18 : 0)
+                        .animation(Theme.Spring.snappy, value: hovering)
+                } else {
+                    // Horizontal pills fill the explicit width TabBar
+                    // deals them (the bar's slack shared across every
+                    // pill, tray members included) — the Spacer pushes
+                    // the trailing controls to the pill's edge. The
+                    // close slot stays reserved so the pill doesn't
+                    // resize on hover; the selected tab shows it always.
+                    Spacer(minLength: 0)
+                    badge.opacity(squeezed ? 0 : 1)
+                    closeButton
+                        .opacity(hovering || isSelected ? 1 : 0)
+                        .allowsHitTesting(hovering || isSelected)
+                        .frame(width: 18)
+                }
+            }
         }
-        .padding(.horizontal, compact ? 10 : 12)
-        .padding(.vertical, isSessionCard ? 6 : (compact ? 6 : 7))
+        .padding(.horizontal, mini ? 9 : (compact ? 10 : (isSessionCard ? 12 : 11)))
+        // The two-line pill (title + directory) slims its padding to
+        // stay inside the bar's fixed height.
+        .padding(.vertical, mini ? 7 : (isSessionCard ? 6 : (compact ? 6
+            : (showDir ? 4 : 7))))
+        .background(GeometryReader { proxy in
+            Color.clear.onChange(of: proxy.size.width, initial: true) { _, w in
+                pillWidth = w
+            }
+        })
         .background(pillBackground)
-        // Group accent: a thin coloured bar across the top of the
-        // pill when this tab belongs to a group. Browser-style. In the
-        // sidebar the section header owns the colour, so the per-pill bar
-        // is dropped there.
-        .overlay(alignment: .top) {
-            if let g = group, !compact, !inGroupFolder {
-                Capsule(style: .continuous)
-                    .fill(TabGroup.color(forKey: g.colorKey))
-                    .frame(height: 2)
-                    .padding(.horizontal, 6)
-                    .opacity(isSelected ? 0.95 : 0.55)
+        // The number that replaces a squeezed pill's title, centered on
+        // the pill; the status dot stays put at the leading edge.
+        .overlay {
+            if squeezed {
+                Text("\(index)")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
                     .allowsHitTesting(false)
+                    .transition(.opacity)
             }
         }
+        .animation(Theme.Spring.snappy, value: squeezed)
         // (The selected-tab halo now travels: it's a single shared
         //  glow rendered by TabBar via matchedGeometry, so switching
         //  tabs glides the light across instead of snapping it.)
@@ -97,8 +178,10 @@ struct TabPill: View {
                 // used to start rename and fought double-click-to-zoom).
                 onSingle: onSelect,
                 onDouble: {},
-                trailingZoneWidth: hovering ? 24 : 0,
-                onTrailingClick: onClose
+                trailingZoneWidth: (hovering && !mini) ? 24 : 0,
+                onTrailingClick: onClose,
+                dragPayload: draggable ? TabDrag.payload(for: tab.id) : nil,
+                dragCornerRadius: Theme.pillCorner
             )
             .allowsHitTesting(true)
         }
@@ -117,6 +200,9 @@ struct TabPill: View {
         .offset(x: isSessionCard && hovering && !isSelected ? 3 : 0)
         .onHover { hovering = $0 }
         .animation(Theme.Spring.snappy, value: hovering)
+        // Full ↔ number-only morph springs rather than snapping — the
+        // title fades as the pill contracts around the dot + number.
+        .animation(Theme.Spring.soft, value: mini)
         .transition(.asymmetric(
             insertion: .scale(scale: 0.7).combined(with: .opacity),
             removal:   .scale(scale: 0.5).combined(with: .opacity)
@@ -302,9 +388,16 @@ struct TabPill: View {
         }
     }
 
+    /// Horizontal two-line pills carry the smaller title — the meta
+    /// line beneath supplies the detail; sidebar cards keep 13.
+    private var titleSize: CGFloat {
+        if compact { return 12.5 }
+        return isSessionCard ? 13 : 12
+    }
+
     private var titleLabel: some View {
         Text(tab.title.isEmpty ? "shell" : tab.title)
-            .font(.system(size: compact ? 12.5 : 13,
+            .font(.system(size: titleSize,
                            weight: isSelected ? .semibold : .regular,
                            design: .rounded))
             .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
@@ -318,9 +411,9 @@ struct TabPill: View {
     private var badge: some View {
         if index <= 9 {
             Text("⌘\(index)")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 6).padding(.vertical, 2)
+                .padding(.horizontal, 5).padding(.vertical, 2)
                 .background(
                     ZStack {
                         Capsule().fill(chromeFill(prefs))
