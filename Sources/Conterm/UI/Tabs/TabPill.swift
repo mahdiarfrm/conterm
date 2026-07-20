@@ -271,7 +271,7 @@ struct TabPill: View {
             if !tabGroups.groups.isEmpty {
                 ForEach(tabGroups.groups) { g in
                     Button {
-                        tab.groupID = g.id
+                        tabGroups.assign(tab, to: g.id)
                     } label: {
                         Label("Move to “\(g.name)”",
                               systemImage: "circle.fill")
@@ -284,7 +284,7 @@ struct TabPill: View {
             // assigns this tab to it.
             Button("New Group from This Tab") {
                 let g = tabGroups.create()
-                tab.groupID = g.id
+                tabGroups.assign(tab, to: g.id)
             }
             // Manage / edit this tab's own group: rename + change
             // color + delete (deleting also un-assigns every tab
@@ -296,7 +296,7 @@ struct TabPill: View {
                     state.beginRenameGroup(gid)
                 }
                 Button("Remove from Group") {
-                    tab.groupID = nil
+                    tabGroups.assign(tab, to: nil)
                 }
             }
         }
