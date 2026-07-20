@@ -338,10 +338,6 @@ struct SettingsPanel: View {
                     .frame(width: 200)
                     .labelsHidden()
                 }
-                SettingsRow(title: "Hide tab bar with one tab",
-                            subtitle: "Frees space when only one tab is open.") {
-                    Toggle("", isOn: $prefs.hideTabBarSingleTab.withSound()).labelsHidden()
-                }
                 SettingsRow(title: "Widgets",
                             subtitle: "Stats, clock, git, GitHub, ping, notes, pixel pet, and more — enable and reorder them in the Widgets tab.") {
                     Button("Widgets…") {

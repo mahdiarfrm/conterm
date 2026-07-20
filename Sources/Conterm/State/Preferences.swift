@@ -166,11 +166,6 @@ final class Preferences: ObservableObject {
     @Published var hiddenPaletteCommands: Set<String> {
         didSet { ud.set(Array(hiddenPaletteCommands), forKey: K.hiddenPaletteCommands) }
     }
-    /// Hide the tab bar entirely when there's only one tab open
-    /// (more screen for the terminal, less chrome).
-    @Published var hideTabBarSingleTab: Bool {
-        didSet { ud.set(hideTabBarSingleTab, forKey: K.hideTabBarSingleTab) }
-    }
     /// Show the floating per-pane title bar (dir name + ⌥N chip).
     /// Off = no title bar, more room for terminal output.
     @Published var showPaneTitleBar: Bool {
@@ -359,7 +354,6 @@ final class Preferences: ObservableObject {
         static let hiddenPaletteCommands = "conterm.hiddenPaletteCommands"
         static let paletteSeeds     = "conterm.paletteSeeds"
         static let widgetSeeds      = "conterm.widgetSeeds"
-        static let hideTabBarSingleTab = "conterm.hideTabBarSingleTab"
         static let showPaneTitleBar = "conterm.showPaneTitleBar"
         static let commandAlerts    = "conterm.commandAlerts"
         static let autoCheckUpdates  = "conterm.autoCheckUpdates"
@@ -462,7 +456,6 @@ final class Preferences: ObservableObject {
             ud.set(Array(seeds), forKey: K.paletteSeeds)
         }
         self.hiddenPaletteCommands  = hiddenCommands
-        self.hideTabBarSingleTab    = ud.object(forKey: K.hideTabBarSingleTab) as? Bool ?? false
         self.showPaneTitleBar       = ud.object(forKey: K.showPaneTitleBar) as? Bool ?? true
         self.commandAlerts          = ud.object(forKey: K.commandAlerts) as? Bool ?? true
         self.autoCheckUpdates       = ud.object(forKey: K.autoCheckUpdates) as? Bool ?? true

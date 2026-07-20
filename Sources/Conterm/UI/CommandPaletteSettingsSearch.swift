@@ -98,9 +98,6 @@ extension CommandPalette {
             // Tabs
             open("tabLayout", "Tab layout", "horizontal vertical sidebar agents orientation",
                  .tabs, "rectangle.lefthalf.inset.filled"),
-            toggle("hideTabBarSingleTab", "Hide tab bar with one tab",
-                   "single chrome minimal", .tabs, "rectangle.tophalf.inset.filled",
-                   prefs.hideTabBarSingleTab) { prefs.hideTabBarSingleTab = $0 },
             // Widgets — toggle a pill in/out of the rail; manage + reorder
             // in Settings ▸ Widgets.
             open("widgets", "Widgets", "rail manage reorder pills tab bar",

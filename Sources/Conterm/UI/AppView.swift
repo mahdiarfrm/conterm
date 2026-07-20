@@ -161,15 +161,11 @@ struct AppView: View {
         // Both vertical-tabs and agents place a left sidebar; the top tab
         // bar is hidden in either.
         let isSidebar = isVertical || isAgents
-        // Hide the tab bar when there's exactly one tab AND the user
-        // opted in. Keyboard shortcuts (⌘T new tab, ⌘K palette) still
-        // work; the bar reappears as soon as a second tab is added.
-        let hideForSingleTab = prefs.hideTabBarSingleTab && state.tabs.count <= 1
         // Auto-hide (vertical tabs only): the inline sidebar leaves the
         // layout entirely so the terminal gets the full width; it
         // comes back as the floating overlay on left-edge hover.
         let sidebarFloating = isVertical && prefs.autoHideSidebar
-        let showVerticalSidebar = isVertical && !hideForSingleTab && !sidebarFloating
+        let showVerticalSidebar = isVertical && !sidebarFloating
         // The agent sidebar is always shown in agents mode (it's the
         // window's navigator, not a tab list that can be single-hidden).
         let showSidebarSlot = showVerticalSidebar || isAgents
@@ -196,9 +192,9 @@ struct AppView: View {
                             NSApp.keyWindow?.performZoom(nil)
                         }
                     )
-                    .frame(height: (!isSidebar && !hideForSingleTab) ? nil : 0)
-                    .opacity((!isSidebar && !hideForSingleTab) ? 1 : 0)
-                    .allowsHitTesting(!isSidebar && !hideForSingleTab)
+                    .frame(height: !isSidebar ? nil : 0)
+                    .opacity(!isSidebar ? 1 : 0)
+                    .allowsHitTesting(!isSidebar)
                     .clipped()
                     // The gap that floats the bar clear of the panes. Tuned
                     // so the toolbar pills sit the same distance below the
@@ -217,7 +213,6 @@ struct AppView: View {
                     .padding(.top, isSidebar ? Self.titleBarHeight : 0)
             }
         }
-        .animation(Theme.Spring.crisp, value: hideForSingleTab)
         .animation(Theme.Spring.soft, value: sidebarFloating)
         .animation(Theme.Spring.soft, value: prefs.tabOrientation)
     }
