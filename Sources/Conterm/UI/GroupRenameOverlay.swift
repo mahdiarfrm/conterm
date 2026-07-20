@@ -149,7 +149,7 @@ struct GroupRenameOverlay: View {
         if let appDelegate = NSApp.delegate as? AppDelegate {
             for wc in appDelegate.windows {
                 for t in wc.state.tabs where t.groupID == gid {
-                    t.groupID = nil
+                    tabGroups.assign(t, to: nil)
                 }
             }
         }

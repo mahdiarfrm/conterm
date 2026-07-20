@@ -309,8 +309,7 @@ extension CommandPalette {
                             onDelete:  { withAnimation(Theme.Spring.snappy) { tabGroups.delete(group.id) } },
                             onRemoveTab: { tab in
                                 withAnimation(Theme.Spring.snappy) {
-                                    tab.groupID = nil
-                                    tabGroups.objectWillChange.send()
+                                    tabGroups.assign(tab, to: nil)
                                 }
                             }
                         )
@@ -334,9 +333,9 @@ extension CommandPalette {
 
     /// Right-click menu on a session row: move the row's TAB into a
     /// group, spin off a new group, or remove it from its group. Group
-    /// membership lives on `Tab.groupID`; mutating it re-sorts the
-    /// sessions list. We nudge `tabGroups` so the palette (which
-    /// observes it) recomputes immediately.
+    /// membership lives on `Tab.groupID`; changes go through
+    /// `TabGroupStore.assign`, which republishes the store so the
+    /// palette (which observes it) recomputes immediately.
     @ViewBuilder
     func sessionGroupMenu(for row: SessionRow) -> some View {
         if let tab = row.owningTab {
@@ -352,8 +351,7 @@ extension CommandPalette {
                 if !tabGroups.groups.isEmpty {
                     ForEach(tabGroups.groups) { g in
                         Button {
-                            tab.groupID = g.id
-                            tabGroups.objectWillChange.send()
+                            tabGroups.assign(tab, to: g.id)
                         } label: {
                             Label("Move tab to “\(g.name)”", systemImage: "circle.fill")
                         }
@@ -362,7 +360,7 @@ extension CommandPalette {
                 }
                 Button("New Group from This Tab") {
                     let g = tabGroups.create()
-                    tab.groupID = g.id
+                    tabGroups.assign(tab, to: g.id)
                 }
                 if let gid = tab.groupID, let g = tabGroups.group(id: gid) {
                     Divider()
@@ -370,8 +368,7 @@ extension CommandPalette {
                         beginGroupEdit(gid)
                     }
                     Button("Remove Tab from Group") {
-                        tab.groupID = nil
-                        tabGroups.objectWillChange.send()
+                        tabGroups.assign(tab, to: nil)
                     }
                 }
             }

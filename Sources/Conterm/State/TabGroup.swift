@@ -142,6 +142,17 @@ final class TabGroupStore: ObservableObject {
         return groups.first(where: { $0.id == id })
     }
 
+    /// Membership setter — route every `Tab.groupID` change through
+    /// here. Containers (tab bars, palette sections) derive membership
+    /// in their body while observing this store, not each Tab, so a
+    /// bare `tab.groupID = x` republishes only that tab's pill and the
+    /// row doesn't move until an unrelated re-render comes along.
+    func assign(_ tab: Tab, to groupID: UUID?) {
+        guard tab.groupID != groupID else { return }
+        objectWillChange.send()
+        tab.groupID = groupID
+    }
+
     // MARK: - persistence
 
     private func load() {
