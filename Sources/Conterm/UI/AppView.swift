@@ -12,11 +12,9 @@ struct AppView: View {
     /// Driven purely by left-edge / panel hover, never persisted.
     @State private var sidebarRevealed = false
 
-    /// The window's title-bar band height, from the title-bar style mask
-    /// (the real system height, not a tuned value). Sidebar modes reserve
-    /// this at the top so the active pane clears the traffic-light band.
-    static let titleBarHeight =
-        NSWindow.frameRect(forContentRect: .zero, styleMask: [.titled]).height
+    /// Pending left-edge reveal; cancelled when the cursor leaves the
+    /// trigger strip before the dwell elapses.
+    @State private var edgeRevealTask: Task<Void, Never>?
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -261,15 +259,29 @@ struct AppView: View {
                     .frame(width: 8)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
-                    .onHover { if $0 { revealSidebar() } }
+                    // Reveal needs intent: a brief dwell filters cursor
+                    // flicks that overshoot into the strip, and a drag
+                    // (selection swept to the edge) never reveals.
+                    .onHover { inside in
+                        edgeRevealTask?.cancel()
+                        guard inside else { return }
+                        edgeRevealTask = Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 120_000_000)
+                            guard !Task.isCancelled,
+                                  NSEvent.pressedMouseButtons == 0 else { return }
+                            revealSidebar()
+                        }
+                    }
 
                 // "There's a hidden sidebar here" affordance — a faint
                 // pill on the edge, only while collapsed.
                 if !sidebarRevealed {
+                    // Centered in the 12pt gutter between the window edge
+                    // and the pane tile.
                     Capsule()
                         .fill(Color.white.opacity(0.16))
                         .frame(width: 3, height: 42)
-                        .padding(.leading, 2)
+                        .padding(.leading, 4.5)
                         .frame(maxHeight: .infinity, alignment: .center)
                         .allowsHitTesting(false)
                         .transition(.opacity)
@@ -300,6 +312,12 @@ struct AppView: View {
                     .onHover { hovering in
                         if hovering { revealSidebar() } else { hideSidebar() }
                     }
+                    // offset/opacity only move the pixels — the hidden
+                    // panel's hover region stays parked over its resting
+                    // footprint (the window's left ~sidebar-width), and
+                    // any mouse travel there would reveal it. While
+                    // collapsed, the edge strip is the only opener.
+                    .allowsHitTesting(sidebarRevealed)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .ignoresSafeArea()
