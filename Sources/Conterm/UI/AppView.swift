@@ -512,28 +512,29 @@ struct AppView: View {
     }
 
     /// Notification center. Anchored to the bell that opens it so it
-    /// reads as dropping out of the pill: top-trailing for the toolbar
-    /// bell, bottom-leading in agents mode (whose bell sits beside the
-    /// sidebar's layout switcher). Soft dim — terminal stays readable
-    /// behind it (same restraint as search, not the palette).
+    /// reads as dropping out of the pill: top-trailing for the
+    /// horizontal toolbar bell; bottom-leading in both sidebar modes
+    /// (vertical + agents), whose bell sits in the bottom action
+    /// cluster. Soft dim — terminal stays readable behind it (same
+    /// restraint as search, not the palette).
     @ViewBuilder
     private var notificationsOverlay: some View {
         if state.notificationsOpen {
-            let agents = prefs.tabOrientation == .agents
-            let corner: Alignment = agents ? .bottomLeading : .topTrailing
+            let bottomLeft = prefs.tabOrientation != .horizontal
+            let corner: Alignment = bottomLeft ? .bottomLeading : .topTrailing
             ZStack(alignment: corner) {
                 Color.black.opacity(0.14)
                     .ignoresSafeArea()
                     .onTapGesture { withAnimation(Theme.Spring.snappy) { state.notificationsOpen = false } }
                     .transition(.opacity.animation(.easeOut(duration: 0.16)))
                 NotificationsOverlay()
-                    .padding(agents ? .bottom : .top, 52)
-                    .padding(agents ? .leading : .trailing, 16)
+                    .padding(bottomLeft ? .bottom : .top, 52)
+                    .padding(bottomLeft ? .leading : .trailing, 16)
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.94,
-                                          anchor: agents ? .bottomLeading : .topTrailing)
+                                          anchor: bottomLeft ? .bottomLeading : .topTrailing)
                             .combined(with: .opacity)
-                            .combined(with: .move(edge: agents ? .bottom : .top))
+                            .combined(with: .move(edge: bottomLeft ? .bottom : .top))
                             .animation(.spring(response: 0.40,
                                                 dampingFraction: 0.80)),
                         removal: .opacity
