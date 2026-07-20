@@ -53,6 +53,10 @@ struct PaneTitleBar: View {
     let remoteHost: String?
     let index: Int
     let isActive: Bool
+    /// Non-nil makes the pill a drag handle for the pane (`PaneDrag`
+    /// payload): press-and-pull begins the reposition drag, a plain
+    /// click still toggles the compact state.
+    var dragPayload: String? = nil
     @EnvironmentObject var prefs: Preferences
     /// Collapsed: a small light capsule showing only the logo (status dot
     /// or ssh glyph) + the ⌥N keybind. Click the pill to toggle. Per-pane,
@@ -159,6 +163,21 @@ struct PaneTitleBar: View {
         .contentShape(Capsule(style: .continuous))
         .onTapGesture {
             withAnimation(Theme.Spring.snappy) { collapsed.toggle() }
+        }
+        // Drag handle: press-and-pull on the pill drags the pane (drop on
+        // another tile to swap slots). The catcher consumes the pill's
+        // clicks, so it re-implements the collapse toggle — deferred to
+        // mouse-up, or every drag would start by flipping the pill.
+        .overlay {
+            if let payload = dragPayload {
+                ClickCatcher(
+                    onSingle: { withAnimation(Theme.Spring.snappy) { collapsed.toggle() } },
+                    onDouble: { withAnimation(Theme.Spring.snappy) { collapsed.toggle() } },
+                    dragPayload: payload,
+                    dragType: PaneDrag.pasteboardType,
+                    clickOnMouseUp: true,
+                    dragCornerRadius: .greatestFiniteMagnitude)
+            }
         }
         // .shadow() removed: per-pane shadows are CIFilters that
         // the compositor re-evaluates every frame; with many panes

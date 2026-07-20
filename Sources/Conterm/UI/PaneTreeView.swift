@@ -381,6 +381,9 @@ final class PaneTreeView: NSView {
                                                  notifications: notifications, prefs: prefs)
                 guard let host = controller.hostView else { continue }
                 box = PaneBox(pane: pane, host: host, prefs: prefs, tab: tab)
+                box.onPaneDrop = { [weak self] dragged in
+                    self?.swapPanes(dragged, with: pane.id) ?? false
+                }
                 boxes[pane.id] = box
                 addSubview(box)
             }
@@ -460,6 +463,22 @@ final class PaneTreeView: NSView {
         }
     }
 
+    /// Exchange two leaves' panes in the model. The boxes themselves are
+    /// untouched — the next layout pass reframes each at the other's
+    /// slot, the only mutation a live surface tolerates.
+    private func swapPanes(_ draggedID: UUID, with targetID: UUID) -> Bool {
+        guard let tree, draggedID != targetID,
+              let na = tree.root.findLeaf(of: draggedID),
+              let nb = tree.root.findLeaf(of: targetID),
+              case .leaf(let pa) = na.kind,
+              case .leaf(let pb) = nb.kind else { return false }
+        na.kind = .leaf(pb)
+        nb.kind = .leaf(pa)
+        SoundEffects.shared.play(.paneSwitch)
+        tree.revision &+= 1
+        return true
+    }
+
     // MARK: - Divider resize (drawn dividers; drag handled here, no NSView)
 
     private func divider(at point: CGPoint) -> (node: PaneNode, axis: SplitAxis, span: CGRect)? {
@@ -478,13 +497,72 @@ final class PaneTreeView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
-        guard let hit = divider(at: p) else { super.mouseDown(with: event); return }
+        guard var hit = divider(at: p) else { super.mouseDown(with: event); return }
+        // In an aligned grid the divider visually crosses a perpendicular
+        // boundary; scope the drag to the segment under the cursor.
+        // Option-drag keeps the whole boundary moving as one.
+        if !event.modifierFlags.contains(.option),
+           let scoped = scopeDividerDrag(hit, cursor: p) {
+            hit = scoped
+        }
         drag = DragState(
             node: hit.node,
             axis: hit.axis,
             total: hit.axis == .horizontal ? hit.span.width : hit.span.height,
             anchorMouse: NSEvent.mouseLocation,
             anchorFraction: hit.node.firstFraction)
+    }
+
+    /// A split whose children are both splits along the perpendicular
+    /// axis with matching fractions renders as an aligned grid — its
+    /// divider spans two independent segments, and dragging it would
+    /// move both at once. Regroup the four subtrees around the
+    /// perpendicular boundary so each segment gets its own split node,
+    /// then return the segment under the cursor as the drag target.
+    /// Fractions carry over, so the regroup itself changes no frames.
+    private func scopeDividerDrag(
+        _ hit: (node: PaneNode, axis: SplitAxis, span: CGRect),
+        cursor: CGPoint
+    ) -> (node: PaneNode, axis: SplitAxis, span: CGRect)? {
+        let node = hit.node
+        guard case .split(let axis, let a, let b) = node.kind,
+              case .split(let aAxis, let a1, let a2) = a.kind,
+              case .split(let bAxis, let b1, let b2) = b.kind,
+              aAxis != axis, bAxis == aAxis,
+              abs(a.firstFraction - b.firstFraction) < 0.02 else { return nil }
+
+        let cross = (a.firstFraction + b.firstFraction) / 2
+        let first = PaneNode(kind: .split(axis: axis, first: a1, second: b1))
+        let second = PaneNode(kind: .split(axis: axis, first: a2, second: b2))
+        first.firstFraction = node.firstFraction
+        second.firstFraction = node.firstFraction
+        node.kind = .split(axis: aAxis, first: first, second: second)
+        node.firstFraction = cross
+
+        tree?.revision &+= 1
+        needsLayout = true
+
+        let t = dividerThickness
+        let span = hit.span
+        if aAxis == .horizontal {   // segments are side-by-side columns
+            let firstW = (span.width - t) * cross
+            let inFirst = cursor.x < span.minX + firstW + t / 2
+            let sub = inFirst
+                ? CGRect(x: span.minX, y: span.minY,
+                         width: firstW, height: span.height)
+                : CGRect(x: span.minX + firstW + t, y: span.minY,
+                         width: span.width - firstW - t, height: span.height)
+            return (inFirst ? first : second, hit.axis, sub)
+        } else {                    // segments are stacked rows
+            let firstH = (span.height - t) * cross
+            let inFirst = cursor.y < span.minY + firstH + t / 2
+            let sub = inFirst
+                ? CGRect(x: span.minX, y: span.minY,
+                         width: span.width, height: firstH)
+                : CGRect(x: span.minX, y: span.minY + firstH + t,
+                         width: span.width, height: span.height - firstH - t)
+            return (inFirst ? first : second, hit.axis, sub)
+        }
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -516,6 +594,15 @@ final class PaneBox: NSView {
 
     var index: Int = 0 { didSet { if index != oldValue { refreshChrome() } } }
     var isActivePane: Bool = false { didSet { if isActivePane != oldValue { refreshChrome() } } }
+    /// Another pane's tile is hovering this one in a reposition drag —
+    /// chrome shows the drop ring.
+    private var isDropTarget: Bool = false {
+        didSet { if isDropTarget != oldValue { refreshChrome() } }
+    }
+    /// Model-side swap when a pane tile is dropped here (set by
+    /// PaneTreeView). Returns false when the dragged id isn't in this
+    /// box's tree — e.g. a drag from another window.
+    var onPaneDrop: ((UUID) -> Bool)?
 
     /// Static painted tile material: a vertical gradient with a grain
     /// wash and a hairline top light, so an opaque tile reads as a
@@ -536,6 +623,7 @@ final class PaneBox: NSView {
         // title-bar pill stays tappable (collapse toggle).
         self.chrome = NSHostingView(rootView: PaneChrome(
             pane: pane, prefs: prefs, isActive: false, index: 0,
+            dropTargeted: false,
             recomputeAgentPhase: { [weak tab] in tab?.recomputeAgentPhase() }))
         // The tile can reach into the window's title-bar band; with safe
         // areas on, the hosting view shifts its SwiftUI content down by the
@@ -577,6 +665,10 @@ final class PaneBox: NSView {
         host.layer?.masksToBounds = true
         addSubview(host)
         addSubview(chrome)
+        // Reposition-drag destination. The surface view only registers
+        // file types, so pane drags fall through to the box; file drags
+        // keep landing on the surface (scp upload path).
+        registerForDraggedTypes([PaneDrag.pasteboardType])
     }
 
     required init?(coder: NSCoder) { nil }
@@ -643,7 +735,36 @@ final class PaneBox: NSView {
     private func refreshChrome() {
         chrome.rootView = PaneChrome(
             pane: pane, prefs: prefs, isActive: isActivePane, index: index,
+            dropTargeted: isDropTarget,
             recomputeAgentPhase: { [weak tab] in tab?.recomputeAgentPhase() })
+    }
+
+    // MARK: - Pane reposition drop (NSDraggingDestination)
+
+    private func draggedPaneID(_ sender: NSDraggingInfo) -> UUID? {
+        guard let s = sender.draggingPasteboard
+            .string(forType: PaneDrag.pasteboardType) else { return nil }
+        return UUID(uuidString: s)
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard let id = draggedPaneID(sender), id != pane.id else { return [] }
+        isDropTarget = true
+        return .generic
+    }
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        isDropTarget = false
+    }
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        isDropTarget = false
+    }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        true
+    }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        isDropTarget = false
+        guard let id = draggedPaneID(sender), id != pane.id else { return false }
+        return onPaneDrop?(id) ?? false
     }
 }
 
@@ -661,6 +782,8 @@ struct PaneChrome: View {
     @ObservedObject private var ansible = AnsibleCenter.shared
     var isActive: Bool
     var index: Int
+    /// A pane-reposition drag is hovering this tile (drop = swap).
+    var dropTargeted: Bool
     var recomputeAgentPhase: () -> Void
     @State private var commandBadge: Pane.CommandResult?
     @State private var attentionGen = 0
@@ -708,6 +831,12 @@ struct PaneChrome: View {
                                       lineWidth: 3)
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .strokeBorder(focusTint.opacity(0.75), lineWidth: 1.5)
+                }
+                if dropTargeted {
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .fill(Theme.highlight.opacity(0.10))
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .strokeBorder(Theme.highlight.opacity(0.9), lineWidth: 2)
                 }
                 if pane.agent.phase != .idle {
                     AgentPill(status: pane.agent)
@@ -757,7 +886,8 @@ struct PaneChrome: View {
                     }
                     PaneTitleBar(dirLabel: friendlyDirLabel(for: pane.cwd),
                                  remoteHost: pane.remoteHost,
-                                 index: index, isActive: isActive)
+                                 index: index, isActive: isActive,
+                                 dragPayload: PaneDrag.payload(for: pane.id))
                 }
                 .padding(.top, 10).padding(.trailing, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
