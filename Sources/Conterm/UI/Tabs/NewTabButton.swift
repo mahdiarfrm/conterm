@@ -98,21 +98,33 @@ struct NewTabButton: View {
 /// affordance that matches the full-width tab pills above it.
 struct VerticalNewTabRow: View {
     var action: () -> Void
+    @EnvironmentObject private var prefs: Preferences
     @State private var hovering = false
+
+    /// Same accent option as the horizontal bar's disc (`newTabAccent`):
+    /// the row's plus disc lights in the chosen color; mono keeps glass.
+    private var colored: Bool { prefs.newTabAccent.isColored }
+    private var discColor: Color { prefs.newTabAccent.fill ?? NewTabButton.discYellow }
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: "plus")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(hovering ? Theme.textPrimary : Theme.textSecondary)
+                    .foregroundStyle(colored
+                        ? Color.black
+                        : (hovering ? Theme.textPrimary : Theme.textSecondary))
                     .frame(width: 22, height: 22)
                     .background(
-                        Circle().fill(hovering ? Color.white.opacity(0.10) : .clear)
+                        Circle().fill(colored
+                            ? discColor.opacity(hovering ? 1.0 : 0.92)
+                            : (hovering ? Color.white.opacity(0.10) : .clear))
                     )
                     .overlay(
                         Circle().strokeBorder(
-                            hovering ? Color.white.opacity(0.35) : Theme.stroke,
+                            colored
+                                ? (hovering ? Color.white.opacity(0.45) : Color.black.opacity(0.18))
+                                : (hovering ? Color.white.opacity(0.35) : Theme.stroke),
                             lineWidth: 0.5)
                     )
                 Text("New tab")
