@@ -119,33 +119,48 @@ struct PaneMapThumb: View {
 struct SidebarTabMeta: View {
     @ObservedObject var tree: PaneTree
     var isSelected: Bool
+    /// Compact inline variant (horizontal pill): smaller and dimmer
+    /// than the sidebar card's second line.
+    var size: CGFloat = 9.5
+    var dimmed: Bool = false
 
     var body: some View {
         if let pane = tree.activePane {
             Line(pane: pane, count: tree.root.leaves().count,
-                 isSelected: isSelected)
+                 isSelected: isSelected, size: size, dimmed: dimmed)
         }
+    }
+
+    /// The line's text for a tree — also feeds the tab bar's width
+    /// budget, which must count the same string the pill will render.
+    static func label(for tree: PaneTree) -> String {
+        guard let pane = tree.activePane else { return "" }
+        return Line.label(pane: pane, count: tree.root.leaves().count)
     }
 
     private struct Line: View {
         @ObservedObject var pane: Pane
         let count: Int
         let isSelected: Bool
+        var size: CGFloat = 9.5
+        var dimmed: Bool = false
 
         var body: some View {
-            Text(label)
-                .font(.system(size: 9.5, weight: .medium, design: .monospaced))
-                .foregroundStyle(Theme.textSecondary.opacity(isSelected ? 0.95 : 0.7))
+            Text(Self.label(pane: pane, count: count))
+                .font(.system(size: size, weight: .medium, design: .monospaced))
+                .foregroundStyle(Theme.textSecondary.opacity(
+                    dimmed ? (isSelected ? 0.60 : 0.45)
+                           : (isSelected ? 0.95 : 0.7)))
                 .lineLimit(1)
                 .truncationMode(.head)
         }
 
-        private var label: String {
+        static func label(pane: Pane, count: Int) -> String {
             var parts: [String] = []
             if let host = pane.remoteHost, !host.isEmpty {
                 parts.append(host)
             } else if let cwd = pane.cwd, !cwd.isEmpty {
-                parts.append(Self.tildePath(cwd))
+                parts.append(tildePath(cwd))
             }
             if count > 1 { parts.append("\(count) panes") }
             if parts.isEmpty { parts.append("~") }

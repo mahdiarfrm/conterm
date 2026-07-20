@@ -293,6 +293,12 @@ struct SettingsPanel: View {
                         }
                     }
                 }
+                SettingsRow(title: "Toolbar collapse button",
+                            subtitle: "Chevron circle at the right end of the horizontal tab bar that tucks the toolbar cluster away. Hiding the chevron also brings the cluster back.") {
+                    Toggle("", isOn: $prefs.showToolbarCollapse.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
                 SettingsRow(title: "Efficient rendering",
                             subtitle: "Redraw the terminal only when its output changes, not on every screen refresh. Fast scrolling may tear slightly. Relaunch to fully apply.") {
                     Toggle("", isOn: Binding(

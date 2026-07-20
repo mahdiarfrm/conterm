@@ -52,6 +52,89 @@ struct TabBar: View {
         barWidth > 0 && barWidth < (prefs.enabledWidgets.isEmpty ? 940 : 1180)
     }
 
+    /// Measured width of the trailing toolbar cluster. The cluster's
+    /// size swings hugely with the enabled widgets, so the mini-pill
+    /// breakpoint must use the real number — a fixed estimate either
+    /// never fires with widgets on or fires constantly without them.
+    @State private var clusterWidth: CGFloat = 0
+
+    /// The toolbar cluster is tucked away behind the collapse chevron.
+    /// Hiding the chevron in Settings force-shows the cluster — with no
+    /// chevron there'd be no way to re-expand from the bar.
+    private var tucked: Bool {
+        prefs.toolbarCollapsed && prefs.showToolbarCollapse
+    }
+
+    /// Natural width of everything the bar must seat — pills at full
+    /// labels, tray tags, the measured cluster, fixed chrome. Text
+    /// widths are measured, not averaged: each pill's title plus its
+    /// fixed chrome (dot, spacing, padding, row gap = 44), the
+    /// always-reserved close slot (26), and the ⌘N badge — hidden by
+    /// opacity, not removed, so the first nine pills carry its ~40pt
+    /// footprint even at rest. A cluster measurement of 0 means the
+    /// preference hasn't landed yet, so assume a typical cluster rather
+    /// than none. The base covers the bar margins, new-tab disc, and
+    /// collapse chevron.
+    private func neededWidth() -> CGFloat {
+        var needed: CGFloat = 90
+        needed += tucked ? 40 : (clusterWidth > 0 ? clusterWidth : 320)
+        for (i, tab) in state.tabs.enumerated() {
+            let title = tab.title.isEmpty ? "shell" : tab.title
+            needed += TabPill.textWidth(title, size: 12) + 70 + (i < 9 ? 40 : 0)
+        }
+        for g in tabGroups.groups
+        where state.tabs.contains(where: { $0.groupID == g.id }) {
+            needed += TabPill.textWidth(g.name, size: 11) + 56
+        }
+        return needed
+    }
+
+    /// Number-only tab pills: when the bar can't give every tab a
+    /// labelled pill, all pills collapse at once to dot + number
+    /// instead of truncating titles into blank slivers. Flips a touch
+    /// before true exhaustion — a pill showing its number beats one
+    /// showing three letters of its title.
+    private var miniPills: Bool {
+        barWidth > 0 && neededWidth() > barWidth - 24
+    }
+
+    /// Directory line under each pill's title. Stacked, it costs no
+    /// width — it head-truncates to the pill — so it rides along
+    /// whenever the pills are labelled at all.
+    private var showsDirMeta: Bool { !miniPills }
+
+    /// Explicit per-pill widths: the bar's free width is dealt to ALL
+    /// pills equally on top of each one's natural width, tray members
+    /// included — the HStack's own distribution can't reach across the
+    /// tray boundary (a tray counts as one child, starving its pills).
+    /// Under-supply compresses proportionally instead; the per-pill
+    /// number rule and the global mini flip take over from there.
+    private var pillWidths: [UUID: CGFloat] {
+        guard barWidth > 0, !miniPills else { return [:] }
+        var ideals: [(UUID, CGFloat)] = []
+        for (i, tab) in state.tabs.enumerated() {
+            let title = tab.title.isEmpty ? "shell" : tab.title
+            let w = TabPill.textWidth(title, size: 12) + 64 + (i < 9 ? 41 : 0)
+            ideals.append((tab.id, w))
+        }
+        let total = ideals.reduce(0) { $0 + $1.1 }
+        var chrome: CGFloat = 90
+        chrome += tucked ? 40 : (clusterWidth > 0 ? clusterWidth : 320)
+        chrome += CGFloat(ideals.count) * 6
+        for g in tabGroups.groups
+        where state.tabs.contains(where: { $0.groupID == g.id }) {
+            chrome += TabPill.textWidth(g.name, size: 11) + 56
+        }
+        let available = barWidth - chrome
+        guard total > 0, available > 0 else { return [:] }
+        if available >= total {
+            let bonus = (available - total) / CGFloat(ideals.count)
+            return Dictionary(uniqueKeysWithValues: ideals.map { ($0, $1 + bonus) })
+        }
+        let scale = available / total
+        return Dictionary(uniqueKeysWithValues: ideals.map { ($0, $1 * scale) })
+    }
+
     var body: some View {
         Group {
             switch orientation {
@@ -68,27 +151,73 @@ struct TabBar: View {
     // MARK: - Horizontal
 
     private var horizontal: some View {
-        HStack(spacing: 6) {
+        let widths = pillWidths
+        return HStack(spacing: 6) {
             HStack(spacing: 6) {
-                ForEach(state.tabs) { tab in
-                    pillCell(for: tab)
+                ForEach(ungroupedTabs) { tab in
+                    pillCell(for: tab, draggable: true, mini: miniPills,
+                             showDir: showsDirMeta, width: widths[tab.id])
+                }
+                ForEach(tabGroups.groups) { group in
+                    horizontalGroupTray(group, widths: widths)
                 }
             }
             .animation(Theme.Spring.soft, value: state.selectedID)
             .animation(Theme.Spring.soft, value: state.tabs.map(\.id))
+            .animation(Theme.Spring.soft, value: state.tabs.map(\.groupID))
+            .animation(Theme.Spring.soft, value: tabGroups.groups)
+            .animation(Theme.Spring.soft, value: miniPills)
+            .animation(Theme.Spring.soft, value: showsDirMeta)
+            // The pill strip's gaps must not double as window-drag
+            // handles — a near-miss on a tight pill would yank the
+            // window instead of starting a tab drag.
+            .background(WindowDragBlocker())
+            // Content-hugging pills need this: without it the HStack
+            // splits free width EQUALLY between the strip and the
+            // trailing Spacer, compressing pills to numbers while the
+            // bar shows empty space. Priority sizes the strip at its
+            // natural width first; the Spacer gets true leftovers.
+            .layoutPriority(1)
 
             NewTabButton { state.addTab() }
                 .padding(.leading, 2)
 
             Spacer(minLength: 0)
-            fusedToolbarCluster
+            if tucked {
+                // An available update stays surfaced even with the
+                // cluster tucked away — it's transient and actionable.
+                UpdateIndicatorButton(compact: true)
+            } else {
+                fusedToolbarCluster
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: ToolbarClusterWidthKey.self,
+                                               value: proxy.size.width)
+                    })
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    // Same tier as the pill strip, so the Spacer between
+                    // them can't starve either side.
+                    .layoutPriority(1)
+            }
+            if prefs.showToolbarCollapse {
+                ToolbarCollapseButton()
+            }
         }
+        .animation(Theme.Spring.crisp, value: prefs.toolbarCollapsed)
+        .animation(Theme.Spring.crisp, value: prefs.showToolbarCollapse)
         .padding(.horizontal, 8)
         .frame(height: Theme.tabBarHeight)
         .background(GeometryReader { proxy in
             Color.clear.preference(key: TabBarWidthKey.self, value: proxy.size.width)
         })
         .onPreferenceChange(TabBarWidthKey.self) { barWidth = $0 }
+        // Keep the last real measurement through a collapse (the pref
+        // reverts to 0 while the cluster is out of the tree): on
+        // re-expand the pills then know their final widths immediately,
+        // so the whole bar settles in ONE animation instead of
+        // re-dealing once the cluster has re-measured mid-flight.
+        .onPreferenceChange(ToolbarClusterWidthKey.self) {
+            if $0 > 0 { clusterWidth = $0 }
+        }
         .animation(Theme.Spring.snappy, value: prefs.enabledWidgets)
         .animation(Theme.Spring.snappy, value: hideStats)
         .animation(Theme.Spring.snappy, value: compactPills)
@@ -122,8 +251,14 @@ struct TabBar: View {
                     VStack(alignment: .leading, spacing: 3) {
                         let ungrouped = ungroupedTabs
                         ForEach(Array(ungrouped.enumerated()), id: \.element.id) { i, tab in
-                            pillCell(for: tab)
+                            pillCell(for: tab, draggable: true)
                                 .frame(maxWidth: .infinity)
+                                // Dropping one loose tab on another forms a
+                                // fresh group of the two.
+                                .modifier(TabDropTarget(accent: Theme.highlight,
+                                                        corner: Theme.pillCorner) {
+                                    groupDropped($0, with: tab)
+                                })
                                 .modifier(RevealCascade(revealed: revealed, row: i))
                         }
                         ForEach(Array(tabGroups.groups.enumerated()), id: \.element.id) { i, group in
@@ -131,7 +266,10 @@ struct TabBar: View {
                                 .modifier(RevealCascade(revealed: revealed,
                                                         row: ungrouped.count + i))
                         }
-                        VerticalNewTabRow { _ = state.addTab() }
+                        HStack(spacing: 4) {
+                            VerticalNewTabRow { _ = state.addTab() }
+                            NewGroupButton()
+                        }
                             .padding(.top, 6)
                             .padding(.leading, 2)
                             .modifier(RevealCascade(revealed: revealed,
@@ -272,10 +410,71 @@ struct TabBar: View {
 
     // MARK: - Tree / folders
 
-    /// Tabs not in any (existing) group — rendered flat at the top of the
-    /// sidebar, above the group folders.
+    /// Tabs not in any (existing) group — rendered flat: at the top of
+    /// the sidebar (above the group folders), or leading the horizontal
+    /// bar (before the group trays).
     private var ungroupedTabs: [Tab] {
         state.tabs.filter { tabGroups.group(id: $0.groupID) == nil }
+    }
+
+    /// Horizontal-bar group: the group's pills sit together on one
+    /// tinted tray with a name tag at its leading edge, so the group
+    /// reads as a single object rather than scattered pills sharing a
+    /// stripe. The tag opens the rename/color editor; the tray accepts
+    /// tab drops and carries the group's context menu.
+    @ViewBuilder
+    private func horizontalGroupTray(_ group: TabGroup,
+                                     widths: [UUID: CGFloat] = [:]) -> some View {
+        let groupTabs = state.tabs.filter { $0.groupID == group.id }
+        if !groupTabs.isEmpty {
+            let color = TabGroup.color(forKey: group.colorKey)
+            let corner = Theme.pillCorner + 3
+            HStack(spacing: 5) {
+                Button { state.beginRenameGroup(group.id) } label: {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(color)
+                            .frame(width: 7, height: 7)
+                            .shadow(color: color.opacity(0.6), radius: 2)
+                        Text(group.name)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                    .padding(.leading, 9)
+                    .padding(.trailing, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Rename / recolor group")
+                ForEach(groupTabs) { tab in
+                    pillCell(for: tab, inGroupFolder: true, draggable: true,
+                             mini: miniPills, showDir: showsDirMeta,
+                             width: widths[tab.id])
+                }
+            }
+            .padding(3)
+            .background(
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .fill(color.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .strokeBorder(color.opacity(0.35), lineWidth: 1)
+            )
+            .contextMenu {
+                Button("Rename / Color…") { state.beginRenameGroup(group.id) }
+                Button("Ungroup Tabs") {
+                    withAnimation(Theme.Spring.soft) {
+                        for t in groupTabs { tabGroups.assign(t, to: nil) }
+                    }
+                }
+            }
+            .modifier(TabDropTarget(accent: color, corner: corner) {
+                assignDropped($0, to: group.id)
+            })
+        }
     }
 
     /// One collapsible group folder: a header that owns the group color, with
@@ -289,6 +488,23 @@ struct TabBar: View {
                             count: groupTabs.count, collapsed: group.collapsed) {
                 withAnimation(Theme.Spring.soft) { tabGroups.toggleCollapsed(group.id) }
             }
+            .contextMenu {
+                Button("Add Current Tab") {
+                    if let sel = state.selectedTab {
+                        withAnimation(Theme.Spring.soft) { tabGroups.assign(sel, to: group.id) }
+                    }
+                }
+                .disabled(state.selectedTab?.groupID == group.id)
+                Button("Rename / Color…") { state.beginRenameGroup(group.id) }
+                Button("Ungroup Tabs") {
+                    withAnimation(Theme.Spring.soft) {
+                        for t in groupTabs { tabGroups.assign(t, to: nil) }
+                    }
+                }
+            }
+            .modifier(TabDropTarget(accent: color, corner: 7) {
+                assignDropped($0, to: group.id)
+            })
             .padding(.top, 2)
             if !group.collapsed {
                 ForEach(groupTabs) { tab in
@@ -297,11 +513,37 @@ struct TabBar: View {
                             .fill(color.opacity(0.4))
                             .frame(width: 2)
                             .padding(.vertical, 3)
-                        pillCell(for: tab, inGroupFolder: true)
+                        pillCell(for: tab, inGroupFolder: true, draggable: true)
                             .frame(maxWidth: .infinity)
+                            .modifier(TabDropTarget(accent: color,
+                                                    corner: Theme.pillCorner) {
+                                assignDropped($0, to: group.id)
+                            })
                     }
                     .padding(.leading, 7)
                 }
+            }
+        }
+    }
+
+    /// Drag-to-group plumbing. Assign lands a dragged tab in an existing
+    /// group; `groupDropped` handles a drop on a loose row — join the
+    /// target's group if it has one, otherwise mint a group holding both.
+    private func assignDropped(_ id: UUID, to groupID: UUID?) {
+        guard let tab = state.tabs.first(where: { $0.id == id }) else { return }
+        withAnimation(Theme.Spring.soft) { tabGroups.assign(tab, to: groupID) }
+    }
+
+    private func groupDropped(_ id: UUID, with target: Tab) {
+        guard id != target.id,
+              let dragged = state.tabs.first(where: { $0.id == id }) else { return }
+        withAnimation(Theme.Spring.soft) {
+            if let gid = target.groupID, tabGroups.group(id: gid) != nil {
+                tabGroups.assign(dragged, to: gid)
+            } else {
+                let g = tabGroups.create()
+                tabGroups.assign(target, to: g.id)
+                tabGroups.assign(dragged, to: g.id)
             }
         }
     }
@@ -310,7 +552,11 @@ struct TabBar: View {
 
     @ViewBuilder
     private func pillCell(for tab: Tab, compact: Bool = false,
-                          inGroupFolder: Bool = false) -> some View {
+                          inGroupFolder: Bool = false,
+                          draggable: Bool = false,
+                          mini: Bool = false,
+                          showDir: Bool = false,
+                          width: CGFloat? = nil) -> some View {
         let index = (state.tabs.firstIndex(where: { $0.id == tab.id }) ?? 0) + 1
         let selected = state.selectedID == tab.id
         TabPill(
@@ -321,8 +567,16 @@ struct TabBar: View {
             onClose:    { state.closeTab(tab) },
             onBeginRename: { state.beginRename(tab) },
             compact: compact,
-            inGroupFolder: inGroupFolder
+            inGroupFolder: inGroupFolder,
+            draggable: draggable,
+            mini: mini,
+            showDir: showDir
         )
+        // Ideal/max only, never min: a hard `frame(width:)` makes the
+        // pill rigid, and the window enforces its SwiftUI content's
+        // minimum — re-expanding the toolbar would then grow the whole
+        // window instead of compressing the pills.
+        .frame(idealWidth: width, maxWidth: width)
         .background { selectionGlow(selected, compact: compact) }
     }
 
@@ -790,6 +1044,47 @@ private struct TabBarWidthKey: PreferenceKey {
     }
 }
 
+/// Measured width of the horizontal bar's toolbar cluster — feeds the
+/// mini-pill breakpoint. Reverts to 0 while the cluster is collapsed.
+private struct ToolbarClusterWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// Trailing chevron pill on the horizontal bar: tucks the toolbar
+/// cluster (stats widgets, layout switcher, bell / search / ⌘K) out of
+/// the bar and brings it back, freeing the row for tab pills. The
+/// vertical sidebar never shows it — its cluster lives in the bottom
+/// plate and doesn't crowd the tabs.
+private struct ToolbarCollapseButton: View {
+    @EnvironmentObject var prefs: Preferences
+    @State private var hovering = false
+
+    var body: some View {
+        Button {
+            withAnimation(Theme.Spring.crisp) { prefs.toolbarCollapsed.toggle() }
+        } label: {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(hovering ? Theme.textPrimary : Theme.textSecondary)
+                .rotationEffect(.degrees(prefs.toolbarCollapsed ? 180 : 0))
+                // Equal sides turn the glass capsule into a full circle.
+                .frame(width: TabBar.toolbarPillHeight,
+                       height: TabBar.toolbarPillHeight)
+                .glassPill()
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(prefs.toolbarCollapsed ? "Show toolbar" : "Hide toolbar")
+        .onHover { hovering = $0 }
+        .scaleEffect(hovering ? 1.12 : 1.0)
+        .animation(Theme.Spring.snappy, value: hovering)
+        .animation(Theme.Spring.crisp, value: prefs.toolbarCollapsed)
+    }
+}
+
 private struct UpdateIndicatorButton: View {
     @EnvironmentObject var updates: UpdateChecker
     @Environment(\.controlActiveState) private var controlActive
@@ -925,6 +1220,32 @@ struct FloatingLightsAutohidePill: View {
         // otherwise push the auto-hide icon on top of the native
         // traffic lights (the lights' x is fixed at the window edge).
         .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+/// "Drop a tab here" target: rings the wrapped view in the target's
+/// accent while a tab drag hovers it, and resolves the dragged tab's id
+/// on release. Only `TabDrag`'s private type triggers it — foreign drags
+/// (text, files) pass through untouched. The drop itself is handled by
+/// the AppKit `TabDropCatcher` overlay (see its note on why not `.onDrop`).
+struct TabDropTarget: ViewModifier {
+    let accent: Color
+    let corner: CGFloat
+    let onTab: @MainActor (UUID) -> Void
+    @State private var targeted = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(TabDropCatcher(
+                onTargeted: { targeted = $0 },
+                onDropTab: onTab))
+            .overlay(
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .strokeBorder(accent, lineWidth: 1.5)
+                    .opacity(targeted ? 0.9 : 0)
+                    .allowsHitTesting(false)
+            )
+            .animation(Theme.Spring.snappy, value: targeted)
     }
 }
 

@@ -280,6 +280,18 @@ final class Preferences: ObservableObject {
     @Published var autoHideSidebar: Bool {
         didSet { ud.set(autoHideSidebar, forKey: K.autoHideSidebar) }
     }
+    /// Horizontal mode only: tuck the tab bar's trailing toolbar cluster
+    /// (stats widgets, layout switcher, bell / search / ⌘K) away, leaving
+    /// the collapse chevron as the way back. Frees the bar for tab pills.
+    @Published var toolbarCollapsed: Bool {
+        didSet { ud.set(toolbarCollapsed, forKey: K.toolbarCollapsed) }
+    }
+    /// Show the collapse chevron at the bar's trailing edge. Hiding it
+    /// also brings the cluster back — with no chevron there'd be no way
+    /// to re-expand from the bar.
+    @Published var showToolbarCollapse: Bool {
+        didSet { ud.set(showToolbarCollapse, forKey: K.showToolbarCollapse) }
+    }
     /// Stop libghostty presenting the terminal on every display refresh
     /// (`window-vsync = false`). Conterm's window is non-opaque so the
     /// glass backdrop shows through; every surface present then makes
@@ -370,6 +382,8 @@ final class Preferences: ObservableObject {
         static let kubeRememberContext = "conterm.kubeRememberContext"
         static let kubeWatchCluster = "conterm.kubeWatchCluster"
         static let autoHideSidebar  = "conterm.autoHideSidebar"
+        static let toolbarCollapsed = "conterm.toolbarCollapsed"
+        static let showToolbarCollapse = "conterm.showToolbarCollapse"
         static let lowPowerRendering = "conterm.lowPowerRendering"
         static let useDefaultConfig = "conterm.useDefaultConfig"
         static let lightGlass       = "conterm.lightGlass"
@@ -498,6 +512,8 @@ final class Preferences: ObservableObject {
         self.kubeRememberContext    = ud.object(forKey: K.kubeRememberContext) as? Bool ?? false
         self.kubeWatchCluster       = ud.object(forKey: K.kubeWatchCluster) as? Bool ?? false
         self.autoHideSidebar        = ud.object(forKey: K.autoHideSidebar) as? Bool ?? false
+        self.toolbarCollapsed       = ud.object(forKey: K.toolbarCollapsed) as? Bool ?? true
+        self.showToolbarCollapse    = ud.object(forKey: K.showToolbarCollapse) as? Bool ?? true
         self.lowPowerRendering      = ud.object(forKey: K.lowPowerRendering) as? Bool ?? true
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
         self.lightGlass             = ud.object(forKey: K.lightGlass) as? Bool ?? false
