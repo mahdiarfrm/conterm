@@ -205,12 +205,6 @@ struct AppView: View {
 
                 paneArea
                     .id("paneArea")
-                    // Sidebar modes (no top tab bar) reserve the window's
-                    // title-bar band at the top — its real height, from the
-                    // style mask — so the active pane's edge clears the
-                    // traffic-light region instead of riding the window top.
-                    // Horizontal mode gets this clearance from the tab bar.
-                    .padding(.top, isSidebar ? Self.titleBarHeight : 0)
             }
         }
         .animation(Theme.Spring.soft, value: sidebarFloating)
@@ -375,7 +369,8 @@ struct AppView: View {
     /// tab's pane tree + live shell across tab switches. The crossfade
     /// is what the user sees.
     private var paneArea: some View {
-        ZStack {
+        let isSidebar = prefs.tabOrientation != .horizontal
+        return ZStack {
             if state.tabs.isEmpty {
                 Text("No tabs open")
                     .foregroundStyle(Theme.textSecondary)
@@ -396,7 +391,12 @@ struct AppView: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
-        .padding(.top, 4)
+        // Sidebar modes have no tab bar above, so the tile floats in an
+        // even 12 pt frame on all sides — a tighter top inset leaves the
+        // tile's stroke riding the window edge as a stray hairline.
+        // Horizontal mode keeps 4 pt; the tab bar's tuned spacing above
+        // supplies the rest.
+        .padding(.top, isSidebar ? 12 : 4)
     }
 
 

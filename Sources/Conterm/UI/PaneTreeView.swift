@@ -537,6 +537,11 @@ final class PaneBox: NSView {
         self.chrome = NSHostingView(rootView: PaneChrome(
             pane: pane, prefs: prefs, isActive: false, index: 0,
             recomputeAgentPhase: { [weak tab] in tab?.recomputeAgentPhase() }))
+        // The tile can reach into the window's title-bar band; with safe
+        // areas on, the hosting view shifts its SwiftUI content down by the
+        // band height wherever the two overlap — border and dim drawn
+        // mid-pane. Chrome must track the tile exactly, so opt out.
+        chrome.safeAreaRegions = []
         super.init(frame: .zero)
         wantsLayer = true
         // Rounded tile behind the surface. masksToBounds stays false so the
@@ -680,18 +685,24 @@ struct PaneChrome: View {
             // Decorative layers — non-interactive so clicks reach the surface.
             Group {
                 if !isActive {
-                    RoundedRectangle(cornerRadius: corner - 1, style: .continuous)
+                    // Full-bleed: an inset dim leaves a sliver of lit
+                    // content at the tile edge and corners, which reads as
+                    // a stray bright rim against the backdrop's top band.
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .fill(Color.black.opacity(0.32))
-                        .padding(1)
                 }
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .stroke(Color.white.opacity(isActive ? 0.32 : 0.07),
-                            lineWidth: isActive ? 1.5 : 0.5)
-                    .blendMode(.plusLighter)
+                // Inactive tiles carry only a whisper of definition. The
+                // additive stroke is focus-only — plusLighter lights up
+                // over the aurora backdrop, so on an inactive tile it
+                // reads as a stray white edge where the tile meets the
+                // window's bright top band.
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
                     .strokeBorder(isActive ? Color.white.opacity(0.55) : Color.white.opacity(0.05),
                                   lineWidth: isActive ? 1 : 0.5)
                 if isActive {
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .stroke(Color.white.opacity(0.32), lineWidth: 1.5)
+                        .blendMode(.plusLighter)
                     RoundedRectangle(cornerRadius: corner + 2, style: .continuous)
                         .strokeBorder(focusTint.opacity(paneKubeDanger ? 0.30 : 0.18),
                                       lineWidth: 3)
