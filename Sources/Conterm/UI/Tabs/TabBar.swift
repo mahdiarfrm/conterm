@@ -58,6 +58,20 @@ struct TabBar: View {
     /// never fires with widgets on or fires constantly without them.
     @State private var clusterWidth: CGFloat = 0
 
+    /// Measured width of what stands in for the cluster while it's
+    /// tucked — nothing at all unless an update is pending. Measured,
+    /// not estimated: width reserved here that the bar doesn't spend is
+    /// width the pills never reclaim, and it shows as dead space in
+    /// front of the collapse chevron.
+    @State private var tuckedWidth: CGFloat = 0
+
+    /// Width the trailing side of the bar claims beyond the fixed
+    /// chrome, in whichever state it's in.
+    private var trailingWidth: CGFloat {
+        if tucked { return tuckedWidth }
+        return clusterWidth > 0 ? clusterWidth : 320
+    }
+
     /// The toolbar cluster is tucked away behind the collapse chevron.
     /// Hiding the chevron in Settings force-shows the cluster — with no
     /// chevron there'd be no way to re-expand from the bar.
@@ -77,7 +91,7 @@ struct TabBar: View {
     /// collapse chevron.
     private func neededWidth() -> CGFloat {
         var needed: CGFloat = 90
-        needed += tucked ? 40 : (clusterWidth > 0 ? clusterWidth : 320)
+        needed += trailingWidth
         for (i, tab) in state.tabs.enumerated() {
             let title = tab.title.isEmpty ? "shell" : tab.title
             needed += TabPill.textWidth(title, size: 12) + 70 + (i < 9 ? 40 : 0)
@@ -119,7 +133,7 @@ struct TabBar: View {
         }
         let total = ideals.reduce(0) { $0 + $1.1 }
         var chrome: CGFloat = 90
-        chrome += tucked ? 40 : (clusterWidth > 0 ? clusterWidth : 320)
+        chrome += trailingWidth
         chrome += CGFloat(ideals.count) * 6
         for g in tabGroups.groups
         where state.tabs.contains(where: { $0.groupID == g.id }) {
@@ -187,6 +201,10 @@ struct TabBar: View {
                 // An available update stays surfaced even with the
                 // cluster tucked away — it's transient and actionable.
                 UpdateIndicatorButton(compact: true)
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: TuckedTrailingWidthKey.self,
+                                               value: proxy.size.width)
+                    })
             } else {
                 fusedToolbarCluster
                     .background(GeometryReader { proxy in
@@ -218,6 +236,10 @@ struct TabBar: View {
         .onPreferenceChange(ToolbarClusterWidthKey.self) {
             if $0 > 0 { clusterWidth = $0 }
         }
+        // Unlike the cluster's, this measurement tracks 0 faithfully —
+        // 0 is its resting value, and a stale width held past an
+        // update's install would keep the pills short of the chevron.
+        .onPreferenceChange(TuckedTrailingWidthKey.self) { tuckedWidth = $0 }
         .animation(Theme.Spring.snappy, value: prefs.enabledWidgets)
         .animation(Theme.Spring.snappy, value: hideStats)
         .animation(Theme.Spring.snappy, value: compactPills)
@@ -1047,6 +1069,15 @@ private struct TabBarWidthKey: PreferenceKey {
 /// Measured width of the horizontal bar's toolbar cluster — feeds the
 /// mini-pill breakpoint. Reverts to 0 while the cluster is collapsed.
 private struct ToolbarClusterWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// Measured width of the tucked bar's trailing slot — 0 unless an
+/// update pill is showing. Feeds the same width deal as the cluster.
+private struct TuckedTrailingWidthKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
