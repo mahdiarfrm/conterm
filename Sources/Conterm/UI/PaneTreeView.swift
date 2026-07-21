@@ -634,9 +634,14 @@ final class PaneBox: NSView {
         wantsLayer = true
         // Rounded tile behind the surface. masksToBounds stays false so the
         // chrome's focus halo isn't clipped; the surface clips itself below.
+        // Every rounded layer here carries the continuous curve: the
+        // SwiftUI chrome traces `.continuous` shapes, and CA's default
+        // circular arc parts from that squircle at the corners.
         layer?.cornerRadius = Theme.paneCorner
+        layer?.cornerCurve = .continuous
 
         tileGradient.cornerRadius = Theme.paneCorner
+        tileGradient.cornerCurve = .continuous
         tileGradient.masksToBounds = true
         // Anchored around Theme.paneTile: a touch of top light falling to
         // a deeper floor, so the tile has depth under a translucent
@@ -652,6 +657,7 @@ final class PaneBox: NSView {
         layer?.insertSublayer(tileGradient, at: 0)
 
         tileGrain.cornerRadius = Theme.paneCorner
+        tileGrain.cornerCurve = .continuous
         tileGrain.masksToBounds = true
         tileGrain.backgroundColor = NSColor(patternImage: Self.grainImage).cgColor
         tileGrain.opacity = 0.045
@@ -661,7 +667,10 @@ final class PaneBox: NSView {
         layer?.insertSublayer(tileTopLight, above: tileGrain)
 
         host.wantsLayer = true
+        // Sits 1 pt inside the tile (see `layout`), so it sheds 1 pt of
+        // radius to stay concentric with it.
         host.layer?.cornerRadius = Theme.paneCorner - 1
+        host.layer?.cornerCurve = .continuous
         host.layer?.masksToBounds = true
         addSubview(host)
         addSubview(chrome)
@@ -802,6 +811,19 @@ struct PaneChrome: View {
         paneKubeDanger ? Color(red: 1.0, green: 0.30, blue: 0.30) : Theme.highlight
     }
 
+    /// One rim stroke concentric with the tile. `inset` is the stroke's
+    /// centerline distance inside the tile edge; the radius must shed
+    /// the same amount, since a rounded rect held at full radius on an
+    /// inset frame bows off the curve it traces and opens a wedge of
+    /// backdrop at every corner.
+    private func rim<S: ShapeStyle>(_ style: S, width: CGFloat,
+                                    inset: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: max(0, Theme.paneCorner - inset),
+                         style: .continuous)
+            .stroke(style, lineWidth: width)
+            .padding(inset)
+    }
+
     var body: some View {
         let corner = Theme.paneCorner
         ZStack {
@@ -819,24 +841,20 @@ struct PaneChrome: View {
                 // over the aurora backdrop, so on an inactive tile it
                 // reads as a stray white edge where the tile meets the
                 // window's bright top band.
-                RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .strokeBorder(isActive ? Color.white.opacity(0.55) : Color.white.opacity(0.05),
-                                  lineWidth: isActive ? 1 : 0.5)
+                rim(isActive ? Color.white.opacity(0.55) : Color.white.opacity(0.05),
+                    width: isActive ? 1 : 0.5,
+                    inset: isActive ? 0.5 : 0.25)
                 if isActive {
-                    RoundedRectangle(cornerRadius: corner, style: .continuous)
-                        .stroke(Color.white.opacity(0.32), lineWidth: 1.5)
+                    rim(Color.white.opacity(0.32), width: 1.5, inset: 0.75)
                         .blendMode(.plusLighter)
-                    RoundedRectangle(cornerRadius: corner + 2, style: .continuous)
-                        .strokeBorder(focusTint.opacity(paneKubeDanger ? 0.30 : 0.18),
-                                      lineWidth: 3)
-                    RoundedRectangle(cornerRadius: corner, style: .continuous)
-                        .strokeBorder(focusTint.opacity(0.75), lineWidth: 1.5)
+                    rim(focusTint.opacity(paneKubeDanger ? 0.30 : 0.18),
+                        width: 3, inset: 1.5)
+                    rim(focusTint.opacity(0.75), width: 1.5, inset: 0.75)
                 }
                 if dropTargeted {
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .fill(Theme.highlight.opacity(0.10))
-                    RoundedRectangle(cornerRadius: corner, style: .continuous)
-                        .strokeBorder(Theme.highlight.opacity(0.9), lineWidth: 2)
+                    rim(Theme.highlight.opacity(0.9), width: 2, inset: 1)
                 }
                 if pane.agent.phase != .idle {
                     AgentPill(status: pane.agent)
