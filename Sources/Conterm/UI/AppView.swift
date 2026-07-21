@@ -412,14 +412,14 @@ struct AppView: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 12)
+        .padding(.horizontal, Theme.paneInset)
+        .padding(.bottom, Theme.paneInset)
         // Sidebar modes have no tab bar above, so the tile floats in an
-        // even 12 pt frame on all sides — a tighter top inset leaves the
+        // even frame on all sides — a tighter top inset leaves the
         // tile's stroke riding the window edge as a stray hairline.
         // Horizontal mode keeps 4 pt; the tab bar's tuned spacing above
         // supplies the rest.
-        .padding(.top, isSidebar ? 12 : 4)
+        .padding(.top, isSidebar ? Theme.paneInset : 4)
     }
 
 

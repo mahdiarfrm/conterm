@@ -132,7 +132,14 @@ enum Theme {
     // corner stays moderate so the curve doesn't crowd whatever sits in
     // the corners (traffic lights, the collapse chevron).
     static let windowCorner:    CGFloat = 20
-    static let paneCorner:      CGFloat = 24
+    /// Gap between the pane tile and the window edge.
+    static let paneInset:       CGFloat = 12
+    /// The tile's curve reads as the window's own: equal radii, so both
+    /// corners turn at the same rate. This trades a constant gutter for
+    /// matched curvature — the gutter widens by √2 where the corners
+    /// turn, which a concentric radius (`windowCorner - paneInset`)
+    /// would hold flat at the cost of a visibly tighter tile corner.
+    static let paneCorner:      CGFloat = windowCorner
     // Capsule-adjacent on a ~28 pt tab pill.
     static let pillCorner:      CGFloat = 18
     static let tabBarHeight:    CGFloat = 38
