@@ -1,7 +1,17 @@
+import AppKit
 import Foundation
 import GhosttyKit
 
 extension Ghostty {
+    /// Open a URL libghostty detected under the cursor — a cmd+click on a
+    /// linkified URL, or an OSC 8 hyperlink. Requires an absolute URL with a
+    /// scheme so a stray non-URL match can't reach the workspace opener.
+    @MainActor
+    static func openDetectedURL(_ raw: String) {
+        guard let url = URL(string: raw), url.scheme != nil else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     /// Routes libghostty's surface-scoped action callbacks back to the right
     /// Swift `SurfaceController`. Storage is main-actor-isolated; callbacks
     /// originate off-thread, so registry lookups always bounce through main.
@@ -104,6 +114,14 @@ extension Ghostty {
                 let sb = action.action.scrollbar
                 decoded = .scrollbar(total: sb.total, offset: sb.offset,
                                      len: sb.len)
+            case GHOSTTY_ACTION_OPEN_URL:
+                // `url` is not guaranteed null-terminated — it carries an
+                // explicit length. Copy it here, while the buffer is alive.
+                let u = action.action.open_url
+                if let c = u.url {
+                    decoded = .openURL(String(decoding: Data(bytes: c, count: Int(u.len)),
+                                              as: UTF8.self))
+                } else { decoded = nil }
             default:
                 decoded = nil
             }
@@ -112,6 +130,13 @@ extension Ghostty {
 
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
+                    // Opening a link needs no surface controller (its target
+                    // may not even be a surface), so it's handled here rather
+                    // than routed through `SurfaceController.handle`.
+                    if case let .openURL(url) = decoded {
+                        Ghostty.openDetectedURL(url)
+                        return
+                    }
                     guard let h = surfaceHandle,
                           let ctrl = byHandle[h]?.controller else { return }
                     ctrl.handle(decoded: decoded)

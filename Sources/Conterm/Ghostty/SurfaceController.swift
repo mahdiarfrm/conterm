@@ -631,6 +631,9 @@ extension Ghostty {
             case endSearch
             /// Scrollbar geometry: total rows, offset, viewport rows.
             case scrollbar(total: UInt64, offset: UInt64, len: UInt64)
+            /// Core asks the app to open a link — a cmd+click on a
+            /// detected URL, or an OSC 8 hyperlink.
+            case openURL(String)
         }
 
         func handle(decoded: DecodedAction) {
@@ -700,6 +703,11 @@ extension Ghostty {
             case .scrollbar(let total, let offset, let len):
                 recenterIfNeeded(total: total, offset: offset, len: len)
                 onScrollbar?(total, offset, len)
+
+            case .openURL:
+                // App-scoped; SurfaceRegistry opens it without a surface
+                // controller, so it never reaches this router.
+                break
             }
         }
 
