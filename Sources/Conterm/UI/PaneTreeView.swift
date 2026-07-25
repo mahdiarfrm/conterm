@@ -298,6 +298,12 @@ final class PaneTreeView: NSView {
 
     private let dividerThickness: CGFloat = 6
 
+    /// Reach on each side of the drawn divider where the resize cursor shows
+    /// and a drag grabs the boundary. It overhangs the neighboring panes, so
+    /// `hitTest` must claim those points for self — otherwise the surface
+    /// underneath takes the click as a selection and the boundary never moves.
+    private let dividerGrab: CGFloat = 6
+
     init(app: Ghostty.App, state: AppState, notifications: NotificationStore, prefs: Preferences) {
         self.app = app
         self.state = state
@@ -412,6 +418,8 @@ final class PaneTreeView: NSView {
         computeFrames(root, in: bounds, into: &frames)
         for (id, box) in boxes { if let f = frames[id] { box.frame = f } }
         needsDisplay = true
+        // The divider rects moved; refresh the resize-cursor regions to match.
+        window?.invalidateCursorRects(for: self)
     }
 
     /// Pure layout: fills `out` with each leaf's frame and records the divider
@@ -482,15 +490,23 @@ final class PaneTreeView: NSView {
     // MARK: - Divider resize (drawn dividers; drag handled here, no NSView)
 
     private func divider(at point: CGPoint) -> (node: PaneNode, axis: SplitAxis, span: CGRect)? {
-        for d in dividers where d.rect.insetBy(dx: -3, dy: -3).contains(point) {
+        for d in dividers where d.rect.insetBy(dx: -dividerGrab, dy: -dividerGrab).contains(point) {
             return (d.node, d.axis, d.span)
         }
         return nil
     }
 
+    // A divider's grab zone overhangs the panes on either side; those points
+    // land on a PaneBox, whose surface would otherwise swallow the click as a
+    // selection. Claim them for the resize drag before the surface sees them.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if divider(at: convert(point, from: superview)) != nil { return self }
+        return super.hitTest(point)
+    }
+
     override func resetCursorRects() {
         for d in dividers {
-            addCursorRect(d.rect.insetBy(dx: -3, dy: -3),
+            addCursorRect(d.rect.insetBy(dx: -dividerGrab, dy: -dividerGrab),
                           cursor: d.axis == .horizontal ? .resizeLeftRight : .resizeUpDown)
         }
     }
