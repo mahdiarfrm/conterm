@@ -128,12 +128,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
 
-        // CONTERM_PREVIEW_UPDATE=1 forces the toolbar update pill on
-        // (no network, no real release) so the indicator can be eyeballed
-        // during development — mirrors the SPLASH_SCREEN preview hook.
-        if ProcessInfo.processInfo.environment["CONTERM_PREVIEW_UPDATE"] != nil {
+        // CONTERM_PREVIEW_UPDATE forces the toolbar update pill on (no
+        // network, no real release) so the indicator can be eyeballed
+        // during development — mirrors the SPLASH_SCREEN preview hook. The
+        // value picks the phase: `installing` / `downloading` preview those
+        // longer labels; anything else (e.g. `1`) previews `available`.
+        if let previewValue = ProcessInfo.processInfo.environment["CONTERM_PREVIEW_UPDATE"] {
+            let phase: UpdateChecker.Phase
+            switch previewValue.lowercased() {
+            case "installing":  phase = .installing
+            case "downloading": phase = .downloading
+            default:            phase = .available
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                UpdateChecker.shared.showPreview()
+                UpdateChecker.shared.showPreview(phase: phase)
             }
         } else if prefs.autoCheckUpdates {
             // Silent OTA check shortly after launch (off the

@@ -66,11 +66,12 @@ final class UpdateChecker: ObservableObject {
     }
 
     /// Dev/QA preview of the toolbar indicator without a published
-    /// release. Triggered by `CONTERM_PREVIEW_UPDATE=1` at launch.
-    /// Synthesizes an "available" state pointing at the live releases
-    /// page; since `zipURL` is nil, "Install & Relaunch" just opens
-    /// that page — nothing is downloaded or swapped.
-    func showPreview() {
+    /// release. Triggered by `CONTERM_PREVIEW_UPDATE` at launch; the value
+    /// picks the phase (`.available` default, or `.downloading` /
+    /// `.installing` for the longer labels). Points at the live releases
+    /// page with a nil `zipURL`, so "Install & Relaunch" just opens that
+    /// page — nothing is downloaded or swapped.
+    func showPreview(phase: Phase = .available) {
         // Empty notes → the install dialog shows the same generic copy a
         // real release-with-no-notes would, so the preview looks exactly
         // like the real prompt. zipURL stays nil, so Install harmlessly
@@ -80,7 +81,7 @@ final class UpdateChecker: ObservableObject {
             notes: "",
             zipURL: nil,
             htmlURL: URL(string: "https://github.com/\(repo)/releases")!)
-        phase = .available
+        self.phase = phase
     }
 
     func check(announce: Bool) async {
