@@ -8,6 +8,9 @@ struct TabBar: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Preferences
     @EnvironmentObject var tabGroups: TabGroupStore
+    /// Only to decide whether the tucked bar reserves a trailing slot for
+    /// the update pill — the pill itself observes the checker on its own.
+    @ObservedObject private var updates = UpdateChecker.shared
 
     /// One shared glow capsule that physically glides from the old tab
     /// to the new one on every switch (matchedGeometry). This is the
@@ -77,6 +80,16 @@ struct TabBar: View {
     /// chevron there'd be no way to re-expand from the bar.
     private var tucked: Bool {
         prefs.toolbarCollapsed && prefs.showToolbarCollapse
+    }
+
+    /// An update pill wants space on the tucked bar's trailing side. Idle
+    /// checks show nothing, so the slot collapses and the chevron closes
+    /// up against the new-tab disc.
+    private var tuckedUpdateVisible: Bool {
+        switch updates.phase {
+        case .available, .downloading, .installing: return true
+        default:                                    return false
+        }
     }
 
     /// Natural width of everything the bar must seat — pills at full
@@ -193,18 +206,24 @@ struct TabBar: View {
             // natural width first; the Spacer gets true leftovers.
             .layoutPriority(1)
 
+            // The new-tab disc stays grouped with the pills; the Spacer
+            // below opens the gap between that group and the trailing
+            // chevron (and the update pill, when one is pending).
             NewTabButton { state.addTab() }
                 .padding(.leading, 2)
 
             Spacer(minLength: 0)
             if tucked {
-                // An available update stays surfaced even with the
-                // cluster tucked away — it's transient and actionable.
-                UpdateIndicatorButton(compact: true)
-                    .background(GeometryReader { proxy in
-                        Color.clear.preference(key: TuckedTrailingWidthKey.self,
-                                               value: proxy.size.width)
-                    })
+                // A pending update rides the tucked bar's trailing side by
+                // the chevron — rendered only while one is pending, so an
+                // empty slot never widens the gap the Spacer already opens.
+                if tuckedUpdateVisible {
+                    UpdateIndicatorButton(compact: true)
+                        .background(GeometryReader { proxy in
+                            Color.clear.preference(key: TuckedTrailingWidthKey.self,
+                                                   value: proxy.size.width)
+                        })
+                }
             } else {
                 fusedToolbarCluster
                     .background(GeometryReader { proxy in
@@ -1161,6 +1180,10 @@ private struct UpdateIndicatorButton: View {
                     if !compact {
                         Text(label)
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            // Rigid: a squeezed cluster must collapse this to
+                            // the compact circle, never ellipsize the label
+                            // into a half-word sliver.
+                            .fixedSize()
                     }
                 }
                 .foregroundStyle(Theme.accent)
