@@ -171,6 +171,11 @@ final class Preferences: ObservableObject {
     @Published var showPaneTitleBar: Bool {
         didSet { ud.set(showPaneTitleBar, forKey: K.showPaneTitleBar) }
     }
+    /// Show the layout-mode switcher in the toolbar. OFF hides it for
+    /// people who stick with one layout.
+    @Published var showLayoutSwitcher: Bool {
+        didSet { ud.set(showLayoutSwitcher, forKey: K.showLayoutSwitcher) }
+    }
     /// Pulse a pane's border while its Claude agent is waiting on you
     /// (the "needs you" / attention state).
     @Published var blinkOnAttention: Bool {
@@ -381,6 +386,7 @@ final class Preferences: ObservableObject {
         static let paletteSeeds     = "conterm.paletteSeeds"
         static let widgetSeeds      = "conterm.widgetSeeds"
         static let showPaneTitleBar = "conterm.showPaneTitleBar"
+        static let showLayoutSwitcher = "conterm.showLayoutSwitcher"
         static let blinkOnAttention = "conterm.blinkOnAttention"
         static let paneCornerRadius = "conterm.paneCornerRadius"
         static let commandAlerts    = "conterm.commandAlerts"
@@ -487,6 +493,7 @@ final class Preferences: ObservableObject {
         }
         self.hiddenPaletteCommands  = hiddenCommands
         self.showPaneTitleBar       = ud.object(forKey: K.showPaneTitleBar) as? Bool ?? true
+        self.showLayoutSwitcher     = ud.object(forKey: K.showLayoutSwitcher) as? Bool ?? true
         self.blinkOnAttention       = ud.object(forKey: K.blinkOnAttention) as? Bool ?? true
         self.paneCornerRadius       = ud.object(forKey: K.paneCornerRadius) as? Double ?? 20
         self.commandAlerts          = ud.object(forKey: K.commandAlerts) as? Bool ?? true

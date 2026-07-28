@@ -309,6 +309,12 @@ struct SettingsPanel: View {
                         .toggleStyle(.switch)
                         .labelsHidden()
                 }
+                SettingsRow(title: "Layout switcher",
+                            subtitle: "The layout-mode segments in the toolbar. Turn off to hide the switcher if you stick with one layout.") {
+                    Toggle("", isOn: $prefs.showLayoutSwitcher.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
                 SettingsRow(title: "Blink when an agent needs you",
                             subtitle: "Pulse a pane's border in amber, and its tab's dot, while its Claude agent is waiting on your input.") {
                     Toggle("", isOn: $prefs.blinkOnAttention.withSound())

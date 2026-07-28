@@ -334,7 +334,7 @@ struct TabBar: View {
                 }
                 // Layout switcher above the bottom action bar.
                 HStack {
-                    LayoutModeSwitcher()
+                    if prefs.showLayoutSwitcher { LayoutModeSwitcher() }
                     Spacer(minLength: 0)
                 }
                 .padding(.bottom, 6)
@@ -789,7 +789,7 @@ struct TabBar: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
             UpdateIndicatorButton(compact: compactPills)
-            LayoutModeSwitcher()
+            if prefs.showLayoutSwitcher { LayoutModeSwitcher() }
             actionBar
         }
     }
