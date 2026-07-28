@@ -164,7 +164,10 @@ enum Theme {
     }
     // Capsule-adjacent on a ~28 pt tab pill.
     static let pillCorner:      CGFloat = 18
-    static let tabBarHeight:    CGFloat = 38
+    // A grouped-tab tray is ~38 pt (30 pill + 3 pad + 1 border each side); the
+    // bar needs a few points over that so the horizontal bar's clip doesn't
+    // shave the tray's bottom edge.
+    static let tabBarHeight:    CGFloat = 42
 
     // Springs — three flavors that get reused everywhere.
     enum Spring {
