@@ -827,6 +827,21 @@ struct PaneChrome: View {
     @State private var commandBadge: Pane.CommandResult?
     @State private var attentionGen = 0
 
+    /// `.key` only when this view's window is key and the app is frontmost.
+    /// The attention pulse is gated on it: an off-screen animation still
+    /// drives continuous compositor recomposites.
+    @Environment(\.controlActiveState) private var activeState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Mirrors `SystemPressure.wantsLowAnimation` (Low Power Mode or thermal
+    /// pressure) so a hot machine sheds the pulse.
+    @State private var systemLite = false
+
+    /// The attention rim animates only when it can actually be seen and the
+    /// machine isn't asking for less motion; otherwise it holds steady lit.
+    private var pulsesOnAttention: Bool {
+        prefs.blinkOnAttention && activeState == .key && !reduceMotion && !systemLite
+    }
+
     /// Focus-halo tint: red while this pane's kubectl points at
     /// production — its session override when set, the global context
     /// otherwise. SSH panes are exempt: their kubectl is the remote's,
@@ -852,6 +867,15 @@ struct PaneChrome: View {
                          style: .continuous)
             .stroke(style, lineWidth: width)
             .padding(inset)
+    }
+
+    /// The "needs you" rim at a given point in its cycle — `phase` 0…1.
+    private func attentionRim(_ phase: Double) -> some View {
+        let amber = Color(red: 1.0, green: 0.62, blue: 0.18)
+        return ZStack {
+            rim(amber.opacity(0.10 + 0.30 * phase), width: 3.5, inset: 1.75)
+            rim(amber.opacity(0.35 + 0.55 * phase), width: 1.6, inset: 0.8)
+        }
     }
 
     var body: some View {
@@ -885,6 +909,20 @@ struct PaneChrome: View {
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .fill(Theme.highlight.opacity(0.10))
                     rim(Theme.highlight.opacity(0.9), width: 2, inset: 1)
+                }
+                // "Claude needs you": an amber rim until you look. The loop is
+                // scoped inside this branch, so it only runs while the pane is
+                // in attention and stops the moment the state clears. When the
+                // pulse is gated off the rim holds mid-brightness, so the
+                // signal survives without a render loop.
+                if pane.agent.phase == .attention, prefs.blinkOnAttention {
+                    if pulsesOnAttention {
+                        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
+                            attentionRim(0.5 + 0.5 * sin(tl.date.timeIntervalSinceReferenceDate * 3.4))
+                        }
+                    } else {
+                        attentionRim(0.5)
+                    }
                 }
                 if pane.agent.phase != .idle {
                     AgentPill(status: pane.agent)
@@ -943,6 +981,7 @@ struct PaneChrome: View {
         }
         .animation(Theme.Spring.snappy, value: pane.agent)
         .animation(Theme.Spring.soft, value: isActive)
+        .onReceive(SystemPressure.shared.$wantsLowAnimation) { systemLite = $0 }
         .onChange(of: pane.lastCommand) { _, result in
             guard prefs.commandAlerts, let result,
                   result.failed || result.durationSeconds >= 2 else { return }

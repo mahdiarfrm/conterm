@@ -45,6 +45,21 @@ struct TabPill: View {
     /// Live rendered width (horizontal pills only) — drives `squeezed`.
     @State private var pillWidth: CGFloat = 0
 
+    /// `.key` only when this view's window is key and the app is frontmost.
+    /// The attention pulse is gated on it: an off-screen animation still
+    /// drives continuous compositor recomposites.
+    @Environment(\.controlActiveState) private var activeState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Mirrors `SystemPressure.wantsLowAnimation` (Low Power Mode or thermal
+    /// pressure) so a hot machine sheds the pulse.
+    @State private var systemLite = false
+
+    /// The dot animates only when it can actually be seen and the machine
+    /// isn't asking for less motion; otherwise it holds steady lit.
+    private var pulsesOnAttention: Bool {
+        prefs.blinkOnAttention && activeState == .key && !reduceMotion && !systemLite
+    }
+
     /// Width of `s` in the pills' system font, semibold — the selected
     /// weight, so the measure is the upper bound.
     static func textWidth(_ s: String, size: CGFloat,
@@ -339,14 +354,38 @@ struct TabPill: View {
             }
         }()
         let color = agentColor ?? baseColor
-        let lit = tab.agentPhase == .attention || isSelected
-        return Circle()
-            .fill(color)
+        let attention = tab.agentPhase == .attention
+        let lit = attention || isSelected
+        return Group {
+            // A background tab whose agent needs you pulses its dot so you can
+            // spot it from another tab. Loop scoped to the attention state, so
+            // it only runs while a tab is actually waiting.
+            if attention, pulsesOnAttention {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
+                    let pulse = 0.5 + 0.5 * sin(tl.date.timeIntervalSinceReferenceDate * 3.6)
+                    attentionDot(color, phase: pulse)
+                }
+            } else if attention, prefs.blinkOnAttention {
+                // Pulse gated off — hold mid-cycle so the signal survives
+                // without a render loop.
+                attentionDot(color, phase: 0.5)
+            } else {
+                Circle().fill(color)
+                    .frame(width: 6, height: 6)
+                    .shadow(color: lit ? color.opacity(0.6) : .clear, radius: lit ? 3 : 0)
+            }
+        }
+        .animation(Theme.Spring.snappy, value: isSelected)
+        .animation(Theme.Spring.snappy, value: tab.agentPhase)
+        .onReceive(SystemPressure.shared.$wantsLowAnimation) { systemLite = $0 }
+    }
+
+    /// The "needs you" dot at a given point in its cycle — `phase` 0…1.
+    private func attentionDot(_ color: Color, phase: Double) -> some View {
+        Circle().fill(color)
             .frame(width: 6, height: 6)
-            .shadow(color: lit ? color.opacity(0.6) : .clear,
-                    radius: lit ? 3 : 0)
-            .animation(Theme.Spring.snappy, value: isSelected)
-            .animation(Theme.Spring.snappy, value: tab.agentPhase)
+            .shadow(color: color.opacity(0.35 + 0.55 * phase), radius: 2 + 5 * phase)
+            .opacity(0.5 + 0.5 * phase)
     }
 
     /// Right-click submenu for browser-style tab groups.

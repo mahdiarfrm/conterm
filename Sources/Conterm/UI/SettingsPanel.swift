@@ -309,6 +309,12 @@ struct SettingsPanel: View {
                         .toggleStyle(.switch)
                         .labelsHidden()
                 }
+                SettingsRow(title: "Blink when an agent needs you",
+                            subtitle: "Pulse a pane's border in amber, and its tab's dot, while its Claude agent is waiting on your input.") {
+                    Toggle("", isOn: $prefs.blinkOnAttention.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
                 SettingsRow(title: "Efficient rendering",
                             subtitle: "Redraw the terminal only when its output changes, not on every screen refresh. Fast scrolling may tear slightly. Relaunch to fully apply.") {
                     Toggle("", isOn: Binding(
