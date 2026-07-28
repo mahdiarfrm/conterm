@@ -280,6 +280,7 @@ final class PaneTreeView: NSView {
     private weak var tree: PaneTree?
     private var cancellable: AnyCancellable?
     private var prefsCancellable: AnyCancellable?
+    private var cornerCancellable: AnyCancellable?
 
     /// Live pane container per leaf pane id. Reused across relayouts.
     private var boxes: [UUID: PaneBox] = [:]
@@ -317,6 +318,13 @@ final class PaneTreeView: NSView {
         // publisher fires before the value commits, so re-apply on the
         // next runloop turn.
         prefsCancellable = prefs.$opaquePanes
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.applyPaneBacking() }
+            }
+        // A corner-radius change relayouts live tiles so the new radius lands
+        // without a relaunch.
+        cornerCancellable = prefs.$paneCornerRadius
             .removeDuplicates()
             .sink { [weak self] _ in
                 DispatchQueue.main.async { self?.applyPaneBacking() }
@@ -752,6 +760,12 @@ final class PaneBox: NSView {
         tileTopLight.frame = CGRect(x: Theme.paneCorner, y: 0,
                                     width: max(0, bounds.width - Theme.paneCorner * 2),
                                     height: 1)
+        // Re-apply the (user-tunable) corner so a radius change reaches live
+        // tiles on relayout, not just freshly-built ones.
+        layer?.cornerRadius = Theme.paneCorner
+        tileGradient.cornerRadius = Theme.paneCorner
+        tileGrain.cornerRadius = Theme.paneCorner
+        host.layer?.cornerRadius = max(0, Theme.paneCorner - 1)
         CATransaction.commit()
         host.frame = bounds.insetBy(dx: 1, dy: 1)
         chrome.frame = bounds

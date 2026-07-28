@@ -171,6 +171,15 @@ final class Preferences: ObservableObject {
     @Published var showPaneTitleBar: Bool {
         didSet { ud.set(showPaneTitleBar, forKey: K.showPaneTitleBar) }
     }
+    /// Pane tile corner radius (0…24). Default 20 = the window's own radius;
+    /// lower it toward the ~10 pt system radius for tighter corners.
+    /// `Theme.paneCorner` reads this key.
+    @Published var paneCornerRadius: Double {
+        didSet {
+            ud.set(paneCornerRadius, forKey: K.paneCornerRadius)
+            Theme.reloadPaneCorner()   // Theme caches it for the tile layout
+        }
+    }
     /// Surface shell-command results (libghostty OSC 133 marks): a
     /// transient ✓/✗ + duration badge in the pane's corner when a
     /// command fails or runs a while, and a notification when a
@@ -367,6 +376,7 @@ final class Preferences: ObservableObject {
         static let paletteSeeds     = "conterm.paletteSeeds"
         static let widgetSeeds      = "conterm.widgetSeeds"
         static let showPaneTitleBar = "conterm.showPaneTitleBar"
+        static let paneCornerRadius = "conterm.paneCornerRadius"
         static let commandAlerts    = "conterm.commandAlerts"
         static let autoCheckUpdates  = "conterm.autoCheckUpdates"
         static let showSystemStats  = "conterm.showSystemStats"
@@ -471,6 +481,7 @@ final class Preferences: ObservableObject {
         }
         self.hiddenPaletteCommands  = hiddenCommands
         self.showPaneTitleBar       = ud.object(forKey: K.showPaneTitleBar) as? Bool ?? true
+        self.paneCornerRadius       = ud.object(forKey: K.paneCornerRadius) as? Double ?? 20
         self.commandAlerts          = ud.object(forKey: K.commandAlerts) as? Bool ?? true
         self.autoCheckUpdates       = ud.object(forKey: K.autoCheckUpdates) as? Bool ?? true
         self.showSystemStats        = ud.object(forKey: K.showSystemStats) as? Bool ?? true

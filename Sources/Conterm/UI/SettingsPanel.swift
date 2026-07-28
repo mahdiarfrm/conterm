@@ -265,6 +265,16 @@ struct SettingsPanel: View {
                     }
                     .fixedSize(horizontal: true, vertical: false)
                 }
+                SettingsRow(title: "Pane corner radius",
+                            subtitle: "How round the terminal tile's corners are. Default matches the window; lower it toward the system radius for tighter corners.") {
+                    HStack(spacing: 8) {
+                        Text("Sharp").subLabel().fixedSize()
+                        Slider(value: $prefs.paneCornerRadius, in: 0.0...24.0, step: 1)
+                            .frame(width: 180)
+                        Text("Round").subLabel().fixedSize()
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                }
                 SettingsRow(title: "Glass panels",
                             subtitle: "Use real Liquid Glass for overlay panels — Command Palette, Search, Settings, Notifications. Off (default) paints them as solid cards, which is cheaper since they cover the terminal.") {
                     Toggle("", isOn: $prefs.liquidGlassPanels.withSound())

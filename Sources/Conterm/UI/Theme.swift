@@ -139,7 +139,29 @@ enum Theme {
     /// matched curvature — the gutter widens by √2 where the corners
     /// turn, which a concentric radius (`windowCorner - paneInset`)
     /// would hold flat at the cost of a visibly tighter tile corner.
-    static let paneCorner:      CGFloat = windowCorner
+    /// User-tunable (Settings ▸ Appearance ▸ Pane corner radius), clamped to a
+    /// sane range. Defaults to the window's own radius so the tile curve reads
+    /// as the window's; lower it toward the system radius for tighter corners.
+    /// Backed by UserDefaults so every call site — SwiftUI and the AppKit tile
+    /// layers — shares one value without threading a binding through all 9.
+    ///
+    /// Cached: `PaneBox.layout()` and the chrome's rims read this several times
+    /// per relayout, which is too hot for a defaults lookup each time.
+    /// `Preferences` calls `reloadPaneCorner()` when the setting changes.
+    nonisolated(unsafe) private static var paneCornerCache: CGFloat?
+    static var paneCorner: CGFloat {
+        if let c = paneCornerCache { return c }
+        let c = loadPaneCorner()
+        paneCornerCache = c
+        return c
+    }
+    /// Re-read the stored radius after the preference changes.
+    static func reloadPaneCorner() { paneCornerCache = loadPaneCorner() }
+    private static func loadPaneCorner() -> CGFloat {
+        guard let v = UserDefaults.standard.object(forKey: "conterm.paneCornerRadius") as? Double
+        else { return windowCorner }
+        return CGFloat(min(max(v, 0), 24))
+    }
     // Capsule-adjacent on a ~28 pt tab pill.
     static let pillCorner:      CGFloat = 18
     static let tabBarHeight:    CGFloat = 38
