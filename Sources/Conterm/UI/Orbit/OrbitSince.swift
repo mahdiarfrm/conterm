@@ -107,6 +107,9 @@ extension OrbitOverlay {
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Theme.accent.opacity(0.28), lineWidth: 1))
             .shadow(color: .black.opacity(0.4), radius: 22, y: 10)
+            // Inside the panel, not on the slot: an empty slot must take no
+            // room at all, or the header carries a gap on every quiet entry.
+            .padding(.top, 10)
             .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }

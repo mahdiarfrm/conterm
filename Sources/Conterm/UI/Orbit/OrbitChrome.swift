@@ -80,7 +80,6 @@ extension OrbitOverlay {
             // What changed while you were gone, before what is true now — the
             // present is what the graph is for.
             sincePanel
-                .padding(.top, 10)
             Spacer()
         }
         .allowsHitTesting(true)
