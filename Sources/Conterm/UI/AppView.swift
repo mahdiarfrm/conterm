@@ -45,7 +45,9 @@ struct AppView: View {
             // exit on screen.
             searchOverlay.id("overlay.search").zIndex(10)
             notificationsOverlay.id("overlay.notifications").zIndex(11)
-            hostOverviewOverlay.id("overlay.hostOverview").zIndex(12)
+            // Above Orbit (z 15) so its "Overview" action opens over the mode
+            // rather than being hidden behind it.
+            hostOverviewOverlay.id("overlay.hostOverview").zIndex(16)
             ansibleCockpitOverlay.id("overlay.ansible").zIndex(13)
             clusterOverviewOverlay.id("overlay.cluster").zIndex(13)
             agentCenterOverlay.id("overlay.agentCenter").zIndex(14)
@@ -72,6 +74,7 @@ struct AppView: View {
         .onChange(of: state.searchOpen)     { _, open in if !open { state.focusActiveSurface() } }
         .onChange(of: state.notificationsOpen) { _, open in if !open { state.focusActiveSurface() } }
         .onChange(of: state.agentCenterOpen) { _, open in if !open { state.focusActiveSurface() } }
+        .onChange(of: state.orbitOpen) { _, open in if !open { state.focusActiveSurface() } }
         // Always start collapsed when auto-hide turns on / orientation
         // leaves vertical, so it can't get stuck open.
         .onChange(of: prefs.autoHideSidebar)  { _, _ in sidebarRevealed = false }
@@ -156,17 +159,22 @@ struct AppView: View {
         let mode = prefs.tabOrientation
         let isVertical = mode == .vertical
         let isAgents = mode == .agents
+        // Orbit is its own full-bleed layout mode: entering it collapses the tab
+        // bar AND the sidebar so the canvas fills the whole content region — the
+        // app frame reconfigures into Orbit, it isn't a page laid over the panes.
+        let orbitMode = state.orbitOpen
         // Both vertical-tabs and agents place a left sidebar; the top tab
-        // bar is hidden in either.
+        // bar is hidden in either — and in Orbit, everything collapses.
         let isSidebar = isVertical || isAgents
+        let hideTabBar = isSidebar || orbitMode
         // Auto-hide (vertical tabs only): the inline sidebar leaves the
         // layout entirely so the terminal gets the full width; it
         // comes back as the floating overlay on left-edge hover.
         let sidebarFloating = isVertical && prefs.autoHideSidebar
-        let showVerticalSidebar = isVertical && !sidebarFloating
+        let showVerticalSidebar = isVertical && !sidebarFloating && !orbitMode
         // The agent sidebar is always shown in agents mode (it's the
         // window's navigator, not a tab list that can be single-hidden).
-        let showSidebarSlot = showVerticalSidebar || isAgents
+        let showSidebarSlot = (showVerticalSidebar || isAgents) && !orbitMode
         return HStack(spacing: 0) {
             // Left sidebar slot: the vertical tab bar (always mounted, per
             // positional identity) with the agent navigator layered over it
@@ -183,30 +191,42 @@ struct AppView: View {
 
             VStack(spacing: 0) {
                 TabBar(orientation: .horizontal)
-                    .padding(.top, isSidebar ? 0 : 6)
-                    .padding(.leading, isSidebar ? 0 : 78)
+                    .padding(.top, hideTabBar ? 0 : 6)
+                    .padding(.leading, hideTabBar ? 0 : 78)
                     .gesture(
                         TapGesture(count: 2).onEnded { _ in
                             NSApp.keyWindow?.performZoom(nil)
                         }
                     )
-                    .frame(height: !isSidebar ? nil : 0)
-                    .opacity(!isSidebar ? 1 : 0)
-                    .allowsHitTesting(!isSidebar)
+                    .frame(height: !hideTabBar ? nil : 0)
+                    .opacity(!hideTabBar ? 1 : 0)
+                    .allowsHitTesting(!hideTabBar)
                     .clipped()
                     // The gap that floats the bar clear of the panes. Tuned
                     // so the toolbar pills sit the same distance below the
                     // window top as above the pane: top = 6 pad + 4 centering
                     // = 10; bottom = 4 centering + 2 here + 4 paneArea inset
                     // = 10.
-                    .padding(.bottom, isSidebar ? 0 : 2)
+                    .padding(.bottom, hideTabBar ? 0 : 2)
 
-                paneArea
-                    .id("paneArea")
+                // Orbit is its own full-bleed layout mode: the tab bar and
+                // sidebar collapsed above, so the canvas fills the content edge
+                // to edge — the frame reconfigures into Orbit. Panes stay mounted
+                // beneath, hidden, so their surfaces survive.
+                ZStack {
+                    paneArea.id("paneArea")
+                    if state.orbitOpen {
+                        OrbitOverlay()
+                            .transition(.opacity)
+                            .zIndex(1)
+                    }
+                }
+                .animation(Theme.Spring.soft, value: orbitMode)
             }
         }
         .animation(Theme.Spring.soft, value: sidebarFloating)
         .animation(Theme.Spring.soft, value: prefs.tabOrientation)
+        .animation(Theme.Spring.soft, value: orbitMode)
     }
 
     // MARK: - Floating lights+autohide pill (auto-hide vertical only)
@@ -224,8 +244,8 @@ struct AppView: View {
         // window coordinates, so it stays aligned with the native
         // traffic lights regardless of sidebar width — which the
         // inline (sidebar-interior) version did not survive on
-        // resize.
-        if isVertical {
+        // resize. Hidden in Orbit — that mode collapses all sidebars.
+        if isVertical && !state.orbitOpen {
             ZStack(alignment: .topLeading) {
                 // The capsule's midline sits on the lights' circle-center
                 // row, and its 8pt inner padding starts at the close
@@ -251,7 +271,7 @@ struct AppView: View {
     /// cursor hits the left edge. Only exists in vertical + auto-hide.
     @ViewBuilder
     private var floatingSidebar: some View {
-        if prefs.tabOrientation == .vertical && prefs.autoHideSidebar {
+        if prefs.tabOrientation == .vertical && prefs.autoHideSidebar && !state.orbitOpen {
             ZStack(alignment: .leading) {
                 // Invisible left-edge trigger. Thin so it barely
                 // shadows the terminal's click area.

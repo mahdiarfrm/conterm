@@ -15,7 +15,7 @@ struct ContermApp {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    private var prefs: Preferences!
+    private(set) var prefs: Preferences!
     private var ghostty: Ghostty.App?
     private var notes: NotesStore!
     private(set) var themes: ThemeCatalog!
@@ -121,6 +121,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             openNewWindow(showLaunchOverlay: prefs.shouldShowLaunchOverlay)
         }
 
+        // Reopen in Orbit when it was the active layer at last quit, so the
+        // mode survives a relaunch like the tab orientation does.
+        if UserDefaults.standard.bool(forKey: AppState.orbitWasOpenKey),
+           let first = windows.first {
+            DispatchQueue.main.async { first.state.openOrbit() }
+        }
+
         installShortcutMonitor()
         installTitleBarDoubleClickMonitor()
         installOcclusionCoordinator()
@@ -157,6 +164,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         UpdateChecker.shared.beginDailyChecks { [weak prefs] in
             prefs?.autoCheckUpdates ?? false
         }
+
+        // Orbit's plan outlives the map: a run scheduled for later survives
+        // relaunch, so the engine picks it up here rather than waiting for
+        // someone to open Orbit. No-op (and no timer) when nothing is planned.
+        OrbitEngine.shared.kick()
     }
 
     /// Menu / manual "Check for Updates…". Always reports its result.
@@ -207,6 +219,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if let wc = self.windows.first(where: { $0.window === closing }) {
                     for tab in wc.state.tabs {
                         for pane in tab.paneTree.root.leaves() {
+                            // Out of any cockpit dock or window it was mounted in first.
+                            PaneMounts.shared.forget(pane.id)
                             pane.controller?.forceFreeSurface()
                         }
                     }
@@ -384,6 +398,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if self.state.ansibleCockpit != nil { self.state.closeAnsibleCockpit(); return nil }
                 if self.state.clusterOverviewOpen { self.state.closeClusterOverview(); return nil }
                 if self.state.fleetRunOpen { self.state.closeFleetRun(); return nil }
+                // Orbit itself stays open on Esc, but a session focus is a
+                // narrowed view you need a way out of.
+                if self.state.orbitOpen, self.state.orbitFocusSession != nil {
+                    self.state.orbitFocusSession = nil
+                    return nil
+                }
+                // Orbit stays open on Esc, but the map unwinds one step: the
+                // bar's aim, then the selection.
+                if self.state.orbitOpen {
+                    self.state.orbitEscTick &+= 1
+                    return nil
+                }
+                // Orbit is a layout mode, not a transient overlay — Esc doesn't
+                // leave it (use the mode switcher / Exit / ⌘⇧M). Esc still reaches
+                // the terminal inside a floating Connect pane.
                 if self.state.agentCenterOpen  { self.state.toggleAgentCenter();  return nil }
                 return event
             }
@@ -508,6 +537,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // ⌘⇧A = toggle the agent command center.
             if cmd && shift && key == "a" {
                 self.state.toggleAgentCenter()
+                NSApp.keyWindow?.makeFirstResponder(nil)
+                return nil
+            }
+            // ⌘⇧M = open the Connection Map.
+            if cmd && shift && key == "m" {
+                self.state.openOrbit()
                 NSApp.keyWindow?.makeFirstResponder(nil)
                 return nil
             }
@@ -780,6 +815,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // The plan's writes are coalesced to one per run-loop turn, so a
+        // just-queued schedule could still be pending here.
+        OrbitScheduler.shared.flush()
         // Best-effort second save in case applicationShouldTerminate was
         // bypassed (e.g. uncaught signal). Skip if we already made the
         // save/discard decision above, so a "don't restore" choice

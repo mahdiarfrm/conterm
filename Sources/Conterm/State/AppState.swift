@@ -516,6 +516,107 @@ final class AppState: ObservableObject {
         SoundEffects.shared.play(.paletteClose)
     }
 
+    // MARK: - Connection Map
+
+    /// Full-window orbital map of the live connections — Mac, hosts, panes,
+    /// clusters, agents. The model observes only while the map is shown.
+    @Published var orbitOpen = false
+    /// When set, Orbit opens focused on one Claude session (its pane id) — the
+    /// thinking-pill / Sessions-menu entry. Cleared when the map closes or the
+    /// user returns to the full map.
+    @Published var orbitFocusSession: UUID?
+    /// Bumped by Esc while Orbit is open. The map's selection lives in the
+    /// view, so the key handler asks rather than reaches in.
+    @Published var orbitEscTick = 0
+    /// The panes Orbit is showing live. Exempt from the occlusion pause — a set,
+    /// because the cockpit can have several terminals open at once.
+    @Published var orbitPreviewPanes: Set<UUID> = []
+
+    /// Persisted so a relaunch reopens in Orbit when it was the active layer.
+    static let orbitWasOpenKey = "conterm.orbit.wasOpen"
+
+    func openOrbit(focusSession: UUID? = nil) {
+        // Re-entrant opens (⌘⇧M twice, the palette, an agent pill) must not
+        // stack observers: `close` decrements once, so a second begin would
+        // leave the graph rebuild and transcript parsing running for good.
+        guard !orbitOpen else {
+            orbitFocusSession = focusSession
+            return
+        }
+        orbitFocusSession = focusSession
+        UserDefaults.standard.set(true, forKey: Self.orbitWasOpenKey)
+        OrbitModel.shared.beginObserving()
+        // Orbit visualizes live agent activity, so keep the agent roster (and its
+        // transcript parsing — sub-agents, shell commands) refreshing while open.
+        AgentCenter.shared.beginObserving()
+        withAnimation(Theme.Spring.bouncy) { orbitOpen = true }
+        syncSurfaceOcclusion()      // pause the covered panes
+        // Orbit drives its own node/pane dragging; the window's
+        // drag-by-background would otherwise steal every drag and move the
+        // whole window instead.
+        ownWindow?.isMovableByWindowBackground = false
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    func closeOrbit() {
+        guard orbitOpen else { return }
+        UserDefaults.standard.set(false, forKey: Self.orbitWasOpenKey)
+        OrbitModel.shared.endObserving()
+        AgentCenter.shared.endObserving()
+        // Finished playbooks keep their surface while Orbit is open so their
+        // report stays readable; nothing is reading them once it closes.
+        OrbitEngine.shared.releaseHeadlessRuns()
+        orbitFocusSession = nil
+        withAnimation(Theme.Spring.snappy) { orbitOpen = false }
+        syncSurfaceOcclusion()      // resume the panes…
+        forceRedrawVisibleSurfaces() // …and refresh their stale frame
+        ownWindow?.isMovableByWindowBackground = true
+        focusActiveSurface()
+        SoundEffects.shared.play(.paletteClose)
+    }
+
+    /// Bring an arbitrary pane forward from anywhere in the app — the map's
+    /// jump action. Mirrors `AnsibleCenter.jump`: locate the owning window /
+    /// tab, select + focus it, key the window, then claim the surface's first
+    /// responder on the next turn.
+    func jumpToPane(_ paneID: UUID) {
+        guard let wc = (NSApp.delegate as? AppDelegate)?.windows.first(where: { wc in
+            wc.state.tabs.contains { $0.paneTree.root.leaves().contains { $0.id == paneID } }
+        }) else { return }
+        let st = wc.state
+        guard let tab = st.tabs.first(where: {
+            $0.paneTree.root.leaves().contains { $0.id == paneID } }),
+              let pane = tab.paneTree.root.leaves().first(where: { $0.id == paneID })
+        else { return }
+        st.select(tab.id)
+        tab.paneTree.focus(pane)
+        wc.window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { st.focusActiveSurface() }
+    }
+
+    /// Run a command in a fresh tab and leave the current mode (e.g. Orbit)
+    /// as-is — used by the Ansible runner, which keeps the cockpit open so the
+    /// run glows the nodes while it works.
+    @discardableResult
+    func runInNewTab(_ command: String) -> UUID? {
+        let tab = addTab()
+        guard let pane = tab.paneTree.activePane else { return nil }
+        Self.sendWhenMounted(pane, command: command)
+        return pane.id
+    }
+
+    /// Open a fresh tab connected to one SSH target — the map's per-host
+    /// connect action. `ssh <target>` is typed once the surface mounts
+    /// (the same delivery Fleet Run uses).
+    func openSSHPane(target: String) {
+        SSHRecents.push(target)
+        let tab = addTab(title: target)
+        if let pane = tab.paneTree.activePane {
+            Self.sendWhenMounted(pane, command: "ssh \(target)")
+        }
+    }
+
     /// One command across many hosts: a new tab splits into a pane per
     /// host — even columns, a second row once hosts outnumber three —
     /// and each pane runs `ssh -t host 'command'`. An empty command
@@ -806,6 +907,8 @@ final class AppState: ObservableObject {
         // `forceFreeSurface()` is idempotent, so the eventual deinit
         // calling it again is a safe no-op.
         for pane in tab.paneTree.root.leaves() {
+            // Out of any cockpit dock or window it was mounted in first.
+            PaneMounts.shared.forget(pane.id)
             pane.controller?.forceFreeSurface()
         }
         withAnimation(Theme.Spring.crisp) {
@@ -859,9 +962,14 @@ final class AppState: ObservableObject {
 
     private func applySurfaceVisibility(windowVisible: Bool) {
         for tab in tabs {
-            let visible = windowVisible && tab.id == selectedID
+            // Orbit takes over the pane frame, so the panes underneath are
+            // fully covered — pause their renderers while it's the mode.
+            let visible = windowVisible && tab.id == selectedID && !orbitOpen
             for pane in tab.paneTree.root.leaves() {
-                pane.controller?.setVisible(visible)
+                // A pane showing in Orbit's preview is on screen even though the
+                // tree behind Orbit isn't — without this exemption its renderer
+                // stays paused and the preview draws an empty black rectangle.
+                pane.controller?.setVisible(visible || orbitPreviewPanes.contains(pane.id))
             }
         }
     }
@@ -871,8 +979,14 @@ final class AppState: ObservableObject {
     /// is stale until cell content next changes.
     func forceRedrawVisibleSurfaces() {
         guard ownWindow?.occlusionState.contains(.visible) ?? true else { return }
-        for tab in tabs where tab.id == selectedID {
-            for pane in tab.paneTree.root.leaves() {
+        for tab in tabs {
+            // The selected tab, plus any pane on show in Orbit's dock — a
+            // terminal docked from another tab is on screen too, and leaving it
+            // out of the post-wake redraw left it holding a frame from before
+            // the machine slept.
+            let onScreen = tab.id == selectedID
+            for pane in tab.paneTree.root.leaves()
+            where onScreen || orbitPreviewPanes.contains(pane.id) {
                 pane.controller?.draw()
             }
         }

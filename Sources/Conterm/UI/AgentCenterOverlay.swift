@@ -22,19 +22,26 @@ struct AgentPanelBackground: View {
     }
 }
 
-/// Decoded agent-mark images, cached by (asset, template). A view body can
+/// Decoded brand-mark images, cached by (asset, template). A view body can
 /// re-evaluate every animation frame — the in-pane pill's mark does while an
 /// agent works — so loading the PNG inline re-reads and re-decodes it from
 /// disk each frame. Decode once, reuse for the process lifetime.
+///
+/// Absences are cached too: an asset name that resolves to nothing is a normal
+/// answer here (a distro mark that ships no art falls back to a drawn one), and
+/// without this every frame would re-ask the bundle for a file that isn't there.
 @MainActor
 enum MarkImage {
-    private static var cache: [String: NSImage] = [:]
+    private static var cache: [String: NSImage?] = [:]
 
     static func load(_ asset: String, template: Bool) -> NSImage? {
         let key = "\(asset)#\(template)"
-        if let img = cache[key] { return img }
+        if let cached = cache[key] { return cached }
         guard let url = Bundle.main.url(forResource: asset, withExtension: "png"),
-              let img = NSImage(contentsOf: url) else { return nil }
+              let img = NSImage(contentsOf: url) else {
+            cache[key] = NSImage?.none
+            return nil
+        }
         img.isTemplate = template     // fixed per cache key; safe to share
         cache[key] = img
         return img
@@ -74,7 +81,7 @@ struct AgentCenterView: View {
         .background(AgentPanelBackground(cornerRadius: 16))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.4), radius: 20, x: 0, y: 9)
-        .frame(width: 460)
+        .frame(width: Theme.ui(460))
         .onAppear { AgentCenter.shared.beginObserving() }
         .onDisappear { AgentCenter.shared.endObserving() }
     }
@@ -87,21 +94,21 @@ private struct AgentCenterHeader: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
+            HStack(spacing: Theme.ui(10)) {
                 AgentBanner(count: center.entries.count) {
                     Image(systemName: "rectangle.stack.fill")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: Theme.ui(13), weight: .semibold))
                         .foregroundStyle(Theme.accent)
                 }
                 Spacer(minLength: 8)
                 Text("esc")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .font(.system(size: Theme.ui(10), weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .padding(.horizontal, Theme.ui(6)).padding(.vertical, Theme.ui(2))
                     .background(Capsule().fill(Theme.stroke))
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 11).padding(.bottom, 10)
+            .padding(.horizontal, Theme.ui(14))
+            .padding(.top, Theme.ui(11)).padding(.bottom, Theme.ui(10))
 
             Rectangle()
                 .fill(Theme.stroke)
@@ -118,17 +125,17 @@ private struct AgentBanner<Icon: View>: View {
     @ViewBuilder var icon: () -> Icon
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.ui(8)) {
             icon()
             Text("Agents")
-                .font(.system(size: 14.5, weight: .bold, design: .rounded))
+                .font(.system(size: Theme.ui(14.5), weight: .bold, design: .rounded))
                 .foregroundStyle(Theme.textPrimary)
             if count > 0 {
                 Text("\(count)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: Theme.ui(11), weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 6).padding(.vertical, 1.5)
+                    .padding(.horizontal, Theme.ui(6)).padding(.vertical, Theme.ui(1.5))
                     .background(Capsule().fill(Theme.selectionFill))
             }
         }
@@ -154,25 +161,25 @@ private struct AgentRosterList: View {
                     state.agentCenterOpen = false
                     AgentCenter.shared.jump(to: entry)
                 }
-                .padding(8)
+                .padding(Theme.ui(8))
             }
-            .frame(maxHeight: 460)
+            .frame(maxHeight: Theme.ui(460))
         }
     }
 }
 
 private struct EmptyAgents: View {
     var body: some View {
-        VStack(spacing: 8) {
-            AgentBrandMark(color: Theme.textSecondary, size: 26)
+        VStack(spacing: Theme.ui(8)) {
+            AgentBrandMark(color: Theme.textSecondary, size: Theme.ui(26))
             Text("No agents running")
-                .font(.system(size: 11, design: .rounded))
+                .font(.system(size: Theme.ui(11), design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
             Text("Start Claude Code or opencode in a pane")
-                .font(.system(size: 10, design: .rounded))
+                .font(.system(size: Theme.ui(10), design: .rounded))
                 .foregroundStyle(Theme.textSecondary.opacity(0.7))
         }
-        .frame(maxWidth: .infinity, minHeight: 130)
+        .frame(maxWidth: .infinity, minHeight: Theme.ui(130))
     }
 }
 
@@ -189,20 +196,20 @@ struct AgentSidebar: View {
     @ObservedObject private var background = BackgroundAgents.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Theme.ui(10)) {
             // Clearance for the floating traffic-lights pill (glass shows).
-            Rectangle().fill(Color.clear).frame(height: 56)
+            Rectangle().fill(Color.clear).frame(height: Theme.ui(56))
 
             // Floating title pill — the lockup plus its two controls.
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.ui(8)) {
                 AgentBanner(count: center.entries.count) {
-                    AgentBrandMark(color: Theme.accent, size: 18)
+                    AgentBrandMark(color: Theme.accent, size: Theme.ui(18))
                 }
                 Spacer(minLength: 4)
                 PanesMenu()
                 AddAgentMenu()
             }
-            .padding(.leading, 15).padding(.trailing, 9).padding(.vertical, 9)
+            .padding(.leading, Theme.ui(15)).padding(.trailing, Theme.ui(9)).padding(.vertical, Theme.ui(9))
             .background(
                 Capsule(style: .continuous).fill(Theme.panelBed)
                     .overlay(Capsule(style: .continuous)
@@ -220,21 +227,21 @@ struct AgentSidebar: View {
                     }
                     // Room so the cards' drop shadows aren't clipped by the
                     // scroll bounds.
-                    .padding(.horizontal, 4).padding(.vertical, 8)
+                    .padding(.horizontal, Theme.ui(4)).padding(.vertical, Theme.ui(8))
                 }
                 .frame(maxHeight: .infinity)
             }
 
             // Floating layout switcher + notification bell.
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.ui(8)) {
                 LayoutModeSwitcher()
                 SidebarNotificationBell()
                 Spacer(minLength: 0)
             }
         }
-        .padding(.leading, 12)
-        .padding(.trailing, 8)
-        .padding(.bottom, 12)
+        .padding(.leading, Theme.ui(12))
+        .padding(.trailing, Theme.ui(8))
+        .padding(.bottom, Theme.ui(12))
         .frame(width: prefs.sidebarWidth)
         .onAppear { AgentCenter.shared.beginObserving() }
         .onDisappear { AgentCenter.shared.endObserving() }
@@ -265,9 +272,9 @@ private struct AddAgentMenu: View {
             }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 12.5, weight: .bold))
+                .font(.system(size: Theme.ui(12.5), weight: .bold))
                 .foregroundStyle(Theme.accent)
-                .frame(width: 26, height: 26)
+                .frame(width: Theme.ui(26), height: Theme.ui(26))
                 .background(Circle().fill(Theme.selectionFill))
         }
         .menuStyle(.button)
@@ -355,13 +362,13 @@ private struct SidebarNotificationBell: View {
                 state.notificationsOpen ? .paletteOpen : .paletteClose)
             NSApp.keyWindow?.makeFirstResponder(nil)
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.ui(4)) {
                 Image(systemName: notifications.unreadCount > 0
                       ? "bell.badge.fill" : "bell")
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.system(size: Theme.ui(12.5), weight: .semibold))
                 if notifications.unreadCount > 0 {
                     Text("\(min(notifications.unreadCount, 99))")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .font(.system(size: Theme.ui(11), weight: .bold, design: .rounded))
                         .monospacedDigit()
                         // Rigid: sidebar compression must not ellipsize the count.
                         .fixedSize()
@@ -369,9 +376,9 @@ private struct SidebarNotificationBell: View {
             }
             .foregroundStyle(notifications.unreadCount > 0
                 ? Theme.accent : Theme.textSecondary)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, Theme.ui(12))
             // Level with LayoutModeSwitcher (24pt segments + 3pt bed).
-            .frame(height: 30)
+            .frame(height: Theme.ui(30))
             .background(Capsule().fill(chromeFill(prefs)))
             .overlay(
                 Capsule().strokeBorder(
@@ -413,16 +420,16 @@ private struct PanesMenu: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.ui(4)) {
                 Image(systemName: "rectangle.split.2x2")
-                    .font(.system(size: 11.5, weight: .semibold))
+                    .font(.system(size: Theme.ui(11.5), weight: .semibold))
                 Text("\(state.tabs.count)")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(size: Theme.ui(11), weight: .bold, design: .rounded))
                     .monospacedDigit()
             }
             .foregroundStyle(Theme.textSecondary)
-            .frame(height: 26)
-            .padding(.horizontal, 9)
+            .frame(height: Theme.ui(26))
+            .padding(.horizontal, Theme.ui(9))
             .background(Capsule().fill(Theme.selectionFill))
         }
         .menuStyle(.button)
@@ -446,18 +453,20 @@ private struct PanesMenu: View {
 /// control, not a cycle.
 struct LayoutModeSwitcher: View {
     @EnvironmentObject var prefs: Preferences
+    @EnvironmentObject var state: AppState
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: Theme.ui(2)) {
             seg(.horizontal) { Image(systemName: "rectangle.split.1x2")
-                .font(.system(size: 14, weight: .semibold)) }
+                .font(.system(size: Theme.ui(14), weight: .semibold)) }
             seg(.vertical) { Image(systemName: "sidebar.left")
-                .font(.system(size: 14, weight: .semibold)) }
+                .font(.system(size: Theme.ui(14), weight: .semibold)) }
             // The robot art is wider than tall, so it needs a larger box
             // than the SF symbols to read at the same visual size.
-            seg(.agents) { AgentBrandMark(color: iconColor(.agents), size: 22) }
+            seg(.agents) { AgentBrandMark(color: iconColor(.agents), size: Theme.ui(22)) }
+            orbitSeg
         }
-        .padding(3)
+        .padding(Theme.ui(3))
         // The same flat glass-lens bed the other toolbar pills wear, so it
         // reads cleanly on dark AND light glass (a hardcoded black/white
         // wash washed out in light mode).
@@ -475,17 +484,35 @@ struct LayoutModeSwitcher: View {
         prefs.tabOrientation == m ? Theme.accent : Theme.textSecondary
     }
 
+    /// Orbit is a mode too — it rides the same switcher but toggles the Orbit
+    /// cockpit over the current layout rather than changing the tab bar.
+    private var orbitSeg: some View {
+        let on = state.orbitOpen
+        return Button {
+            if on { state.closeOrbit() } else { state.openOrbit() }
+        } label: {
+            // The mark art fills its box edge-to-edge, so it needs a smaller
+            // point size than the padded SF symbols to read at the same weight.
+            OrbitMark(color: on ? Theme.accent : Theme.textSecondary, size: Theme.ui(14))
+                .frame(width: Theme.ui(34), height: Theme.ui(24))
+                .background(Capsule().fill(on ? chromeFill(prefs, selected: true) : Color.clear))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("Orbit (⌘⇧M)")
+    }
+
     private func seg<Icon: View>(_ mode: Preferences.TabOrientation,
                                  @ViewBuilder icon: () -> Icon) -> some View {
-        let on = prefs.tabOrientation == mode
+        let on = prefs.tabOrientation == mode && !state.orbitOpen
         return Button {
-            withAnimation(Theme.Spring.soft) { prefs.tabOrientation = mode }
+            withAnimation(Theme.Spring.soft) { state.closeOrbit(); prefs.tabOrientation = mode }
         } label: {
             icon()
                 .foregroundStyle(iconColor(mode))
                 // Segment height + the bed's padding lands the switcher at
                 // TabBar.heavyPillHeight, level with the action cluster.
-                .frame(width: 34, height: 24)
+                .frame(width: Theme.ui(34), height: Theme.ui(24))
                 // Selected segment lifts on a brighter lens (adaptive) so it
                 // reads as picked without an accent blob that goes muddy in
                 // light mode.
@@ -515,7 +542,7 @@ private struct GroupedRoster: View {
 
     var body: some View {
         let groups = groupedByWorktree(entries)
-        VStack(spacing: floating ? 9 : 7) {
+        VStack(spacing: Theme.ui(floating ? 9 : 7)) {
             ForEach(groups, id: \.key) { group in
                 if groups.count > 1 {
                     AgentGroupHeader(key: group.key, count: group.items.count)
@@ -549,16 +576,16 @@ private struct BackgroundSessionsBand: View {
     var floating: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.ui(6)) {
             Text(sessions.count == 1 ? "1 BACKGROUND SESSION"
                                      : "\(sessions.count) BACKGROUND SESSIONS")
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: Theme.ui(9), weight: .bold))
                 .tracking(0.5)
                 .foregroundStyle(Theme.textSecondary.opacity(0.8))
             ForEach(sessions) { session in row(session) }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.horizontal, Theme.ui(14))
+        .padding(.vertical, Theme.ui(11))
         .background(
             RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .fill(floating ? AnyShapeStyle(Theme.panelBed)
@@ -571,17 +598,17 @@ private struct BackgroundSessionsBand: View {
     }
 
     private func row(_ session: BackgroundAgents.Session) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.ui(8)) {
             Circle()
                 .fill(stateColor(session.state))
-                .frame(width: 6, height: 6)
+                .frame(width: Theme.ui(6), height: Theme.ui(6))
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.name)
-                    .font(.system(size: 12.5, weight: .medium))
+                    .font(.system(size: Theme.ui(12.5), weight: .medium))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 Text("\(friendlyDirLabel(for: session.cwd)) · \(session.state)")
-                    .font(.system(size: 10.5))
+                    .font(.system(size: Theme.ui(10.5)))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)
             }
@@ -591,9 +618,9 @@ private struct BackgroundSessionsBand: View {
                 BackgroundAgents.shared.remove(session)
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: Theme.ui(9), weight: .bold))
                     .foregroundStyle(Theme.textSecondary)
-                    .frame(width: 22, height: 22)
+                    .frame(width: Theme.ui(22), height: Theme.ui(22))
                     .background(Circle().fill(Theme.selectionFill))
             }
             .buttonStyle(.plain)
@@ -607,9 +634,9 @@ private struct BackgroundSessionsBand: View {
                 BackgroundAgents.shared.resume(session, in: wc.state)
             } label: {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: Theme.ui(10), weight: .semibold))
                     .foregroundStyle(Theme.textSecondary)
-                    .frame(width: 22, height: 22)
+                    .frame(width: Theme.ui(22), height: Theme.ui(22))
                     .background(Circle().fill(Theme.selectionFill))
             }
             .buttonStyle(.plain)
@@ -630,19 +657,19 @@ private struct AgentGroupHeader: View {
     let key: String
     let count: Int
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.ui(6)) {
             Image(systemName: "arrow.triangle.branch")
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: Theme.ui(9), weight: .bold))
             Text(key)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(.system(size: Theme.ui(11), weight: .semibold, design: .rounded))
                 .lineLimit(1)
             Spacer(minLength: 4)
             Text("\(count)")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(size: Theme.ui(10), weight: .semibold, design: .rounded))
                 .monospacedDigit()
         }
         .foregroundStyle(Theme.textSecondary)
-        .padding(.horizontal, 6).padding(.top, 4)
+        .padding(.horizontal, Theme.ui(6)).padding(.top, Theme.ui(4))
     }
 }
 
@@ -670,13 +697,13 @@ private struct AgentRowView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: Theme.ui(11)) {
             header
             // The hero: what the agent is working on (its own session's
             // latest prompt). Empty until the first prompt lands.
             if let task = entry.usage?.task, !task.isEmpty {
                 Text(task)
-                    .font(.system(size: 13))
+                    .font(.system(size: Theme.ui(13)))
                     .foregroundStyle(Theme.textPrimary.opacity(0.92))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -687,8 +714,8 @@ private struct AgentRowView: View {
             replyRow
         }
         .fixedSize(horizontal: false, vertical: true)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 13)
+        .padding(.horizontal, Theme.ui(14))
+        .padding(.vertical, Theme.ui(13))
         .background(cardBackground)
         // Signature: only agents that need you carry a soft accent edge, so
         // the roster reads "who needs me" at a glance — everything else calm.
@@ -696,8 +723,8 @@ private struct AgentRowView: View {
             if entry.phase == .attention {
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .fill(v.color)
-                    .frame(width: 3)
-                    .padding(.vertical, 13)
+                    .frame(width: Theme.ui(3))
+                    .padding(.vertical, Theme.ui(13))
                     .shadow(color: v.color.opacity(0.6), radius: 4)
             }
         }
@@ -722,11 +749,11 @@ private struct AgentRowView: View {
 
     // [mark+#] name / context ............. status · jump
     private var header: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: Theme.ui(9)) {
             // The ordinal rides the mark's corner rather than taking its own
             // column slot, which the narrow sidebar card can't spare without
             // truncating the agent name.
-            AgentMark(tool: entry.tool, size: 18)
+            AgentMark(tool: entry.tool, size: Theme.ui(18))
                 .overlay(alignment: .bottomTrailing) {
                     if total > 1 { numberBadge.offset(x: 4, y: 3) }
                 }
@@ -734,12 +761,12 @@ private struct AgentRowView: View {
                 // lineLimit(1): without it the name wraps one char per line
                 // when a wide status chip squeezes the column.
                 Text(entry.tool.displayName)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: Theme.ui(14), weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 if let c = context {
                     Text(c)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: Theme.ui(11.5)))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -763,9 +790,9 @@ private struct AgentRowView: View {
             }
         } label: {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: Theme.ui(11), weight: .semibold))
                 .foregroundStyle(Theme.textSecondary)
-                .frame(width: 28, height: 28)
+                .frame(width: Theme.ui(28), height: Theme.ui(28))
                 .background(Capsule().fill(Theme.selectionFill))
         }
         .buttonStyle(.plain)
@@ -782,7 +809,7 @@ private struct AgentRowView: View {
             let hasMetrics = u.totalTokens > 0
             let hasAge = u.lastActivity != nil
             if hasMetrics || hasAge {
-                HStack(spacing: 6) {
+                HStack(spacing: Theme.ui(6)) {
                     if hasMetrics { Text(metricsLine(u)) }
                     if hasMetrics && hasAge {
                         Text("·").foregroundStyle(Theme.textSecondary.opacity(0.6))
@@ -793,7 +820,7 @@ private struct AgentRowView: View {
                         }
                     }
                 }
-                .font(.system(size: 11.5))
+                .font(.system(size: Theme.ui(11.5)))
                 .monospacedDigit()
                 .foregroundStyle(Theme.textSecondary)
                 .lineLimit(1)
@@ -815,21 +842,21 @@ private struct AgentRowView: View {
     /// the mark's corner as a small app-style badge.
     private var numberBadge: some View {
         Text("\(number)")
-            .font(.system(size: 8.5, weight: .bold, design: .rounded))
+            .font(.system(size: Theme.ui(8.5), weight: .bold, design: .rounded))
             .monospacedDigit()
             .foregroundStyle(Theme.textPrimary)
-            .frame(width: 14, height: 14)
+            .frame(width: Theme.ui(14), height: Theme.ui(14))
             .background(Circle().fill(Theme.panelBed))
             .overlay(Circle().strokeBorder(Theme.strokeStrong, lineWidth: 1))
     }
 
     private var statusChip: some View {
         Text(v.label.uppercased())
-            .font(.system(size: 9.5, weight: .bold))
+            .font(.system(size: Theme.ui(9.5), weight: .bold))
             .tracking(0.4)
             .foregroundStyle(v.color)
             .fixedSize()
-            .padding(.horizontal, 7).padding(.vertical, 3)
+            .padding(.horizontal, Theme.ui(7)).padding(.vertical, Theme.ui(3))
             .background(Capsule().fill(v.color.opacity(0.16)))
             .shadow(color: entry.phase == .attention ? v.color.opacity(0.45) : .clear,
                     radius: entry.phase == .attention ? 5 : 0)
@@ -838,9 +865,9 @@ private struct AgentRowView: View {
     private var jumpButton: some View {
         Button(action: onJump) {
             Image(systemName: "arrow.up.right")
-                .font(.system(size: 11.5, weight: .semibold))
+                .font(.system(size: Theme.ui(11.5), weight: .semibold))
                 .foregroundStyle(Theme.textSecondary)
-                .frame(width: 22, height: 22)
+                .frame(width: Theme.ui(22), height: Theme.ui(22))
                 .background(Circle().fill(Theme.selectionFill))
         }
         .buttonStyle(.plain)
@@ -867,19 +894,19 @@ private struct AgentRowView: View {
     @ViewBuilder
     private var subAgentChildren: some View {
         if let subs = entry.usage?.subAgents, !subs.isEmpty {
-            HStack(alignment: .top, spacing: 9) {
+            HStack(alignment: .top, spacing: Theme.ui(9)) {
                 RoundedRectangle(cornerRadius: 1, style: .continuous)
                     .fill(Theme.strokeStrong)
-                    .frame(width: 1.5)
-                VStack(alignment: .leading, spacing: 6) {
+                    .frame(width: Theme.ui(1.5))
+                VStack(alignment: .leading, spacing: Theme.ui(6)) {
                     Text(subs.count == 1 ? "1 SUB-AGENT" : "\(subs.count) SUB-AGENTS")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: Theme.ui(9), weight: .bold))
                         .tracking(0.5)
                         .foregroundStyle(Theme.textSecondary.opacity(0.75))
                     ForEach(subs) { sub in subAgentRow(sub) }
                 }
             }
-            .padding(.leading, 2)
+            .padding(.leading, Theme.ui(2))
         }
     }
 
@@ -887,22 +914,22 @@ private struct AgentRowView: View {
     private var shellFeed: some View {
         if let cmds = entry.usage?.shellCommands, !cmds.isEmpty {
             let recent = Array(cmds.suffix(5))
-            HStack(alignment: .top, spacing: 9) {
+            HStack(alignment: .top, spacing: Theme.ui(9)) {
                 RoundedRectangle(cornerRadius: 1, style: .continuous)
                     .fill(Theme.strokeStrong)
-                    .frame(width: 1.5)
-                VStack(alignment: .leading, spacing: 5) {
+                    .frame(width: Theme.ui(1.5))
+                VStack(alignment: .leading, spacing: Theme.ui(5)) {
                     Text("SHELL")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: Theme.ui(9), weight: .bold))
                         .tracking(0.5)
                         .foregroundStyle(Theme.textSecondary.opacity(0.75))
                     ForEach(recent) { c in
-                        HStack(spacing: 6) {
+                        HStack(spacing: Theme.ui(6)) {
                             Text("$")
-                                .font(.system(size: 11, design: .monospaced))
+                                .font(.system(size: Theme.ui(11), design: .monospaced))
                                 .foregroundStyle(Theme.textSecondary.opacity(0.55))
                             Text(c.command)
-                                .font(.system(size: 11.5, design: .monospaced))
+                                .font(.system(size: Theme.ui(11.5), design: .monospaced))
                                 .foregroundStyle(Theme.textPrimary.opacity(0.82))
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -910,23 +937,23 @@ private struct AgentRowView: View {
                     }
                 }
             }
-            .padding(.leading, 2)
+            .padding(.leading, Theme.ui(2))
         }
     }
 
     private func subAgentRow(_ s: SubAgentInfo) -> some View {
-        HStack(spacing: 7) {
+        HStack(spacing: Theme.ui(7)) {
             Circle().fill(AgentColor.working)
-                .frame(width: 5, height: 5)
+                .frame(width: Theme.ui(5), height: Theme.ui(5))
             Text(s.task ?? "working…")
-                .font(.system(size: 12))
+                .font(.system(size: Theme.ui(12)))
                 .foregroundStyle(Theme.textPrimary.opacity(0.82))
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 6)
             if s.totalTokens > 0 {
                 Text(money(s.estCost) + "  ·  " + compactTokens(s.totalTokens))
-                    .font(.system(size: 10.5))
+                    .font(.system(size: Theme.ui(10.5)))
                     .monospacedDigit()
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize()
@@ -935,14 +962,14 @@ private struct AgentRowView: View {
     }
 
     private var replyRow: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: Theme.ui(7)) {
             TextField("Reply…", text: $reply)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12.5))
+                .font(.system(size: Theme.ui(12.5)))
                 .foregroundStyle(Theme.textPrimary)
                 .focused($replyFocused)
                 .onSubmit(send)
-                .padding(.horizontal, 11).padding(.vertical, 6)
+                .padding(.horizontal, Theme.ui(11)).padding(.vertical, Theme.ui(6))
                 .background(Capsule().fill(Theme.selectionFill))
                 .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 0.75))
             if reply.isEmpty {
@@ -951,9 +978,9 @@ private struct AgentRowView: View {
             } else {
                 Button(action: send) {
                     Text("Send")
-                        .font(.system(size: 11.5, weight: .semibold))
+                        .font(.system(size: Theme.ui(11.5), weight: .semibold))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .padding(.horizontal, Theme.ui(12)).padding(.vertical, Theme.ui(6))
                         .background(Capsule().fill(AgentColor.working))
                 }
                 .buttonStyle(.plain)
@@ -978,9 +1005,9 @@ private struct AgentRowView: View {
                             _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: Theme.ui(11), weight: .semibold))
                 .foregroundStyle(tint)
-                .frame(width: 28, height: 28)
+                .frame(width: Theme.ui(28), height: Theme.ui(28))
                 .background(Capsule().fill(tint.opacity(0.15)))
         }
         .buttonStyle(.plain)
