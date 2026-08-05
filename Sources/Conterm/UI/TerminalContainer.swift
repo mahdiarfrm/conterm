@@ -16,7 +16,8 @@ struct TerminalContainer: View {
         // IOSurface stays attached. No .id-rebuild / host-reuse workaround.
         if let app = state.ghostty {
             PaneTreeHost(tree: tab.paneTree, app: app, state: state,
-                         notifications: notifications, prefs: prefs)
+                         notifications: notifications, prefs: prefs,
+                         hidden: state.orbitOpen)
         } else {
             Text("libghostty failed to initialize")
                 .foregroundStyle(Theme.warning)

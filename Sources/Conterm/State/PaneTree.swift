@@ -12,7 +12,11 @@ final class Pane: ObservableObject, Identifiable {
         // without its pane has nowhere to jump to.
         KubeContextWatch.removeSessionFile(paneID: id)
         let paneID = id
-        Task { @MainActor in AnsibleCenter.shared.clear(paneID: paneID) }
+        Task { @MainActor in
+            AnsibleCenter.shared.clear(paneID: paneID)
+            // Nothing should be left holding a view whose surface is going away.
+            PaneMounts.shared.forget(paneID)
+        }
     }
     /// NOT @Published — nothing observes this property changing, and
     /// @Published's internal CurrentValueSubject can retain the
@@ -40,6 +44,13 @@ final class Pane: ObservableObject, Identifiable {
     /// when an OSC 7 comes back with the local hostname (i.e. you
     /// `exit` the ssh session).
     @Published var remoteHost: String?
+
+    /// Whether `cwd` was reported by the machine on the far end. An ssh session
+    /// is often recognised from the window title alone, with no OSC 7 coming
+    /// back — and then `cwd` is still the *local* directory the tab started in.
+    /// Showing that as the session's location says `~/Documents` about a shell
+    /// sitting in the remote user's home.
+    @Published var cwdIsRemote = false
 
     /// Live scp state for a file dropped on this (SSH) pane, rendered
     /// as a pane badge. Set by AppState.uploadDroppedFiles; cleared
@@ -409,6 +420,7 @@ final class PaneTree: ObservableObject {
         // that get created during a rapid close→re-open cycle, which
         // is what causes the "blank pane" bug.
         if case .leaf(let closingPane) = leafNode.kind {
+            PaneMounts.shared.forget(closingPane.id)
             closingPane.controller?.forceFreeSurface()
         }
         // Rapid sequential closes (≥2 within 300ms) skip the animation

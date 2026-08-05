@@ -10,7 +10,8 @@ func makePaneSurface(pane: Pane,
                      app: Ghostty.App,
                      state: AppState,
                      notifications: NotificationStore,
-                     prefs: Preferences) -> Ghostty.SurfaceController {
+                     prefs: Preferences,
+                     fontSize: Double = 0) -> Ghostty.SurfaceController {
     if let existing = pane.controller { return existing }
 
     let view = Ghostty.SurfaceView(frame: .zero)
@@ -21,6 +22,7 @@ func makePaneSurface(pane: Pane,
     view.controller = controller
     controller.startingDir = pane.startingDir
     controller.paneID = pane.id
+    controller.fontSize = fontSize
     pane.controller = controller
 
     let owningTab = state.tabs.first { tab in
@@ -40,8 +42,11 @@ func makePaneSurface(pane: Pane,
             if let host = decoded.host?.lowercased() {
                 if localHostnames.contains(host) {
                     if pane?.remoteHost != nil { pane?.remoteHost = nil }
-                } else if pane?.remoteHost != host {
-                    pane?.remoteHost = host
+                    pane?.cwdIsRemote = false
+                } else {
+                    if pane?.remoteHost != host { pane?.remoteHost = host }
+                    // This path *is* the far end reporting where it is.
+                    pane?.cwdIsRemote = true
                 }
             }
             if let tab = owningTab {
@@ -55,6 +60,9 @@ func makePaneSurface(pane: Pane,
             if newTitle.contains("\u{FFFD}") { return }
             if let host = extractSshTarget(from: newTitle) {
                 if pane?.remoteHost != host { pane?.remoteHost = host }
+                // Learned from the title, so `cwd` is still whatever the local
+                // shell last reported.
+                pane?.cwdIsRemote = false
             } else if let candidate = extractCwdFromTitle(newTitle) {
                 if isLocalPromptTitle(newTitle), pane?.remoteHost != nil {
                     pane?.remoteHost = nil
@@ -184,9 +192,11 @@ func makePaneSurface(pane: Pane,
                 pane.agent = .idle
                 owningTab?.recomputeAgentPhase()
             }
-            guard prefs.commandAlerts else { return }
+            // Record the result unconditionally (Orbit's run-result capture reads
+            // it); only the badge/notification is gated behind commandAlerts.
             let result = Pane.CommandResult(exitCode: exitCode, durationNs: durationNs, at: Date())
             pane.lastCommand = result
+            guard prefs.commandAlerts else { return }
             guard durationNs >= 10_000_000_000 else { return }
             let watching = NSApp.isActive
                 && state?.selectedID == owningTab?.id
@@ -399,6 +409,9 @@ final class PaneTreeView: NSView {
                     self?.swapPanes(dragged, with: pane.id) ?? false
                 }
                 boxes[pane.id] = box
+                // `PaneMounts` is the one place that knows where a pane's
+                // terminal is mounted; this is where a tile claims to be home.
+                PaneMounts.shared.registerTile(pane.id, box)
                 addSubview(box)
             }
             box.index = i + 1
@@ -741,6 +754,16 @@ final class PaneBox: NSView {
         return img
     }()
 
+    /// Take the host view back from wherever it was lent to. The same view and
+    /// the same surface — nothing is rebuilt, which is the whole point.
+    func reclaimHost() {
+        guard host.superview !== self else { return }
+        addSubview(host, positioned: .below, relativeTo: nil)
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
+
     override func layout() {
         super.layout()
         let solid = prefs.opaquePanes
@@ -767,7 +790,8 @@ final class PaneBox: NSView {
         tileGrain.cornerRadius = Theme.paneCorner
         host.layer?.cornerRadius = max(0, Theme.paneCorner - 1)
         CATransaction.commit()
-        host.frame = bounds.insetBy(dx: 1, dy: 1)
+        // Lent out to a preview: leave it alone rather than fight for its frame.
+        if host.superview === self { host.frame = bounds.insetBy(dx: 1, dy: 1) }
         chrome.frame = bounds
     }
 
@@ -924,11 +948,6 @@ struct PaneChrome: View {
                         attentionRim(0.5)
                     }
                 }
-                if pane.agent.phase != .idle {
-                    AgentPill(status: pane.agent)
-                        .padding(.top, 10)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                }
                 if let badge = commandBadge {
                     CommandBadge(result: badge)
                         .padding(.bottom, 10).padding(.trailing, 12)
@@ -946,6 +965,24 @@ struct PaneChrome: View {
                 }
             }
             .allowsHitTesting(false)
+
+            // Agent status pill — the on-pane "thinking" indicator. Interactive:
+            // click it to open Orbit focused on this session.
+            if pane.agent.phase != .idle {
+                Button {
+                    (NSApp.delegate as? AppDelegate)?.windows.first { wc in
+                        wc.state.tabs.contains { t in
+                            t.paneTree.root.leaves().contains { $0.id == pane.id }
+                        }
+                    }?.state.openOrbit(focusSession: pane.id)
+                } label: {
+                    AgentPill(status: pane.agent)
+                }
+                .buttonStyle(.plain)
+                .help("Open this session in Orbit")
+                .padding(.top, 10)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
 
             // Ansible run badge — interactive, opens the cockpit;
             // retires a minute after the run ends.
@@ -1027,16 +1064,23 @@ struct PaneTreeHost: NSViewRepresentable {
     let state: AppState
     let notifications: NotificationStore
     let prefs: Preferences
+    /// Orbit is a full mode: while it's open the pane tree is hidden so its
+    /// surfaces leave compositing entirely — not just render-paused — and stop
+    /// warming the machine behind an opaque mode.
+    var hidden: Bool = false
 
     func makeNSView(context: Context) -> PaneTreeView {
         let v = PaneTreeView(app: app, state: state, notifications: notifications, prefs: prefs)
         v.bind(to: tree)
+        v.isHidden = hidden
         return v
     }
 
-    // No-op on purpose. The view self-drives off the PaneTree's
-    // objectWillChange; re-applying here ran every tab's PaneTreeView on every
-    // AppView re-render (a tab switch re-renders them all) — that all-tabs
-    // relayout + focus churn was the fast-tab-switch lag.
-    func updateNSView(_ v: PaneTreeView, context: Context) {}
+    // Layout self-drives off the PaneTree's objectWillChange; re-applying it here
+    // ran every tab's PaneTreeView on every AppView re-render (the fast-tab-switch
+    // lag). Only the hide flag is cheap + idempotent, so it's the one thing safe
+    // to reconcile here — `isHidden` toggles compositing without a relayout.
+    func updateNSView(_ v: PaneTreeView, context: Context) {
+        if v.isHidden != hidden { v.isHidden = hidden }
+    }
 }

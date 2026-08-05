@@ -117,6 +117,11 @@ extension Ghostty {
         /// creation.
         var paneID: UUID?
 
+        /// Font point size to create the surface at; 0 defers to the config
+        /// default. Set before `start(view:)`. Orbit's floating terminals use a
+        /// smaller size than the main panes.
+        var fontSize: Double = 0
+
         /// Two-phase init: storage first, then `start(view:)` to create the
         /// libghostty surface once we can take `Unmanaged.passUnretained(self)`.
         init(app: App) {
@@ -148,7 +153,7 @@ extension Ghostty {
                 nsview: Unmanaged.passUnretained(view).toOpaque()
             )
             cfg.scale_factor = Double(view.window?.backingScaleFactor ?? 2.0)
-            cfg.font_size = 0
+            cfg.font_size = Float(fontSize)
             cfg.context = GHOSTTY_SURFACE_CONTEXT_WINDOW
             // userdata is a retained weak-box, not the controller itself:
             // the surface can outlive the controller, so a raw unretained
