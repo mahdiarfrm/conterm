@@ -33,6 +33,8 @@ struct NodeCard: View {
     let dimmed: Bool
     let faded: Bool
     let light: Bool
+    /// Zoomed out far enough that the card shows its name and nothing else.
+    let compact: Bool
     /// Phase offset so a wall of working nodes doesn't pulse in lockstep.
     let phase: Double
 
@@ -55,6 +57,16 @@ struct NodeCard: View {
     /// pills in the chrome.
     static let corner: CGFloat = 15
 
+    /// Below this zoom a card drops to its name alone. Shrinking the full card
+    /// instead put three lines of type below legibility and left an overview
+    /// you could see the shape of but not read.
+    static let compactBelow: CGFloat = 0.72
+
+    /// How far a card is allowed to shrink. Zooming out spreads the nodes by
+    /// the same factor, so the cards do not have to shrink with it — holding a
+    /// floor here is what keeps an overview readable.
+    static let minScale: CGFloat = 0.82
+
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             // A well around the glyph, so the mixed marks this map draws —
@@ -76,7 +88,7 @@ struct NodeCard: View {
             .frame(width: 24, height: 24)
 
             VStack(alignment: .leading, spacing: 2.5) {
-                if let kindTag {
+                if let kindTag, !compact {
                     // What the card *is* — never abbreviated. The tag is the
                     // one line that tells a session apart from the machine it
                     // is talking to, so it takes its natural width and the
@@ -91,10 +103,10 @@ struct NodeCard: View {
                 Text(label)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(2)
+                    .lineLimit(compact ? 1 : 2)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                if let subtitle, !subtitle.isEmpty, subtitle != label {
+                if let subtitle, !subtitle.isEmpty, subtitle != label, !compact {
                     Text(subtitle)
                         .font(.system(size: 9.5, weight: .medium, design: .rounded))
                         .foregroundStyle(Theme.textSecondary.opacity(0.9))
@@ -104,7 +116,7 @@ struct NodeCard: View {
             .frame(width: contentWidth, alignment: .leading)
         }
         .padding(.leading, 9).padding(.trailing, 13)
-        .padding(.vertical, 8)
+        .padding(.vertical, compact ? 6 : 8)
         .background(
             ZStack {
                 // A bed under the glass. The material alone let the edges and
@@ -168,8 +180,9 @@ struct NodeCard: View {
         .opacity(dimmed ? 0.3 : (faded ? 0.82 : 1))
         // Zooming in must separate cards, so the card itself never grows past
         // its natural size — only the distance between cards does. Zooming out
-        // shrinks them, so an overview stays proportional.
-        .scaleEffect(scale * max(min(zoom, 1.0), 0.55))
+        // shrinks it only as far as `minScale`, past which an overview would be
+        // a shape you cannot read.
+        .scaleEffect(scale * max(min(zoom, 1.0), Self.minScale))
         .animation(.easeOut(duration: 0.16), value: hovered)
         .animation(.easeOut(duration: 0.16), value: selected)
     }

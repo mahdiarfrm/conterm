@@ -397,8 +397,13 @@ extension OrbitOverlay {
     var controls: some View {
         VStack {
             Spacer()
-            HStack {
+            HStack(alignment: .bottom) {
                 Spacer()
+                // Beside the zoom controls, because it answers the question they
+                // raise: where did everything go.
+                minimap
+                    .padding(.bottom, controlsBottom)
+                    .padding(.trailing, 8)
                 // The space switcher lives with the view controls rather than the
                 // header: which board you're on and how you're looking at it are
                 // the same question.

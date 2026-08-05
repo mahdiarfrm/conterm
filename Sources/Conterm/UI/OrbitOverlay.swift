@@ -576,6 +576,9 @@ struct OrbitOverlay: View {
     /// The palette's own rectangle, so a wheel over it scrolls its list rather
     /// than panning the map beneath.
     @State var searchFrame: CGRect = .zero
+    /// Whether the overview map is open. Persisted: it is a working preference,
+    /// not a per-visit one.
+    @AppStorage("orbit.showMinimap") var showMinimap = true
 
     /// Last known canvas size, kept so a fit can be computed outside the
     /// render pass.
