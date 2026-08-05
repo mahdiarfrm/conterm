@@ -67,6 +67,8 @@ struct ShellCommand: Equatable, Identifiable {
     let command: String
     /// Transcript timestamp of the turn that ran it; ages the feed out.
     let at: Date
+    /// Combined stdout/stderr, backfilled from the matching tool_result turn.
+    var output: String? = nil
 }
 
 /// One row in the agent command center: a live agent in some pane, its
@@ -305,9 +307,22 @@ final class AgentTranscriptStore: @unchecked Sendable {
         // A real user prompt → the agent's current task. Tool results and
         // tool-only / meta-wrapper user messages carry no text block and
         // leave the prior task in place.
-        if type == "user", let msg = obj["message"] as? [String: Any],
-           let prompt = Self.userPromptText(msg) {
-            st.task = prompt
+        if type == "user", let msg = obj["message"] as? [String: Any] {
+            if let prompt = Self.userPromptText(msg) { st.task = prompt }
+            // Backfill each shell command's output from its tool_result turn,
+            // matched by tool_use id, so tapping the node can show the result.
+            if let content = msg["content"] as? [[String: Any]] {
+                for block in content where (block["type"] as? String) == "tool_result" {
+                    guard let tid = block["tool_use_id"] as? String,
+                          let bi = st.recentShell.firstIndex(where: { $0.id == tid && $0.output == nil })
+                    else { continue }
+                    let text = Self.toolResultText(block["content"])
+                    if !text.isEmpty {
+                        st.recentShell[bi].output = text.count > 6000
+                            ? String(text.prefix(6000)) + "\n…(truncated)" : text
+                    }
+                }
+            }
         }
         guard type == "assistant",
               let msg = obj["message"] as? [String: Any] else { return }
@@ -376,6 +391,18 @@ final class AgentTranscriptStore: @unchecked Sendable {
             }
         guard let line, !line.isEmpty else { return nil }
         return line.count > 140 ? String(line.prefix(140)) + "…" : line
+    }
+
+    /// A tool_result's content is either a plain string or an array of text
+    /// blocks; flatten both to the combined output text.
+    private static func toolResultText(_ content: Any?) -> String {
+        if let s = content as? String { return s }
+        if let arr = content as? [[String: Any]] {
+            return arr.compactMap {
+                ($0["type"] as? String) == "text" ? ($0["text"] as? String) : nil
+            }.joined(separator: "\n")
+        }
+        return ""
     }
 
     // Touched only on AgentCenter's serial io queue (see the type doc), so the

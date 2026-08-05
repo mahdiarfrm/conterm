@@ -170,6 +170,16 @@ final class AnsibleCenter: ObservableObject {
             let idPart = String(name.dropFirst(4).dropLast(6))
             guard let paneID = UUID(uuidString: idPart) else { continue }
             let path = "\(Self.feedDir)/\(name)"
+            // A feed from a previous day belongs to a run whose process is long
+            // gone. Replaying it resurrects a run that never wrote its end event
+            // — which then reads as "running" forever. Sweep it instead.
+            if let mtime = (try? fm.attributesOfItem(atPath: path)[.modificationDate]) as? Date,
+               Date().timeIntervalSince(mtime) > 24 * 3600 {
+                try? fm.removeItem(atPath: path)
+                offsets[path] = nil
+                if next[paneID] != nil { next[paneID] = nil; dirty = true }
+                continue
+            }
             guard let handle = FileHandle(forReadingAtPath: path) else { continue }
             defer { try? handle.close() }
             let size = (try? handle.seekToEnd()) ?? 0
