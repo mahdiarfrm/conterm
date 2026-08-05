@@ -4,10 +4,9 @@ import SwiftUI
 /// Names that mean production, and the gate that stands in front of anything
 /// destructive aimed at them.
 ///
-/// `KubeContextWatch.isDanger` only ever tinted a card, so this map could scale
-/// a Deployment to zero, roll a workload, cordon a node or push a playbook at
-/// production without asking once. A tint is a warning; this is a question you
-/// have to answer.
+/// Scaling a workload to zero, rolling it, cordoning a node and pushing a
+/// playbook are all one click from a card on this map, and a tint on that card
+/// is a warning nobody has to answer. This is the question they have to.
 enum Danger {
     /// One list for everything, because "prod" means the same thing whether it
     /// names a cluster context or a machine. Set in Settings → Kubernetes.

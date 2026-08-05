@@ -29,6 +29,10 @@ This is the answer to Orbit's biggest gap: nothing accrues. You enter, do a
 thing, leave, and the map has no memory of it. A routine you scheduled is a
 reason to come back.
 
+A routine is the **only** saved sequence of steps in the app. Boards used to
+carry their own (`OrbitFlow`); `RoutineStore.adoptSavedFlows` lifts them into the
+library once, and `OrbitSpace.flows` now only decodes.
+
 ## What already exists (do not rebuild it)
 
 - `OrbitEngine` (`State/OrbitEngine.swift`, `.shared`) owns the clock and **all**

@@ -156,12 +156,12 @@ final class OrbitModel: ObservableObject {
                     // as no connection to the Mac at all.
                     if let host = pane.remoteHost {
                         hosts[host] = true
-                        // The Mac line comes first because the first edge into a
-                        // node is the one that places it: a session belongs to
-                        // *you*, on its own ring, and the host it is talking to
-                        // is a fact about it rather than its parent. Hanging
-                        // sessions off hosts made the machine the subject of the
-                        // map and the work an attribute of it.
+                        // The first edge into a node is the one that places it,
+                        // so the Mac line comes first: a session belongs to
+                        // *you*, on your own ring, and the host it is talking to
+                        // is a fact about it rather than its parent. Order it
+                        // the other way and the machine becomes the subject of
+                        // the map and the work an attribute of it.
                         link(macID, paneID, flowing: working)
                         link("host:\(host)", paneID, flowing: working)
                     } else {

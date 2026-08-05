@@ -121,9 +121,9 @@ struct NodeCard: View {
                 .strokeBorder(borderColor, lineWidth: selected ? 2.4 : 1)
         )
         // Selection drives the action bar, so it has to read at a glance — a
-        // tint alone was lost among the statuses. On the corner rather than in
-        // the tag row: there it competed for width with the card's identity and
-        // clipped "SHELL 2" to "SHELL…" the moment you picked something.
+        // tint alone is lost among the statuses. On the corner rather than in
+        // the tag row, where it would compete for width with the card's
+        // identity and abbreviate it.
         .overlay(alignment: .topTrailing) {
             if selected {
                 Image(systemName: "checkmark.circle.fill")

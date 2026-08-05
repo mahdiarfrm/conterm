@@ -240,11 +240,10 @@ final class RoutineStore: ObservableObject {
 
     /// One-time lift of every board's saved flows into the library.
     ///
-    /// A flow and a routine were the same idea built twice — a named sequence
-    /// of steps — and shipping both meant guessing which one was real. The
-    /// library is the one that keeps a run history, takes parameters, and
-    /// belongs to you rather than to a board. `OrbitSpace.flows` still decodes
-    /// so an older library opens, but nothing writes it again.
+    /// A flow is the same idea as a routine — a named sequence of steps —
+    /// without the parameters, the run history or the independence from a
+    /// board, so there is one of them and this is it. `OrbitSpace.flows` still
+    /// decodes so an older library opens; nothing writes it again.
     func adoptSavedFlows(from spaces: OrbitSpaces) {
         guard !UserDefaults.standard.bool(forKey: Self.adoptedKey) else { return }
         UserDefaults.standard.set(true, forKey: Self.adoptedKey)
