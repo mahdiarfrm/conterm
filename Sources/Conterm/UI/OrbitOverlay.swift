@@ -163,6 +163,9 @@ struct OrbitOverlay: View {
     /// A destructive operation aimed at something that reads as production,
     /// waiting to be confirmed. See `OrbitDanger.swift`.
     @State var dangerGate: DangerGate?
+    /// What is different from the last time this mode was open. Computed once
+    /// per visit and cleared when read — it is news, not state.
+    @State var since: [OrbitChange] = []
     @State var scaleDraft = 1
 
     // Phase 2 (spaces) + phase 3 (act on selection).
@@ -439,12 +442,15 @@ struct OrbitOverlay: View {
             // Boards used to carry their own step sequences. Lifting them into
             // the routine library is a no-op after the first time.
             routines.adoptSavedFlows(from: spaces)
+            loadChangesSinceLastVisit()
             if autoResolveNames { resolveAllNames() }
             // Marks for distributions learned in an earlier session, in case the
             // fetch never got a chance to land.
             DistroArt.shared.ensureKnown()
         }
         .onDisappear {
+            // Where the next visit's "since you looked away" is measured from.
+            OrbitSeen.save(currentSnapshot())
             for t in floatingTerminals { t.close() }
             OrbitModel.shared.floatingPanes = []
             // Every borrowed host must go home, or its tile comes back blank.
