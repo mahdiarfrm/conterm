@@ -14,7 +14,7 @@ struct PaneMapThumb: View {
     /// this view's value differ, which re-reads the panes' live phases.
     var agentPhase: AgentStatus.Phase
 
-    private static let size = CGSize(width: 24, height: 17)
+    private static let size = CGSize(width: Theme.ui(24), height: Theme.ui(17))
     /// Inner margin between the well's edge and the tiles.
     private static let inset: CGFloat = 2.5
     private static let wellRadius: CGFloat = 6

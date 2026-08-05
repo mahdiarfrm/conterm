@@ -171,8 +171,8 @@ final class Preferences: ObservableObject {
     @Published var showPaneTitleBar: Bool {
         didSet { ud.set(showPaneTitleBar, forKey: K.showPaneTitleBar) }
     }
-    /// Show the layout-mode switcher in the toolbar. OFF hides it for
-    /// people who stick with one layout.
+    /// Show the layout-mode switcher (horizontal / vertical / agents / orbit) in
+    /// the toolbar. OFF hides it for people who stick with one layout.
     @Published var showLayoutSwitcher: Bool {
         didSet { ud.set(showLayoutSwitcher, forKey: K.showLayoutSwitcher) }
     }
@@ -188,6 +188,15 @@ final class Preferences: ObservableObject {
         didSet {
             ud.set(paneCornerRadius, forKey: K.paneCornerRadius)
             Theme.reloadPaneCorner()   // Theme caches it for the tile layout
+        }
+    }
+    /// How large the chrome around the terminal is drawn, as a multiple. The
+    /// terminal's own font size is separate and untouched. `Theme.ui(_:)` reads
+    /// this key; chrome that hasn't been migrated to it yet is unaffected.
+    @Published var uiScale: Double {
+        didSet {
+            ud.set(uiScale, forKey: K.uiScale)
+            Theme.reloadUIScale()
         }
     }
     /// Surface shell-command results (libghostty OSC 133 marks): a
@@ -389,6 +398,7 @@ final class Preferences: ObservableObject {
         static let showLayoutSwitcher = "conterm.showLayoutSwitcher"
         static let blinkOnAttention = "conterm.blinkOnAttention"
         static let paneCornerRadius = "conterm.paneCornerRadius"
+        static let uiScale          = "conterm.uiScale"
         static let commandAlerts    = "conterm.commandAlerts"
         static let autoCheckUpdates  = "conterm.autoCheckUpdates"
         static let showSystemStats  = "conterm.showSystemStats"
@@ -496,6 +506,7 @@ final class Preferences: ObservableObject {
         self.showLayoutSwitcher     = ud.object(forKey: K.showLayoutSwitcher) as? Bool ?? true
         self.blinkOnAttention       = ud.object(forKey: K.blinkOnAttention) as? Bool ?? true
         self.paneCornerRadius       = ud.object(forKey: K.paneCornerRadius) as? Double ?? 20
+        self.uiScale                = ud.object(forKey: K.uiScale) as? Double ?? 1
         self.commandAlerts          = ud.object(forKey: K.commandAlerts) as? Bool ?? true
         self.autoCheckUpdates       = ud.object(forKey: K.autoCheckUpdates) as? Bool ?? true
         self.showSystemStats        = ud.object(forKey: K.showSystemStats) as? Bool ?? true

@@ -275,6 +275,16 @@ struct SettingsPanel: View {
                     }
                     .fixedSize(horizontal: true, vertical: false)
                 }
+                SettingsRow(title: "Interface size",
+                            subtitle: "How large the chrome around the terminal is drawn — the tab bar, the toolbar and their pills. The terminal's own font size is set separately, above.") {
+                    HStack(spacing: 8) {
+                        Text("Smaller").subLabel().fixedSize()
+                        Slider(value: $prefs.uiScale, in: 0.85...1.25, step: 0.05)
+                            .frame(width: 180)
+                        Text("Larger").subLabel().fixedSize()
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                }
                 SettingsRow(title: "Glass panels",
                             subtitle: "Use real Liquid Glass for overlay panels — Command Palette, Search, Settings, Notifications. Off (default) paints them as solid cards, which is cheaper since they cover the terminal.") {
                     Toggle("", isOn: $prefs.liquidGlassPanels.withSound())
@@ -310,13 +320,13 @@ struct SettingsPanel: View {
                         .labelsHidden()
                 }
                 SettingsRow(title: "Layout switcher",
-                            subtitle: "The layout-mode segments in the toolbar. Turn off to hide the switcher if you stick with one layout.") {
+                            subtitle: "The horizontal / vertical / agents / orbit segments in the toolbar. Turn off to hide the switcher if you stick with one layout (⌘⇧M still opens Orbit).") {
                     Toggle("", isOn: $prefs.showLayoutSwitcher.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()
                 }
                 SettingsRow(title: "Blink when an agent needs you",
-                            subtitle: "Pulse a pane's border in amber, and its tab's dot, while its Claude agent is waiting on your input.") {
+                            subtitle: "Pulse a pane's border in amber while its Claude agent is waiting on your input.") {
                     Toggle("", isOn: $prefs.blinkOnAttention.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()

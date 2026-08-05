@@ -79,8 +79,8 @@ struct TabPill: View {
     private var squeezed: Bool {
         guard !mini, !compact, !isSessionCard, pillWidth > 0 else { return false }
         let title = tab.title.isEmpty ? "shell" : tab.title
-        let needed = Self.textWidth(title, size: 12) + 64
-                   + (index <= 9 ? 41 : 0)
+        let needed = Self.textWidth(title, size: Theme.ui(12)) + Theme.ui(64)
+                   + (index <= 9 ? Theme.ui(41) : 0)
         return pillWidth < needed
     }
 
@@ -101,14 +101,14 @@ struct TabPill: View {
             if mini {
                 statusDot
                 Text("\(index)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: Theme.ui(11), weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
                     .fixedSize()
             } else if isSessionCard {
                 PaneMapThumb(tree: tab.paneTree, isSelected: isSelected,
                              agentPhase: tab.agentPhase)
-                VStack(alignment: .leading, spacing: 1.5) {
+                VStack(alignment: .leading, spacing: Theme.ui(1.5)) {
                     titleLabel
                     SidebarTabMeta(tree: tab.paneTree, isSelected: isSelected)
                 }
@@ -117,11 +117,11 @@ struct TabPill: View {
                 // Directory line UNDER the title (like the sidebar
                 // cards), not beside it — stacked, it costs no width
                 // and just head-truncates to the pill's size.
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: Theme.ui(1)) {
                     titleLabel
                     if showDir, !compact {
                         SidebarTabMeta(tree: tab.paneTree, isSelected: isSelected,
-                                       size: 8.5, dimmed: true)
+                                       size: Theme.ui(8.5), dimmed: true)
                     }
                 }
                 .opacity(squeezed ? 0 : 1)
@@ -149,15 +149,15 @@ struct TabPill: View {
                     closeButton
                         .opacity(hovering || isSelected ? 1 : 0)
                         .allowsHitTesting(hovering || isSelected)
-                        .frame(width: 18)
+                        .frame(width: Theme.ui(18))
                 }
             }
         }
-        .padding(.horizontal, mini ? 9 : (compact ? 10 : (isSessionCard ? 12 : 11)))
+        .padding(.horizontal, Theme.ui(mini ? 9 : (compact ? 10 : (isSessionCard ? 12 : 11))))
         // The two-line pill (title + directory) slims its padding to
         // stay inside the bar's fixed height.
-        .padding(.vertical, mini ? 7 : (isSessionCard ? 6 : (compact ? 6
-            : (showDir ? 4 : 7))))
+        .padding(.vertical, Theme.ui(mini ? 7 : (isSessionCard ? 6 : (compact ? 6
+            : (showDir ? 4 : 7)))))
         .background(GeometryReader { proxy in
             Color.clear.onChange(of: proxy.size.width, initial: true) { _, w in
                 pillWidth = w
@@ -169,7 +169,7 @@ struct TabPill: View {
         .overlay {
             if squeezed {
                 Text("\(index)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: Theme.ui(11), weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
                     .allowsHitTesting(false)
@@ -371,7 +371,7 @@ struct TabPill: View {
                 attentionDot(color, phase: 0.5)
             } else {
                 Circle().fill(color)
-                    .frame(width: 6, height: 6)
+                    .frame(width: Theme.ui(6), height: Theme.ui(6))
                     .shadow(color: lit ? color.opacity(0.6) : .clear, radius: lit ? 3 : 0)
             }
         }
@@ -383,7 +383,7 @@ struct TabPill: View {
     /// The "needs you" dot at a given point in its cycle — `phase` 0…1.
     private func attentionDot(_ color: Color, phase: Double) -> some View {
         Circle().fill(color)
-            .frame(width: 6, height: 6)
+            .frame(width: Theme.ui(6), height: Theme.ui(6))
             .shadow(color: color.opacity(0.35 + 0.55 * phase), radius: 2 + 5 * phase)
             .opacity(0.5 + 0.5 * phase)
     }
@@ -450,9 +450,9 @@ struct TabPill: View {
     private var badge: some View {
         if index <= 9 {
             Text("⌘\(index)")
-                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                .font(.system(size: Theme.ui(9.5), weight: .semibold, design: .monospaced))
                 .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 5).padding(.vertical, 2)
+                .padding(.horizontal, Theme.ui(5)).padding(.vertical, Theme.ui(2))
                 .background(
                     ZStack {
                         Capsule().fill(chromeFill(prefs))
@@ -467,9 +467,9 @@ struct TabPill: View {
 
     private var closeButton: some View {
         Image(systemName: "xmark")
-            .font(.system(size: 9, weight: .bold))
+            .font(.system(size: Theme.ui(9), weight: .bold))
             .foregroundStyle(Theme.textSecondary)
-            .padding(3)
+            .padding(Theme.ui(3))
             .background(
                 Circle().fill(hoveringClose ? Color.white.opacity(0.15) : .clear)
             )

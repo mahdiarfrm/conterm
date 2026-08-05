@@ -70,12 +70,12 @@ struct NewTabButton: View {
                 }
 
                 Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(size: Theme.ui(11), weight: .bold, design: .rounded))
                     .foregroundStyle(colored
                         ? Color.black
                         : (hovering ? Theme.textPrimary : Theme.textSecondary))
             }
-            .frame(width: 26, height: 26)
+            .frame(width: Theme.ui(26), height: Theme.ui(26))
             .scaleEffect(pressed ? 0.85 : (hovering ? 1.08 : 1.0))
         }
         .buttonStyle(.plain)
@@ -108,13 +108,13 @@ struct VerticalNewTabRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.ui(8)) {
                 Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(size: Theme.ui(11), weight: .bold, design: .rounded))
                     .foregroundStyle(colored
                         ? Color.black
                         : (hovering ? Theme.textPrimary : Theme.textSecondary))
-                    .frame(width: 22, height: 22)
+                    .frame(width: Theme.ui(22), height: Theme.ui(22))
                     .background(
                         Circle().fill(colored
                             ? discColor.opacity(hovering ? 1.0 : 0.92)
@@ -128,12 +128,12 @@ struct VerticalNewTabRow: View {
                             lineWidth: 0.5)
                     )
                 Text("New tab")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .font(.system(size: Theme.ui(12), weight: .medium, design: .rounded))
                     .foregroundStyle(hovering ? Theme.textPrimary : Theme.textSecondary)
                 Spacer(minLength: 0)
             }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 6)
+            .padding(.vertical, Theme.ui(4))
+            .padding(.horizontal, Theme.ui(6))
             .background(
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(hovering ? Color.white.opacity(0.06) : .clear)
@@ -164,9 +164,9 @@ struct NewGroupButton: View {
             state.beginRenameGroup(g.id)
         } label: {
             Image(systemName: "folder.badge.plus")
-                .font(.system(size: 10.5, weight: .semibold))
+                .font(.system(size: Theme.ui(10.5), weight: .semibold))
                 .foregroundStyle(hovering || targeted ? Theme.textPrimary : Theme.textSecondary)
-                .frame(width: 24, height: 24)
+                .frame(width: Theme.ui(24), height: Theme.ui(24))
                 .background(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(hovering || targeted ? Color.white.opacity(0.10) : .clear)

@@ -107,11 +107,12 @@ struct TabBar: View {
         needed += trailingWidth
         for (i, tab) in state.tabs.enumerated() {
             let title = tab.title.isEmpty ? "shell" : tab.title
-            needed += TabPill.textWidth(title, size: 12) + 70 + (i < 9 ? 40 : 0)
+            needed += TabPill.textWidth(title, size: Theme.ui(12)) + Theme.ui(70)
+                    + (i < 9 ? Theme.ui(40) : 0)
         }
         for g in tabGroups.groups
         where state.tabs.contains(where: { $0.groupID == g.id }) {
-            needed += TabPill.textWidth(g.name, size: 11) + 56
+            needed += TabPill.textWidth(g.name, size: Theme.ui(11)) + Theme.ui(56)
         }
         return needed
     }
@@ -141,7 +142,8 @@ struct TabBar: View {
         var ideals: [(UUID, CGFloat)] = []
         for (i, tab) in state.tabs.enumerated() {
             let title = tab.title.isEmpty ? "shell" : tab.title
-            let w = TabPill.textWidth(title, size: 12) + 64 + (i < 9 ? 41 : 0)
+            let w = TabPill.textWidth(title, size: Theme.ui(12)) + Theme.ui(64)
+                  + (i < 9 ? Theme.ui(41) : 0)
             ideals.append((tab.id, w))
         }
         let total = ideals.reduce(0) { $0 + $1.1 }
@@ -150,7 +152,7 @@ struct TabBar: View {
         chrome += CGFloat(ideals.count) * 6
         for g in tabGroups.groups
         where state.tabs.contains(where: { $0.groupID == g.id }) {
-            chrome += TabPill.textWidth(g.name, size: 11) + 56
+            chrome += TabPill.textWidth(g.name, size: Theme.ui(11)) + Theme.ui(56)
         }
         let available = barWidth - chrome
         guard total > 0, available > 0 else { return [:] }
@@ -179,8 +181,8 @@ struct TabBar: View {
 
     private var horizontal: some View {
         let widths = pillWidths
-        return HStack(spacing: 6) {
-            HStack(spacing: 6) {
+        return HStack(spacing: Theme.ui(6)) {
+            HStack(spacing: Theme.ui(6)) {
                 ForEach(ungroupedTabs) { tab in
                     pillCell(for: tab, draggable: true, mini: miniPills,
                              showDir: showsDirMeta, width: widths[tab.id])
@@ -210,7 +212,7 @@ struct TabBar: View {
             // below opens the gap between that group and the trailing
             // chevron (and the update pill, when one is pending).
             NewTabButton { state.addTab() }
-                .padding(.leading, 2)
+                .padding(.leading, Theme.ui(2))
 
             Spacer(minLength: 0)
             if tucked {
@@ -241,7 +243,7 @@ struct TabBar: View {
         }
         .animation(Theme.Spring.crisp, value: prefs.toolbarCollapsed)
         .animation(Theme.Spring.crisp, value: prefs.showToolbarCollapse)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, Theme.ui(8))
         .frame(height: Theme.tabBarHeight)
         .background(GeometryReader { proxy in
             Color.clear.preference(key: TabBarWidthKey.self, value: proxy.size.width)
@@ -275,7 +277,7 @@ struct TabBar: View {
                 // which overlaps the sidebar's top.
                 Rectangle()
                     .fill(Color.clear)
-                    .frame(height: floatingPanel ? 14 : 48)
+                    .frame(height: Theme.ui(floatingPanel ? 14 : 48))
 
                 // Foreground plate — the sidebar is two stacked surfaces:
                 // every component lands on this raised inner sheet, and
@@ -289,7 +291,7 @@ struct TabBar: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     // Rows are borderless at rest, so a slim gap is enough
                     // — their own padding carries the rhythm.
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: Theme.ui(3)) {
                         let ungrouped = ungroupedTabs
                         ForEach(Array(ungrouped.enumerated()), id: \.element.id) { i, tab in
                             pillCell(for: tab, draggable: true)
@@ -307,12 +309,12 @@ struct TabBar: View {
                                 .modifier(RevealCascade(revealed: revealed,
                                                         row: ungrouped.count + i))
                         }
-                        HStack(spacing: 4) {
+                        HStack(spacing: Theme.ui(4)) {
                             VerticalNewTabRow { _ = state.addTab() }
                             NewGroupButton()
                         }
-                            .padding(.top, 6)
-                            .padding(.leading, 2)
+                            .padding(.top, Theme.ui(6))
+                            .padding(.leading, Theme.ui(2))
                             .modifier(RevealCascade(revealed: revealed,
                                                     row: ungrouped.count + tabGroups.groups.count))
                     }
@@ -328,8 +330,8 @@ struct TabBar: View {
                     // on both sides separates it from the scrolling tab
                     // list and the switcher below.
                     WidgetRail(compact: true)
-                        .padding(.top, 8)
-                        .padding(.bottom, 10)
+                        .padding(.top, Theme.ui(8))
+                        .padding(.bottom, Theme.ui(10))
                         .transition(.opacity)
                 }
                 // Layout switcher above the bottom action bar.
@@ -337,17 +339,17 @@ struct TabBar: View {
                     if prefs.showLayoutSwitcher { LayoutModeSwitcher() }
                     Spacer(minLength: 0)
                 }
-                .padding(.bottom, 6)
+                .padding(.bottom, Theme.ui(6))
                 // Bell / search / ⌘K at the bottom, in their own glass bar.
                 HStack {
                     UpdateIndicatorButton()
-                    HStack(spacing: 2) {
+                    HStack(spacing: Theme.ui(2)) {
                         AgentToolbarPill(bare: true)
                         NotificationBell(bare: true)
                         SearchHintButton(bare: true)
                         ShortcutHintButton(bare: true, compact: true)
                     }
-                    .padding(.horizontal, 5)
+                    .padding(.horizontal, Theme.ui(5))
                     .frame(height: TabBar.heavyPillHeight)
                     .modifier(ActionBarGlass())
                     .fixedSize(horizontal: true, vertical: false)
@@ -356,17 +358,17 @@ struct TabBar: View {
                 }
                 // Concentric with what sits on it: 14pt inset steps the
                 // plate's 34pt corner down to ~the tab cards' 18pt.
-                .padding(.horizontal, 14)
-                .padding(.vertical, 14)
+                .padding(.horizontal, Theme.ui(14))
+                .padding(.vertical, Theme.ui(14))
                 .background(sidebarPlate)
             }
             .animation(Theme.Spring.snappy, value: prefs.enabledWidgets)
             // The base card's margin around the plate — the visible frame.
             // Trailing is slimmer because the resize handle's 8pt sits
             // beyond it, evening out the visual gap.
-            .padding(.leading, 14)
-            .padding(.trailing, 6)
-            .padding(.bottom, 14)
+            .padding(.leading, Theme.ui(14))
+            .padding(.trailing, Theme.ui(6))
+            .padding(.bottom, Theme.ui(14))
             .frame(width: prefs.sidebarWidth)
 
             // Drag handle on the trailing edge.
@@ -469,22 +471,22 @@ struct TabBar: View {
         let groupTabs = state.tabs.filter { $0.groupID == group.id }
         if !groupTabs.isEmpty {
             let color = TabGroup.color(forKey: group.colorKey)
-            let corner = Theme.pillCorner + 3
-            HStack(spacing: 5) {
+            let corner = Theme.pillCorner + Theme.ui(3)
+            HStack(spacing: Theme.ui(5)) {
                 Button { state.beginRenameGroup(group.id) } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: Theme.ui(5)) {
                         Circle()
                             .fill(color)
-                            .frame(width: 7, height: 7)
+                            .frame(width: Theme.ui(7), height: Theme.ui(7))
                             .shadow(color: color.opacity(0.6), radius: 2)
                         Text(group.name)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.system(size: Theme.ui(11), weight: .semibold, design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .lineLimit(1)
                             .fixedSize()
                     }
-                    .padding(.leading, 9)
-                    .padding(.trailing, 4)
+                    .padding(.leading, Theme.ui(9))
+                    .padding(.trailing, Theme.ui(4))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -495,7 +497,7 @@ struct TabBar: View {
                              width: widths[tab.id])
                 }
             }
-            .padding(3)
+            .padding(Theme.ui(3))
             .background(
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
                     .fill(color.opacity(0.12))
@@ -546,14 +548,14 @@ struct TabBar: View {
             .modifier(TabDropTarget(accent: color, corner: 7) {
                 assignDropped($0, to: group.id)
             })
-            .padding(.top, 2)
+            .padding(.top, Theme.ui(2))
             if !group.collapsed {
                 ForEach(groupTabs) { tab in
-                    HStack(spacing: 8) {
+                    HStack(spacing: Theme.ui(8)) {
                         RoundedRectangle(cornerRadius: 1, style: .continuous)
                             .fill(color.opacity(0.4))
-                            .frame(width: 2)
-                            .padding(.vertical, 3)
+                            .frame(width: Theme.ui(2))
+                            .padding(.vertical, Theme.ui(3))
                         pillCell(for: tab, inGroupFolder: true, draggable: true)
                             .frame(maxWidth: .infinity)
                             .modifier(TabDropTarget(accent: color,
@@ -561,7 +563,7 @@ struct TabBar: View {
                                 assignDropped($0, to: group.id)
                             })
                     }
-                    .padding(.leading, 7)
+                    .padding(.leading, Theme.ui(7))
                 }
             }
         }
@@ -726,7 +728,7 @@ struct TabBar: View {
             override var isFlipped: Bool { true }
 
             override var intrinsicContentSize: NSSize {
-                NSSize(width: 8, height: NSView.noIntrinsicMetric)
+                NSSize(width: Theme.ui(8), height: NSView.noIntrinsicMetric)
             }
 
             override func updateTrackingAreas() {
@@ -781,7 +783,7 @@ struct TabBar: View {
         // One gap everywhere: matches WidgetRail's internal spacing so
         // widget pills, the update pill, the layout switcher, and the
         // action bar read as one evenly-set row.
-        HStack(spacing: 5) {
+        HStack(spacing: Theme.ui(5)) {
             // Stats are informational; drop them when narrow so the higher-
             // priority ⌘K / action pills aren't pushed off the bar.
             if orientation == .horizontal, !hideStats, !prefs.enabledWidgets.isEmpty {
@@ -796,7 +798,7 @@ struct TabBar: View {
 
     /// Unified action bar: bare icon buttons on a single glass surface.
     private var actionBar: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: Theme.ui(2)) {
             if orientation == .vertical {
                 AutoHideToggleButton(bare: true)
             }
@@ -805,7 +807,7 @@ struct TabBar: View {
             SearchHintButton(bare: true)
             ShortcutHintButton(bare: true, compact: orientation == .vertical || compactPills)
         }
-        .padding(.horizontal, 5)
+        .padding(.horizontal, Theme.ui(5))
         .frame(height: TabBar.heavyPillHeight)
         .modifier(ActionBarGlass())
     }
@@ -916,20 +918,20 @@ private struct ShortcutHintButton: View {
     /// sizes. Per-`Text` `.fixedSize()` keeps both glyphs rigid — a
     /// compressible Text would ellipsize instead of yielding width.
     private func hint(labelled: Bool) -> some View {
-        HStack(spacing: 5) {
+        HStack(spacing: Theme.ui(5)) {
             Text("⌘K")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .font(.system(size: Theme.ui(11), weight: .semibold, design: .monospaced))
                 .fixedSize()
             if labelled {
                 Text("commands")
-                    .font(.system(size: 11, design: .rounded))
+                    .font(.system(size: Theme.ui(11), design: .rounded))
                     .fixedSize()
                     .transition(.opacity.combined(
                         with: .scale(scale: 0.9, anchor: .leading)))
             }
         }
         .foregroundStyle(toolbarIconColor(hovering: hovering, onRed: onRedPill))
-        .padding(.horizontal, bare ? 6 : 11)
+        .padding(.horizontal, Theme.ui(bare ? 6 : 11))
         .frame(height: TabBar.toolbarPillHeight)
         .glassPill(enabled: !bare)
     }
@@ -953,9 +955,9 @@ private struct SearchHintButton: View {
             NSApp.keyWindow?.makeFirstResponder(nil)
         } label: {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(.system(size: Theme.ui(12.5), weight: .semibold))
                 .foregroundStyle(toolbarIconColor(hovering: hovering, onRed: onRedPill))
-                .padding(.horizontal, bare ? 6 : 9)
+                .padding(.horizontal, Theme.ui(bare ? 6 : 9))
                 .frame(height: TabBar.toolbarPillHeight)
                 .glassPill(enabled: !bare)
                 .contentShape(Capsule())
@@ -982,27 +984,37 @@ private struct AgentToolbarPill: View {
         Group {
             if center.runningCount > 0 {
                 Button {
-                    state.openAgentCenter(tab: .live)
+                    // The cockpit entry: open Orbit focused on the working session
+                    // so you see (and steer) what it's doing live. The flat roster
+                    // stays on ⌘⇧A and this pill's context menu.
+                    state.openOrbit(focusSession: workingSessionID)
                     NSApp.keyWindow?.makeFirstResponder(nil)
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: Theme.ui(4)) {
                         Image(systemName: "rectangle.stack")
-                            .font(.system(size: 12.5, weight: .semibold))
+                            .font(.system(size: Theme.ui(12.5), weight: .semibold))
                             .foregroundStyle(tint)
                         Text("\(center.runningCount)")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(.system(size: Theme.ui(10), weight: .bold, design: .rounded))
                             .monospacedDigit()
                             // Rigid: toolbar compression must not ellipsize the count.
                             .fixedSize()
                             .foregroundStyle(tint)
                     }
-                    .padding(.horizontal, bare ? 6 : 9)
+                    .padding(.horizontal, Theme.ui(bare ? 6 : 9))
                     .frame(height: TabBar.toolbarPillHeight)
                     .glassPill(enabled: !bare)
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .help("Agents (⌘⇧A)")
+                .help("See it in Orbit · right-click for the agent list")
+                .contextMenu {
+                    Button("Open in Orbit") { state.openOrbit(focusSession: workingSessionID) }
+                    Button("Agent list (⌘⇧A)") {
+                        state.openAgentCenter(tab: .live)
+                        NSApp.keyWindow?.makeFirstResponder(nil)
+                    }
+                }
                 .onHover { hovering = $0 }
                 .scaleEffect(hovering ? 1.12 : 1.0)
                 .animation(Theme.Spring.snappy, value: hovering)
@@ -1016,6 +1028,15 @@ private struct AgentToolbarPill: View {
         state.agentCenterOpen
             ? (onRedPill ? Color.white : Theme.accent)
             : toolbarIconColor(hovering: hovering, onRed: onRedPill)
+    }
+
+    /// The session to open Orbit on: one asking for attention first, else the
+    /// first working one, else any live agent.
+    private var workingSessionID: UUID? {
+        let e = center.entries
+        return (e.first { $0.phase == .attention }
+                ?? e.first { $0.phase == .working }
+                ?? e.first)?.id
     }
 }
 
@@ -1042,13 +1063,13 @@ private struct NotificationBell: View {
             // bounds, and the pill simply widens to fit. The digit hugs
             // the bell on the same 4pt gap the agent pill uses, so the
             // badged pills sit on one rhythm.
-            HStack(spacing: 4) {
+            HStack(spacing: Theme.ui(4)) {
                 Image(systemName: notifications.unreadCount > 0
                       ? "bell.badge.fill" : "bell")
-                    .font(.system(size: 12.5, weight: .semibold))
+                    .font(.system(size: Theme.ui(12.5), weight: .semibold))
                 if notifications.unreadCount > 0 {
                     Text("\(min(notifications.unreadCount, 99))")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.system(size: Theme.ui(10), weight: .bold, design: .rounded))
                         // Steady width as the count ticks within a digit count.
                         .monospacedDigit()
                         // Rigid: toolbar compression must not ellipsize the count.
@@ -1058,7 +1079,7 @@ private struct NotificationBell: View {
             .foregroundStyle(notifications.unreadCount > 0
                 ? (onRedPill ? Color.white : Theme.accent)
                 : toolbarIconColor(hovering: hovering, onRed: onRedPill))
-            .padding(.horizontal, bare ? 6 : 9)
+            .padding(.horizontal, Theme.ui(bare ? 6 : 9))
             .frame(height: TabBar.toolbarPillHeight)
             .glassPill(enabled: !bare)
             .contentShape(Capsule())
@@ -1117,7 +1138,7 @@ private struct ToolbarCollapseButton: View {
             withAnimation(Theme.Spring.crisp) { prefs.toolbarCollapsed.toggle() }
         } label: {
             Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: Theme.ui(11), weight: .semibold))
                 .foregroundStyle(hovering ? Theme.textPrimary : Theme.textSecondary)
                 .rotationEffect(.degrees(prefs.toolbarCollapsed ? 180 : 0))
                 // Equal sides turn the glass capsule into a full circle.
@@ -1172,14 +1193,14 @@ private struct UpdateIndicatorButton: View {
             Button {
                 if updates.phase == .available { updates.promptInstall() }
             } label: {
-                HStack(spacing: 5) {
+                HStack(spacing: Theme.ui(5)) {
                     Image(systemName: updates.phase == .available
                           ? "arrow.down.circle.fill"
                           : "arrow.triangle.2.circlepath")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: Theme.ui(11), weight: .bold))
                     if !compact {
                         Text(label)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.system(size: Theme.ui(11), weight: .semibold, design: .rounded))
                             // Rigid: a squeezed cluster must collapse this to
                             // the compact circle, never ellipsize the label
                             // into a half-word sliver.
@@ -1231,7 +1252,7 @@ private struct AutoHideToggleButton: View {
         } label: {
             Image(systemName: prefs.autoHideSidebar
                   ? "sidebar.leading" : "sidebar.left")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: Theme.ui(12), weight: .semibold))
                 .foregroundStyle(prefs.autoHideSidebar
                     ? (onRedPill ? Color.white : Theme.accent)
                     : toolbarIconColor(hovering: hovering, onRed: onRedPill))
@@ -1257,7 +1278,7 @@ private struct AutoHideToggleButton: View {
 /// pane area below it can use the full top of the window.
 struct FloatingLightsAutohidePill: View {
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Theme.ui(6)) {
             // SwiftUI prunes `Color.clear.frame(...)` in some layouts
             // (the frame collapses to 0pt), which let the auto-hide
             // icon ride up onto the native traffic lights. A clear
@@ -1266,11 +1287,11 @@ struct FloatingLightsAutohidePill: View {
             // right edge, AppKit spacing preserved by the shifter).
             Rectangle()
                 .fill(Color.clear)
-                .frame(width: 54, height: 22)
+                .frame(width: Theme.ui(54), height: Theme.ui(22))
             AutoHideToggleButton(bare: true)
         }
-        .padding(.horizontal, 8)
-        .frame(height: 32)
+        .padding(.horizontal, Theme.ui(8))
+        .frame(height: Theme.ui(32))
         .modifier(ActionBarGlass(redAllowed: false, solid: true))
         // Never let the pill compress — a narrow sidebar would
         // otherwise push the auto-hide icon on top of the native
@@ -1318,27 +1339,27 @@ private struct TabFolderHeader: View {
 
     var body: some View {
         Button(action: onToggle) {
-            HStack(spacing: 7) {
+            HStack(spacing: Theme.ui(7)) {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: Theme.ui(9), weight: .bold))
                     .foregroundStyle(Theme.textSecondary)
                     .rotationEffect(.degrees(collapsed ? 0 : 90))
                 Circle()
                     .fill(color)
-                    .frame(width: 8, height: 8)
+                    .frame(width: Theme.ui(8), height: Theme.ui(8))
                     .shadow(color: color.opacity(0.5), radius: 2)
                 Text(name)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: Theme.ui(12), weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 Text("\(count)")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .font(.system(size: Theme.ui(10), weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(Theme.textSecondary)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.horizontal, Theme.ui(8))
+            .padding(.vertical, Theme.ui(5))
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(hovering ? Theme.selectionFill : .clear)

@@ -157,17 +157,54 @@ enum Theme {
     }
     /// Re-read the stored radius after the preference changes.
     static func reloadPaneCorner() { paneCornerCache = loadPaneCorner() }
+
+    // MARK: - Chrome scale
+
+    /// How large the chrome is drawn, as a multiple. The terminal has its own
+    /// font size and is deliberately not touched by this — only the surfaces
+    /// around it.
+    ///
+    /// Cached like `paneCorner`: `ui(_:)` is called once per text run per
+    /// render, which is far too hot for a defaults lookup each time.
+    nonisolated(unsafe) private static var uiScaleCache: CGFloat?
+    static var uiScale: CGFloat {
+        if let s = uiScaleCache { return s }
+        let s = loadUIScale()
+        uiScaleCache = s
+        return s
+    }
+    static func reloadUIScale() { uiScaleCache = loadUIScale() }
+    private static func loadUIScale() -> CGFloat {
+        guard let v = UserDefaults.standard.object(forKey: "conterm.uiScale") as? Double
+        else { return 1 }
+        // Clamped hard: chrome sizes are tuned against fixed hit targets and
+        // fixed bar heights, and a scale far outside this range doesn't shrink
+        // the UI so much as break it.
+        return CGFloat(min(max(v, 0.85), 1.25))
+    }
+
+    /// A chrome dimension at the user's scale. Every size in the chrome — font
+    /// sizes, paddings, frame heights, icon sizes — routes through this, which
+    /// is what makes the setting possible: there is no single view to scale,
+    /// because the chrome is hundreds of hardcoded points across many files.
+    ///
+    /// Rounded to a half point so text doesn't land on a fractional baseline and
+    /// blur, which is the usual way a naive UI scale ends up looking cheap.
+    static func ui(_ size: CGFloat) -> CGFloat {
+        (size * uiScale * 2).rounded() / 2
+    }
     private static func loadPaneCorner() -> CGFloat {
         guard let v = UserDefaults.standard.object(forKey: "conterm.paneCornerRadius") as? Double
         else { return windowCorner }
         return CGFloat(min(max(v, 0), 24))
     }
-    // Capsule-adjacent on a ~28 pt tab pill.
-    static let pillCorner:      CGFloat = 18
+    // Capsule-adjacent on a ~28 pt tab pill. Scales with the chrome: a pill at
+    // 0.85 with an unscaled corner reads as a rounded rectangle, not a capsule.
+    static var pillCorner:      CGFloat { ui(18) }
     // A grouped-tab tray is ~38 pt (30 pill + 3 pad + 1 border each side); the
     // bar needs a few points over that so the horizontal bar's clip doesn't
     // shave the tray's bottom edge.
-    static let tabBarHeight:    CGFloat = 42
+    static var tabBarHeight:    CGFloat { ui(42) }
 
     // Springs — three flavors that get reused everywhere.
     enum Spring {

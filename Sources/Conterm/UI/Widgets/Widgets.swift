@@ -92,11 +92,11 @@ struct WidgetRail: View {
                 // Sidebar tray: pills keep their natural width and wrap
                 // onto new lines — small ones share a line, wide ones
                 // take their own, none stretch into empty rows.
-                WidgetFlow(spacing: 6) {
+                WidgetFlow(spacing: Theme.ui(6)) {
                     ForEach(kinds) { widget($0) }
                 }
             } else {
-                HStack(spacing: 5) {
+                HStack(spacing: Theme.ui(5)) {
                     ForEach(kinds) { widget($0) }
                 }
             }
@@ -235,7 +235,7 @@ struct WidgetShell<Content: View>: View {
     /// Full-size pills match TabBar.heavyPillHeight so every pill in the
     /// toolbar row shares one silhouette; sidebar pills sit just under
     /// the tab rows' height so the tray reads as part of the column.
-    private var pillHeight: CGFloat { compact ? 26 : 30 }
+    private var pillHeight: CGFloat { Theme.ui(compact ? 26 : 30) }
 
     var body: some View {
         Button(action: onTap) {
@@ -254,7 +254,7 @@ struct WidgetShell<Content: View>: View {
     @ViewBuilder
     private var shell: some View {
         let base = content
-            .padding(.horizontal, 9)
+            .padding(.horizontal, Theme.ui(9))
             .frame(height: pillHeight)
             .background(Capsule(style: .continuous).fill(Theme.recessedWash))
         if #available(macOS 26, *) {
@@ -278,7 +278,7 @@ struct WidgetShell<Content: View>: View {
 /// toolbar pills rather than a scaled-down variant.
 func widgetIcon(_ symbol: String) -> some View {
     Image(systemName: symbol)
-        .font(.system(size: 9.5, weight: .medium))
+        .font(.system(size: Theme.ui(9.5), weight: .medium))
         .foregroundStyle(Theme.textSecondary)
 }
 
@@ -293,16 +293,16 @@ struct WidgetPopoverChrome<Trailing: View, Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.ui(8)) {
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: Theme.ui(12), weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                 Spacer(minLength: 8)
                 trailing
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 12)
-            .padding(.bottom, 10)
+            .padding(.horizontal, Theme.ui(14))
+            .padding(.top, Theme.ui(12))
+            .padding(.bottom, Theme.ui(10))
             Divider().opacity(0.45)
             content
         }
@@ -313,9 +313,9 @@ struct WidgetPopoverChrome<Trailing: View, Content: View>: View {
 /// Small counter chip for a popover header ("3 running", "12/17").
 func widgetPopoverChip(_ text: String) -> some View {
     Text(text)
-        .font(.system(size: 10, weight: .medium, design: .monospaced))
+        .font(.system(size: Theme.ui(10), weight: .medium, design: .monospaced))
         .foregroundStyle(Theme.textSecondary)
-        .padding(.horizontal, 6).padding(.vertical, 2)
+        .padding(.horizontal, Theme.ui(6)).padding(.vertical, Theme.ui(2))
         .background(Capsule().fill(Theme.stroke))
 }
 
@@ -323,7 +323,7 @@ func widgetPopoverChip(_ text: String) -> some View {
 func widgetChipDivider() -> some View {
     RoundedRectangle(cornerRadius: 0.5)
         .fill(Theme.stroke)
-        .frame(width: 1, height: 12)
+        .frame(width: 1, height: Theme.ui(12))
 }
 
 /// Locate a CLI tool that GUI apps can't find via PATH (Homebrew, Docker
@@ -378,15 +378,15 @@ struct ClockWidget: View {
         // when the view isn't visible.
         TimelineView(.periodic(from: .now, by: prefs.clockShowSeconds ? 1 : 30)) { ctx in
             WidgetShell(compact: compact, help: fullFormatter.string(from: ctx.date), onTap: {}) {
-                HStack(spacing: 5) {
+                HStack(spacing: Theme.ui(5)) {
                     widgetIcon("clock")
                     Text(timeFormatter.string(from: ctx.date))
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .font(.system(size: Theme.ui(11), weight: .semibold, design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
                         .monospacedDigit()
                     if prefs.clockShowDate {
                         Text(dateFormatter.string(from: ctx.date))
-                            .font(.system(size: 9.5, design: .rounded))
+                            .font(.system(size: Theme.ui(9.5), design: .rounded))
                             .foregroundStyle(Theme.textSecondary)
                             .monospacedDigit()
                     }
@@ -513,12 +513,12 @@ struct BatteryWidget: View {
         Group {
             if model.hasBattery {
                 WidgetShell(compact: compact, help: help, onTap: {}) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: Theme.ui(5)) {
                         Image(systemName: symbol)
-                            .font(.system(size: 10.5, weight: .medium))
+                            .font(.system(size: Theme.ui(10.5), weight: .medium))
                             .foregroundStyle(tint)
                         Text("\(Int((model.level * 100).rounded()))%")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.system(size: Theme.ui(11), weight: .semibold, design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .monospacedDigit()
                     }
@@ -708,20 +708,20 @@ struct GitWidget: View {
         Group {
             if model.snap.inRepo, let branch = model.snap.branch {
                 WidgetShell(compact: compact, help: help, onTap: {}) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: Theme.ui(5)) {
                         widgetIcon("arrow.triangle.branch")
                         Text(branch)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.system(size: Theme.ui(11), weight: .semibold, design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .lineLimit(1)
                             // The sidebar tray affords the branch more
                             // room than the width-contested toolbar.
-                            .frame(maxWidth: compact ? 150 : 110)
+                            .frame(maxWidth: Theme.ui(compact ? 150 : 110))
                             .fixedSize(horizontal: true, vertical: false)
                         if model.snap.dirty {
                             Circle()
                                 .fill(Color(red: 0.93, green: 0.62, blue: 0.20))
-                                .frame(width: 5, height: 5)
+                                .frame(width: Theme.ui(5), height: Theme.ui(5))
                         }
                         if model.snap.ahead > 0 { counter("arrow.up", model.snap.ahead, compact) }
                         if model.snap.behind > 0 { counter("arrow.down", model.snap.behind, compact) }
@@ -744,9 +744,9 @@ struct GitWidget: View {
     private func counter(_ symbol: String, _ n: Int, _ compact: Bool) -> some View {
         HStack(spacing: 1) {
             Image(systemName: symbol)
-                .font(.system(size: 7, weight: .bold))
+                .font(.system(size: Theme.ui(7), weight: .bold))
             Text("\(n)")
-                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                .font(.system(size: Theme.ui(9.5), weight: .semibold, design: .rounded))
                 .monospacedDigit()
         }
         .foregroundStyle(Theme.textSecondary)
