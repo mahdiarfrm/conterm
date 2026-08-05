@@ -1,0 +1,48 @@
+---
+# A deliberately harmless playbook for exercising Orbit's Ansible path.
+# Every task is read-only: nothing is installed, written, or restarted, so it
+# is safe to point at any host you can already SSH to.
+#
+#   Orbit ▸ select host(s) ▸ Ansible ▸ pick this file ▸ Run
+#
+# It produces one ok per task per host, and a changed=0 recap — enough to see
+# the sidebar's live progress, the per-host rows, and the final result.
+- name: Orbit smoke test
+  hosts: all
+  gather_facts: true
+  become: false
+
+  vars:
+    # Fail fast. Ansible's default SSH timeout is long enough that an
+    # unreachable host looks like a hung run rather than a failed one.
+    ansible_ssh_common_args: '-o BatchMode=yes -o ConnectTimeout=8'
+
+  tasks:
+    - name: Reach the host
+      ansible.builtin.ping:
+
+    - name: Report who and where we are
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} is
+          {{ ansible_facts.distribution | default('unknown') }}
+          {{ ansible_facts.distribution_version | default('') }}
+          on {{ ansible_facts.architecture | default('unknown') }}
+
+    - name: Read the uptime
+      ansible.builtin.command: uptime
+      changed_when: false
+      register: uptime_out
+
+    - name: Show the uptime
+      ansible.builtin.debug:
+        var: uptime_out.stdout
+
+    - name: Read free disk on /
+      ansible.builtin.command: df -h /
+      changed_when: false
+      register: disk_out
+
+    - name: Show free disk
+      ansible.builtin.debug:
+        var: disk_out.stdout_lines
