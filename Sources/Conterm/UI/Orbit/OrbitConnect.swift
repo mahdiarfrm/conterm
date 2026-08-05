@@ -339,9 +339,8 @@ extension OrbitOverlay {
                 for pane in tab.paneTree.root.leaves() {
                     let id = "pane:\(pane.id.uuidString)"
                     let node = model.nodes.first { $0.id == id }
-                    let tag = ordinals[id].map { n in
-                        (node.map { kindName($0) } ?? "SHELL") + " \(n)"
-                    } ?? (pane.agent.phase == .idle ? "SHELL" : "AGENT")
+                    let tag = node.flatMap { kindTag($0, ordinals: ordinals) }
+                        ?? (pane.agent.phase == .idle ? "SHELL" : "AGENT")
                     let boards = spaces.spaces.filter { $0.members.contains(id) }.map(\.name)
                     out.append(SessionRow(pane: pane, tab: tab, tag: tag,
                                           where_: boards.isEmpty ? "Live only"
@@ -349,7 +348,27 @@ extension OrbitOverlay {
                 }
             }
         }
-        return out
+        // Whoever wants you first, then whatever is working, then the rest.
+        // A list of sessions ordered by which window they happen to be in
+        // makes you read all of it to find the one that stopped.
+        return out.sorted {
+            let a = sessionUrgency($0.pane), b = sessionUrgency($1.pane)
+            if a != b { return a < b }
+            return OrbitModel.paneLabel($0.pane)
+                .localizedCaseInsensitiveCompare(OrbitModel.paneLabel($1.pane)) == .orderedAscending
+        }
+    }
+
+    /// Lower sorts first. Both states that are stopped waiting on a person come
+    /// before anything still moving; a plain shell with no agent in it is last.
+    func sessionUrgency(_ pane: Pane) -> Int {
+        switch pane.agent.phase {
+        case .attention:   return 0
+        case .interrupted: return 1
+        case .working:     return 2
+        case .ready:       return 3
+        case .idle:        return 4
+        }
     }
 
     func sessionRow(_ row: SessionRow) -> some View {

@@ -24,25 +24,33 @@ extension OrbitOverlay {
     /// Picked, whatever kind it is. Hosts read through `selectedHosts` for the
     /// fleet verbs; the glow and the tick answer to the selection itself.
     func isFleetSelected(_ n: MapNode) -> Bool { selection.contains(n.id) }
+    /// Depth, which is also draw order: a lower layer is drawn last and so sits
+    /// on top. Sessions outrank the machines they talk to — the work is the
+    /// subject of this map, and a card for it should never be the one that ends
+    /// up underneath.
     func layer(_ n: MapNode) -> Int {
         switch n.kind {
         case .mac, .agent:              return 0
+        case .pane:                     return 1
         case .host, .cluster,
-             .project, .network, .note: return 1
-        case .pane, .k8s, .subagent:    return 2
-        case .container, .shellCmd:     return 3
-        case .vm, .kubeNode:            return 3
-        case .pod:                      return 4
-        case .podContainer:             return 5
+             .project, .network, .note: return 2
+        case .k8s, .subagent:           return 3
+        case .container, .shellCmd:     return 4
+        case .vm, .kubeNode:            return 4
+        case .pod:                      return 5
+        case .podContainer:             return 6
         }
     }
     func radius(_ n: MapNode) -> CGFloat {
         switch n.kind {
         case .mac:                 return 30
         case .agent:               return 26
-        case .host:                return 21
+        // A session reads larger than the machine it runs against: the glow is
+        // how a card claims the eye, and the sessions are what you came to see.
+        case .pane:                return 23
+        case .host:                return 20
         case .cluster:             return 19
-        case .pane, .subagent:     return 16
+        case .subagent:            return 16
         case .k8s:                 return 15
         case .container:           return 13
         case .vm:                  return 14

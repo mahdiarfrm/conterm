@@ -264,7 +264,7 @@ extension OrbitOverlay {
             // Only the pulse needs the canvas clock now — the travelling light
             // carries its own — so a still card stays out of the render pass.
             let animated = n.status == .working || n.status == .attention
-            let tag = ordinals[n.id].map { "\(kindName(n)) \($0)" }
+            let tag = kindTag(n, ordinals: ordinals)
             NodeCard(label: n.label,
                      subtitle: cardSubtitle(n),
                      contentWidth: contentWidth(n, tag: tag),
@@ -340,10 +340,10 @@ extension OrbitOverlay {
     func contentWidth(_ n: MapNode, tag: String?) -> CGFloat {
         let titleW = TabPill.textWidth(n.label, size: 11.5)
         let subW = cardSubtitle(n).map { TabPill.textWidth($0, size: 9) } ?? 0
-        // Tracking adds a little beyond the glyph run, and the tag row also
-        // carries the selection tick *after* the tag — leaving room for it out
-        // clipped "HOST 8" to "HO…" the moment a host was picked.
-        let tagW = tag.map { OrbitFont.width($0, size: 7.5) + 20 } ?? 0
+        // Tracking adds a little beyond the glyph run. The tag is never
+        // compressed (it is `fixedSize`), so this only has to stop the card
+        // being narrower than its own identity line.
+        let tagW = tag.map { OrbitFont.width($0, size: 7.5) + 6 } ?? 0
         return min(150, max(max(titleW, subW), tagW))
     }
 
@@ -421,16 +421,33 @@ extension OrbitOverlay {
     /// Each node's number within its own kind — "HOST 3". Numbered in id order
     /// so a node keeps its mark between rebuilds rather than being renumbered
     /// every time the graph is rebuilt.
+    /// A number only earns its place on a card when it tells two of them apart:
+    /// same kind, same name. Numbering unique names — HOST 1, HOST 3 — reads as
+    /// information and carries none, and the number moves as the graph changes.
+    /// Several remote shells, on the other hand, are all called `shell`.
     func kindOrdinals(_ graph: Graph) -> [String: Int] {
+        let shown = graph.nodes.filter { !isGroup($0) && !isNote($0) }
+        var ambiguous: [String: Int] = [:]
+        for n in shown { ambiguous[ordinalKey(n), default: 0] += 1 }
         var counters: [String: Int] = [:]
         var out: [String: Int] = [:]
-        for n in graph.nodes.filter({ !isGroup($0) && !isNote($0) }).sorted(by: { $0.id < $1.id }) {
-            let key = kindName(n)
-            guard key != "MAC" else { continue }   // there is only ever one
+        for n in shown.sorted(by: { $0.id < $1.id }) {
+            let key = ordinalKey(n)
+            guard kindName(n) != "MAC", ambiguous[key, default: 0] > 1 else { continue }
             counters[key, default: 0] += 1
             out[n.id] = counters[key]!
         }
         return out
+    }
+
+    func ordinalKey(_ n: MapNode) -> String { kindName(n) + "\u{1}" + n.label }
+
+    /// The card's identity line: what it is, and — only when that isn't enough
+    /// — which one. The Mac is the exception; there is only ever one.
+    func kindTag(_ n: MapNode, ordinals: [String: Int]) -> String? {
+        guard kindName(n) != "MAC" else { return nil }
+        if let i = ordinals[n.id] { return "\(kindName(n)) \(i)" }
+        return kindName(n)
     }
 
     func kindName(_ n: MapNode) -> String {

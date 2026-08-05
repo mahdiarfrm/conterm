@@ -66,20 +66,16 @@ struct NodeCard: View {
             .padding(.top, 1)
             VStack(alignment: .leading, spacing: 2) {
                 if let kindTag {
-                    HStack(spacing: 5) {
-                        Text(kindTag)
-                            .font(OrbitFont.face(7.5)).tracking(0.5)
-                            .foregroundStyle(selected ? Theme.accent.opacity(0.95)
-                                                      : Theme.textSecondary.opacity(0.62))
-                            .lineLimit(1)
-                        if selected {
-                            // Selection drives the action bar, so it has to read
-                            // at a glance — a tint alone was lost among statuses.
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 8.5, weight: .bold))
-                                .foregroundStyle(Theme.accent)
-                        }
-                    }
+                    // What the card *is* — never abbreviated. The tag is the
+                    // one line that tells a session apart from the machine it
+                    // is talking to, so it takes its natural width and the
+                    // selection tick sits outside the text column entirely.
+                    Text(kindTag)
+                        .font(OrbitFont.face(7.5)).tracking(0.5)
+                        .foregroundStyle(selected ? Theme.accent.opacity(0.95)
+                                                  : Theme.textSecondary.opacity(0.62))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
                 Text(label)
                     .font(.system(size: 11.5, weight: .semibold, design: .rounded))
@@ -124,6 +120,19 @@ struct NodeCard: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: selected ? 2.4 : 1)
         )
+        // Selection drives the action bar, so it has to read at a glance — a
+        // tint alone was lost among the statuses. On the corner rather than in
+        // the tag row: there it competed for width with the card's identity and
+        // clipped "SHELL 2" to "SHELL…" the moment you picked something.
+        .overlay(alignment: .topTrailing) {
+            if selected {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundStyle(Theme.accent)
+                    .background(Circle().fill(light ? Color.white : Color.black).padding(1))
+                    .offset(x: 4, y: -4)
+            }
+        }
         // The travelling light, kept from the old ring but run around the card
         // itself: a short bright segment orbiting the edge while it works.
         .overlay { if busy { travellingLight } }

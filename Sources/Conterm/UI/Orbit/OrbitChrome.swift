@@ -108,7 +108,8 @@ extension OrbitOverlay {
                         "Spaces — boards you compose yourself from hosts, sessions and clusters.",
                     ])
                     helpSection("Acting on things", [
-                        "Click a host to select it; the bar at the bottom carries what you can do to it.",
+                        "Click anything to select it; the bar at the bottom carries what you can do to it.",
+                        "Sessions ride the ring closest to your Mac — a host is where a session runs, not the other way round.",
                         "Right-click or double-click any node to aim that bar at it.",
                         "Click a running session to narrow the map to it; the Mac node takes you back.",
                     ])

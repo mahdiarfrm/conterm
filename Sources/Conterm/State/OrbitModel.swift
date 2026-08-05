@@ -156,8 +156,14 @@ final class OrbitModel: ObservableObject {
                     // as no connection to the Mac at all.
                     if let host = pane.remoteHost {
                         hosts[host] = true
-                        link("host:\(host)", paneID, flowing: working)
+                        // The Mac line comes first because the first edge into a
+                        // node is the one that places it: a session belongs to
+                        // *you*, on its own ring, and the host it is talking to
+                        // is a fact about it rather than its parent. Hanging
+                        // sessions off hosts made the machine the subject of the
+                        // map and the work an attribute of it.
                         link(macID, paneID, flowing: working)
+                        link("host:\(host)", paneID, flowing: working)
                     } else {
                         localPanes.append((paneID, Self.projectKey(pane.cwd), working))
                     }
@@ -180,8 +186,8 @@ final class OrbitModel: ObservableObject {
                         status: Self.status(for: pane.agent.phase), pane: pane))
             if let host = pane.remoteHost {
                 hosts[host] = true
+                link(macID, paneID, flowing: working)     // placed by you, not by its host
                 link("host:\(host)", paneID, flowing: working)
-                link(macID, paneID, flowing: working)
             } else {
                 localPanes.append((paneID, Self.projectKey(pane.cwd), working))
             }
@@ -256,11 +262,13 @@ final class OrbitModel: ObservableObject {
     /// and on the host's, and two cards reading `sib-02` are two cards you
     /// cannot tell apart.
     static func paneLabel(_ pane: Pane) -> String {
-        // A remote session whose directory nobody on the far end has reported is
-        // named by its machine: the local path it inherited is not where it is.
-        if let host = pane.remoteHost, !pane.cwdIsRemote {
-            return HostNameStore.name(for: host) ?? Self.hostLabel(host)
-        }
+        // A remote session whose directory nobody on the far end has reported
+        // knows only that it is a shell somewhere on that machine. The local
+        // path it inherited is not where it is, and the machine's name belongs
+        // to the machine's own card — so it says what it is and lets its
+        // subtitle say where. Several of them are told apart by the ordinal on
+        // the card's kind tag.
+        if pane.remoteHost != nil, !pane.cwdIsRemote { return "shell" }
         return friendlyDirLabel(for: pane.cwd)
     }
 
@@ -270,8 +278,9 @@ final class OrbitModel: ObservableObject {
     /// the machine instead of one saying `sib-02` and the other an IP.
     static func paneSubtitle(_ pane: Pane, isCurrent: Bool) -> String? {
         if pane.agent.phase != .idle { return pane.agent.tool.displayName }
+        // Where it is, always — a remote session's whole identity is which
+        // machine it is on, and the label can only carry a directory.
         if let host = pane.remoteHost {
-            guard pane.cwdIsRemote else { return "ssh" }
             return "on " + (HostNameStore.name(for: host) ?? Self.hostLabel(host))
         }
         return isCurrent ? "current" : nil
@@ -789,8 +798,10 @@ enum OrbitLayout {
         guard let n else { return "9" }
         switch n.kind {
         case .mac:                    return "0"
-        case .host(_, let active):    return (active ? "1" : "3") + n.label.lowercased()
-        case .pane:                   return "2" + n.label.lowercased()
+        // Sessions lead the Mac's ring: the work comes first and the machines
+        // it runs against follow, rather than the fleet being the headline.
+        case .pane:                   return "1s" + n.label.lowercased()
+        case .host(_, let active):    return (active ? "2" : "3") + n.label.lowercased()
         case .cluster:                return "4" + n.label.lowercased()
         case .k8s:                    return "5" + n.label.lowercased()
         case .vm:                     return "5v" + n.label.lowercased()
