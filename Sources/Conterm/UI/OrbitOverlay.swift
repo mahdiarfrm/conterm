@@ -353,7 +353,7 @@ struct OrbitOverlay: View {
             ScrollPanCatcher { dx, dy, loc in
                 // A modal opened over Orbit (Host / Cluster Overview, Ansible
                 // cockpit, the output panel) owns scroll — don't pan underneath it.
-                if modal.isOpen || state.hostOverview != nil
+                if modal.isOpen || state.hostOverview != nil || state.orbitSearchOpen
                     || state.clusterOverviewOpen || state.ansibleCockpit != nil { return false }
                 // Any open trailing inspector — host, steer or Ansible — owns
                 // scroll over its own edge; panning the map under a list the
@@ -406,6 +406,7 @@ struct OrbitOverlay: View {
             panePreview
             routinesPanel
             helpPanel
+            searchPanel.zIndex(20)   // over every panel: it can aim at any of them
         }
         // 1 Hz while Orbit is open. The plan advances on the engine's own clock;
         // this tick is the map's: pull fresh agent activity (shell commands,
@@ -543,6 +544,13 @@ struct OrbitOverlay: View {
             sim.wake()
         }
     }
+
+    /// What is typed into the map's search field, and which of its results is
+    /// highlighted. Whether the field is *up* lives on `AppState`, because the
+    /// key monitor has to route the arrows and Return to it.
+    @State var searchQuery = ""
+    @State var searchIndex = 0
+    @FocusState var searchFieldFocused: Bool
 
     /// Last known canvas size, kept so a fit can be computed outside the
     /// render pass.

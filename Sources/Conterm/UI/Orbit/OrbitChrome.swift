@@ -118,6 +118,7 @@ extension OrbitOverlay {
                         "Each level only refreshes while it's open.",
                     ])
                     helpSection("Getting around", [
+                        "⌘K finds anything by name — a host you've never connected to, a session, a routine. Return brings it to the middle.",
                         "Scroll to pan, pinch or ± to zoom, ↺ to re-frame everything.",
                         "Esc steps back out: focus, then the aimed bar, then the selection.",
                     ])
@@ -398,6 +399,9 @@ extension OrbitOverlay {
                 // header: which board you're on and how you're looking at it are
                 // the same question.
                 HStack(spacing: 2) {
+                    // A key nobody is told about is a key nobody presses.
+                    zoomButton("magnifyingglass") { state.toggleOrbitSearch() }
+                        .help("Find a host, session or routine (⌘K)")
                     zoomButton(showSessions ? "rectangle.stack.fill" : "rectangle.stack") {
                         withAnimation(Theme.Spring.snappy) { showSessions.toggle() }
                     }

@@ -398,6 +398,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if self.state.ansibleCockpit != nil { self.state.closeAnsibleCockpit(); return nil }
                 if self.state.clusterOverviewOpen { self.state.closeClusterOverview(); return nil }
                 if self.state.fleetRunOpen { self.state.closeFleetRun(); return nil }
+                // Search is the innermost thing Orbit can have open, so it
+                // unwinds before the focus and the map's own selection.
+                if self.state.orbitOpen, self.state.orbitSearchOpen {
+                    self.state.toggleOrbitSearch()
+                    return nil
+                }
                 // Orbit itself stays open on Esc, but a session focus is a
                 // narrowed view you need a way out of.
                 if self.state.orbitOpen, self.state.orbitFocusSession != nil {
@@ -446,6 +452,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     case 36:  self.state.paletteRunTick &+= 1;     return nil
                     default: break
                     }
+                }
+            }
+
+            // Orbit's search field owns the arrows and Return while it's up,
+            // for the same reason the palette does: the TextField consumes them
+            // first, so a SwiftUI parent never sees them.
+            if self.state.orbitOpen, self.state.orbitSearchOpen {
+                switch event.keyCode {
+                case 126: self.state.orbitSearchNav -= 1; return nil
+                case 125: self.state.orbitSearchNav += 1; return nil
+                case 36:  self.state.orbitSearchRunTick &+= 1; return nil
+                default: break
                 }
             }
 
@@ -544,6 +562,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if cmd && shift && key == "m" {
                 self.state.openOrbit()
                 NSApp.keyWindow?.makeFirstResponder(nil)
+                return nil
+            }
+            // ⌘K = find something on the map. Only inside Orbit: elsewhere the
+            // key belongs to the terminal.
+            if cmd && !opt && !ctrl && !shift && key == "k" && self.state.orbitOpen {
+                self.state.toggleOrbitSearch()
                 return nil
             }
             // NB: modified Return (⌘/⌥-Return) is intentionally NOT

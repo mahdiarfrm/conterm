@@ -532,6 +532,21 @@ final class AppState: ObservableObject {
     /// because the cockpit can have several terminals open at once.
     @Published var orbitPreviewPanes: Set<UUID> = []
 
+    /// Whether the map's search field is up. Held here rather than in the view
+    /// because the key monitor has to route the arrows and Return to it: a
+    /// focused `TextField` swallows them before any SwiftUI parent sees them.
+    @Published var orbitSearchOpen = false
+    /// A signed running counter the key monitor moves; the view applies the
+    /// difference, so one value carries both direction and repeats.
+    @Published var orbitSearchNav = 0
+    /// Bumped by Return — commit whatever the search has highlighted.
+    @Published var orbitSearchRunTick = 0
+
+    func toggleOrbitSearch() {
+        withAnimation(Theme.Spring.snappy) { orbitSearchOpen.toggle() }
+        if orbitSearchOpen { orbitSearchNav = 0 }
+    }
+
     /// Persisted so a relaunch reopens in Orbit when it was the active layer.
     static let orbitWasOpenKey = "conterm.orbit.wasOpen"
 
