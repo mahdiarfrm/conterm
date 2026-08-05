@@ -12,7 +12,10 @@ import SwiftUI
 /// here.
 extension OrbitOverlay {
 
-    struct SearchHit: Identifiable {
+    /// One findable thing. Built once when the field opens — the host list
+    /// comes from the shell history on disk, so ranking must never be the thing
+    /// that reads it.
+    struct SearchItem: Identifiable, Equatable {
         enum Target: Equatable {
             case node(String)
             case host(String)        // known target, not currently on any graph
@@ -24,9 +27,9 @@ extension OrbitOverlay {
         let glyph: String
         let kind: String
         let target: Target
-        /// Lower is a better match; ties break on the shorter label, so `web1`
-        /// wins over `web1-staging-replica` for the query `web`.
-        let rank: Int
+        /// Where this sits with no query typed: live work first, then
+        /// inventory. Ranking only reorders within what matches.
+        let natural: Int
     }
 
     // MARK: - Matching
@@ -54,68 +57,91 @@ extension OrbitOverlay {
         return i == needle.endIndex
     }
 
-    /// Everything findable, ranked. Nodes come from the whole live model rather
-    /// than the current graph — searching only what is already drawn would make
-    /// the field useless in exactly the case it exists for.
-    var searchHits: [SearchHit] {
-        let q = searchQuery.trimmingCharacters(in: .whitespaces)
+    // MARK: - Corpus
+
+    /// Everything findable. Built when the field opens and on nothing else:
+    /// `SSHHistory.recentTargets` parses the shell history file, which is far
+    /// too expensive to sit behind a per-keystroke — let alone a per-render —
+    /// path.
+    func refreshSearchCorpus() {
         var seen = Set<String>()
-        var out: [SearchHit] = []
+        var out: [SearchItem] = []
 
         func offer(_ id: String, _ label: String, _ subtitle: String?,
-                   _ glyph: String, _ kind: String, _ target: SearchHit.Target) {
+                   _ glyph: String, _ kind: String,
+                   _ target: SearchItem.Target, _ natural: Int) {
             guard seen.insert(id).inserted else { return }
-            // A subtitle match is real but weaker than a name match — you
-            // usually type the name.
-            let byLabel = Self.searchRank(label, q)
-            let bySub = subtitle.flatMap { Self.searchRank($0, q) }.map { $0 + 4 }
-            guard let rank = [byLabel, bySub].compactMap({ $0 }).min() else { return }
-            out.append(SearchHit(id: id, label: label, subtitle: subtitle,
-                                 glyph: glyph, kind: kind, target: target, rank: rank))
+            out.append(SearchItem(id: id, label: label, subtitle: subtitle,
+                                  glyph: glyph, kind: kind, target: target,
+                                  natural: natural))
         }
 
         for n in model.nodes {
             switch n.kind {
-            case .host(let t, _):
-                offer(n.id, n.label, HostNameStore.name(for: t) == nil ? t : t,
-                      "externaldrive.connected.to.line.below.fill", "Host", .node(n.id))
-            case .pane:
+            case .pane, .agent:
                 offer(n.id, n.label, n.subtitle,
-                      n.status == .neutral ? "terminal" : "sparkle", "Session", .node(n.id))
-            case .agent:
-                offer(n.id, n.label, n.subtitle, "sparkle", "Session", .node(n.id))
+                      n.status == .neutral ? "terminal" : "sparkle",
+                      "Session", .node(n.id), 0)
+            case .host(let t, let active):
+                offer(n.id, n.label, t, "externaldrive.connected.to.line.below.fill",
+                      "Host", .node(n.id), active ? 1 : 3)
             case .cluster(let ctx, _):
-                offer(n.id, n.label, ctx, "cube.transparent", "Cluster", .node(n.id))
+                offer(n.id, n.label, ctx, "cube.transparent", "Cluster", .node(n.id), 2)
             case .container:
-                offer(n.id, n.label, n.subtitle, "shippingbox", "Container", .node(n.id))
+                offer(n.id, n.label, n.subtitle, "shippingbox", "Container", .node(n.id), 4)
             case .vm:
-                offer(n.id, n.label, n.subtitle, "macwindow.on.rectangle", "VM", .node(n.id))
+                offer(n.id, n.label, n.subtitle, "macwindow.on.rectangle",
+                      "VM", .node(n.id), 4)
             case .pod, .kubeNode, .podContainer:
-                offer(n.id, n.label, n.subtitle, "cube", "Kubernetes", .node(n.id))
+                offer(n.id, n.label, n.subtitle, "cube", "Kubernetes", .node(n.id), 4)
             default: break
             }
+        }
+        for r in routines.routines {
+            offer("routine:\(r.id.uuidString)", r.name,
+                  "\(r.steps.count) step\(r.steps.count == 1 ? "" : "s")",
+                  "list.bullet.rectangle", "Routine", .routine(r.id), 2)
         }
         // Hosts you know about but aren't connected to. These are the whole
         // point of the feature: they are inventory, they are numerous, and the
         // Live map deliberately doesn't draw them.
         for t in SSHHistory.recentTargets(limit: 60) {
             offer("host:\(t)", HostNameStore.name(for: t) ?? t, t,
-                  "externaldrive.connected.to.line.below.fill", "Host", .host(t))
-        }
-        for r in routines.routines {
-            offer("routine:\(r.id.uuidString)", r.name,
-                  "\(r.steps.count) step\(r.steps.count == 1 ? "" : "s")",
-                  "list.bullet.rectangle", "Routine", .routine(r.id))
+                  "externaldrive.connected.to.line.below.fill", "Host", .host(t), 3)
         }
 
-        return out.sorted {
-            if $0.rank != $1.rank { return $0.rank < $1.rank }
-            if $0.label.count != $1.label.count { return $0.label.count < $1.label.count }
-            return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+        searchCorpus = out.sorted {
+            $0.natural != $1.natural ? $0.natural < $1.natural
+                : $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
         }
+        rankSearch()
     }
 
-    var searchResults: [SearchHit] { Array(searchHits.prefix(12)) }
+    /// Filter and order the corpus for the current query. Called once per
+    /// keystroke — never from `body`.
+    func rankSearch() {
+        let q = searchQuery.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else {
+            searchResults = searchCorpus
+            searchIndex = 0
+            return
+        }
+        var ranked: [(SearchItem, Int)] = []
+        for item in searchCorpus {
+            // A subtitle match is real but weaker than a name match — you
+            // usually type the name.
+            let byLabel = Self.searchRank(item.label, q)
+            let bySub = item.subtitle.flatMap { Self.searchRank($0, q) }.map { $0 + 4 }
+            guard let rank = [byLabel, bySub].compactMap({ $0 }).min() else { continue }
+            ranked.append((item, rank))
+        }
+        searchResults = ranked.sorted {
+            if $0.1 != $1.1 { return $0.1 < $1.1 }
+            if $0.0.label.count != $1.0.label.count { return $0.0.label.count < $1.0.label.count }
+            return $0.0.label.localizedCaseInsensitiveCompare($1.0.label) == .orderedAscending
+        }.map(\.0)
+        searchIndex = 0
+    }
 
     // MARK: - Committing
 
@@ -142,10 +168,11 @@ extension OrbitOverlay {
         commitSearch(hit)
     }
 
-    func commitSearch(_ hit: SearchHit) {
+    func commitSearch(_ hit: SearchItem) {
         state.orbitSearchOpen = false
         searchQuery = ""
         searchIndex = 0
+        SoundEffects.shared.play(.paletteConfirm)
 
         switch hit.target {
         case .routine(let id):
@@ -200,103 +227,140 @@ extension OrbitOverlay {
 
     // MARK: - The field
 
+    /// Two detached bubbles — the input bar, then the results — the same shape
+    /// as the app's own command palette, so the one search here and the one
+    /// everywhere else are recognisably the same object.
     @ViewBuilder
     var searchPanel: some View {
         if state.orbitSearchOpen {
             ZStack(alignment: .top) {
-                Color.black.opacity(0.001)
+                Color.black.opacity(0.28).ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture { state.toggleOrbitSearch() }
-                VStack(spacing: 0) {
-                    HStack(spacing: 9) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Theme.accent)
-                        TextField("Find a host, session or routine", text: $searchQuery)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 15, weight: .medium, design: .rounded))
-                            .foregroundStyle(Theme.textPrimary)
-                            .focused($searchFieldFocused)
-                            .onSubmit { runSearch() }
-                        if !searchQuery.isEmpty {
-                            Text("\(searchHits.count)")
-                                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                                .foregroundStyle(Theme.textSecondary)
-                                .padding(.horizontal, 7).padding(.vertical, 2)
-                                .background(Capsule().fill(chromeFill(prefs)))
-                        }
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 13)
-
+                VStack(spacing: 10) {
+                    searchBar
+                        .modifier(PaletteBubble(cornerRadius: 27, darken: 0.14))
                     if !searchResults.isEmpty {
-                        Divider().opacity(0.35)
-                        VStack(spacing: 0) {
-                            ForEach(Array(searchResults.enumerated()), id: \.element.id) { i, hit in
-                                searchRow(hit, active: i == searchIndex)
-                                    .onTapGesture { commitSearch(hit) }
-                            }
-                        }
-                        .padding(.vertical, 5)
+                        searchList
+                            .modifier(PaletteBubble(cornerRadius: 26))
                     } else if !searchQuery.isEmpty {
-                        Divider().opacity(0.35)
-                        Text("Nothing by that name")
-                            .font(.system(size: 11.5, design: .rounded))
+                        Text("Nothing matches “\(searchQuery)”.")
+                            .font(.system(size: 11, design: .rounded))
                             .foregroundStyle(Theme.textSecondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 16).padding(.vertical, 12)
+                            .padding(20)
+                            .modifier(PaletteBubble(cornerRadius: 26))
                     }
                 }
-                .frame(width: 460)
-                .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(prefs.lightGlass ? Color.white.opacity(0.92) : Color.black.opacity(0.88)))
-                .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.ultraThinMaterial))
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Theme.strokeStrong, lineWidth: 1))
-                .shadow(color: .black.opacity(0.5), radius: 34, y: 16)
-                .padding(.top, 96)
+                .frame(maxWidth: 560)
+                // Its own frame, so a wheel over the list scrolls the list
+                // instead of panning the map underneath it.
+                .background(GeometryReader { g in
+                    Color.clear
+                        .onAppear { searchFrame = g.frame(in: .global) }
+                        .onChange(of: g.frame(in: .global)) { _, f in searchFrame = f }
+                })
+                .padding(.top, 84)
                 .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
             }
-            .onAppear { searchFieldFocused = true }
-            // Typing narrows the list under the cursor; an index left pointing
-            // past the end would commit nothing.
-            .onChange(of: searchQuery) { _, _ in searchIndex = 0 }
+            .onAppear {
+                searchQuery = ""
+                refreshSearchCorpus()
+                // Claiming focus synchronously races the field's mount and
+                // loses, leaving the bar deaf until it is clicked.
+                DispatchQueue.main.async { searchFieldFocused = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    searchFieldFocused = true
+                }
+            }
+            .onDisappear { searchFrame = .zero }
+            .onChange(of: searchQuery) { _, _ in rankSearch() }
             .onChange(of: state.orbitSearchNav) { old, new in
                 guard !searchResults.isEmpty else { return }
                 let n = searchResults.count
                 searchIndex = ((searchIndex + (new - old)) % n + n) % n
+                SoundEffects.shared.play(.paletteMove)
             }
             .onChange(of: state.orbitSearchRunTick) { _, _ in runSearch() }
         }
     }
 
-    func searchRow(_ hit: SearchHit, active: Bool) -> some View {
+    var searchBar: some View {
         HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(Theme.textSecondary)
+                .font(.system(size: 15, weight: .medium))
+            NeonCaretField(text: $searchQuery,
+                           placeholder: "Find a host, session, cluster or routine",
+                           fontSize: 16, lightBackground: prefs.lightGlass)
+                .frame(height: 24)
+                .focused($searchFieldFocused)
+            Spacer()
+            if !searchResults.isEmpty {
+                Text("\(searchResults.count)")
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().fill(Theme.stroke))
+            }
+            Text("esc")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Capsule().fill(Theme.stroke))
+        }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+    }
+
+    var searchList: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(searchResults.enumerated()), id: \.element.id) { i, hit in
+                        searchRow(hit, active: i == searchIndex)
+                            .id("orbit-hit-\(i)")
+                            .onTapGesture { commitSearch(hit) }
+                            .onHover { if $0 { searchIndex = i } }
+                    }
+                }
+                .padding(8)
+            }
+            .frame(maxHeight: 380)
+            .onChange(of: searchIndex) { _, i in
+                withAnimation(.easeOut(duration: 0.12)) {
+                    proxy.scrollTo("orbit-hit-\(i)", anchor: .center)
+                }
+            }
+        }
+    }
+
+    func searchRow(_ hit: SearchItem, active: Bool) -> some View {
+        HStack(spacing: 11) {
             Image(systemName: hit.glyph)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(active ? Theme.accent : Theme.textSecondary)
-                .frame(width: 17)
+                .frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
                 Text(hit.label)
-                    .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 if let s = hit.subtitle, !s.isEmpty, s != hit.label {
                     Text(s)
-                        .font(.system(size: 10, design: .rounded))
+                        .font(.system(size: 10.5, design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1).truncationMode(.middle)
                 }
             }
             Spacer(minLength: 8)
             Text(hit.kind.uppercased())
-                .font(OrbitFont.face(8)).tracking(0.5)
-                .foregroundStyle(Theme.textSecondary.opacity(0.7))
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .tracking(0.7)
+                .foregroundStyle(Theme.textSecondary.opacity(0.65))
         }
-        .padding(.horizontal, 13).padding(.vertical, 6.5)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(active ? Theme.accent.opacity(0.16) : .clear)
-            .padding(.horizontal, 6))
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(active ? Theme.selectionFill : .clear))
         .contentShape(Rectangle())
     }
 }

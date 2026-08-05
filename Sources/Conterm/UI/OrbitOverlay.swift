@@ -355,8 +355,16 @@ struct OrbitOverlay: View {
             ScrollPanCatcher { dx, dy, loc in
                 // A modal opened over Orbit (Host / Cluster Overview, Ansible
                 // cockpit, the output panel) owns scroll — don't pan underneath it.
-                if modal.isOpen || state.hostOverview != nil || state.orbitSearchOpen
+                if modal.isOpen || state.hostOverview != nil
                     || state.clusterOverviewOpen || state.ansibleCockpit != nil { return false }
+                // The search palette owns the wheel over its own rectangle so
+                // its results scroll. `loc` is window coords (bottom-left
+                // origin); flip to the top-left origin the frame was captured in.
+                if state.orbitSearchOpen {
+                    guard searchFrame != .zero,
+                          let h = NSApp.keyWindow?.contentView?.frame.height else { return false }
+                    return !searchFrame.contains(CGPoint(x: loc.x, y: h - loc.y))
+                }
                 // Any open trailing inspector — host, steer or Ansible — owns
                 // scroll over its own edge; panning the map under a list the
                 // cursor is actually on top of reads as a dead scroll wheel.
@@ -560,6 +568,14 @@ struct OrbitOverlay: View {
     @State var searchQuery = ""
     @State var searchIndex = 0
     @FocusState var searchFieldFocused: Bool
+    /// Everything findable, built once when the field opens; and the subset
+    /// matching what has been typed, recomputed once per keystroke. Neither is
+    /// derived in `body` — the corpus reads the shell history from disk.
+    @State var searchCorpus: [SearchItem] = []
+    @State var searchResults: [SearchItem] = []
+    /// The palette's own rectangle, so a wheel over it scrolls its list rather
+    /// than panning the map beneath.
+    @State var searchFrame: CGRect = .zero
 
     /// Last known canvas size, kept so a fit can be computed outside the
     /// render pass.
