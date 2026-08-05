@@ -215,15 +215,21 @@ extension OrbitOverlay {
     /// crash paths.
     @ViewBuilder
     var panePreview: some View {
-        ForEach(Array(previewPanes.enumerated()), id: \.element.id) { rank, pane in
+        // Focus hides the others rather than tiling them behind it: they would
+        // be under the focused pane anyway, and a surface nobody can see is
+        // still a surface being composited.
+        let shown = focusedPreview.map { id in previewPanes.filter { $0.id == id } }
+            ?? previewPanes
+        ForEach(Array(shown.enumerated()), id: \.element.id) { rank, pane in
             // Docked, not anchored. A terminal is something you work in, so it
             // holds its place in the viewport and the graph moves *under* it —
             // an anchored card slid away under every pan and rescaled on zoom,
             // which is exactly what you don't want of the thing you're typing
             // into. Only the connector follows the node.
-            let slot = previewSlot(rank, of: previewPanes.count)
+            let slot = previewSlot(rank, of: shown.count)
             let size = slot.size
             let pos = CGPoint(x: slot.midX, y: slot.midY)
+            let focused = focusedPreview == pane.id
             ZStack {
                 VStack(spacing: 0) {
                     HStack(spacing: 8) {
@@ -233,7 +239,25 @@ extension OrbitOverlay {
                         Text(friendlyDirLabel(for: pane.cwd ?? "~"))
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(Theme.textPrimary).lineLimit(1)
+                        if let host = pane.remoteHost {
+                            Text("on " + (HostNameStore.name(for: host)
+                                          ?? OrbitModel.hostLabel(host)))
+                                .font(.system(size: 10, design: .rounded))
+                                .foregroundStyle(Theme.textSecondary).lineLimit(1)
+                        }
                         Spacer(minLength: 8)
+                        Button { toggleFocusedPreview(pane) } label: {
+                            Image(systemName: focused
+                                  ? "arrow.down.right.and.arrow.up.left"
+                                  : "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(focused ? Theme.accent : Theme.textSecondary)
+                                .frame(width: 26, height: 22)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(focused ? "Back to the dock (⇧⌘F)"
+                                      : "Fill the canvas with this terminal (⇧⌘F)")
                         Button { closePreview(pane) } label: {
                             Image(systemName: "xmark").font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(Theme.textSecondary)
@@ -443,6 +467,29 @@ extension OrbitOverlay {
         sim.wake()
     }
 
+    /// Grow one docked terminal to fill the canvas, or hand it back to the
+    /// band. Nothing is torn down either way — the same host view is reframed,
+    /// which is what keeps this away from the surface-teardown crash paths.
+    func toggleFocusedPreview(_ pane: Pane) {
+        withAnimation(Theme.Spring.soft) {
+            focusedPreview = focusedPreview == pane.id ? nil : pane.id
+        }
+        focusPreview(pane)
+    }
+
+    /// Fill the canvas with whichever terminal the keyboard is in, or the only
+    /// one docked. Answers ⇧⌘F, where there is no button under the cursor.
+    func toggleFocusedPreview() {
+        if focusedPreview != nil {
+            withAnimation(Theme.Spring.soft) { focusedPreview = nil }
+            return
+        }
+        let target = previewPanes.first { $0.id == state.orbitFocusSession }
+            ?? previewPanes.first
+        guard let target else { return }
+        toggleFocusedPreview(target)
+    }
+
     /// Give one view back to its pane box. Always paired with opening it, and
     /// called on the way out of Orbit too — a host left lent out would leave its
     /// tile blank when you returned.
@@ -450,6 +497,7 @@ extension OrbitOverlay {
         guard previewPanes.contains(where: { $0.id == pane.id }) else { return }
         withAnimation(Theme.Spring.snappy) { previewPanes.removeAll { $0.id == pane.id } }
         previewFrames[pane.id] = nil
+        if focusedPreview == pane.id { focusedPreview = nil }
         PaneMounts.shared.sendHome(pane.id)
         state.orbitPreviewPanes.remove(pane.id)
         state.syncSurfaceOcclusion()          // back to paused behind Orbit
@@ -460,6 +508,7 @@ extension OrbitOverlay {
         for pane in previewPanes { PaneMounts.shared.sendHome(pane.id) }
         previewPanes.removeAll()
         previewFrames.removeAll()
+        focusedPreview = nil
         state.orbitPreviewPanes.removeAll()
         state.syncSurfaceOcclusion()
     }

@@ -85,56 +85,124 @@ extension OrbitOverlay {
         .allowsHitTesting(true)
     }
 
-    /// What this mode is and how to work it. Short on purpose: the map should
-    /// teach itself, and this is for the parts that can't — the gestures.
+    /// What this mode is and how to work it. Two pages, because the shortcut
+    /// list is longer than the explanation and a reader looking for one does
+    /// not want to scroll past the other.
     @ViewBuilder
     var helpPanel: some View {
         if showHelp {
             ZStack(alignment: .top) {
                 Color.black.opacity(0.2).ignoresSafeArea()
                     .onTapGesture { withAnimation(Theme.Spring.snappy) { showHelp = false } }
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 8) {
                         OrbitMark(color: Theme.accent, size: 15)
                         Text("How Orbit works")
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                         Spacer()
+                        helpTab("Basics", 0)
+                        helpTab("Keys", 1)
                         Button { withAnimation(Theme.Spring.snappy) { showHelp = false } } label: {
                             Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(Theme.textSecondary)
+                                .frame(width: 22, height: 20).contentShape(Rectangle())
                         }.buttonStyle(.plain)
                     }
-                    helpSection("The three views", [
-                        "Live — what's happening now: your sessions, the hosts you're connected to, anything mid-run.",
-                        "Fleet — every host you've connected to, for when the question is \"which machine?\"",
-                        "Spaces — boards you compose yourself from hosts, sessions and clusters.",
-                    ])
-                    helpSection("Acting on things", [
-                        "Click anything to select it; the bar at the bottom carries what you can do to it.",
-                        "Sessions ride the ring closest to your Mac — a host is where a session runs, not the other way round.",
-                        "Right-click or double-click any node to aim that bar at it.",
-                        "Click a running session to narrow the map to it; the Mac node takes you back.",
-                    ])
-                    helpSection("Going deeper", [
-                        "A host can show what's running on it — containers, VMs, kubelet.",
-                        "A cluster expands into its nodes, and a node into its pods.",
-                        "Each level only refreshes while it's open.",
-                    ])
-                    helpSection("Getting around", [
-                        "⌘K finds anything by name — a host you've never connected to, a session, a routine. Return brings it to the middle.",
-                        "Scroll to pan, pinch or ± to zoom, ↺ to re-frame everything.",
-                        "Esc steps back out: focus, then the aimed bar, then the selection.",
-                    ])
+                    .padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 12)
+                    Divider().opacity(0.3)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+                            if helpTabIndex == 0 { helpBasics } else { helpKeys }
+                        }
+                        .padding(18)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 440)
                 }
-                .padding(18)
-                .frame(width: 420, alignment: .leading)
+                .frame(width: 460, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(.ultraThinMaterial))
                 .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .strokeBorder(Theme.strokeStrong, lineWidth: 1))
                 .shadow(color: .black.opacity(0.45), radius: 30, y: 14)
                 .padding(.top, 76)
+                .background(GeometryReader { g in
+                    Color.clear
+                        .onAppear { helpFrame = g.frame(in: .global) }
+                        .onChange(of: g.frame(in: .global)) { _, f in helpFrame = f }
+                        .onDisappear { helpFrame = .zero }
+                })
                 .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+            }
+        }
+    }
+
+    func helpTab(_ title: String, _ index: Int) -> some View {
+        let on = helpTabIndex == index
+        return Button { withAnimation(Theme.Spring.snappy) { helpTabIndex = index } } label: {
+            Text(title)
+                .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                .foregroundStyle(on ? Theme.accent : Theme.textSecondary)
+                .padding(.horizontal, 9).padding(.vertical, 3)
+                .background(Capsule().fill(on ? Theme.accent.opacity(0.16) : .clear))
+                .contentShape(Capsule())
+        }.buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    var helpBasics: some View {
+        helpSection("The three views", [
+            "Live — what's happening now: your sessions, the hosts you're connected to, anything mid-run.",
+            "Fleet — every host you've connected to, for when the question is \"which machine?\"",
+            "Spaces — boards you compose yourself from hosts, sessions and clusters.",
+        ])
+        helpSection("Acting on things", [
+            "Click anything to select it; the bar at the bottom carries what you can do to it.",
+            "Sessions ride the ring closest to your Mac — a host is where a session runs, not the other way round.",
+            "Right-click or double-click any node to aim that bar at it.",
+            "Click a running session to narrow the map to it; the Mac node takes you back.",
+        ])
+        helpSection("Going deeper", [
+            "A host can show what's running on it — containers, VMs, kubelet.",
+            "A cluster expands into its nodes, and a node into its pods.",
+            "Each level only refreshes while it's open.",
+        ])
+        helpSection("Getting around", [
+            "⌘K finds anything by name — a host you've never connected to, a session, a routine. Return brings it to the middle.",
+            "The minimap holds the whole graph; its ⊙ frames everything again if you have panned off into nothing.",
+            "Scroll to pan, pinch or ± to zoom. Zoomed out, cards drop to their names so an overview stays readable.",
+            "Esc steps back out: focus, then the aimed bar, then the selection.",
+        ])
+    }
+
+    /// The keys, from the one list that defines them — so a shortcut cannot be
+    /// added without appearing here.
+    @ViewBuilder
+    var helpKeys: some View {
+        Text("Every key acts on whatever the bar is aimed at. They are bare keys, and a field takes them back while you are typing in one.")
+            .font(.system(size: 11, design: .rounded))
+            .foregroundStyle(Theme.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+        ForEach(Array(OrbitKey.sections.enumerated()), id: \.offset) { _, section in
+            VStack(alignment: .leading, spacing: 5) {
+                Text(section.0.uppercased())
+                    .font(OrbitFont.face(8)).tracking(0.6)
+                    .foregroundStyle(Theme.accent.opacity(0.9))
+                ForEach(Array(section.1.enumerated()), id: \.offset) { _, row in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(row.0)
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Theme.textPrimary)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(RoundedRectangle(cornerRadius: 5).fill(Theme.stroke))
+                            .frame(width: 76, alignment: .leading)
+                        Text(row.2)
+                            .font(.system(size: 11.5, design: .rounded))
+                            .foregroundStyle(Theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                }
             }
         }
     }

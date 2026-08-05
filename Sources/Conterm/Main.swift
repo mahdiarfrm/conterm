@@ -570,6 +570,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self.state.toggleOrbitSearch()
                 return nil
             }
+            // ⇧⌘F fills Orbit's canvas with the docked terminal.
+            if cmd && shift && !opt && !ctrl && key == "f" && self.state.orbitOpen {
+                self.state.sendOrbitKey(.focusTerminal)
+                return nil
+            }
+            // Orbit's own shortcuts are bare keys: nothing on the canvas takes
+            // typed text unless a field is open, and a field owns them when it
+            // is. The search palette runs its own key handling, above.
+            if self.state.orbitOpen, !self.state.orbitSearchOpen,
+               !cmd, !opt, !ctrl, !OrbitKey.isEditing {
+                switch event.keyCode {
+                case 48:  // ⇥ — walk the graph
+                    self.state.sendOrbitKey(shift ? .prevNode : .nextNode)
+                    return nil
+                case 126: self.state.sendOrbitKey(.panUp);    return nil
+                case 125: self.state.sendOrbitKey(.panDown);  return nil
+                case 123: self.state.sendOrbitKey(.panLeft);  return nil
+                case 124: self.state.sendOrbitKey(.panRight); return nil
+                case 36:  self.state.sendOrbitKey(.primary);  return nil
+                default:
+                    // `characters` rather than the unshifted form, so `?` and
+                    // `+` are matched as typed.
+                    let typed = (event.characters ?? key).lowercased()
+                    if let k = OrbitKey.plain(typed) {
+                        self.state.sendOrbitKey(k)
+                        return nil
+                    }
+                }
+            }
             // NB: modified Return (⌘/⌥-Return) is intentionally NOT
             // consumed here. It's handled in SurfaceView.keyDown — we
             // skip forwarding it to libghostty (so it doesn't print the

@@ -200,6 +200,11 @@ struct OrbitOverlay: View {
     /// it — and when that lookup missed, the bar silently never appeared.
     @State var barNode: MapNode?
     @State var showHelp = false
+    /// Which page of the help panel: the explanation, or the key list.
+    @State var helpTabIndex = 0
+    /// Its rectangle, so a wheel over it scrolls the panel rather than panning
+    /// the map underneath.
+    @State var helpFrame: CGRect = .zero
     @State var showSessions = false
     @State var sessionsFrame: CGRect = .zero
     /// The bar's command field is collapsed until asked for — it is the widest
@@ -218,12 +223,28 @@ struct OrbitOverlay: View {
     /// than panning the map underneath it.
     @State var previewFrames: [UUID: CGRect] = [:]
 
+    /// The docked terminal being worked in, which takes most of the canvas
+    /// instead of its share of the band. One at a time: focus means *this one*,
+    /// and two focused terminals is just the dock again.
+    @State var focusedPreview: UUID?
+
     /// The dock: a band across the foot of the canvas, tiled evenly between the
     /// open terminals. Non-overlapping by construction — there is no position to
     /// collide, only a share of the band.
+    ///
+    /// A focused terminal ignores the tiling and takes the canvas, less a
+    /// margin, so the graph stays visible around it — this is a bigger pane to
+    /// work in, not a mode you have to leave.
     func previewSlot(_ index: Int, of count: Int) -> CGRect {
         let margin: CGFloat = 16, gap: CGFloat = 10
         let bandBottom: CGFloat = barIsUp ? 96 : 28
+        if focusedPreview != nil {
+            let top: CGFloat = 116                 // clear of the header
+            let side = max(viewport.width * 0.09, 40)
+            return CGRect(x: side, y: top,
+                          width: max(viewport.width - side * 2, 320),
+                          height: max(viewport.height - top - bandBottom, 240))
+        }
         let height = min(max(viewport.height * 0.34, 220), 360)
         let usable = max(viewport.width - margin * 2 - gap * CGFloat(max(count - 1, 0)), 240)
         let width = min(usable / CGFloat(max(count, 1)), 860)
@@ -365,6 +386,11 @@ struct OrbitOverlay: View {
                           let h = NSApp.keyWindow?.contentView?.frame.height else { return false }
                     return !searchFrame.contains(CGPoint(x: loc.x, y: h - loc.y))
                 }
+                if showHelp {
+                    guard helpFrame != .zero,
+                          let h = NSApp.keyWindow?.contentView?.frame.height else { return false }
+                    return !helpFrame.contains(CGPoint(x: loc.x, y: h - loc.y))
+                }
                 // Any open trailing inspector — host, steer or Ansible — owns
                 // scroll over its own edge; panning the map under a list the
                 // cursor is actually on top of reads as a dead scroll wheel.
@@ -473,6 +499,9 @@ struct OrbitOverlay: View {
             }
             paneCommand = ""
             applySpace()
+        }
+        .onChange(of: state.orbitKeyTick) { _, _ in
+            if let k = state.orbitKey { runOrbitKey(k) }
         }
         .onChange(of: state.orbitEscTick) { _, _ in
             // Esc unwinds the map one step: the aimed bar, then the selection.

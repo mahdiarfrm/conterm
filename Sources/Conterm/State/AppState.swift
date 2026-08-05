@@ -542,6 +542,19 @@ final class AppState: ObservableObject {
     /// Bumped by Return — commit whatever the search has highlighted.
     @Published var orbitSearchRunTick = 0
 
+    /// A key pressed in Orbit that the view has to act on. The key monitor
+    /// can't reach the map's own state — what is aimed at, what is selected —
+    /// so it names the intent and the view carries it out.
+    @Published var orbitKey: OrbitKey?
+    /// Bumped with every `orbitKey`, so pressing the same key twice still
+    /// arrives twice.
+    @Published var orbitKeyTick = 0
+
+    func sendOrbitKey(_ key: OrbitKey) {
+        orbitKey = key
+        orbitKeyTick &+= 1
+    }
+
     func toggleOrbitSearch() {
         withAnimation(Theme.Spring.snappy) { orbitSearchOpen.toggle() }
         if orbitSearchOpen { orbitSearchNav = 0 }
