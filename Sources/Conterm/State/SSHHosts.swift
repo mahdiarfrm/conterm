@@ -66,6 +66,27 @@ enum SSHHistory {
             }
         }
 
+        // fish keeps a YAML-ish log: `- cmd: ssh foo` with `  when: <epoch>`
+        // on the following line.
+        if let fish = readFile("\(home)/.local/share/fish/fish_history") {
+            var pending: String?
+            for raw in fish.split(separator: "\n", omittingEmptySubsequences: false) {
+                let line = String(raw)
+                if let r = line.range(of: "- cmd: ") {
+                    pending = String(line[r.upperBound...])
+                } else if let cmd = pending, let r = line.range(of: "when: ") {
+                    let ts = Double(line[r.upperBound...].trimmingCharacters(in: .whitespaces)) ?? 0
+                    if let target = extractTarget(cmd) { entries.append((ts, target)) }
+                    pending = nil
+                }
+            }
+            // A trailing entry with no `when:` still counts.
+            if let cmd = pending, let target = extractTarget(cmd) {
+                fallback += 1
+                entries.append((fallback, target))
+            }
+        }
+
         // Newest first by actual timestamp (or fallback file-position).
         entries.sort { $0.time > $1.time }
 
@@ -130,7 +151,10 @@ enum SSHHistory {
             if p.hasPrefix("-") {
                 i += flagsWithArg.contains(p) ? 2 : 1
             } else {
-                return p
+                // A shell line-continuation `\` (from a wrapped history entry)
+                // clings to the token — strip it so the target stays a real host.
+                let host = p.hasSuffix("\\") ? String(p.dropLast()) : p
+                return host.isEmpty ? nil : host
             }
         }
         return nil

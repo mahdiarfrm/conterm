@@ -14,7 +14,14 @@ struct HostInfo: Sendable, Equatable {
     struct Container: Sendable, Equatable {
         let name: String
         let image: String
+        /// The runtime's own words: "Up 3 hours", "Exited (0) 2 days ago", or
+        /// Apple's bare "running" / "stopped".
         let status: String
+
+        var running: Bool {
+            let s = status.lowercased()
+            return s.hasPrefix("up") || s.hasPrefix("running")
+        }
     }
     struct Timer: Sendable, Equatable {
         let next: String
@@ -34,6 +41,9 @@ struct HostInfo: Sendable, Equatable {
     var disks: [Disk] = []
     var ips: [String] = []
     var containers: [Container]?
+    /// The container CLI this host answered with — the one that listed the
+    /// containers above, and so the one that may act on them.
+    var containerRuntime: ContainerRuntime?
     var vms: [String]?
     var kubelet = false
     var kubeNodes: Int?
@@ -57,7 +67,8 @@ struct HostInfo: Sendable, Equatable {
     static func == (a: HostInfo, b: HostInfo) -> Bool {
         a.hostname == b.hostname && a.uptime == b.uptime
             && a.loadAvg?.0 == b.loadAvg?.0 && a.disks == b.disks
-            && a.containers == b.containers && a.timers == b.timers
+            && a.containers == b.containers && a.containerRuntime == b.containerRuntime
+            && a.timers == b.timers
             && a.journalErrors == b.journalErrors
             && a.listeningPorts == b.listeningPorts
     }
@@ -119,6 +130,16 @@ final class HostProbeModel: ObservableObject {
                     self.phase = .loaded(info)
                     self.fetchedAt = Date()
                     Self.snapshotCache[target] = (info, Date())
+                    // Every probe is a chance to learn what the machine runs, so
+                    // the map's mark for it doesn't depend on which panel you
+                    // happened to open. A host that reports an OS re-states it,
+                    // so a re-imaged machine corrects rather than keeps a stale
+                    // badge; one that reports nothing leaves the last answer.
+                    if let os = info.os, !os.isEmpty {
+                        let distro = Distro.detect(os)
+                        HostDistroStore.set(distro, for: target)
+                        if let distro { DistroArt.shared.ensure(distro) }
+                    }
                 case .failure(let message):
                     // A stale snapshot beats an error screen; the header
                     // age shows it isn't fresh.
@@ -147,8 +168,24 @@ final class HostProbeModel: ObservableObject {
     put mem; free -m 2>/dev/null || true
     put disk; df -Pk 2>/dev/null | awk 'NR>1 && $1 ~ /^\//' || true
     put ips; hostname -I 2>/dev/null || ifconfig 2>/dev/null | awk '/inet /{print $2}' || true
-    put docker; command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' 2>/dev/null; true
-    put vms; command -v virsh >/dev/null 2>&1 && virsh list --name 2>/dev/null; true
+    # First runtime on PATH wins and is the one the map acts through. A host
+    # with a docker binary and a stopped daemon reports docker and no
+    # containers, which is the truth rather than a silent fallback to another.
+    CR=''
+    for t in docker podman nerdctl container; do
+      command -v "$t" >/dev/null 2>&1 && { CR="$t"; break; }
+    done
+    put runtime; printf '%s' "$CR"
+    # -a: a stopped container is exactly the one you came to start.
+    put containers
+    case "$CR" in
+      docker|podman|nerdctl)
+        "$CR" ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' 2>/dev/null ;;
+      container)
+        container ls -a 2>/dev/null | awk 'NR>1 && NF>=5 {print $1 "\t" $2 "\t" $5}' ;;
+    esac
+    true
+    put vms; command -v virsh >/dev/null 2>&1 && virsh list --all 2>/dev/null | tail -n +3 | sed 's/^ *//' | awk 'NF{id=$1; st=""; for(i=3;i<=NF;i++) st=st (i>3?" ":"") $i; print $2 "\t" st}'; true
     put kubelet; systemctl is-active kubelet 2>/dev/null || systemctl is-active k3s 2>/dev/null || true
     put kubenodes; command -v kubectl >/dev/null 2>&1 && kubectl get nodes --no-headers 2>/dev/null | grep -c .; true
     put timers; systemctl list-timers --no-pager --no-legend 2>/dev/null | head -5 || true
@@ -260,17 +297,24 @@ final class HostProbeModel: ObservableObject {
         info.ips = (first("ips") ?? "")
             .split(separator: " ").map(String.init)
             .filter { $0 != "127.0.0.1" && $0 != "::1" && !$0.isEmpty }
-        if sections["docker"] != nil, !(sections["docker"] ?? []).isEmpty {
-            info.containers = (sections["docker"] ?? []).compactMap { line in
+        info.containerRuntime = first("runtime").flatMap(ContainerRuntime.init(rawValue:))
+        let containerRows = sections["containers"] ?? []
+        if !containerRows.isEmpty {
+            // Running first: the bloom shows a capped number of them, and a wall
+            // of long-dead containers would push the live ones off the map.
+            info.containers = containerRows.compactMap { line in
                 let f = line.split(separator: "\t", omittingEmptySubsequences: false)
                 guard let name = f.first, !name.isEmpty else { return nil }
                 return HostInfo.Container(name: String(name),
                                           image: f.count > 1 ? String(f[1]) : "",
                                           status: f.count > 2 ? String(f[2]) : "")
             }
+            .sorted { a, b in a.running == b.running ? a.name < b.name : a.running }
         }
-        let vmNames = (sections["vms"] ?? []).filter { !$0.isEmpty }
-        if !vmNames.isEmpty { info.vms = vmNames }
+        // `name<TAB>state` rows from `virsh list --all` — a stopped guest is
+        // worth showing too, so the map can say it is there but off.
+        let vmRows = (sections["vms"] ?? []).filter { !$0.isEmpty }
+        if !vmRows.isEmpty { info.vms = vmRows }
         info.kubelet = first("kubelet") == "active"
         if let n = int("kubenodes"), n > 0 { info.kubeNodes = n }
         info.timers = (sections["timers"] ?? []).compactMap { line in
