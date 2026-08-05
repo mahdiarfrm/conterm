@@ -176,8 +176,8 @@ struct RoutineRun: Codable, Identifiable, Equatable {
 /// The routine library and its run history.
 ///
 /// Top-level and on disk, not inside a space: a routine is yours, not a property
-/// of one board. Saved flows stay where they are — a board's flows are still a
-/// board's — and can be lifted into the library one at a time.
+/// of one board. This is the only saved sequence of steps in the app — boards
+/// used to carry their own, which `adoptSavedFlows` lifts here once.
 @MainActor
 final class RoutineStore: ObservableObject {
     static let shared = RoutineStore()
@@ -238,15 +238,32 @@ final class RoutineStore: ObservableObject {
         routines.removeAll { $0.id == id }; persistRoutines()
     }
 
-    /// Lift a board's flow into the library. The steps come across as they are;
-    /// what makes it a routine is the inputs you then give it.
-    @discardableResult
-    func adopt(_ flow: OrbitFlow) -> Routine {
-        var r = Routine(name: flow.name, steps: flow.steps)
-        r.summary = "From a saved flow"
-        routines.append(r); persistRoutines()
-        return r
+    /// One-time lift of every board's saved flows into the library.
+    ///
+    /// A flow and a routine were the same idea built twice — a named sequence
+    /// of steps — and shipping both meant guessing which one was real. The
+    /// library is the one that keeps a run history, takes parameters, and
+    /// belongs to you rather than to a board. `OrbitSpace.flows` still decodes
+    /// so an older library opens, but nothing writes it again.
+    func adoptSavedFlows(from spaces: OrbitSpaces) {
+        guard !UserDefaults.standard.bool(forKey: Self.adoptedKey) else { return }
+        UserDefaults.standard.set(true, forKey: Self.adoptedKey)
+        var lifted = 0
+        for space in spaces.spaces {
+            for flow in space.flows where !flow.steps.isEmpty {
+                var r = Routine(name: flow.name.isEmpty ? space.name : flow.name,
+                                steps: flow.steps)
+                r.summary = "From the \(space.name) board"
+                routines.append(r)
+                lifted += 1
+            }
+        }
+        guard lifted > 0 else { return }
+        persistRoutines()
+        spaces.clearFlows()
     }
+
+    private static let adoptedKey = "conterm.orbit.flowsAdopted"
 
     // MARK: - Runs
 

@@ -62,16 +62,11 @@ extension OrbitOverlay {
                         withAnimation(Theme.Spring.snappy) { addingHosts.toggle() }
                     }
                     railButton("note.text", "Add note") { addNoteAtCenter() }
-                    Divider().frame(width: 18).opacity(0.3)
-                    railButton("arrow.triangle.branch", "Flows", active: showFlows) {
-                        withAnimation(Theme.Spring.snappy) { showFlows.toggle(); editingFlow = nil }
-                    }
                 }
                 .padding(6)
                 .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(chromeFill(prefs)))
                 .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.strokeStrong, lineWidth: 1))
                 if addingHosts { hostPicker }
-                if showFlows { flowsPanel }
                 Spacer(minLength: 0)
             }
             .padding(.leading, 16)

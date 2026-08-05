@@ -81,30 +81,6 @@ extension OrbitOverlay {
                         routineRow(r)
                         Divider().opacity(0.14)
                     }
-                    // Flows already written on this board are the obvious first
-                    // routines, so lifting one is a click rather than a retype.
-                    let flows = spaces.current?.flows ?? []
-                    if !flows.isEmpty {
-                        Text("FROM THIS BOARD").font(OrbitFont.face(8)).tracking(0.6)
-                            .foregroundStyle(Theme.textSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 4)
-                        ForEach(flows) { f in
-                            HStack(spacing: 8) {
-                                Text(f.name).font(.system(size: 12, design: .rounded))
-                                    .foregroundStyle(Theme.textPrimary).lineLimit(1)
-                                Spacer()
-                                Button { editingRoutine = routines.adopt(f) } label: {
-                                    Text("Make a routine")
-                                        .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(Theme.accent)
-                                        .padding(.horizontal, 8).padding(.vertical, 4)
-                                        .background(Capsule().fill(Theme.selectionFill))
-                                }.buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                        }
-                    }
                 }
             }
             Divider().opacity(0.3)
@@ -219,7 +195,9 @@ extension OrbitOverlay {
                     Text("Write {{key}} anywhere in a command or a target list.")
                         .font(.system(size: 10, design: .rounded)).foregroundStyle(Theme.textSecondary)
                     ForEach(Array(routineBinding.steps.enumerated()), id: \.element.id) { idx, $step in
-                        stepEditor($step, index: idx)
+                        stepEditor($step, index: idx) { id in
+                            editingRoutine?.steps.removeAll { $0.id == id }
+                        }
                     }
                     Button {
                         var r = routineBinding.wrappedValue
@@ -418,18 +396,41 @@ extension OrbitOverlay {
         routines.reconcile(with: outcomes)
     }
 
-    func runFlow(_ flow: OrbitFlow) {
-        var prev: UUID?
-        for step in flow.steps {
-            let targets = step.targets.isEmpty ? Array(selectedHosts).sorted() : step.targets
-            guard !targets.isEmpty else { continue }
-            let kind: OrbitScheduler.Kind = step.kind == "ansible" ? .ansible
-                                          : step.kind == "copy" ? .copy : .run
-            prev = scheduler.add(kind: kind, payload: step.payload, become: step.become, check: step.check,
-                                 targets: targets, dependsOn: prev, afterAnyOutcome: step.continueOnFailure)
+    /// One step of a routine: what it runs, where, and whether the rest of the
+    /// sequence carries on if it fails. Removal is a closure rather than a
+    /// reach into the editor's own state, so the editor that owns the step is
+    /// the one that drops it.
+    func stepEditor(_ step: Binding<FlowStep>, index: Int,
+                    remove: @escaping (UUID) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Step \(index + 1)")
+                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Button { remove(step.wrappedValue.id) } label: {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Theme.textSecondary)
+                }.buttonStyle(.plain)
+            }
+            Picker("", selection: step.kind) {
+                Text("Run").tag("run"); Text("Ansible").tag("ansible"); Text("Copy").tag("copy")
+            }.pickerStyle(.segmented).labelsHidden()
+            TextField(step.wrappedValue.kind == "run" ? "command"
+                        : step.wrappedValue.kind == "copy" ? "local file path" : "playbook.yml",
+                      text: step.payload)
+                .textFieldStyle(.roundedBorder).font(.system(size: 11.5, design: .monospaced))
+            TextField("hosts (comma-separated)", text: Binding(
+                get: { step.wrappedValue.targets.joined(separator: ", ") },
+                set: { step.wrappedValue.targets = $0.split(separator: ",")
+                        .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }))
+                .textFieldStyle(.roundedBorder).font(.system(size: 11, design: .rounded))
+            Toggle(isOn: step.continueOnFailure) {
+                Text("Continue if this fails").font(.system(size: 10.5, design: .rounded))
+            }.toggleStyle(.checkbox).controlSize(.mini)
         }
-        driveScheduler()
-        sim.wake()
+        .padding(9)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Theme.selectionFill))
     }
 
     func railButton(_ icon: String, _ tip: String, active: Bool = false,

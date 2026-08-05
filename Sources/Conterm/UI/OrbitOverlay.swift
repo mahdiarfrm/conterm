@@ -255,10 +255,6 @@ struct OrbitOverlay: View {
     /// Left-side history panel — every finished action, newest first (the deck
     /// only shows recent ones within its time window).
     @State var showHistory = false
-    /// Flows: a saved step-list per space, run in order and chained by
-    /// success/failure. `editingFlow` is a working copy being edited.
-    @State var showFlows = false
-    @State var editingFlow: OrbitFlow?
     // Action composer (schedule a run/playbook now, at a time, or after a task).
     @State var showComposer = false
     @State var compKind: OrbitScheduler.Kind = .run
@@ -436,6 +432,9 @@ struct OrbitOverlay: View {
         .onAppear {
             sim.layout = OrbitSim.Layout(rawValue: layoutMode) ?? .physics
             sim.wake(); applySpace()
+            // Boards used to carry their own step sequences. Lifting them into
+            // the routine library is a no-op after the first time.
+            routines.adoptSavedFlows(from: spaces)
             if autoResolveNames { resolveAllNames() }
             // Marks for distributions learned in an earlier session, in case the
             // fetch never got a chance to land.

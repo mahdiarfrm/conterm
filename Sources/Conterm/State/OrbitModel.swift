@@ -451,7 +451,10 @@ struct FlowStep: Codable, Identifiable, Equatable {
     }
 }
 
-/// A named, saved sequence of steps run in order, chained by success/failure.
+/// A board's own saved sequence of steps. Superseded by `Routine`, which is the
+/// same idea with parameters, a run history and no owning board — kept only so
+/// a library written before the change still decodes and can be lifted across
+/// by `RoutineStore.adoptSavedFlows`. Nothing writes one.
 struct OrbitFlow: Codable, Identifiable, Equatable {
     var id = UUID()
     var name: String
@@ -604,23 +607,13 @@ final class OrbitSpaces: ObservableObject {
         spaces[i].links.removeAll { $0.id == linkID }; persist()
     }
 
-    // MARK: - Flows (saved per space)
-
-    @discardableResult
-    func addFlow(_ name: String) -> OrbitFlow? {
-        guard let id = currentID, let i = spaces.firstIndex(where: { $0.id == id }) else { return nil }
-        let f = OrbitFlow(name: name.isEmpty ? "Flow \(spaces[i].flows.count + 1)" : name)
-        spaces[i].flows.append(f); persist()
-        return f
-    }
-    func updateFlow(_ flow: OrbitFlow) {
-        guard let id = currentID, let i = spaces.firstIndex(where: { $0.id == id }),
-              let fi = spaces[i].flows.firstIndex(where: { $0.id == flow.id }) else { return }
-        spaces[i].flows[fi] = flow; persist()
-    }
-    func deleteFlow(_ flowID: UUID) {
-        guard let id = currentID, let i = spaces.firstIndex(where: { $0.id == id }) else { return }
-        spaces[i].flows.removeAll { $0.id == flowID }; persist()
+    /// Drop every board's saved flows, once they have been lifted into the
+    /// routine library. A board holds what you arranged; a sequence of work is
+    /// yours and lives in one place.
+    func clearFlows() {
+        guard spaces.contains(where: { !$0.flows.isEmpty }) else { return }
+        for i in spaces.indices { spaces[i].flows = [] }
+        persist()
     }
 }
 
