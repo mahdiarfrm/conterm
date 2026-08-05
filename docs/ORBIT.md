@@ -187,18 +187,19 @@ host's resolved name.
 2. **Hosting steps 4–5**: occlusion from the registry (drop
    `orbitPreviewPanes`), then panes genuinely *living* in Orbit rather than
    visiting.
-3. **Dock ergonomics.** Tiled and fixed-height: no undocking, no manual resize,
-   no collapse. Whether it should take a third of the canvas is an open design
-   question.
+3. **Dock ergonomics.** Tiled and fixed-height: no undocking, no manual resize.
+   One terminal at a time can take the canvas (⇧⌘F); the band itself has no
+   other shape.
 4. **Widget bodies** under `UI/Widgets/` don't scale with `prefs.uiScale`
    (their shells do).
-5. **Eurostile Bold Extended** is a commercial font, bundled at
-   `Sources/Conterm/Resources/`. Settle the licence or replace the face before
-   a public release.
-6. **Routines**: no idempotence guidance, no per-host output in the history, and
+5. **Routines**: no idempotence guidance, no per-host output in the history, and
    `.choice` inputs have no options editor. See `ORBIT-ROUTINES.md`.
-7. **Boards** (saved spaces) are the least-used idea here and carry notes and
+6. **Boards** (saved spaces) are the least-used idea here and carry notes and
    links that nothing else uses. Worth deciding whether they earn their weight.
+7. **The typeface.** Orbit was designed around Eurostile Bold Extended, which is
+   licensed and therefore not shipped — see `UI/Orbit/OrbitFont.swift`. If you
+   have it installed you see it; everyone else gets bundled Michroma (OFL).
+   Buying a Monotype app-embedding licence is the only way to ship the original.
 
 ---
 

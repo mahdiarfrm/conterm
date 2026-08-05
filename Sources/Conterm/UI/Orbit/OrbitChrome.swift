@@ -6,17 +6,9 @@ import SwiftUI
 /// dock the selection aims, and the space switcher.
 extension OrbitOverlay {
 
-    /// The bundled Eurostile Bold Extended (`Sources/Conterm/Resources`),
-    /// registered once for the process. Falls back to a wide, heavy system face
-    /// if the file is missing.
-    var orbitTitleFont: Font {
-        OrbitFont.register()
-        for name in ["EurostileBQ-BoldExtended", "Eurostile Bold Extended",
-                     "Eurostile BQ"] where NSFont(name: name, size: 17) != nil {
-            return .custom(name, size: 17)
-        }
-        return .system(size: 16, weight: .heavy, design: .rounded).width(.expanded)
-    }
+    /// The wordmark, at the size the header was drawn for. Which face that
+    /// resolves to is `OrbitFont`'s business.
+    var orbitTitleFont: Font { OrbitFont.face(17) }
 
     var header: some View {
         VStack(spacing: 0) {
