@@ -748,9 +748,21 @@ extension OrbitOverlay {
                 }
                 dockAction(cordoned ? "lock.open" : "lock",
                            cordoned ? "Uncordon" : "Cordon") {
-                    kube.setCordon(context: ctx, node: name, on: !cordoned)
-                    KubeDrill.shared.refreshNodes(context: ctx, force: true)
-                    sim.wake()
+                    let apply = {
+                        kube.setCordon(context: ctx, node: name, on: !cordoned)
+                        KubeDrill.shared.refreshNodes(context: ctx, force: true)
+                        sim.wake()
+                    }
+                    // Uncordoning only opens a node back up; closing one is what
+                    // stops work landing anywhere, so only that side is gated.
+                    if cordoned { apply() } else {
+                        guarded(ctx, verb: "Cordon", subject: "Cordon \(name)",
+                                detail: "New pods stop scheduling onto this node in "
+                                    + "\(ctx). Pods already running on it stay, and "
+                                    + "anything that cannot be placed elsewhere stays "
+                                    + "Pending until the node is uncordoned.",
+                                apply)
+                    }
                 }
                 .help(cordoned ? "Let pods schedule here again"
                                : "Stop new pods scheduling here — running ones stay")
@@ -783,9 +795,17 @@ extension OrbitOverlay {
                     }
                     if work.restartable {
                         dockAction("arrow.clockwise", "Restart", enabled: !busy) {
-                            kube.rolloutRestart(context: ctx, namespace: ns, pod: name,
-                                                workload: work)
-                            sim.wake()
+                            guarded(ctx, verb: "Restart",
+                                    subject: "Roll \(work.label)",
+                                    detail: "Every pod of \(work.label) in \(ctx) is "
+                                        + "replaced, in the controller's order. "
+                                        + "Requests are served throughout only if the "
+                                        + "workload's surge and availability settings "
+                                        + "allow it.") {
+                                kube.rolloutRestart(context: ctx, namespace: ns, pod: name,
+                                                    workload: work)
+                                sim.wake()
+                            }
                         }
                         .help("Roll \(work.label) — every pod replaced in order")
                     }

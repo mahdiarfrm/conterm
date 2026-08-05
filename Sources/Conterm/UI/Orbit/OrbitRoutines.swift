@@ -361,6 +361,21 @@ extension OrbitOverlay {
     /// a flow produces.
     func launchRoutine(_ routine: Routine, values: [String: String], at when: Date?) {
         let steps = routine.resolvedSteps(with: values)
+        // Every machine the whole routine will touch, resolved — the inputs are
+        // bound by now, so this is what will actually run where, rather than
+        // the `{{hosts}}` the routine was written with.
+        let everyTarget = Set(steps.flatMap { $0.targets.isEmpty ? Array(selectedHosts) : $0.targets })
+        guardedHosts(Array(everyTarget).sorted(), verb: "Run \(routine.name)",
+                     subject: "Run \(routine.name)",
+                     detail: "\(steps.count) step\(steps.count == 1 ? "" : "s") across "
+                        + "\(everyTarget.count) \(everyTarget.count == 1 ? "host" : "hosts")"
+                        + (when == nil ? ", starting now." : ", starting at the time you set.")) {
+            commitRoutineLaunch(routine, steps: steps, values: values, at: when)
+        }
+    }
+
+    func commitRoutineLaunch(_ routine: Routine, steps: [FlowStep],
+                             values: [String: String], at when: Date?) {
         var run = RoutineRun(routineID: routine.id, routineName: routine.name, startedAt: Date())
         // Secrets are answered, used, and not written down.
         let secretKeys = Set(routine.inputs.filter { $0.kind == .secret }.map(\.key))

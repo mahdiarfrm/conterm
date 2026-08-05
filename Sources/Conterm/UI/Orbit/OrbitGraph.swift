@@ -221,6 +221,20 @@ extension OrbitOverlay {
         sim.wake()
     }
 
+    /// Which cluster, when it is one you flagged: the same pod name exists in
+    /// staging, and this dialog is the last place to notice that this is not
+    /// that one.
+    var podDeleteMessage: String {
+        let ctx = confirmingPodDelete?.context
+        let lead = Danger.matches(ctx)
+            ? "On \(ctx ?? ""), which reads as production.\n\n" : ""
+        return lead
+            + "A pod owned by a Deployment, StatefulSet or DaemonSet is replaced; "
+            + "one created on its own is not. Force skips the grace period and "
+            + "drops the pod from the API server without waiting for the node — "
+            + "for a pod stuck Terminating, not for a healthy one."
+    }
+
     func deleteConfirmedPod(force: Bool) {
         guard let p = confirmingPodDelete else { return }
         kube.deletePod(context: p.context, namespace: p.namespace, pod: p.pod, force: force)
@@ -259,10 +273,24 @@ extension OrbitOverlay {
                     Button("Cancel") { scaleTarget = nil }
                     Spacer()
                     Button("Apply") {
-                        kube.scale(context: t.context, namespace: t.namespace, pod: t.pod,
-                                   workload: work, to: scaleDraft)
+                        let to = scaleDraft
+                        let from = work.replicas ?? 0
+                        let apply = {
+                            kube.scale(context: t.context, namespace: t.namespace,
+                                       pod: t.pod, workload: work, to: to)
+                            sim.wake()
+                        }
                         scaleTarget = nil
-                        sim.wake()
+                        guarded(t.context, verb: "Scale to \(to)",
+                                subject: "Scale \(work.label) to \(to)",
+                                detail: to == 0
+                                    ? "\(work.label) in \(t.context) stops serving "
+                                        + "entirely. It stays defined and can be scaled "
+                                        + "back up, but every one of its \(from) pods "
+                                        + "goes away now."
+                                    : "\(work.label) in \(t.context) goes from \(from) "
+                                        + "to \(to) replicas.",
+                                apply)
                     }
                     .keyboardShortcut(.defaultAction)
                     .disabled(scaleDraft == work.replicas)

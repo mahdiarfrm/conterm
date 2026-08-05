@@ -248,11 +248,24 @@ extension OrbitOverlay {
     func runAnsible() {
         guard canRunAnsible else { return }
         let targets = Array(selectedHosts).sorted()
-        let id = scheduler.add(kind: .ansible,
-                               payload: ansiblePlaybook.trimmingCharacters(in: .whitespaces),
-                               become: ansibleBecome, check: ansibleCheck, targets: targets)
-        driveScheduler()
-        withAnimation(Theme.Spring.snappy) { ansibleRunPaneID = scheduler.action(id)?.paneID }
+        let playbook = ansiblePlaybook.trimmingCharacters(in: .whitespaces)
+        let become = ansibleBecome, check = ansibleCheck
+        let launch = {
+            let id = scheduler.add(kind: .ansible, payload: playbook,
+                                   become: become, check: check, targets: targets)
+            driveScheduler()
+            withAnimation(Theme.Spring.snappy) { ansibleRunPaneID = scheduler.action(id)?.paneID }
+        }
+        // A check run changes nothing, so it needs no permission; a real one on
+        // a machine you named production does.
+        if check { launch(); return }
+        guardedHosts(targets, verb: "Run it",
+                     subject: "Run \((playbook as NSString).lastPathComponent)",
+                     detail: "This applies changes to \(targets.count) "
+                        + "\(targets.count == 1 ? "host" : "hosts")"
+                        + (become ? ", as root" : "")
+                        + ". Turn on Check to see what it would do without doing it.",
+                     launch)
     }
 
     @ViewBuilder

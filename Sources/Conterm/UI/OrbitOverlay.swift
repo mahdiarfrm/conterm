@@ -160,6 +160,9 @@ struct OrbitOverlay: View {
     @State var confirmingPodDelete: (context: String, namespace: String, pod: String)?
     /// The pod whose workload is being scaled, and the number being dialled in.
     @State var scaleTarget: (context: String, namespace: String, pod: String)?
+    /// A destructive operation aimed at something that reads as production,
+    /// waiting to be confirmed. See `OrbitDanger.swift`.
+    @State var dangerGate: DangerGate?
     @State var scaleDraft = 1
 
     // Phase 2 (spaces) + phase 3 (act on selection).
@@ -403,6 +406,7 @@ struct OrbitOverlay: View {
             routinesPanel
             helpPanel
             searchPanel.zIndex(20)   // over every panel: it can aim at any of them
+            dangerGatePanel.zIndex(30)   // over everything, including search
         }
         // 1 Hz while Orbit is open. The plan advances on the engine's own clock;
         // this tick is the map's: pull fresh agent activity (shell commands,
@@ -493,10 +497,10 @@ struct OrbitOverlay: View {
             }
             Button("Cancel", role: .cancel) { confirmingPodDelete = nil }
         } message: {
-            Text("A pod owned by a Deployment, StatefulSet or DaemonSet is replaced; "
-                 + "one created on its own is not. Force skips the grace period and "
-                 + "drops the pod from the API server without waiting for the node — "
-                 + "for a pod stuck Terminating, not for a healthy one.")
+            // Which cluster, when it is one you flagged: the same pod name
+            // exists in staging, and this dialog is the last place to notice
+            // that this is not that one.
+            Text(podDeleteMessage)
         }
         .popover(isPresented: Binding(get: { scaleTarget != nil },
                                       set: { if !$0 { scaleTarget = nil } })) {
