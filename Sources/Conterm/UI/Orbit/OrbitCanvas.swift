@@ -338,8 +338,8 @@ extension OrbitOverlay {
     /// long name wraps instead of stretching the card across the map. The kind
     /// tag only sets a modest floor — it must not decide the width outright.
     func contentWidth(_ n: MapNode, tag: String?) -> CGFloat {
-        let titleW = TabPill.textWidth(n.label, size: 11.5)
-        let subW = cardSubtitle(n).map { TabPill.textWidth($0, size: 9) } ?? 0
+        let titleW = TabPill.textWidth(n.label, size: 12)
+        let subW = cardSubtitle(n).map { TabPill.textWidth($0, size: 9.5) } ?? 0
         // Tracking adds a little beyond the glyph run. The tag is never
         // compressed (it is `fixedSize`), so this only has to stop the card
         // being narrower than its own identity line.
@@ -347,16 +347,21 @@ extension OrbitOverlay {
         return min(150, max(max(titleW, subW), tagW))
     }
 
+    /// The card's rect, which is also its hit target — the cards are
+    /// click-through and the `Canvas` tests this. It has to track `NodeCard`'s
+    /// own metrics; a stale number here means clicking a card does nothing near
+    /// its edges.
     func cardSize(_ n: MapNode) -> CGSize {
         let sub = cardSubtitle(n)
-        let titleW = TabPill.textWidth(n.label, size: 11.5)
+        let titleW = TabPill.textWidth(n.label, size: 12)
         let tag = kindOrdinalTag(n)
         let textW = contentWidth(n, tag: tag)
-        let w = 22 + 17 + 8 + textW          // padding + glyph + gap + text
-        // tag line + title line, plus a wrapped title and any subtitle.
-        var h: CGFloat = 32 + (tag == nil ? 0 : 11)
-        if titleW > textW { h += 14 }
-        if sub?.isEmpty == false { h += 13 }
+        let w = 22 + 24 + 10 + textW         // padding + glyph well + gap + text
+        // Vertical padding + the title line, plus the tag, a wrapped title and
+        // any subtitle.
+        var h: CGFloat = 31 + (tag == nil ? 0 : 13)
+        if titleW > textW { h += 15 }
+        if sub?.isEmpty == false { h += 14 }
         let scale = max(min(z, 1.0), 0.55)   // matches NodeCard
         return CGSize(width: w * scale, height: h * scale)
     }

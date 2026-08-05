@@ -263,12 +263,14 @@ final class OrbitModel: ObservableObject {
     /// cannot tell apart.
     static func paneLabel(_ pane: Pane) -> String {
         // A remote session whose directory nobody on the far end has reported
-        // knows only that it is a shell somewhere on that machine. The local
-        // path it inherited is not where it is, and the machine's name belongs
-        // to the machine's own card — so it says what it is and lets its
-        // subtitle say where. Several of them are told apart by the ordinal on
-        // the card's kind tag.
-        if pane.remoteHost != nil, !pane.cwdIsRemote { return "shell" }
+        // knows only that it is somewhere on that machine. The local path it
+        // inherited is not where it is, and the machine's bare name belongs to
+        // the machine's own card — so it is named by the connection. Reading
+        // `on elastic-01` under a SHELL tag cannot be mistaken for the host
+        // card, and doesn't repeat the tag the way a bare `shell` did.
+        if let host = pane.remoteHost, !pane.cwdIsRemote {
+            return "on " + (HostNameStore.name(for: host) ?? Self.hostLabel(host))
+        }
         return friendlyDirLabel(for: pane.cwd)
     }
 
@@ -278,9 +280,9 @@ final class OrbitModel: ObservableObject {
     /// the machine instead of one saying `sib-02` and the other an IP.
     static func paneSubtitle(_ pane: Pane, isCurrent: Bool) -> String? {
         if pane.agent.phase != .idle { return pane.agent.tool.displayName }
-        // Where it is, always — a remote session's whole identity is which
-        // machine it is on, and the label can only carry a directory.
-        if let host = pane.remoteHost {
+        // Which machine, under the directory — unless the label already is the
+        // machine, because the far end reported no directory to put above it.
+        if let host = pane.remoteHost, pane.cwdIsRemote {
             return "on " + (HostNameStore.name(for: host) ?? Self.hostLabel(host))
         }
         return isCurrent ? "current" : nil

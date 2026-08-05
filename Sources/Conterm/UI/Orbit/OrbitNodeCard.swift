@@ -50,65 +50,76 @@ struct NodeCard: View {
         return hover * (busy ? 1 + 0.012 * CGFloat(pulse) : 1)
     }
 
+    /// Squarer than a stadium. At the height these cards run, a radius near
+    /// half the height reads as a blob and loses the card's own shape among the
+    /// pills in the chrome.
+    static let corner: CGFloat = 15
+
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            // No disc, no ring: the glyph just sits there. The status is told by
-            // the colour breathing under the whole surface instead.
-            Group {
-                if let distro {
-                    DistroMark(distro: distro, size: 15)
-                } else {
-                    Image(systemName: glyph).font(.system(size: 13.5, weight: .medium))
+        HStack(alignment: .center, spacing: 10) {
+            // A well around the glyph, so the mixed marks this map draws —
+            // SF symbols with their own frame, ones without, and a fetched
+            // distribution logo — all sit in the same place at the same weight.
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(glyphWell)
+                Group {
+                    if let distro {
+                        DistroMark(distro: distro, size: 13)
+                    } else {
+                        Image(systemName: glyph).font(.system(size: 11.5, weight: .semibold))
+                    }
                 }
+                .foregroundStyle(status == .neutral
+                                 ? Theme.textPrimary.opacity(0.72) : tint)
             }
-            .foregroundStyle(Theme.textPrimary.opacity(status == .neutral ? 0.75 : 0.95))
-            .frame(width: 17)
-            .padding(.top, 1)
-            VStack(alignment: .leading, spacing: 2) {
+            .frame(width: 24, height: 24)
+
+            VStack(alignment: .leading, spacing: 2.5) {
                 if let kindTag {
                     // What the card *is* — never abbreviated. The tag is the
                     // one line that tells a session apart from the machine it
                     // is talking to, so it takes its natural width and the
                     // selection tick sits outside the text column entirely.
                     Text(kindTag)
-                        .font(OrbitFont.face(7.5)).tracking(0.5)
+                        .font(OrbitFont.face(7.5)).tracking(0.9)
                         .foregroundStyle(selected ? Theme.accent.opacity(0.95)
-                                                  : Theme.textSecondary.opacity(0.62))
+                                                  : Theme.textSecondary.opacity(0.7))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                 }
                 Text(label)
-                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                if let subtitle, !subtitle.isEmpty {
+                if let subtitle, !subtitle.isEmpty, subtitle != label {
                     Text(subtitle)
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
+                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary.opacity(0.9))
                         .lineLimit(1).truncationMode(.tail)
                 }
             }
             .frame(width: contentWidth, alignment: .leading)
         }
-        .padding(.leading, 10).padding(.trailing, 12)
-        .padding(.vertical, 9)
+        .padding(.leading, 9).padding(.trailing, 13)
+        .padding(.vertical, 8)
         .background(
             ZStack {
                 // A bed under the glass. The material alone let the edges and
                 // action wires beneath read straight through the card, so a card
                 // sitting on a busy part of the graph had lines running across
                 // its label.
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                     .fill(light ? Color.white.opacity(0.9) : Color.black.opacity(0.86))
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                     .fill(.ultraThinMaterial)
                 // The colour lives *under* the surface — a soft bloom that
                 // breathes through the glass rather than a bright ring on top
                 // of it, so an active card glows instead of shouting.
                 if underglow > 0.001 {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                         .fill(RadialGradient(
                             colors: [glowColor.opacity(underglow),
                                      glowColor.opacity(underglow * 0.25), .clear],
@@ -116,9 +127,23 @@ struct NodeCard: View {
                 }
             }
         )
+        // A spine in the status colour down the leading edge. The underglow is
+        // gentle by design, which leaves a wall of quiet cards saying nothing
+        // at a glance; a hard edge of colour reads instantly and survives being
+        // scaled down, which the glow does not.
+        .overlay(alignment: .leading) {
+            if status != .neutral {
+                UnevenRoundedRectangle(
+                    topLeadingRadius: Self.corner, bottomLeadingRadius: Self.corner,
+                    bottomTrailingRadius: 1.5, topTrailingRadius: 1.5, style: .continuous)
+                    .fill(tint.opacity(wants || busy ? 0.55 + 0.35 * pulse : 0.7))
+                    .frame(width: 3)
+                    .padding(.vertical, 6)
+            }
+        }
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(borderColor, lineWidth: selected ? 2.4 : 1)
+            RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
+                .strokeBorder(borderColor, lineWidth: selected ? 2.2 : 1)
         )
         // Selection drives the action bar, so it has to read at a glance — a
         // tint alone is lost among the statuses. On the corner rather than in
@@ -147,6 +172,14 @@ struct NodeCard: View {
         .scaleEffect(scale * max(min(zoom, 1.0), 0.55))
         .animation(.easeOut(duration: 0.16), value: hovered)
         .animation(.easeOut(duration: 0.16), value: selected)
+    }
+
+    /// The glyph's own bed. Tinted by status so the mark carries the state as
+    /// well as the spine does, and neutral cards stay quiet.
+    var glyphWell: Color {
+        if selected { return Theme.accent.opacity(0.18) }
+        if status == .neutral { return (light ? Color.black : Color.white).opacity(0.07) }
+        return tint.opacity(0.16)
     }
 
     /// How strongly the colour blooms beneath the glass. Deliberately gentle:
@@ -199,7 +232,7 @@ struct NodeCard: View {
     func travellingLight(at t: TimeInterval) -> some View {
         let span = 0.17
         let head = (t * 0.19 + phase * 0.11).truncatingRemainder(dividingBy: 1)
-        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
         return ZStack {
             shape.trim(from: head, to: min(head + span, 1))
                 .stroke(tint.opacity(0.6), style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
