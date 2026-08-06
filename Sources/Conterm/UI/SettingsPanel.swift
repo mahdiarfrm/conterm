@@ -285,16 +285,6 @@ struct SettingsPanel: View {
                     }
                     .fixedSize(horizontal: true, vertical: false)
                 }
-                SettingsRow(title: "Launch command delay",
-                            subtitle: "How long a new tab waits for its shell to finish loading before an SSH shortcut or other launch command is typed into it. Raise it if a heavy shell startup (a big .zshrc) swallows the command.") {
-                    HStack(spacing: 8) {
-                        Text("Instant").subLabel().fixedSize()
-                        Slider(value: $prefs.launchCommandDelay, in: 0.0...3.0, step: 0.1)
-                            .frame(width: 180)
-                        Text("Patient").subLabel().fixedSize()
-                    }
-                    .fixedSize(horizontal: true, vertical: false)
-                }
                 SettingsRow(title: "Glass panels",
                             subtitle: "Use real Liquid Glass for overlay panels — Command Palette, Search, Settings, Notifications. Off (default) paints them as solid cards, which is cheaper since they cover the terminal.") {
                     Toggle("", isOn: $prefs.liquidGlassPanels.withSound())
@@ -831,6 +821,16 @@ struct SettingsPanel: View {
                     ).withSound())
                     .toggleStyle(.switch)
                     .labelsHidden()
+                }
+                SettingsRow(title: "Launch command delay",
+                            subtitle: "How long a new tab waits for its shell to finish loading before an SSH shortcut or other launch command is typed into it. Raise it if a heavy shell startup (a big .zshrc) swallows the command.") {
+                    HStack(spacing: 8) {
+                        Text("Instant").subLabel().fixedSize()
+                        Slider(value: $prefs.launchCommandDelay, in: 0.0...3.0, step: 0.1)
+                            .frame(width: 180)
+                        Text("Patient").subLabel().fixedSize()
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
                 }
                 SettingsRow(title: "Claude Code integration",
                             subtitle: "Add hooks to ~/.claude/settings.json so a running Claude shows ready / thinking / needs-input in its pane. Your other hooks are preserved.") {
