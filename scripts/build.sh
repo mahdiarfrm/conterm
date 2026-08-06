@@ -109,6 +109,10 @@ for res in Sources/Conterm/Resources/*; do
     [[ -e "$res" ]] || continue
     cp -R "$res" "$APP/Contents/Resources/"
 done
+# MIT and the OFL both require their notice to travel with the binary.
+cp NOTICE.md "$APP/Contents/Resources/NOTICE.md"
+cp LICENSE "$APP/Contents/Resources/LICENSE.txt"
+echo "OK: bundled third-party notices"
 if [[ -f "$APP/Contents/Resources/cursor-mark.png" ]]; then
     echo "OK: bundled flat app resources (cursor-mark.png, …)"
 fi

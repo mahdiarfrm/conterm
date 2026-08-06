@@ -23,9 +23,10 @@ command center for AI coding agents like Claude Code and opencode, and
 live overviews of your SSH hosts, Kubernetes clusters, and containers.
 
 > Conterm is an independent frontend built on **libghostty**. It is not
-> affiliated with the Ghostty project. The terminal engine (rendering, parsing,
-> fonts, themes, shell integration) is Ghostty's; Conterm adds the macOS app
-> around it.
+> affiliated with, endorsed by, or sponsored by the Ghostty project. The
+> terminal engine (rendering, parsing, fonts, themes, shell integration) is
+> Ghostty's, MIT-licensed; Conterm adds the macOS app around it. Full
+> third-party notices are in [NOTICE.md](NOTICE.md).
 
 https://github.com/user-attachments/assets/afbe93e9-9741-46d3-9eef-1c7b0d62ab64
 
