@@ -178,6 +178,7 @@ final class OrbitEngine: ObservableObject {
             var chunks: [String] = []
             var worst = 0
 
+            var perHost: [OrbitScheduler.HostResult] = []
             if targets.isEmpty {
                 // No targets → run on the Mac (a local follow-up).
                 let (code, out) = Self.runLocal(command: payload, group: group)
@@ -197,13 +198,15 @@ final class OrbitEngine: ObservableObject {
                     if kind == .copy, body.isEmpty { body = "copied \(name) → \(host):~" }
                     chunks.append(targets.count > 1
                                   ? "=== \(host) · exit \(result.0) ===\n\(body)" : body)
+                    perHost.append(.init(host: host, exitCode: result.0, output: body))
                     if result.0 != 0 { worst = result.0 }
                 }
             }
 
             let output = chunks.joined(separator: "\n\n")
             Task { @MainActor in
-                OrbitScheduler.shared.finishRun(id, exitCode: worst, output: output)
+                OrbitScheduler.shared.finishRun(id, exitCode: worst, output: output,
+                                                hostResults: perHost)
                 OrbitEngine.shared.running[id] = nil
                 OrbitEngine.shared.stopIfIdle()
             }

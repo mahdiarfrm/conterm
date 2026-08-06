@@ -138,6 +138,27 @@ struct RoutineRun: Codable, Identifiable, Equatable {
         /// Set once the scheduler's action for this step reaches a terminal
         /// state: "ok", "failed", "cancelled".
         var outcome: String?
+        /// What each target said. The durable copy — the scheduler keeps its
+        /// own for a while and then ages it out, and this log is the thing that
+        /// answers "did it land on all twelve?" a week later.
+        var hosts: [OrbitScheduler.HostResult] = []
+
+        /// Decoded field by field, so a run recorded before per-host results
+        /// existed still loads rather than dropping the whole history.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+            targets = try c.decodeIfPresent([String].self, forKey: .targets) ?? []
+            outcome = try c.decodeIfPresent(String.self, forKey: .outcome)
+            hosts = try c.decodeIfPresent([OrbitScheduler.HostResult].self,
+                                          forKey: .hosts) ?? []
+        }
+
+        init(label: String, targets: [String], outcome: String?,
+             hosts: [OrbitScheduler.HostResult] = []) {
+            self.label = label; self.targets = targets
+            self.outcome = outcome; self.hosts = hosts
+        }
     }
 
     var id = UUID()
@@ -280,13 +301,17 @@ final class RoutineStore: ObservableObject {
 
     /// Fold the scheduler's current state into the open runs. Called on the
     /// map's tick: the engine owns execution, this only records what it did.
-    func reconcile(with outcomes: [UUID: String]) {
+    func reconcile(with outcomes: [UUID: String],
+                   hosts: [UUID: [OrbitScheduler.HostResult]] = [:]) {
         var changed = false
         for i in runs.indices where !runs[i].isFinished {
             for (j, actionID) in runs[i].actionIDs.enumerated()
             where j < runs[i].steps.count && runs[i].steps[j].outcome == nil {
                 guard let outcome = outcomes[actionID] else { continue }
                 runs[i].steps[j].outcome = outcome
+                // Copied rather than referenced: the scheduler ages its history
+                // out, and this log outlives it.
+                runs[i].steps[j].hosts = hosts[actionID] ?? []
                 changed = true
             }
             // A run is done when every step has an outcome, or when a failure

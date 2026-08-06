@@ -15,6 +15,18 @@ final class OrbitScheduler: ObservableObject {
     enum Kind: String, Codable { case run, ansible, copy }
     enum Status: String, Codable { case pending, running, done, failed }
 
+    /// What one target said. A run fans out across its hosts and the engine
+    /// already knows each one's exit code separately — flattening them into a
+    /// single blob threw that away, and "did the key land on all twelve?" is the
+    /// question a fleet action exists to answer.
+    struct HostResult: Codable, Equatable {
+        var host: String
+        var exitCode: Int
+        var output: String
+
+        var ok: Bool { exitCode == 0 }
+    }
+
     /// The completion verdict the overlay hands back for a running action.
     struct Outcome {
         let done: Bool
@@ -53,6 +65,8 @@ final class OrbitScheduler: ObservableObject {
         var paneID: UUID?
         var resultNote: String?
         var output: String?          // captured stdout+stderr of a run command
+        /// Per-target results, when the action fanned out across hosts.
+        var hostResults: [HostResult] = []
 
         /// Decoded field by field so a plan saved before a field existed still
         /// loads. Swift's synthesized `Decodable` ignores property defaults and
@@ -79,6 +93,7 @@ final class OrbitScheduler: ObservableObject {
             paneID = try c.decodeIfPresent(UUID.self, forKey: .paneID)
             resultNote = try c.decodeIfPresent(String.self, forKey: .resultNote)
             output = try c.decodeIfPresent(String.self, forKey: .output)
+            hostResults = try c.decodeIfPresent([HostResult].self, forKey: .hostResults) ?? []
         }
 
         init(id: UUID, kind: Kind, payload: String, become: Bool = false,
@@ -246,12 +261,14 @@ final class OrbitScheduler: ObservableObject {
     }
 
     /// Push completion for a run command: its exit code + captured output.
-    func finishRun(_ id: UUID, exitCode: Int, output: String) {
+    func finishRun(_ id: UUID, exitCode: Int, output: String,
+                   hostResults: [HostResult] = []) {
         guard let i = actions.firstIndex(where: { $0.id == id }) else { return }
         actions[i].status = exitCode == 0 ? .done : .failed
         actions[i].finishedAt = Date()
         actions[i].resultNote = "exit \(exitCode)"
         actions[i].output = output
+        actions[i].hostResults = hostResults
         announce(actions[i])
         save()
     }
@@ -265,8 +282,12 @@ final class OrbitScheduler: ObservableObject {
     /// the whole point of scheduling something is not having to watch it.
     private func announce(_ action: Action) {
         guard action.status == .failed else { return }
-        let where_ = action.targets.isEmpty ? "locally"
-                                            : "on " + action.targets.joined(separator: ", ")
+        // Name the hosts that actually failed, not everything it was aimed at:
+        // one bad machine out of twelve is a different message.
+        let bad = action.hostResults.filter { !$0.ok }.map(\.host)
+        let where_ = !bad.isEmpty ? "on " + bad.joined(separator: ", ")
+            : (action.targets.isEmpty ? "locally"
+               : "on " + action.targets.joined(separator: ", "))
         NotificationStore.shared?.post(
             tool: .generic,
             title: "\(action.label) failed",

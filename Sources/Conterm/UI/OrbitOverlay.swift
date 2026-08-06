@@ -78,6 +78,8 @@ struct OrbitOverlay: View {
         case shell(String)                   // an agent Bash command, by tool_use id
         case containerLogs(String, String)   // a container's logs: host, container
         case podLogs(String, String, String, String)  // context, namespace, pod, container
+        /// One host's share of a fleet action: its name, exit code and output.
+        case hostOutput(String, Int, String)
 
         var isOpen: Bool { self != .none }
         var outputAction: UUID? { if case .output(let id) = self { return id }; return nil }
@@ -88,6 +90,10 @@ struct OrbitOverlay: View {
         }
         var podLog: (context: String, namespace: String, pod: String, container: String)? {
             if case .podLogs(let c, let ns, let p, let k) = self { return (c, ns, p, k) }
+            return nil
+        }
+        var hostOut: (host: String, exitCode: Int, output: String)? {
+            if case .hostOutput(let h, let code, let out) = self { return (h, code, out) }
             return nil
         }
     }
@@ -447,6 +453,7 @@ struct OrbitOverlay: View {
             flowControls
             outputPanel
             shellDetailPanel
+            hostOutputPanel
             containerLogPanel
             steerPanel
             guestPanel

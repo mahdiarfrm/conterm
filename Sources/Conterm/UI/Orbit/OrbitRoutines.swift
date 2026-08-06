@@ -230,6 +230,48 @@ extension OrbitOverlay {
         }
     }
 
+    /// Which machines it landed on. A step that ran across twelve hosts and
+    /// says only "failed" leaves you to go and find out which one — the whole
+    /// reason a fleet action is worth recording is that the answer differs per
+    /// host. Tapping one opens what that host actually said.
+    func stepHostSummary(_ step: RoutineRun.Step) -> some View {
+        let failed = step.hosts.filter { !$0.ok }
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Text("\(step.hosts.count - failed.count)/\(step.hosts.count) ok")
+                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(failed.isEmpty ? okGreen : failRed)
+                if !failed.isEmpty {
+                    Text("· " + failed.map(\.host).joined(separator: ", "))
+                        .font(.system(size: 9.5, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary).lineLimit(1)
+                }
+            }
+            // Every host, each its own button into its own output. Failures
+            // first: they are why you opened this.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 54), spacing: 4)],
+                      alignment: .leading, spacing: 4) {
+                ForEach(step.hosts.sorted { !$0.ok && $1.ok }, id: \.host) { h in
+                    Button {
+                        withAnimation(Theme.Spring.snappy) {
+                            modal = .hostOutput(h.host, h.exitCode, h.output)
+                        }
+                    } label: {
+                        Text(h.host)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(h.ok ? Theme.textSecondary : failRed)
+                            .lineLimit(1)
+                            .padding(.horizontal, 5).padding(.vertical, 1.5)
+                            .background(Capsule().fill(h.ok ? Theme.selectionFill
+                                                            : failRed.opacity(0.16)))
+                    }
+                    .buttonStyle(.plain)
+                    .help("exit \(h.exitCode) — tap for what it said")
+                }
+            }
+        }
+    }
+
     func routineHistoryList(_ id: UUID) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
@@ -254,12 +296,16 @@ extension OrbitOverlay {
                                     .foregroundStyle(s.outcome == "failed" ? failRed
                                                      : (s.outcome == nil ? Theme.textSecondary : okGreen))
                                     .frame(width: 10)
-                                VStack(alignment: .leading, spacing: 1) {
+                                VStack(alignment: .leading, spacing: 2) {
                                     Text(s.label).font(.system(size: 10.5, design: .monospaced))
                                         .foregroundStyle(Theme.textPrimary).lineLimit(2)
-                                    Text(s.targets.joined(separator: ", "))
-                                        .font(.system(size: 9.5, design: .rounded))
-                                        .foregroundStyle(Theme.textSecondary).lineLimit(1)
+                                    if s.hosts.isEmpty {
+                                        Text(s.targets.joined(separator: ", "))
+                                            .font(.system(size: 9.5, design: .rounded))
+                                            .foregroundStyle(Theme.textSecondary).lineLimit(1)
+                                    } else {
+                                        stepHostSummary(s)
+                                    }
                                 }
                             }
                         }
@@ -405,10 +451,12 @@ extension OrbitOverlay {
     /// execution; this only records what it did.
     func reconcileRoutineRuns() {
         var outcomes: [UUID: String] = [:]
+        var hosts: [UUID: [OrbitScheduler.HostResult]] = [:]
         for a in scheduler.actions where a.isTerminal {
             outcomes[a.id] = a.status == .failed ? "failed" : "ok"
+            if !a.hostResults.isEmpty { hosts[a.id] = a.hostResults }
         }
-        routines.reconcile(with: outcomes)
+        routines.reconcile(with: outcomes, hosts: hosts)
     }
 
     /// One step of a routine: what it runs, where, and whether the rest of the

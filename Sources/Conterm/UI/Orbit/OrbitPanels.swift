@@ -153,6 +153,65 @@ extension OrbitOverlay {
         return nil
     }
 
+    /// One host's share of a fleet action. The combined output already exists,
+    /// but it is twelve reports concatenated — this is the one you asked for,
+    /// with its own exit code at the top.
+    @ViewBuilder
+    var hostOutputPanel: some View {
+        if let out = modal.hostOut {
+            ZStack {
+                Color.black.opacity(0.28).ignoresSafeArea()
+                    .onTapGesture { withAnimation(Theme.Spring.snappy) { modal = .none } }
+                    .transition(.opacity)
+                VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        Image(systemName: out.exitCode == 0 ? "checkmark.circle.fill"
+                                                            : "xmark.octagon.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(out.exitCode == 0 ? okGreen : failRed)
+                        Text(out.host)
+                            .font(.system(size: 12.5, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Theme.textPrimary).lineLimit(1)
+                        Text("exit \(out.exitCode)")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(Theme.textSecondary)
+                        Spacer()
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(out.output, forType: .string)
+                        } label: {
+                            Image(systemName: "doc.on.doc").font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.textSecondary).frame(width: 24, height: 24)
+                                .background(Circle().fill(Theme.selectionFill))
+                        }.buttonStyle(.plain).help("Copy what this host said")
+                        Button { withAnimation(Theme.Spring.snappy) { modal = .none } } label: {
+                            Image(systemName: "xmark").font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Theme.textSecondary).frame(width: 24, height: 24)
+                                .background(Circle().fill(Theme.selectionFill))
+                        }.buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    Divider().opacity(0.4)
+                    ScrollView {
+                        Text(out.output.isEmpty ? "It said nothing." : out.output)
+                            .font(.system(size: 11.5, design: .monospaced))
+                            .foregroundStyle(out.output.isEmpty ? Theme.textSecondary
+                                                                : Theme.textPrimary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(16)
+                    }
+                }
+                .frame(width: 720, height: 460)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.ultraThinMaterial))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Theme.strokeStrong, lineWidth: 1))
+                .shadow(color: .black.opacity(0.45), radius: 40, y: 16)
+                .transition(.scale(scale: 0.96).combined(with: .opacity))
+            }
+        }
+    }
+
     /// Output of an agent's shell command, tapped from its canvas node. Same
     /// scrollable, copyable panel as a task's output; output backfills from the
     /// transcript, so it may read "waiting" until the command's turn completes.
