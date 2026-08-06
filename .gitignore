@@ -28,6 +28,10 @@ conterm_video/
 /docs/FIXPLAN.md
 /docs/FOCUS-INDICATOR.md
 /docs/OPS-ROADMAP.md
+/docs/ORBIT.md
+/docs/ORBIT-HOSTING.md
+/docs/ORBIT-PANE-PREVIEW.md
+/docs/ORBIT-ROUTINES.md
 /Tests/ContermTests/
 conterm-monitor-*.log
 archive/
