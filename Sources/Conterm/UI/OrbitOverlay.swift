@@ -25,6 +25,10 @@ struct OrbitOverlay: View {
     @ObservedObject var model = OrbitModel.shared
     @ObservedObject var containers = ContainerControl.shared
     @ObservedObject var kube = KubeDrill.shared
+    /// The live kubeconfig, so a cluster card can say which context is current
+    /// and offer to change it. `kube` above is the *drill* — what is inside a
+    /// context — which is a different object and a different question.
+    @ObservedObject var kubeContext = KubeContextWatch.shared
     @ObservedObject var routines = RoutineStore.shared
     /// The routine being edited, and the one being filled in to launch.
     @State var editingRoutine: Routine?
@@ -359,9 +363,8 @@ struct OrbitOverlay: View {
                     .coordinateSpace(name: orbitCanvasSpace)
                 }
             }
-            // Two-finger / mouse-wheel scrolling pans; one-finger is for nodes.
-            // Passes the event through when the cursor is over the open host
-            // panel, so that panel's own list can scroll.
+            // Aims the action bar: hit-tests a right-click or double-click
+            // against the graph.
             CanvasClickCatcher { winPoint in
                 // Hit-test the click itself. Reading `hoveredID` looked simpler
                 // but only worked while hover happened to be current — moving

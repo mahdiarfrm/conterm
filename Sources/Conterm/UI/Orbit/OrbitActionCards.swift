@@ -78,6 +78,11 @@ struct PreviewCard: View {
     let node: MapNode
     let probe: HostProbeModel?
     let paneCount: Int
+    /// What the tab bar calls this session — "Terminal 6". The map names a
+    /// session by what it is and where it is; the tab bar names the slot you
+    /// switch to. Both are true, and one of them is how you find it again
+    /// outside Orbit, so the card says it rather than making you match them up.
+    var tabName: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -103,7 +108,7 @@ struct PreviewCard: View {
         switch node.kind {
         case .mac:                    return node.label
         case .host(let t, _):         return node.label == t ? t : "\(node.label)"
-        case .pane:                   return "Terminal"
+        case .pane:                   return tabName ?? "Terminal"
         case .cluster(let c, _):      return KubeContextWatch.shortLabel(c)
         case .k8s:                    return "Kubernetes"
         case .container(let name):    return name
@@ -170,6 +175,7 @@ struct PreviewCard: View {
         case .pane:
             var out = [node.label]
             if let sub = node.subtitle { out.append("\(sub) · \(node.status.hint)") }
+            else { out.append(node.status.hint) }
             out.append("tap to jump")
             return out
         case .cluster(_, let danger):

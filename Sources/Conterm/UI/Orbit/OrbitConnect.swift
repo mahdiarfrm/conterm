@@ -354,6 +354,26 @@ extension OrbitOverlay {
         let where_: String       // the spaces it's on, or where it lives
     }
 
+    /// What the tab bar calls a session's tab. The map and the tab bar name the
+    /// same object differently — one by what it is running, the other by the
+    /// slot it occupies — so this is how a card can say both.
+    func tabName(for node: MapNode) -> String? {
+        guard case .pane(let paneID) = node.kind else { return nil }
+        return tabName(forPaneID: paneID)
+    }
+
+    func tabName(for pane: Pane) -> String? { tabName(forPaneID: pane.id) }
+
+    func tabName(forPaneID paneID: UUID) -> String? {
+        for wc in (NSApp.delegate as? AppDelegate)?.windows ?? [] {
+            for tab in wc.state.tabs
+            where tab.paneTree.root.leaves().contains(where: { $0.id == paneID }) {
+                return tab.title.isEmpty ? tab.indexLabel : tab.title
+            }
+        }
+        return nil
+    }
+
     func allSessions() -> [SessionRow] {
         let ordinals = kindOrdinals(Graph(nodes: model.nodes, edges: model.edges))
         var out: [SessionRow] = []

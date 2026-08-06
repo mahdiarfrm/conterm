@@ -229,8 +229,13 @@ extension OrbitOverlay {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(dir).font(.system(size: 13, weight: .bold, design: .rounded))
                                 .foregroundStyle(Theme.textPrimary).lineLimit(1)
-                            Text("Claude session").font(.system(size: 10, design: .rounded))
-                                .foregroundStyle(Theme.textSecondary)
+                            // Which tab it is, so the session you are steering
+                            // here is one you can also find in the tab bar —
+                            // the two name the same thing differently.
+                            Text(tabName(for: pane).map { "Claude session · \($0)" }
+                                 ?? "Claude session")
+                                .font(.system(size: 10, design: .rounded))
+                                .foregroundStyle(Theme.textSecondary).lineLimit(1)
                         }
                         Spacer()
                         steerStatusPill(pane.agent.phase)

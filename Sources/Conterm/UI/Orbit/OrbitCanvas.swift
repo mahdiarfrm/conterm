@@ -681,7 +681,8 @@ extension OrbitOverlay {
             let w: CGFloat = 230
             let x = min(max(sp.x, w / 2 + 12), canvas.width - w / 2 - 12)
             let y = max(sp.y - radius(n) * z - 60, 78)
-            PreviewCard(node: n, probe: hostProbe(for: n), paneCount: paneCount(for: n, in: graph))
+            PreviewCard(node: n, probe: hostProbe(for: n),
+                        paneCount: paneCount(for: n, in: graph), tabName: tabName(for: n))
                 .frame(width: w).position(x: x, y: y).allowsHitTesting(false).transition(.opacity)
         }
     }
