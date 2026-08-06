@@ -20,18 +20,11 @@ conterm_video/
 # Local diagnostics and working notes (not for the public repo)
 /scripts/conterm-monitor.sh
 /scripts/diag-wakeups.sh
-/docs/HEAT-AND-BATTERY.md
-/docs/POWER-TESTS-2026-07.md
-/docs/GLASS-REDESIGN.md
-/docs/WIP-AGENT-CENTER.md
-/docs/REMAINING.md
-/docs/FIXPLAN.md
-/docs/FOCUS-INDICATOR.md
-/docs/OPS-ROADMAP.md
-/docs/ORBIT.md
-/docs/ORBIT-HOSTING.md
-/docs/ORBIT-PANE-PREVIEW.md
-/docs/ORBIT-ROUTINES.md
+# docs/ holds two unrelated things: the published site (index.html,
+# assets/) and working notes. Ignore every note by shape rather than by
+# name — a new one is out of the repo from its first save, which is the
+# only point at which keeping it out still works.
+/docs/*.md
 /Tests/ContermTests/
 conterm-monitor-*.log
 archive/
