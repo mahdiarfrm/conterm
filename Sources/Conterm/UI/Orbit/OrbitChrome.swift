@@ -826,9 +826,12 @@ extension OrbitOverlay {
                 Text(kubeContext.canSwitch ? "No other contexts in your kubeconfig"
                                            : "kubectl was not found")
             }
+            // Full names. `shortLabel` exists for the pill and the node card,
+            // where 16 characters is all there is; a menu has the width, and
+            // two contexts that differ past the truncation point are two rows
+            // you cannot tell apart.
             ForEach(others) { ctx in
-                Button(KubeContextWatch.shortLabel(ctx.name)) { useContext(ctx.name) }
-                    .help(ctx.name)
+                Button(ctx.name) { useContext(ctx.name) }
             }
         }
         .disabled(!kubeContext.canSwitch || others.isEmpty)
