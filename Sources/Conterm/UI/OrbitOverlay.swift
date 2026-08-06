@@ -432,6 +432,9 @@ struct OrbitOverlay: View {
             }
             .frame(width: 0, height: 0)
             spaceEmptyState
+            // Under everything else, so a panel or a terminal opening over the
+            // list hides it rather than reading through it.
+            keyHelper
             // Beneath every panel. A terminal is a big opaque rectangle, and a
             // panel that opened behind one could not be read or reached.
             panePreview
@@ -613,6 +616,9 @@ struct OrbitOverlay: View {
     /// Whether the overview map is open. Persisted: it is a working preference,
     /// not a per-visit one.
     @AppStorage("orbit.showMinimap") var showMinimap = true
+    /// Whether the shortcut list stays on the canvas. Persisted for the same
+    /// reason: you either want it up while you learn the keys, or you don't.
+    @AppStorage("orbit.keyHelper") var showKeyHelper = false
 
     /// The canvas midpoint, which every world-to-screen conversion is measured
     /// from. The drawing pass gets it from its `GeometryReader`; anything

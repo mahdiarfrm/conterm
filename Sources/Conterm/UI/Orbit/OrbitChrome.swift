@@ -181,6 +181,19 @@ extension OrbitOverlay {
             .font(.system(size: 11, design: .rounded))
             .foregroundStyle(Theme.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
+        Toggle(isOn: $showKeyHelper.animation(Theme.Spring.snappy)) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Helper")
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                Text("Keep this list down the left of the canvas")
+                    .font(.system(size: 10.5, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .toggleStyle(.switch)
+        .tint(Theme.accent)
+        .padding(.vertical, 2)
         ForEach(Array(OrbitKey.sections.enumerated()), id: \.offset) { _, section in
             VStack(alignment: .leading, spacing: 5) {
                 Text(section.0.uppercased())
