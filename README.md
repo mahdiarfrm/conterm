@@ -144,7 +144,10 @@ One search over everything:
   and a failure feed with messages. A widget tracks runs across all
   windows and keeps the machine's most recent report across relaunches.
 
-### Orbit — the fleet as a map
+### Orbit — the fleet as a map *(beta)*
+
+Orbit is new and still settling — the shape is there, the edges are not.
+Treat it as beta.
 
 - **A layout mode, not a panel** (`⌘⇧M`) — entering Orbit collapses the tab
   bar and gives the window to a live graph of what you are working on:
@@ -159,9 +162,9 @@ One search over everything:
   routines by name, including hosts you have never connected to and ones
   from `~/.ssh/config`. Return brings the match to the middle and aims the
   action bar at it.
-- **Drive it from the keyboard** — `G` labels every node so you can pick one
-  by typing; the arrows walk the graph from there. Every verb on the action
-  bar has a key, and `?` lists them.
+- **Drive it from the keyboard** — holding `⌥` lights a letter on every card;
+  press it to aim there, and the arrows walk the graph from there. Every verb
+  on the action bar has a key, and `?` lists them.
 - **Since you looked away** — leaving writes a snapshot, entering reports the
   difference: a session that started waiting on you, one that finished while
   you were gone, a scheduled run that failed, a host that came or went.
