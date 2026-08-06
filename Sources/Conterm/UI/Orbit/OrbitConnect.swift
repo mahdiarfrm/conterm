@@ -124,7 +124,6 @@ extension OrbitOverlay {
         }
     }
 
-    /// Send what's in the field, and stay open for the next one.
     /// A new session, without leaving Orbit. It appears on the map as soon as
     /// the graph next rebuilds, and the bar re-aims at it so you can work in it
     /// straight away.

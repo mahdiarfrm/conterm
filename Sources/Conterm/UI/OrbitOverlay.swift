@@ -17,11 +17,10 @@ struct OrbitOverlay: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Preferences
     @EnvironmentObject var notifications: NotificationStore
-    /// A floating terminal spawned by Connect — a real surface hosted in a card
-    /// over the canvas, so you do the task without leaving Orbit. Releasing it
-    /// frees the surface through the same deinit path as a normal pane close.
-    /// Connect spawns real macOS terminal windows (native drag / minimize /
-    /// close), held here so their surfaces stay alive; removed when closed.
+    /// Real macOS terminal windows spawned by Connect — native drag, minimize
+    /// and close — held here so their surfaces stay alive, and dropped when
+    /// closed. Releasing one frees the surface through the same deinit path as
+    /// a normal pane close.
     @State var floatingTerminals: [FloatingTerminal] = []
     @ObservedObject var model = OrbitModel.shared
     @ObservedObject var containers = ContainerControl.shared
@@ -47,8 +46,6 @@ struct OrbitOverlay: View {
     @State var hoveredID: String?
     /// The board link under the cursor, which is the only one showing a handle.
     @State var hoveredLinkID: UUID?
-    /// Node the cursor just left, plus when the hover last changed, so the jelly
-    /// wobble eases in on hover and out on release instead of snapping.
     /// Where the cursor is resting on a task — on its wire (the canvas draws
     /// the card at mid-wire) or on its timeline block (the deck draws its own).
     /// One state, so hovering the deck can't leave a second card behind on the
@@ -100,7 +97,7 @@ struct OrbitOverlay: View {
     @State var modal: Modal = .none
     @State var steerInput = ""
     @FocusState var steerFocused: Bool
-    // Phase 3: queue a follow-up on the session reaching a state.
+    // Queue a follow-up on the session reaching a state.
     @State var followUpOpen = false
     @State var followUpInput = ""
     @State var followUpPhase = "attention"   // "attention" | "finished"
@@ -175,7 +172,7 @@ struct OrbitOverlay: View {
     @State var since: [OrbitChange] = []
     @State var scaleDraft = 1
 
-    // Phase 2 (spaces) + phase 3 (act on selection).
+    // Saved spaces, and acting on the current selection.
     @ObservedObject var spaces = OrbitSpaces.shared
     @State var fleetCommand = ""
     @State var renamingSpace = false
@@ -389,9 +386,6 @@ struct OrbitOverlay: View {
                 // cockpit, the output panel) owns scroll — don't pan underneath it.
                 if modal.isOpen || state.hostOverview != nil
                     || state.clusterOverviewOpen || state.ansibleCockpit != nil { return false }
-                // The search palette owns the wheel over its own rectangle so
-                // its results scroll. `loc` is window coords (bottom-left
-                // origin); flip to the top-left origin the frame was captured in.
                 // The palette owns the wheel outright while it is up. Deciding
                 // by its rectangle meant scroll only reached the list when that
                 // rectangle was current, and the map has no business panning
@@ -479,10 +473,9 @@ struct OrbitOverlay: View {
         }
         // Orbit is a full layout mode: entering it collapses the tab bar and
         // sidebar (see AppView.content) and the canvas fills the whole content
-        // edge to edge. The backdrop is a static gradient, never a live
-        // `NSVisualEffectView` blur — the blur's continuous re-sampling of the
-        // panes was the standing heat cost, and an opaque cockpit gradient lets
-        // the covered panes drop out of compositing.
+        // edge to edge. Its backdrop blurs the static desktop behind the window
+        // rather than live pane content — the panes are hidden in this mode, so
+        // the re-blur stays cheap and they drop out of compositing.
         .background(orbitBackdrop.ignoresSafeArea())
         .onAppear {
             sim.layout = OrbitSim.Layout(rawValue: layoutMode) ?? .physics
@@ -577,10 +570,10 @@ struct OrbitOverlay: View {
         }
     }
 
-    /// Static cockpit backdrop — a gradient, deliberately not a live blur, so
-    /// Orbit carries no continuous glass-re-blur cost and the covered panes drop
-    /// out of compositing. A soft accent glow high-center plus an edge vignette
-    /// give it depth without any per-frame work.
+    /// The cockpit backdrop: a blur of whatever is behind the window, tinted,
+    /// with a soft accent glow high-centre and an edge vignette for depth. The
+    /// panes are hidden in this mode, so what it re-samples is the static
+    /// desktop rather than live terminal content.
     var orbitBackdrop: some View {
         let light = prefs.lightGlass
         return ZStack {
@@ -608,9 +601,6 @@ struct OrbitOverlay: View {
         }
     }
 
-    /// What is typed into the map's search field, and which of its results is
-    /// highlighted. Whether the field is *up* lives on `AppState`, because the
-    /// key monitor has to route the arrows and Return to it.
     /// Everything findable, gathered when the field opens and on nothing else —
     /// building it reads the shell history off disk. The query, the highlight
     /// and the ranking belong to `OrbitSearchPanel`, so typing in it never

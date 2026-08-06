@@ -36,7 +36,7 @@ final class OrbitScheduler: ObservableObject {
         var output: String? = nil
     }
 
-    /// A follow-up gated on an agent reaching a state (Phase 3). `phase` is
+    /// A follow-up gated on an agent reaching a state. `phase` is
     /// "attention" (needs you) or "finished" (idle/gone). The overlay clears the
     /// trigger when it's met; `fireDue` holds the action until then.
     struct AgentTrigger: Codable, Equatable {
@@ -219,7 +219,7 @@ final class OrbitScheduler: ObservableObject {
             let a = actions[i]
             // Staged for a flow: never fires until the user releases the flow.
             if a.held { continue }
-            // Held on an agent state (Phase 3): the overlay clears the trigger
+            // Held on an agent state: the overlay clears the trigger
             // once the session reaches it, then this fires like any other.
             if a.agentTrigger != nil { continue }
             // Blocked on a dependency that hasn't finished yet.

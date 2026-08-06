@@ -8,7 +8,7 @@ extension OrbitOverlay {
     struct Graph { let nodes: [MapNode]; let edges: [MapEdge] }
 
     func liveGraph() -> Graph {
-        // Session focus (Phase 4): the thinking-pill / Sessions-menu entry pins
+        // Session focus: the thinking-pill / Sessions-menu entry pins
         // Orbit to one Claude session — its pane, its host + Mac, and everything
         // blooming off it — so the cockpit reads as "this session" not the fleet.
         if let sid = state.orbitFocusSession {
@@ -342,7 +342,7 @@ extension OrbitOverlay {
         }
     }
 
-    /// Phase 1 of the agent cockpit: a live Claude session blooms its Task-tool
+    /// A live Claude session blooms its Task-tool
     /// sub-agents and most-recent shell command as nodes off its pane, from the
     /// data `AgentCenter` already parses from the transcript.
     func withAgentActivity(_ nodes: [MapNode], _ edges: inout [MapEdge]) -> [MapNode] {

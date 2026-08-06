@@ -11,14 +11,13 @@ import AppKit
 ///
 /// This is the one place that knows where a pane is. Mounting **is** a move, so
 /// the previous site is emptied by construction rather than by remembering to.
-/// See `docs/ORBIT-HOSTING.md`.
 @MainActor
 final class PaneMounts {
     static let shared = PaneMounts()
 
     private final class Entry {
-        /// The tile the pane belongs to. Weak: a box that leaves the tree simply
-        /// disappears, exactly as the map table it replaces behaved.
+        /// The tile the pane belongs to. Weak: a box that leaves the tree
+        /// simply disappears, and the entry stops claiming a home.
         weak var tile: PaneBox?
         /// Where the host view is right now, when that isn't its tile.
         weak var away: NSView?

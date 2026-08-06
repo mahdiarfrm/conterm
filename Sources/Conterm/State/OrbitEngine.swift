@@ -24,9 +24,6 @@ final class OrbitEngine: ObservableObject {
     private let scheduler = OrbitScheduler.shared
     private var timer: Timer?
 
-    /// Playbooks run in a headless standalone surface (no tab, no window).
-    /// Held for as long as Orbit is open — see `releaseHeadlessRuns`.
-    private var headlessRuns: [UUID: Pane] = [:]
     /// Child processes per action, so a cancel can actually terminate them.
     private var running: [UUID: RunGroup] = [:]
 
@@ -99,16 +96,6 @@ final class OrbitEngine: ObservableObject {
         scheduler.reconcile { ansibleOutcome($0) }   // run completion is push-based
         stopIfIdle()
         retime()
-    }
-
-    /// Free the surfaces behind finished playbooks. Deliberately *not* done as
-    /// each run settles: `Pane.deinit` clears that pane's run from
-    /// `AnsibleCenter` — report and feed file both — so releasing early pulled
-    /// the result out from under the sidebar still displaying it. Orbit closing
-    /// is the point where nothing is reading them any more.
-    func releaseHeadlessRuns() {
-        headlessRuns.removeAll()
-        stopIfIdle()
     }
 
     /// Cancel a planned or in-flight action, killing its processes first — the
@@ -267,25 +254,6 @@ final class OrbitEngine: ObservableObject {
         env["ANSIBLE_FORCE_COLOR"] = "0"
         env["ANSIBLE_NOCOLOR"] = "1"
         return env
-    }
-
-    /// Runs a command in a headless standalone surface — no tab, no window.
-    /// Ansible uses this: the playbook streams into the sidebar through the
-    /// conterm callback plugin, which is keyed on a real pane id.
-    private func runHeadless(_ command: String) -> UUID? {
-        guard let delegate = NSApp.delegate as? AppDelegate,
-              let state = delegate.state,
-              let app = state.ghostty,
-              let notifications = delegate.notifications,
-              let prefs = delegate.prefs else { return nil }
-        let pane = Pane()
-        let ctrl = makePaneSurface(pane: pane, app: app, state: state,
-                                   notifications: notifications, prefs: prefs)
-        headlessRuns[pane.id] = pane
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            ctrl.typeText(command); ctrl.sendReturn()
-        }
-        return pane.id
     }
 
     private func sessionName(_ paneID: UUID) -> String {

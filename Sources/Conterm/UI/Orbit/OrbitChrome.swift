@@ -522,7 +522,7 @@ extension OrbitOverlay {
 
     /// The contextual action dock: the answer to "what can I do here." It rises
     /// from the bottom whenever nodes are ⌘-selected and names every action the
-    /// selection affords — run, connect, playbook, copy, health, overview —
+    /// selection affords — run, schedule, connect, playbook, send file, details —
     /// with a command field wired to the primary Run/Connect action.
     @ViewBuilder
     var actionDock: some View {

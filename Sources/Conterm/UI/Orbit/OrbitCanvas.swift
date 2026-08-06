@@ -30,10 +30,9 @@ extension OrbitOverlay {
             ctx.fill(Path(ellipseIn: CGRect(x: cx - rad, y: cy - rad, width: 2 * rad, height: 2 * rad)),
                      with: .radialGradient(Gradient(colors: [col.opacity(0.12 * a), col.opacity(0.02 * a), .clear]),
                                            center: cen, startRadius: rad * 0.15, endRadius: rad))
-            // The label is drawn in `groupChips`, above the node cards — on the
-            // canvas it sat under them and a member card would land on top of
+            // The label belongs to `groupChips`, above the node cards: drawn on
+            // the Canvas it sits under them, and a member card lands on top of
             // its own group's name.
-            _ = col
         }
 
         // Edges — curved, dimmed outside the hovered neighborhood.
@@ -96,7 +95,7 @@ extension OrbitOverlay {
         // Nodes themselves are real glass (`.ultraThinMaterial`), rendered over
         // the Canvas in `nodeCards` — a Canvas can't blur, and a card carrying
         // its own label is what makes a dense graph readable. Only the anchor
-        // glow stays here, under the wires, to seat each card on the map.
+        // glow stays on the Canvas, under the cards, to seat each one.
         for n in graph.nodes.filter({ !isGroup($0) && !isNote($0) }).sorted(by: { layer($0) > layer($1) }) {
             drawNodeGlow(&ctx, n, at: p(n.id), now: now, hood: hood)
         }
@@ -331,10 +330,6 @@ extension OrbitOverlay {
         }
     }
 
-    /// The card's approximate on-screen size. Interaction still happens on the
-    /// Canvas beneath the cards, so it has to know how big the thing the user
-    /// is actually aiming at is — an orb-sized target under a 190pt card reads
-    /// as a dead click along its edges.
     /// Width of a card's text column: what its longest line needs, capped so a
     /// long name wraps instead of stretching the card across the map. The kind
     /// tag only sets a modest floor — it must not decide the width outright.
@@ -351,13 +346,13 @@ extension OrbitOverlay {
         return min(160, max(max(titleW, subW), tagW))
     }
 
-    /// The card's rect, which is also its hit target — the cards are
-    /// click-through and the `Canvas` tests this. It has to track `NodeCard`'s
-    /// own metrics; a stale number here means clicking a card does nothing near
-    /// its edges.
     /// Zoomed out far enough that cards show their name alone.
     var cardsAreCompact: Bool { z < NodeCard.compactBelow }
 
+    /// The card's rect, which is also its hit target: the cards are
+    /// click-through and the `Canvas` tests this. It has to track `NodeCard`'s
+    /// own metrics — a stale number here means clicking a card does nothing
+    /// near its edges.
     func cardSize(_ n: MapNode) -> CGSize {
         let compact = cardsAreCompact
         let sub = compact ? nil : cardSubtitle(n)
@@ -434,12 +429,10 @@ extension OrbitOverlay {
         }
     }
 
-    /// Each node's number within its own kind — "HOST 3". Numbered in id order
-    /// so a node keeps its mark between rebuilds rather than being renumbered
-    /// every time the graph is rebuilt.
     /// A number only earns its place on a card when it tells two of them apart:
     /// same kind, same name. Numbering unique names — HOST 1, HOST 3 — reads as
     /// information and carries none, and the number moves as the graph changes.
+    /// Assigned in id order, so a node keeps its mark across rebuilds.
     /// Several remote shells, on the other hand, are all called `shell`.
     func kindOrdinals(_ graph: Graph) -> [String: Int] {
         let shown = graph.nodes.filter { !isGroup($0) && !isNote($0) }
@@ -646,9 +639,9 @@ extension OrbitOverlay {
         if !editing { ctx.draw(resolved, at: c) }
     }
 
-    /// The seat a node card sits on: a soft tinted glow plus a small core, so
-    /// the wires visibly land somewhere and a working node breathes even before
-    /// you read its card. The card itself is a SwiftUI view above the Canvas.
+    /// The seat a node card sits on: a soft tinted bloom, so the wires visibly
+    /// land somewhere and a working node breathes even before you read its
+    /// card. The card itself is a SwiftUI view above the Canvas.
     func drawNodeGlow(_ ctx: inout GraphicsContext, _ n: MapNode, at c: CGPoint,
                               now: TimeInterval, hood: Set<String>?) {
         let (cr, cg, cb) = rgb(n)
@@ -672,8 +665,8 @@ extension OrbitOverlay {
         func rect(_ p: CGPoint, _ rad: CGFloat) -> CGRect {
             CGRect(x: p.x - rad, y: p.y - rad, width: rad * 2, height: rad * 2)
         }
-        // Only the bloom: a core dot sits under the card's centre and peeks past
-        // its edges, reading as a smudge across the label.
+        // Bloom only — a core dot would sit under the card's centre and peek
+        // past its edges, reading as a smudge across the label.
         ctx.fill(Path(ellipseIn: rect(c, glowR)),
                  with: .radialGradient(Gradient(colors: [base.opacity(glowA), .clear]),
                                        center: c, startRadius: 0, endRadius: glowR))

@@ -170,7 +170,7 @@ struct TimelineDeckView: View {
                 let W = geo.size.width, H = geo.size.height
                 // now sits at the middle; map time → x around it.
                 let x: (Date) -> CGFloat = { W / 2 + CGFloat($0.timeIntervalSince(now) / window) * W }
-                // Fixed-width agent markers packed into lanes by real pixel
+                // Agent markers packed into lanes by real pixel
                 // footprint. Newest first, so a dense burst keeps its most recent
                 // commands; anything that can't fit a lane without overlapping is
                 // dropped rather than drawn on top of another block.
@@ -197,7 +197,7 @@ struct TimelineDeckView: View {
                 }()
                 let agDropped = agSorted.count - agPlaced.count
                 ZStack(alignment: .topLeading) {
-                    // Click empty track to widen/narrow the window.
+                    // Click empty track for a taller or shorter deck.
                     Color.clear.contentShape(Rectangle())
                         .onTapGesture { withAnimation(Theme.Spring.snappy) { expanded.toggle() } }
                     // Minor (minute) gridlines — faint, between the labelled ones.
@@ -234,7 +234,7 @@ struct TimelineDeckView: View {
                             // Above its own block, clamped inside the track so a
                             // command near either edge is still readable.
                             .offset(x: min(max(entry.px - 40, 4), max(W - 300, 4)),
-                                    y: max(axisH + 2, entry.px == 0 ? axisH : axisH))
+                                    y: axisH + 2)
                     }
                     if agDropped > 0 {
                         Text("+\(agDropped)").font(OrbitFont.face(8))
@@ -260,7 +260,6 @@ struct TimelineDeckView: View {
                 }
             }
         }
-        // Generous inset so the header + track clear the deck's large corner radius.
         // The deck's corner radius is large, so content inset only to the
         // background's bounding box runs off the material where the corner
         // curves away — the header and the first/last time labels sit exactly

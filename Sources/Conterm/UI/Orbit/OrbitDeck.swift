@@ -18,9 +18,6 @@ extension OrbitOverlay {
     /// read as the bar simply not opening.
     var barIsUp: Bool { !selectedHosts.isEmpty || barNode != nil }
     var deckBottom: CGFloat { barIsUp ? 74 : 16 }
-    /// The command field opens a suggestion list and an output strip upward,
-    /// into the deck's space. Two stacked surfaces there read as a mess, so the
-    /// deck steps aside while you're working in the bar.
     /// The deck shares the foot of the canvas with the preview dock, and two
     /// stacked surfaces there read as a mess — so it steps aside while you're
     /// working in the bar or watching a terminal.
@@ -40,7 +37,8 @@ extension OrbitOverlay {
     /// left, upcoming to the right, a fixed playhead in the middle. Time
     /// gridlines mark the passing minutes; each action is a lane-packed block
     /// sized by its duration. Hovering a block previews it on the canvas; a
-    /// click on the track widens the time window.
+    /// click on the track makes the deck taller. The slider in its header sets
+    /// how much time is in view.
     var timelineDeck: some View {
         VStack {
             Spacer()
@@ -106,7 +104,7 @@ extension OrbitOverlay {
         let f = DateFormatter(); f.dateFormat = "HH:mm"; return f.string(from: d)
     }
 
-    /// Space switcher (phase 2): Live vs saved, hand-arranged boards.
+    /// Space switcher: the automatic views, and saved hand-arranged boards.
     var spacesMenu: some View {
         Menu {
             // Two automatic views: what's happening, and everything you can

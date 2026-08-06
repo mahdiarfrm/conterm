@@ -509,8 +509,8 @@ extension OrbitOverlay {
     }
 
     /// Anything a board can hold. `OrbitSpace.members` are node ids, so a space
-    /// was always able to carry a session or a cluster — only the picker was
-    /// host-only, which is why a board could never be about your agents.
+    /// carries a session or a cluster as readily as a host — the picker has to
+    /// offer all three, or a board can only ever be about machines.
     struct Addable: Identifiable {
         let id: String          // node id
         let label: String

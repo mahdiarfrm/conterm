@@ -55,7 +55,7 @@ struct Routine: Codable, Identifiable, Equatable {
     var summary: String = ""
     var inputs: [RoutineInput] = []
     var steps: [FlowStep] = []
-    /// Which routines were run most recently, so the list can lead with them.
+    /// When this routine last ran.
     var lastRunAt: Date?
 
     /// Field by field, so a routine saved before a field existed still loads —

@@ -1305,7 +1305,7 @@ struct FloatingLightsAutohidePill: View {
             // whatever the interface scale is — shrinking the space held
             // for them walks the auto-hide icon straight onto the lights,
             // and shrinking the height lifts the capsule off their centre
-            // line. See the unscaled-measures rule in docs/ORBIT.md §7.
+            // line.
             Rectangle()
                 .fill(Color.clear)
                 .frame(width: 54, height: 22)

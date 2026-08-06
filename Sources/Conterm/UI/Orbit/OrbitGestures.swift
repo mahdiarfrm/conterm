@@ -302,9 +302,6 @@ extension OrbitOverlay {
         return graph.nodes.first { $0.id == id }
     }
 
-    /// Make this host the selection, so the action bar comes up for it. The bar
-    /// speaks about "the thing you right-clicked", which only reads correctly if
-    /// the selection agrees with it.
     /// Make this host *the* selection. Compared against the whole set, not just
     /// membership: clicking one host out of several already picked has to
     /// collapse to it, or a plain click can only ever add.
@@ -319,7 +316,6 @@ extension OrbitOverlay {
         sim.wake()
     }
 
-    /// The context a `kube:<ctx>/<node>` id belongs to.
     /// The kube context a drill node belongs to. `withKubeDrill` builds these ids
     /// as a prefix, the context, then a fixed number of name components — so the
     /// context is whatever is left after dropping those from the end. Counting
@@ -421,9 +417,10 @@ extension OrbitOverlay {
 
 
 
-    /// Plain click toggles a host in/out of the working selection — no modifier.
-    /// A lone selected host opens its inspector; a multi-selection hands the
-    /// stage to the action composer instead.
+    /// Add or remove one host from the working selection — the ⌘-click path,
+    /// and what a host chip on another node's bar does. A lone selected host
+    /// opens its inspector; a multi-selection hands the stage to the action
+    /// composer instead.
     func toggleHostSelection(_ target: String) {
         withAnimation(Theme.Spring.snappy) {
             if selectedHosts.contains(target) { selectedHosts.remove(target) }

@@ -609,9 +609,6 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(false, forKey: Self.orbitWasOpenKey)
         OrbitModel.shared.endObserving()
         AgentCenter.shared.endObserving()
-        // Finished playbooks keep their surface while Orbit is open so their
-        // report stays readable; nothing is reading them once it closes.
-        OrbitEngine.shared.releaseHeadlessRuns()
         // Second net under the overlay's own sweep: if Orbit went away by a
         // path that never ran `onDisappear`, a terminal is still mounted in a
         // dock that is about to stop existing and its tile would come back
