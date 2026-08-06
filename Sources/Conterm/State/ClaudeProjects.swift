@@ -20,6 +20,24 @@ enum ClaudeProjects {
         return FileManager.default.fileExists(atPath: path)
     }
 
+    /// Where a session was actually running, found by its id.
+    ///
+    /// A resumed session has to start in its own directory or Claude asks you
+    /// to trust the one it landed in, and stops there. The pane's own `cwd` is
+    /// no help: Claude runs full-screen, the shell emits no OSC 7 while it
+    /// does, and the last directory it reported is wherever you were before you
+    /// started — usually home.
+    static func directory(forSession id: String) -> String? {
+        let fm = FileManager.default
+        guard !id.isEmpty, let names = try? fm.contentsOfDirectory(atPath: root) else { return nil }
+        for name in names where !name.hasPrefix(".") {
+            let transcript = "\(root)/\(name)/\(id).jsonl"
+            guard fm.fileExists(atPath: transcript) else { continue }
+            return cwd(inTranscript: transcript)
+        }
+        return nil
+    }
+
     /// The last answer, and when it was taken.
     ///
     /// Cached hard, because SwiftUI evaluates a `Menu`'s content eagerly and
@@ -59,8 +77,7 @@ enum ClaudeProjects {
     }
 
     /// The working directory a project folder stands for, taken from the newest
-    /// transcript in it. `cwd` is not on the first line — the session header
-    /// comes first — so a few lines are scanned before giving up.
+    /// transcript in it.
     private static func cwd(inProjectDirectory dir: String) -> String? {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(atPath: dir) else { return nil }
@@ -70,12 +87,15 @@ enum ClaudeProjects {
                     at: ((try? fm.attributesOfItem(atPath: "\(dir)/\($0)")[.modificationDate])
                          as? Date) ?? .distantPast) }
             .max { $0.at < $1.at }
-        // Only the head of the file. `cwd` sits a couple of lines in, and a
-        // long session's transcript is measured in megabytes — reading one
-        // whole to learn its directory is the kind of thing that is fine once
-        // and ruinous in a loop.
-        guard let path = newest?.path,
-              let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        guard let path = newest?.path else { return nil }
+        return cwd(inTranscript: path)
+    }
+
+    /// A transcript's own `cwd`. Only the head of the file is read: `cwd` sits a
+    /// couple of lines in, past the session header, and a long session's
+    /// transcript is measured in megabytes.
+    private static func cwd(inTranscript path: String) -> String? {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? handle.close() }
         guard let head = try? handle.read(upToCount: 64 * 1024),
               let text = String(data: head, encoding: .utf8) else { return nil }

@@ -91,15 +91,17 @@ extension OrbitOverlay {
             HStack(spacing: 5) {
                 Image(systemName: icon).font(.system(size: 10.5, weight: .semibold))
                 Text(label).font(.system(size: 12, weight: .semibold, design: .rounded))
-                Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold))
-                    .opacity(0.7)
             }
             .foregroundStyle(primary ? Theme.accent : Theme.textPrimary)
             .padding(.horizontal, 11).padding(.vertical, 6)
             .background(Capsule().fill(primary ? chromeFill(prefs, selected: true) : chromeFill(prefs)))
             .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 1))
         }
-        .menuStyle(.borderlessButton)
+        // `.button` + a plain button style, not `.borderlessButton`: the
+        // borderless style paints its own chrome and drops the capsule, so a
+        // chip that opens a menu stopped matching the ones beside it.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
     }
