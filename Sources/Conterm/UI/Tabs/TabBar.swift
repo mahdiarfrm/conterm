@@ -271,13 +271,19 @@ struct TabBar: View {
     private var vertical: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
-                // Floating card: the plate's top margin, matching the
-                // sides — the lights pill lives above the card entirely.
-                // Inline: clearance for the window-level lights pill,
-                // which overlaps the sidebar's top.
+                // Floating card: the plate's top margin, matching the sides —
+                // the lights pill lives above the card entirely, so this scales
+                // with the rest of the card's spacing.
+                //
+                // Inline: clearance for the window-level lights pill, which
+                // overlaps the sidebar's top. Unscaled, because what it is
+                // clearing is not — the pill is welded to AppKit's window
+                // buttons at a fixed size and place. Scaled, the smallest
+                // interface size pulled this band under the pill's own height
+                // and the two met.
                 Rectangle()
                     .fill(Color.clear)
-                    .frame(height: Theme.ui(floatingPanel ? 14 : 48))
+                    .frame(height: floatingPanel ? Theme.ui(14) : 48)
 
                 // Foreground plate — the sidebar is two stacked surfaces:
                 // every component lands on this raised inner sheet, and

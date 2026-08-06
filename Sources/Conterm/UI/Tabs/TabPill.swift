@@ -60,15 +60,39 @@ struct TabPill: View {
         prefs.blinkOnAttention && activeState == .key && !reduceMotion && !systemLite
     }
 
-    /// Width of `s` in the pills' system font, semibold — the selected
-    /// weight, so the measure is the upper bound.
+    /// Fonts by size and design. Building one means a descriptor *match*,
+    /// which is the expensive half of this function and returns the same answer
+    /// every time.
+    nonisolated(unsafe) private static var fontCache: [String: NSFont] = [:]
+    /// Measured widths, bounded. Every card on Orbit's canvas measures its
+    /// label, its subtitle and its tag on each layout pass, so the same handful
+    /// of strings is measured over and over as the map animates.
+    nonisolated(unsafe) private static var widthCache: [String: CGFloat] = [:]
+
+    /// Width of `s` in the pills' system font, semibold — the selected weight,
+    /// so the measure is the upper bound.
     static func textWidth(_ s: String, size: CGFloat,
                           design: NSFontDescriptor.SystemDesign = .rounded) -> CGFloat {
-        var font = NSFont.systemFont(ofSize: size, weight: .semibold)
-        if let d = font.fontDescriptor.withDesign(design) {
-            font = NSFont(descriptor: d, size: size) ?? font
+        let key = "\(size)|\(design.rawValue)|\(s)"
+        if let w = widthCache[key] { return w }
+        let fontKey = "\(size)|\(design.rawValue)"
+        let font: NSFont
+        if let f = fontCache[fontKey] {
+            font = f
+        } else {
+            var made = NSFont.systemFont(ofSize: size, weight: .semibold)
+            if let d = made.fontDescriptor.withDesign(design) {
+                made = NSFont(descriptor: d, size: size) ?? made
+            }
+            fontCache[fontKey] = made
+            font = made
         }
-        return ceil((s as NSString).size(withAttributes: [.font: font]).width)
+        let w = ceil((s as NSString).size(withAttributes: [.font: font]).width)
+        // A terminal can produce endless distinct titles; drop the table rather
+        // than let it grow for the life of the process.
+        if widthCache.count > 4000 { widthCache.removeAll(keepingCapacity: true) }
+        widthCache[key] = w
+        return w
     }
 
     /// The bar squeezed this pill below what its title needs, so the

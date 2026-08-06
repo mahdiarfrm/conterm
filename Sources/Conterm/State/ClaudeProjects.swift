@@ -20,9 +20,27 @@ enum ClaudeProjects {
         return FileManager.default.fileExists(atPath: path)
     }
 
-    /// Project directories, most recently used first. Read from disk, so call
-    /// this when a menu opens rather than from a SwiftUI body.
+    /// The last answer, and when it was taken.
+    ///
+    /// Cached hard, because SwiftUI evaluates a `Menu`'s content eagerly and
+    /// re-evaluates it with the view it lives in — so a menu built from this
+    /// list asks for it on every frame the map draws. Uncached, that meant
+    /// walking every project directory and reading a transcript out of each
+    /// one, per frame, and a real Claude history runs to hundreds of megabytes.
+    private static var cache: (at: Date, dirs: [String])?
+    private static let cacheTTL: TimeInterval = 60
+
+    /// Project directories, most recently used first.
     static func recent(limit: Int = 12) -> [String] {
+        if let cache, Date().timeIntervalSince(cache.at) < cacheTTL {
+            return Array(cache.dirs.prefix(limit))
+        }
+        let dirs = scan()
+        cache = (Date(), dirs)
+        return Array(dirs.prefix(limit))
+    }
+
+    private static func scan() -> [String] {
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: root) else { return [] }
 
@@ -37,7 +55,6 @@ enum ClaudeProjects {
         var seen = Set<String>()
         return dated.sorted { $0.at > $1.at }
             .filter { seen.insert($0.path).inserted }
-            .prefix(limit)
             .map(\.path)
     }
 
@@ -53,8 +70,15 @@ enum ClaudeProjects {
                     at: ((try? fm.attributesOfItem(atPath: "\(dir)/\($0)")[.modificationDate])
                          as? Date) ?? .distantPast) }
             .max { $0.at < $1.at }
+        // Only the head of the file. `cwd` sits a couple of lines in, and a
+        // long session's transcript is measured in megabytes — reading one
+        // whole to learn its directory is the kind of thing that is fine once
+        // and ruinous in a loop.
         guard let path = newest?.path,
-              let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+              let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? handle.close() }
+        guard let head = try? handle.read(upToCount: 64 * 1024),
+              let text = String(data: head, encoding: .utf8) else { return nil }
         for line in text.split(separator: "\n", omittingEmptySubsequences: true).prefix(40) {
             guard let data = line.data(using: .utf8),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

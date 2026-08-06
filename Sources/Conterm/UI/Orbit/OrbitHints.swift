@@ -23,8 +23,12 @@ extension OrbitOverlay {
     /// then across. Position rather than id, so a label lands where you are
     /// already looking.
     func hintTargets(_ graph: Graph, center: CGPoint) -> [(id: String, label: String)] {
-        let ordered = graph.nodes
-            .filter { !isGroup($0) && !isNote($0) }
+        let shown = graph.nodes.filter { !isGroup($0) && !isNote($0) }
+        // All of them or none. Lettering nine cards out of thirty picks nine
+        // arbitrary ones and says nothing about the rest — on a map that
+        // crowded the answer is ⌘K by name, not a key you have to hunt for.
+        guard shown.count <= Self.hintAlphabet.count else { return [] }
+        let ordered = shown
             .map { (id: $0.id, at: screen($0.id, center: center)) }
             .sorted {
                 // Banded by row, so two nodes at roughly the same height read
@@ -32,7 +36,6 @@ extension OrbitOverlay {
                 let rowA = ($0.at.y / 90).rounded(.down), rowB = ($1.at.y / 90).rounded(.down)
                 return rowA == rowB ? $0.at.x < $1.at.x : rowA < rowB
             }
-            .prefix(Self.hintAlphabet.count)
         return zip(ordered, Self.hintLabels(count: ordered.count))
             .map { (id: $0.0.id, label: $0.1) }
     }
