@@ -128,21 +128,13 @@ struct NodeCard: View {
                 // so what shows through is light and colour rather than shapes.
                 RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                     .fill(.ultraThinMaterial)
-                // A soft sheen down the surface, so the card reads as a piece
-                // of glass catching light and not a flat rounded rectangle.
-                RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
-                    .fill(LinearGradient(
-                        colors: [Color.white.opacity(light ? 0.22 : 0.10), .clear],
-                        startPoint: .top, endPoint: .bottom))
-                // The colour lives *under* the surface — a soft bloom that
-                // breathes through the glass rather than a bright ring on top
-                // of it, so an active card glows instead of shouting.
+                // Status is one flat wash through the glass — no sheen, no
+                // falloff. A gradient across a card this small reads as a
+                // smudge rather than as light, and the spine, the border and
+                // the halo already carry the state.
                 if underglow > 0.001 {
                     RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
-                        .fill(RadialGradient(
-                            colors: [glowColor.opacity(underglow),
-                                     glowColor.opacity(underglow * 0.25), .clear],
-                            center: .init(x: 0.12, y: 0.5), startRadius: 2, endRadius: 130))
+                        .fill(glowColor.opacity(underglow))
                 }
             }
         )
@@ -163,15 +155,6 @@ struct NodeCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: selected ? 2.2 : 1)
-        )
-        // The lit top edge every piece of glass in this app wears.
-        .overlay(
-            RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
-                .stroke(LinearGradient(colors: [Color.white.opacity(0.34), .clear],
-                                       startPoint: .top, endPoint: .center),
-                        lineWidth: 1)
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
         )
         // Selection drives the action bar, so it has to read at a glance — a
         // tint alone is lost among the statuses. On the corner rather than in
@@ -206,14 +189,16 @@ struct NodeCard: View {
     /// How strongly the colour blooms beneath the glass. Deliberately gentle:
     /// this is the card's whole status signal now, and a wall of them has to
     /// stay calm.
+    /// Lower than a gradient would need: this is a flat wash over the whole
+    /// card, where a radial one only reached its stated strength at its centre.
     var underglow: Double {
-        if selected { return 0.17 }          // picked reads stronger than active
-        if wants { return 0.055 + 0.04 * pulse }
-        if busy { return 0.045 + 0.03 * pulse }
-        if hovered { return 0.04 }
+        if selected { return 0.11 }          // picked reads stronger than active
+        if wants { return 0.038 + 0.028 * pulse }
+        if busy { return 0.03 + 0.022 * pulse }
+        if hovered { return 0.028 }
         // `.ready` is an agent sitting there between turns — still a session,
         // so it keeps a colour rather than going as quiet as a bare host.
-        return status == .neutral ? 0 : 0.05
+        return status == .neutral ? 0 : 0.032
     }
 
     /// Selection wins the card's colour: it is a state you chose, and it has to
