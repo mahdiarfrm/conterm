@@ -437,6 +437,11 @@ extension Ghostty {
             # space. (Ctrl+^/_/@/? are layout-specific and left to the
             # encoder.)
             keybind = ctrl+space=text:\\x00
+            # Cmd+Delete deletes to the start of the line, matching every
+            # other macOS text field. \\x15 is Ctrl+U (readline
+            # unix-line-discard). Without this, Super carries no C0
+            # encoding and the chord reaches the shell as a bare Backspace.
+            keybind = super+backspace=text:\\x15
             """
         }
 
