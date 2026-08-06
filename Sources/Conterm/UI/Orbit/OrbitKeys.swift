@@ -21,6 +21,9 @@ enum OrbitKey: String, CaseIterable {
     // Views
     case viewLive, viewFleet, sessions
 
+    // Starting something
+    case newShell, newAgent
+
     // Verbs on whatever the bar is aimed at
     case primary, connect, run, playbook, overview, inspect
 
@@ -48,9 +51,13 @@ enum OrbitKey: String, CaseIterable {
             ("2", [viewFleet], "Fleet — every host you've reached"),
             ("S", [sessions], "The session list"),
         ]),
+        ("Starting something", [
+            ("N", [newShell], "New shell on this Mac"),
+            ("A", [newAgent], "Run claude — in the aimed session, or in a folder you pick"),
+        ]),
         ("Acting on what's aimed at", [
             ("⏎", [primary], "Do the obvious thing: connect, steer, or drill in"),
-            ("C", [connect], "Connect — a terminal on the canvas"),
+            ("C", [connect], "Terminal on the canvas — this session's, or ssh to this host"),
             ("R", [run], "Run a command on the selection"),
             ("P", [playbook], "Ansible playbook"),
             ("O", [overview], "Details"),
@@ -60,7 +67,7 @@ enum OrbitKey: String, CaseIterable {
             ("L", [routines], "Routines"),
             ("Y", [history], "What has run"),
             ("T", [deck], "Expand the timeline"),
-            ("⇧⌘F", [focusTerminal], "Fill the canvas with the docked terminal"),
+            ("⇧⌘F", [focusTerminal], "Grow the docked terminal to fill the canvas, or shrink it back"),
             ("⌘K", [], "The search field is the other way to reach a host by name"),
             ("?", [help], "This panel"),
         ]),
@@ -95,6 +102,8 @@ enum OrbitKey: String, CaseIterable {
         case "1": return .viewLive
         case "2": return .viewFleet
         case "s": return .sessions
+        case "n": return .newShell
+        case "a": return .newAgent
         case "c": return .connect
         case "r": return .run
         case "p": return .playbook
@@ -147,10 +156,22 @@ extension OrbitOverlay {
         case .sessions:
             withAnimation(Theme.Spring.snappy) { showSessions.toggle() }
 
+        // Both start something on this Mac, so neither needs a node aimed at.
+        case .newShell: newSession(nil)
+        case .newAgent:
+            // An idle session is a shell an agent can be run in; anywhere else
+            // the question is which directory, which is what the picker asks.
+            if let p = barNode?.pane, p.agent.phase == .idle { startAgent("claude", in: p) }
+            else { chooseAgentDirectory() }
+
         case .primary:
             guard let n = barNode else { return }
             handleTap(n.id, in: liveGraph())
-        case .connect:   aimedHostAction { openFloating(target: $0) }
+        // One key for "a terminal on the canvas", whichever node is aimed at: a
+        // session already has one to show, a host needs one opened over ssh.
+        case .connect:
+            if let p = barNode?.pane { openPreview(p) }
+            else { aimedHostAction { openFloating(target: $0) } }
         case .run:       withAnimation(Theme.Spring.snappy) { commandOpen = true }
         case .playbook:
             guard !selectedHosts.isEmpty else { return }

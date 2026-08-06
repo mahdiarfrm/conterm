@@ -599,7 +599,7 @@ extension OrbitOverlay {
                     dockAction("bolt.horizontal.fill", "Connect", primary: true,
                                action: connect)
                         .help(n > 1 ? "Open a pane per host in one tab"
-                                    : "Open a terminal on this host, here on the map")
+                                    : "Open a terminal on this host, here on the map (C)")
                     if n == 1 {
                         dockAction("macwindow", "Window", action: connectInWindow)
                             .help("Open it in a window of its own instead")
@@ -1092,10 +1092,10 @@ extension OrbitOverlay {
                 }
                 dockAction("macwindow", "Terminal",
                            primary: previewPanes.contains { $0.id == p.id }) { openPreview(p) }
-                    .help("Open this session's real terminal on the map")
+                    .help("Open this session's real terminal on the map (C)")
                 if p.agent.phase == .idle {
                     dockAction("sparkle", "Claude") { startAgent("claude", in: p) }
-                        .help("Run claude in this shell")
+                        .help("Run claude in this shell (A)")
                     dockAction("chevron.left.forwardslash.chevron.right", "opencode") {
                         startAgent("opencode", in: p)
                     }
@@ -1139,9 +1139,9 @@ extension OrbitOverlay {
         case .mac:
             // Starting work shouldn't mean leaving the map to make a tab first.
             dockAction("plus.rectangle", "New shell", primary: true) { newSession(nil) }
-                .help("Open a terminal session here")
+                .help("Open a terminal session here (N)")
             dockMenu("sparkle", "New Claude") { newAgentMenuItems() }
-                .help("Start an agent — here, or in a directory you pick")
+                .help("Start an agent — here, or in a directory you pick (A)")
             // The context is a property of this machine, so its own card
             // offers it too — and a fleet with no cluster node drawn has
             // nowhere else to reach it from.
