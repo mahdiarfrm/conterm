@@ -679,26 +679,6 @@ extension OrbitOverlay {
                                        center: c, startRadius: 0, endRadius: glowR))
     }
 
-    /// A designed label pill for a group halo (project folder / network).
-    func drawGroupPill(_ ctx: inout GraphicsContext, label: String, icon: String,
-                               color: Color, at top: CGPoint, alpha: Double) {
-        let font = Font.system(size: 11 * min(max(z, 0.9), 1.2), weight: .semibold, design: .rounded)
-        let text = ctx.resolve(Text(label).font(font).foregroundColor(color.opacity(0.95 * alpha)))
-        let ts = text.measure(in: CGSize(width: 400, height: 40))
-        let iconW: CGFloat = 12, gap: CGFloat = 5, padH: CGFloat = 9
-        let w = ts.width + iconW + gap + padH * 2
-        let h = ts.height + 8
-        let rect = CGRect(x: top.x - w / 2, y: top.y - h, width: w, height: h)
-        let pill = Path(roundedRect: rect, cornerRadius: h / 2)
-        ctx.fill(pill, with: .color((prefs.lightGlass ? Color.white : Color.black).opacity(0.4 * alpha)))
-        ctx.fill(pill, with: .color(color.opacity(0.16 * alpha)))
-        ctx.stroke(pill, with: .color(color.opacity(0.55 * alpha)), lineWidth: 1)
-        ctx.draw(Text("\(Image(systemName: icon))").font(.system(size: 9.5, weight: .semibold))
-            .foregroundColor(color.opacity(0.95 * alpha)),
-            at: CGPoint(x: rect.minX + padH + iconW / 2, y: rect.midY))
-        ctx.draw(text, at: CGPoint(x: rect.minX + padH + iconW + gap, y: rect.midY), anchor: .leading)
-    }
-
     // MARK: - Hover preview
 
     @ViewBuilder

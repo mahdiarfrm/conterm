@@ -108,7 +108,8 @@ struct OrbitOverlay: View {
     @State var grabbedID: String?
     @State var grabbedStartWorld: CGPoint = .zero
     @State var dragMoved = false
-    // Flows "A" — drag one task chip onto another to chain them (success/failure).
+    // Drag one task chip onto another to chain them: the second runs after the
+    // first, on success or — with ⌥ — on any outcome.
     @State var chainFrom: UUID?
     @State var chainCursor: CGPoint?
     @State var compHold = false          // composer: stage this action for a flow
@@ -198,12 +199,11 @@ struct OrbitOverlay: View {
     @State var expandedContexts: Set<String> = []
     @State var expandedKubeNodes: Set<String> = []   // "context/node"
     @State var expandedPods: Set<String> = []        // "context/namespace/pod"
-    /// The node the action bar is aimed at, set by right-click. Nil means the
-    /// bar talks about the host selection, as it always has.
-    /// The node the action bar is aimed at. Held whole rather than as an id to
-    /// re-find: a note lives only in the space's own graph, not in `model.nodes`,
-    /// so an id had to be resolved against whichever graph happened to contain
-    /// it — and when that lookup missed, the bar silently never appeared.
+    /// The node the action bar is aimed at; nil means the bar talks about the
+    /// host selection instead. Held whole rather than as an id to re-find: a
+    /// note lives only in its space's graph, not in `model.nodes`, so an id has
+    /// to be resolved against whichever graph happens to hold it — and a missed
+    /// lookup leaves no bar at all, with nothing to say why.
     @State var barNode: MapNode?
     @State var showHelp = false
     /// Which page of the help panel: the explanation, or the key list.

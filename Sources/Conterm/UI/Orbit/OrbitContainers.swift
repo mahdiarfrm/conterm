@@ -115,21 +115,6 @@ extension OrbitOverlay {
         driveScheduler()
     }
 
-    func healthCheckSelection() {
-        let targets = Array(selectedHosts).sorted()
-        guard !targets.isEmpty else { return }
-        for t in targets {
-            let hostID = "host:\(t)"
-            ensureProbe(hostID, target: t)
-            probes[hostID]?.refresh()
-        }
-        // Reveal the readouts inline: focus the first, expand the rest.
-        if let first = targets.first {
-            withAnimation(Theme.Spring.snappy) { inspector = .host("host:\(first)") }
-        }
-        sim.wake()
-    }
-
     func overviewSelection() {
         guard let t = selectedHosts.first else { return }
         // Stay in Orbit — the overview opens as a panel over the mode (its z
