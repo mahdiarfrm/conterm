@@ -230,7 +230,7 @@ struct AppView: View {
         .animation(Theme.Spring.soft, value: orbitMode)
     }
 
-    // MARK: - Floating lights+autohide pill (auto-hide vertical only)
+    // MARK: - Floating lights+autohide pill (vertical tabs)
 
     /// A small Liquid Glass capsule anchored to the very top-left of
     /// the window. Contains the AppKit traffic-light footprint (so the

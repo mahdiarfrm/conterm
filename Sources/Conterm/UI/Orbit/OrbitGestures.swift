@@ -409,14 +409,6 @@ extension OrbitOverlay {
         for id in expanded { probes[id]?.refresh() }
     }
 
-
-
-
-
-
-
-
-
     /// Add or remove one host from the working selection — the ⌘-click path,
     /// and what a host chip on another node's bar does. A lone selected host
     /// opens its inspector; a multi-selection hands the stage to the action

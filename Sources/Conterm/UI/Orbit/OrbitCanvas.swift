@@ -432,8 +432,8 @@ extension OrbitOverlay {
     /// A number only earns its place on a card when it tells two of them apart:
     /// same kind, same name. Numbering unique names — HOST 1, HOST 3 — reads as
     /// information and carries none, and the number moves as the graph changes.
-    /// Assigned in id order, so a node keeps its mark across rebuilds.
     /// Several remote shells, on the other hand, are all called `shell`.
+    /// Assigned in id order, so a node keeps its mark across rebuilds.
     func kindOrdinals(_ graph: Graph) -> [String: Int] {
         let shown = graph.nodes.filter { !isGroup($0) && !isNote($0) }
         var ambiguous: [String: Int] = [:]

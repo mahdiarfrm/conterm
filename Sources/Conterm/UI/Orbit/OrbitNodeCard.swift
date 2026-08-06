@@ -184,8 +184,9 @@ struct NodeCard: View {
     }
 
     /// How strongly the colour blooms beneath the glass. Deliberately gentle:
-    /// a wall of these has to stay calm. Lower than a gradient would need: this is a flat wash over the whole
-    /// card, where a radial one only reached its stated strength at its centre.
+    /// a wall of these has to stay calm. Lower than a gradient would need —
+    /// this is a flat wash over the whole card, where a radial one only
+    /// reached its stated strength at its centre.
     var underglow: Double {
         if selected { return 0.11 }          // picked reads stronger than active
         if wants { return 0.038 + 0.028 * pulse }

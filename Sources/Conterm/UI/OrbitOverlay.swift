@@ -476,9 +476,10 @@ struct OrbitOverlay: View {
         }
         // Orbit is a full layout mode: entering it collapses the tab bar and
         // sidebar (see AppView.content) and the canvas fills the whole content
-        // edge to edge. Its backdrop blurs the static desktop behind the window
-        // rather than live pane content — the panes are hidden in this mode, so
-        // the re-blur stays cheap and they drop out of compositing.
+        // edge to edge. Its backdrop is a within-window blur of what the map
+        // covers, but the panes' renderers are paused while Orbit is the mode,
+        // so what it re-samples is a frozen frame rather than live terminal
+        // content.
         .background(orbitBackdrop.ignoresSafeArea())
         .onAppear {
             sim.layout = OrbitSim.Layout(rawValue: layoutMode) ?? .physics
@@ -573,10 +574,10 @@ struct OrbitOverlay: View {
         }
     }
 
-    /// The cockpit backdrop: a blur of whatever is behind the window, tinted,
+    /// The cockpit backdrop: a within-window blur of what Orbit covers, tinted,
     /// with a soft accent glow high-centre and an edge vignette for depth. The
-    /// panes are hidden in this mode, so what it re-samples is the static
-    /// desktop rather than live terminal content.
+    /// panes' renderers are paused in this mode, so it re-samples a frozen
+    /// frame rather than live terminal content.
     var orbitBackdrop: some View {
         let light = prefs.lightGlass
         return ZStack {
