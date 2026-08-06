@@ -453,9 +453,15 @@ struct TabPill: View {
 
     /// Horizontal two-line pills carry the smaller title — the meta
     /// line beneath supplies the detail; sidebar cards keep 13.
+    ///
+    /// Scaled, like every other chrome dimension, and load-bearing twice over:
+    /// the width each pill is dealt is measured at `Theme.ui(12)`, and
+    /// `Theme.tabBarHeight` only clears a pill whose lines all shrink together.
+    /// An unscaled size here puts a two-line pill in a group tray over the
+    /// bar's height at any scale under 1, where the bar's clip shaves it.
     private var titleSize: CGFloat {
-        if compact { return 12.5 }
-        return isSessionCard ? 13 : 12
+        if compact { return Theme.ui(12.5) }
+        return Theme.ui(isSessionCard ? 13 : 12)
     }
 
     private var titleLabel: some View {

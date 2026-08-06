@@ -201,9 +201,11 @@ enum Theme {
     // Capsule-adjacent on a ~28 pt tab pill. Scales with the chrome: a pill at
     // 0.85 with an unscaled corner reads as a rounded rectangle, not a capsule.
     static var pillCorner:      CGFloat { ui(18) }
-    // A grouped-tab tray is ~38 pt (30 pill + 3 pad + 1 border each side); the
-    // bar needs a few points over that so the horizontal bar's clip doesn't
-    // shave the tray's bottom edge.
+    // Must clear the tallest thing the horizontal bar holds — a two-line pill
+    // (title over directory) inside a group tray, which adds ui(3) of padding
+    // around it. `AppView` clips the bar to this height, so anything over it is
+    // shaved at both edges. Everything in that stack scales, so the headroom
+    // here holds at every scale.
     static var tabBarHeight:    CGFloat { ui(42) }
 
     // Springs — three flavors that get reused everywhere.
