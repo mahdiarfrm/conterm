@@ -107,7 +107,7 @@ extension OrbitOverlay {
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Theme.strokeStrong, lineWidth: 1))
             .shadow(color: .black.opacity(0.35), radius: 16, y: 6)
-            .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottomTrailing)))
+            .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottomLeading)))
         } else {
             Button { withAnimation(Theme.Spring.snappy) { showMinimap = true } } label: {
                 Image(systemName: "map").font(.system(size: 11, weight: .semibold))

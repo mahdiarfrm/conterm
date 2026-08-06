@@ -149,10 +149,14 @@ struct OrbitSearchPanel: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(results.enumerated()), id: \.element.id) { i, hit in
+                        // No hover selection. The list scrolls under a
+                        // stationary cursor, so hovering moved the highlight
+                        // to whatever happened to slide beneath the pointer —
+                        // which fought every arrow key and left two rows
+                        // looking picked at once.
                         row(hit, active: i == index)
                             .id("orbit-hit-\(i)")
                             .onTapGesture { onCommit(hit) }
-                            .onHover { if $0 { index = i } }
                     }
                 }
                 .padding(8)

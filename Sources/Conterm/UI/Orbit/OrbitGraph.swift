@@ -412,13 +412,44 @@ extension OrbitOverlay {
         return out
     }
 
+    /// The path from your Mac to `id`, as the set of nodes along it.
+    ///
+    /// Lighting the hovered node's *neighbours* answered a question nobody
+    /// asked — what else touches this — and left the line you followed to get
+    /// there as dim as everything else. The route is the useful highlight: how
+    /// this thing reaches you.
+    ///
+    /// Breadth-first, so what lights up is the shortest way there rather than
+    /// whichever branch the edge list happened to record first. Falls back to
+    /// the node alone when nothing connects it, which is what a freshly
+    /// arrived node looks like for a frame.
     func neighborhood(of id: String, in graph: Graph) -> Set<String> {
-        var set: Set<String> = [id]
+        guard id != "mac" else { return ["mac"] }
+        var adjacency: [String: [String]] = [:]
         for e in graph.edges {
-            if e.from == id { set.insert(e.to) }
-            if e.to == id { set.insert(e.from) }
+            adjacency[e.from, default: []].append(e.to)
+            adjacency[e.to, default: []].append(e.from)
         }
-        return set
+        var cameFrom: [String: String] = [:]
+        var seen: Set<String> = ["mac"]
+        var queue = ["mac"]
+        var head = 0
+        while head < queue.count {
+            let current = queue[head]; head += 1
+            if current == id { break }
+            for next in adjacency[current] ?? [] where seen.insert(next).inserted {
+                cameFrom[next] = current
+                queue.append(next)
+            }
+        }
+        guard seen.contains(id) else { return [id] }
+        var route: Set<String> = [id]
+        var step = id
+        while let previous = cameFrom[step] {
+            route.insert(previous)
+            step = previous
+        }
+        return route
     }
 
     /// Restrict the graph to one session: its pane, whatever it hangs off (a

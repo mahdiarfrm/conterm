@@ -459,11 +459,6 @@ extension OrbitOverlay {
             Spacer()
             HStack(alignment: .bottom) {
                 Spacer()
-                // Beside the zoom controls, because it answers the question they
-                // raise: where did everything go.
-                minimap
-                    .padding(.bottom, controlsBottom)
-                    .padding(.trailing, 8)
                 // The space switcher lives with the view controls rather than the
                 // header: which board you're on and how you're looking at it are
                 // the same question.
@@ -497,6 +492,12 @@ extension OrbitOverlay {
                 .padding(4).background(Capsule().fill(chromeFill(prefs)))
                 .padding(.trailing, 18).padding(.bottom, controlsBottom)
             }
+        }
+        // Opposite corner from the controls, where it has the canvas's quiet
+        // edge to itself and never crowds the timeline deck in the middle.
+        .overlay(alignment: .bottomLeading) {
+            minimap
+                .padding(.leading, 16).padding(.bottom, controlsBottom)
         }
     }
 

@@ -363,6 +363,10 @@ struct OrbitOverlay: View {
                 // but only worked while hover happened to be current — moving
                 // the pointer off the canvas, or opening the bar over it, left
                 // a stale value and the next right-click did nothing.
+                // Clicking the canvas takes the keyboard back from whatever had
+                // it — usually a docked terminal, which owns every bare key
+                // while it is focused.
+                NSApp.keyWindow?.makeFirstResponder(nil)
                 guard let node = nodeAtWindowPoint(winPoint) else { return }
                 aimedAt = Date().timeIntervalSinceReferenceDate
                 withAnimation(Theme.Spring.snappy) {
