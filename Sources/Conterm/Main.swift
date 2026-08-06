@@ -398,8 +398,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if self.state.ansibleCockpit != nil { self.state.closeAnsibleCockpit(); return nil }
                 if self.state.clusterOverviewOpen { self.state.closeClusterOverview(); return nil }
                 if self.state.fleetRunOpen { self.state.closeFleetRun(); return nil }
-                // Search is the innermost thing Orbit can have open, so it
-                // unwinds before the focus and the map's own selection.
+                // Hints are the innermost thing Orbit can have up.
+                if self.state.orbitOpen, self.state.orbitHintMode {
+                    self.state.orbitHintMode = false
+                    return nil
+                }
+                // Search is the next innermost, so it unwinds before the focus
+                // and the map's own selection.
                 if self.state.orbitOpen, self.state.orbitSearchOpen {
                     self.state.toggleOrbitSearch()
                     return nil
@@ -583,6 +588,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // is. The search palette runs its own key handling, above.
             if self.state.orbitOpen, !self.state.orbitSearchOpen,
                !cmd, !opt, !ctrl, !OrbitKey.isEditing {
+                // Hints are up: the letters spell a node's label rather than
+                // running a command, so they are claimed before anything else
+                // gets to look at them.
+                if self.state.orbitHintMode {
+                    let typed = (event.characters ?? "").lowercased()
+                    if typed.count == 1, typed.rangeOfCharacter(from: .letters) != nil {
+                        self.state.sendOrbitHint(typed)
+                        return nil
+                    }
+                    // Anything that isn't a letter leaves hint mode rather than
+                    // being silently eaten.
+                    self.state.orbitHintMode = false
+                    return nil
+                }
                 switch event.keyCode {
                 case 48:  // ⇥ — walk the graph
                     self.state.sendOrbitKey(shift ? .prevNode : .nextNode)

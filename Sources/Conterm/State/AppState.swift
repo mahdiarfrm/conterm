@@ -548,7 +548,24 @@ final class AppState: ObservableObject {
     @Published var orbitKeyTick = 0
 
     func sendOrbitKey(_ key: OrbitKey) {
+        orbitHintChar = nil
         orbitKey = key
+        orbitKeyTick &+= 1
+    }
+
+    /// While hints are up, every node on the canvas wears a short label and the
+    /// letters you type spell one rather than running a command. The monitor
+    /// has to know, because the same letters mean something else the rest of
+    /// the time.
+    @Published var orbitHintMode = false
+    @Published var orbitHintChar: String?
+
+    /// Rides the same tick as the commands. One channel, because the view's
+    /// modifier chain is long enough that an extra `onChange` on it stops the
+    /// type-checker cold.
+    func sendOrbitHint(_ char: String) {
+        orbitKey = nil
+        orbitHintChar = char
         orbitKeyTick &+= 1
     }
 

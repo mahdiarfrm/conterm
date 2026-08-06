@@ -199,6 +199,10 @@ struct OrbitOverlay: View {
     /// so an id had to be resolved against whichever graph happened to contain
     /// it — and when that lookup missed, the bar silently never appeared.
     @State var barNode: MapNode?
+    /// What has been typed toward a node's hint label. Whether hints are *up*
+    /// lives on `AppState`, because the key monitor has to know that letters
+    /// spell a label rather than run a command.
+    @State var hintBuffer = ""
     @State var showHelp = false
     /// Which page of the help panel: the explanation, or the key list.
     @State var helpTabIndex = 0
@@ -337,6 +341,7 @@ struct OrbitOverlay: View {
                         nodeCards(graph: graph, center: center, now: now)
                         groupChips(graph: graph, center: center)
                         actionChips(graph: graph, center: center, now: now)
+                        if state.orbitHintMode { hintBadges(graph: graph, center: center) }
                         // Fit needs the viewport and the settled positions, and
                         // neither exists until the graph has drawn once.
                         Color.clear
@@ -511,9 +516,7 @@ struct OrbitOverlay: View {
         .onChange(of: state.orbitSearchOpen) { _, open in
             if open { refreshSearchCorpus() }
         }
-        .onChange(of: state.orbitKeyTick) { _, _ in
-            if let k = state.orbitKey { runOrbitKey(k) }
-        }
+        .onChange(of: state.orbitKeyTick) { _, _ in handleOrbitKeyTick() }
         .onChange(of: state.orbitEscTick) { _, _ in
             // Esc unwinds the map one step: the aimed bar, then the selection.
             withAnimation(Theme.Spring.snappy) {
@@ -613,6 +616,13 @@ struct OrbitOverlay: View {
     /// Whether the overview map is open. Persisted: it is a working preference,
     /// not a per-visit one.
     @AppStorage("orbit.showMinimap") var showMinimap = true
+
+    /// The canvas midpoint, which every world-to-screen conversion is measured
+    /// from. The drawing pass gets it from its `GeometryReader`; anything
+    /// outside that pass — a key handler, a hint match — reads it here.
+    var canvasCentre: CGPoint {
+        CGPoint(x: viewport.width / 2, y: viewport.height / 2)
+    }
 
     /// Last known canvas size, kept so a fit can be computed outside the
     /// render pass.

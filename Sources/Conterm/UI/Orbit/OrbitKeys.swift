@@ -13,7 +13,7 @@ import SwiftUI
 /// anything — see `OrbitKey.isEditing`.
 enum OrbitKey: String, CaseIterable {
     // Getting around
-    case nextNode, prevNode
+    case nextNode, prevNode, hints
     case panUp, panDown, panLeft, panRight
     case zoomIn, zoomOut, zoomReset
     case fit, minimap
@@ -33,8 +33,10 @@ enum OrbitKey: String, CaseIterable {
     static let sections: [(String, [(String, [OrbitKey], String)])] = [
         ("Getting around", [
             ("⌘K", [], "Find a host, session, cluster or routine"),
+            ("G", [hints], "Label every node — type a label to aim at it"),
             ("⇥ / ⇧⇥", [nextNode, prevNode], "Aim at the next / previous node"),
-            ("↑ ↓ ← →", [panUp, panDown, panLeft, panRight], "Pan the canvas"),
+            ("↑ ↓ ← →", [panUp, panDown, panLeft, panRight],
+             "Walk to the next node that way, or pan when nothing is aimed"),
             ("+ / −", [zoomIn, zoomOut], "Zoom in / out"),
             ("0", [zoomReset], "Zoom back to 100%"),
             ("F", [fit], "Fit the whole graph in view"),
@@ -59,6 +61,7 @@ enum OrbitKey: String, CaseIterable {
             ("Y", [history], "What has run"),
             ("T", [deck], "Expand the timeline"),
             ("⇧⌘F", [focusTerminal], "Fill the canvas with the docked terminal"),
+            ("⌘K", [], "The search field is the other way to reach a host by name"),
             ("?", [help], "This panel"),
         ]),
     ]
@@ -87,6 +90,7 @@ enum OrbitKey: String, CaseIterable {
     /// modifiers are known.
     static func plain(_ char: String) -> OrbitKey? {
         switch char {
+        case "g": return .hints
         case "f": return .fit
         case "m": return .minimap
         case "1": return .viewLive
@@ -118,10 +122,13 @@ extension OrbitOverlay {
         switch key {
         case .nextNode:  aimAtNeighbour(1)
         case .prevNode:  aimAtNeighbour(-1)
-        case .panUp:     nudgePan(dx: 0, dy: 90)
-        case .panDown:   nudgePan(dx: 0, dy: -90)
-        case .panLeft:   nudgePan(dx: 90, dy: 0)
-        case .panRight:  nudgePan(dx: -90, dy: 0)
+        case .hints:     if state.orbitHintMode { endHints() } else { beginHints() }
+        // With a node aimed the arrows walk the graph; with nothing aimed there
+        // is nothing to walk, so they move the camera instead.
+        case .panUp:     aimDirection(dx: 0, dy: -1)
+        case .panDown:   aimDirection(dx: 0, dy: 1)
+        case .panLeft:   aimDirection(dx: -1, dy: 0)
+        case .panRight:  aimDirection(dx: 1, dy: 0)
         case .zoomIn:    withAnimation(Theme.Spring.snappy) { zoom = min(zoom + 0.2, 2.6) }
         case .zoomOut:   withAnimation(Theme.Spring.snappy) { zoom = max(zoom - 0.2, 0.45) }
         case .zoomReset: withAnimation(Theme.Spring.snappy) { zoom = 1 }
