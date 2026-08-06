@@ -789,6 +789,120 @@ kbd{
   background:#7db4ff; box-shadow:0 0 8px rgba(125,180,255,.55);
 }
 
+/* ── Visual F: orbit map mock ──
+   Rings and wires are one SVG so the geometry scales with the panel;
+   the cards ride on top as HTML, because they are typography. Their
+   percentage positions are the SVG coordinates over the 400×300
+   viewBox, which the panel's fixed 4/3 ratio maps 1:1. */
+.orbit-mock{
+  position:absolute; inset:0;
+  font-family: var(--mono); font-size:10.5px;
+}
+.orbit-mock .wires{position:absolute; inset:0; width:100%; height:100%}
+.orbit-mock .wires circle.ring{fill:none; stroke:rgba(255,248,230,.10)}
+.orbit-mock .wires line{stroke:rgba(255,248,230,.16); stroke-width:1}
+.orbit-mock .wires line.live{
+  stroke:var(--red); stroke-opacity:.55; stroke-dasharray:3 4;
+}
+.orbit-mock .node{
+  position:absolute; transform:translate(-50%,-50%);
+  display:flex; align-items:center; gap:7px;
+  white-space:nowrap;
+  background: rgba(10,10,14,.9);
+  border:1px solid var(--hairline-2);
+  border-radius:10px;
+  padding:7px 10px;
+  color:rgba(255,255,255,.82);
+}
+.orbit-mock .node .d{width:6px; height:6px; border-radius:50%; flex:none}
+.orbit-mock .node .d.ok{background:#5ad57f; box-shadow:0 0 8px rgba(90,213,127,.6)}
+.orbit-mock .node .d.attn{background:#ffcf6b; box-shadow:0 0 8px rgba(255,207,107,.6)}
+.orbit-mock .node .d.idle{background:rgba(255,255,255,.32)}
+.orbit-mock .node .k{
+  font-size:9px; letter-spacing:.06em;
+  color:#0A0A0E; background:rgba(255,248,230,.85);
+  border-radius:4px; padding:1px 4px;
+}
+.orbit-mock .node.me{
+  border-color:var(--hairline-3);
+  background:rgba(20,20,26,.95);
+  color:#fff;
+}
+.orbit-mock .bar{
+  position:absolute; left:50%; bottom:18px; transform:translateX(-50%);
+  display:flex; align-items:center; gap:6px;
+  background:rgba(10,10,14,.92);
+  border:1px solid var(--hairline-2);
+  border-radius:999px;
+  padding:6px 8px;
+}
+.orbit-mock .bar span{
+  padding:3px 9px; border-radius:999px;
+  color:rgba(255,255,255,.6);
+  border:1px solid rgba(255,248,230,.12);
+}
+.orbit-mock .bar span.on{
+  color:#fff; border-color:var(--red);
+  background:rgba(255,56,60,.16);
+}
+
+/* ── Visual G: routine mock ── */
+.routine-mock{
+  position:absolute; inset:24px;
+  display:flex; flex-direction:column; gap:10px;
+  font-family: var(--mono); font-size:11.5px;
+}
+.routine-mock .rcard{
+  flex:1;
+  background: rgba(10,10,14,.86);
+  border:1px solid var(--hairline-2);
+  border-radius:10px;
+  padding:13px 15px;
+}
+.routine-mock .top{display:flex; align-items:center; gap:9px}
+.routine-mock .name{color:#fff; font-weight:600}
+.routine-mock .when{
+  margin-left:auto; font-size:10px; padding:2px 9px; border-radius:999px;
+  color:rgba(255,255,255,.55); border:1px solid rgba(255,248,230,.12);
+}
+.routine-mock .step{
+  display:flex; align-items:center; gap:10px; margin-top:11px;
+  color:rgba(255,255,255,.72);
+}
+.routine-mock .step .n{
+  width:16px; height:16px; border-radius:5px; flex:none;
+  display:flex; align-items:center; justify-content:center;
+  font-size:9px; color:rgba(255,255,255,.55);
+  border:1px solid rgba(255,248,230,.14);
+}
+.routine-mock .step .n.done{
+  color:#0A0A0E; background:#5ad57f; border-color:transparent;
+}
+.routine-mock .step .n.fail{
+  color:#0A0A0E; background:var(--red); border-color:transparent;
+}
+.routine-mock .step em{
+  margin-left:auto; font-style:normal; font-size:10px;
+  color:rgba(255,255,255,.42);
+}
+.routine-mock .fill{
+  display:inline-block; padding:0 6px; border-radius:5px;
+  color:#fff; background:rgba(255,56,60,.16);
+  border:1px solid rgba(255,56,60,.4);
+}
+.routine-mock .strip{
+  display:flex; align-items:center; gap:9px;
+  background: rgba(10,10,14,.86);
+  border:1px solid var(--hairline-2);
+  border-radius:10px;
+  padding:10px 13px;
+  color:rgba(255,255,255,.62);
+}
+.routine-mock .strip .dotk{
+  width:7px; height:7px; border-radius:50%;
+  background:var(--red); box-shadow:0 0 8px var(--red-glow);
+}
+
 /* ─────────────────────────────────────────────────────────────
    CHEATSHEET
 ───────────────────────────────────────────────────────────── */
@@ -1471,11 +1585,126 @@ footer{
     </div>
   </section>
 
+  <section class="feature wrap reverse" id="orbit">
+    <div class="row">
+      <div class="copy reveal">
+        <div class="num"><span class="chip">06</span> Orbit · beta</div>
+        <h2>Your fleet as a map.</h2>
+        <p>
+          <kbd>⌘⇧M</kbd> gives the window to a live graph of what you are
+          working on — your agent sessions, the hosts they talk to, the
+          clusters and containers under them. A session is the subject and a
+          host is where it runs, so sessions ride the ring closest to your
+          Mac. Connecting docks a real terminal on the canvas, overviews and
+          logs open as panels over it, and nothing sends you out to a tab.
+          Hold <kbd>⌥</kbd> and every card lights a letter; press it to aim
+          there and drive the rest from the keyboard. Leaving writes a
+          snapshot, so coming back reports what changed while you were gone.
+        </p>
+        <div class="sub">
+          <span>sessions · hosts</span>
+          <span>keyboard-driven</span>
+          <span>since you looked away</span>
+        </div>
+      </div>
+      <div class="visual reveal">
+        <div class="orbit-mock">
+          <svg class="wires" viewBox="0 0 400 300" aria-hidden="true">
+            <circle class="ring" cx="200" cy="156" r="64"/>
+            <circle class="ring" cx="200" cy="156" r="118"/>
+            <line x1="200" y1="156" x2="145" y2="124"/>
+            <line class="live" x1="200" y1="156" x2="260" y2="134"/>
+            <line x1="145" y1="124" x2="86" y2="126"/>
+            <line x1="260" y1="134" x2="307" y2="206"/>
+          </svg>
+          <div class="node me" style="left:50%; top:52%">
+            <span class="d ok"></span>MacBook Pro
+          </div>
+          <div class="node" style="left:36%; top:41%">
+            <span class="d idle"></span>Terminal 3<span class="k">S</span>
+          </div>
+          <div class="node" style="left:65%; top:45%">
+            <span class="d attn"></span>Claude · needs you<span class="k">D</span>
+          </div>
+          <div class="node" style="left:22%; top:42%">
+            <span class="d ok"></span>prod-eu
+          </div>
+          <div class="node" style="left:77%; top:69%">
+            <span class="d ok"></span>web-01
+          </div>
+          <div class="bar">
+            <span class="on">Connect</span>
+            <span>Run</span>
+            <span>Details</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="feature wrap" id="routines">
+    <div class="row">
+      <div class="copy reveal">
+        <div class="num"><span class="chip">07</span> Routines</div>
+        <h2>Work you do more than once.</h2>
+        <p>
+          Add a key to twelve servers, deploy, go to maintenance mode — write
+          the steps once, leave the details as fields, and fill them in at
+          launch. Run it now, at a time, or after something else finishes. The
+          engine runs app-wide, so a routine fires whether or not the map is on
+          screen, and a failure notifies. Every target is recorded separately:
+          a step across twelve machines reports <em>11/12 ok</em>, names the
+          one that didn't, and opens what any of them actually said. Anything
+          named like production asks first.
+        </p>
+        <div class="sub">
+          <span>scheduled · chained</span>
+          <span>per-host results</span>
+          <span>production guard</span>
+        </div>
+      </div>
+      <div class="visual reveal">
+        <div class="routine-mock">
+          <div class="rcard">
+            <div class="top">
+              <span class="name">deploy-api</span>
+              <span class="when">nightly · 02:00</span>
+            </div>
+            <div class="step">
+              <span class="n done">✓</span>
+              drain <span class="fill">web-*</span>
+              <em>12 hosts · 4.1s</em>
+            </div>
+            <div class="step">
+              <span class="n done">✓</span>
+              helm upgrade api <span class="fill">v2.8.1</span>
+              <em>21.6s</em>
+            </div>
+            <div class="step">
+              <span class="n fail">!</span>
+              smoke test
+              <em>11/12 ok</em>
+            </div>
+            <div class="step">
+              <span class="n">4</span>
+              restore traffic
+              <em>waiting</em>
+            </div>
+          </div>
+          <div class="strip">
+            <span class="dotk"></span>
+            web-07 — curl: (7) failed to connect
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ CHEATSHEET ============ -->
   <section class="cheat wrap" id="cheat">
     <div class="head reveal">
       <div>
-        <div class="num"><span class="chip">06</span> Keys</div>
+        <div class="num"><span class="chip">08</span> Keys</div>
         <h2>The whole app in one card.</h2>
       </div>
       <p>
