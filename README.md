@@ -101,7 +101,10 @@ One search over everything:
   running count.
 - **Agents layout** — a third window layout whose sidebar *is* the live agent
   roster; an **Add agent** button opens Claude Code or opencode in a directory
-  you pick, and a panes dropdown jumps to any open pane.
+  you pick — or one you have worked in before, listed for you — and a panes
+  dropdown jumps to any open pane. A session started somewhere Claude has
+  never run says it is waiting on the trust prompt rather than reading as
+  idle.
 - **Command markers** *(shell integration)* — a ✓ / ✗ chip with the run time
   when a command fails or takes a while, a notification when a long command
   finishes while you've stepped away, and `⌘↑` / `⌘↓` to jump between prompts.
@@ -140,6 +143,43 @@ One search over everything:
   and a failure feed with messages. A widget tracks runs across all
   windows and keeps the machine's most recent report across relaunches.
 
+### Orbit — the fleet as a map
+
+- **A layout mode, not a panel** (`⌘⇧M`) — entering Orbit collapses the tab
+  bar and gives the window to a live graph of what you are working on:
+  your agent sessions, the hosts they talk to, the clusters and containers
+  under them, and the plan's own running work. A session is the subject and
+  a host is where it runs, so sessions ride the ring closest to your Mac.
+- **Everything happens here** — Connect docks a real terminal at the foot of
+  the canvas (`⇧⌘F` gives it the whole thing), overviews and logs open as
+  panels over the map, and a run's output comes back to it. Nothing sends
+  you out to a tab.
+- **Find anything** (`⌘K`) — hosts, sessions, clusters, containers, pods and
+  routines by name, including hosts you have never connected to and ones
+  from `~/.ssh/config`. Return brings the match to the middle and aims the
+  action bar at it.
+- **Drive it from the keyboard** — `G` labels every node so you can pick one
+  by typing; the arrows walk the graph from there. Every verb on the action
+  bar has a key, and `?` lists them.
+- **Since you looked away** — leaving writes a snapshot, entering reports the
+  difference: a session that started waiting on you, one that finished while
+  you were gone, a scheduled run that failed, a host that came or went.
+- **Routines** — named, parameterised, repeatable work: add a key to twelve
+  servers, deploy, go to maintenance mode. Write the steps once, fill in the
+  details at launch, and run them now, at a time, or after something else
+  finishes. The engine runs app-wide, so they fire whether or not the map is
+  on screen, and failures notify.
+- **What each host said** — a run's history records every target separately,
+  so a step across twelve machines reports *11/12 ok*, names the one that
+  didn't, and opens what any of them actually said.
+- **Guard rails on production** — anything named like production (the same
+  pattern list the Kubernetes pill uses, applied to hosts too) puts a
+  confirmation in front of scaling, rolling, cordoning, a real Ansible run
+  or a routine — naming what is about to happen and where.
+- **Drill in** — a host blooms open into its containers, VMs and kubelet; a
+  cluster into nodes, pods and containers, each with its own verbs. An
+  overview map keeps the whole graph in one corner when you have zoomed in.
+
 ### Updates and backups
 
 - **Automatic updates** — checked from GitHub at launch and once a day while
@@ -161,6 +201,13 @@ One search over everything:
   click-to-switch popover), containers across runtimes (Docker, Podman,
   containerd, Apple's container), and a pixel cat. Enable and reorder them
   in *Settings → Widgets*.
+- **Interface size** — one slider scales the chrome around the terminal — tab
+  bar, sidebar, toolbar, agent rail — without touching the terminal's own
+  font size (*Settings → Interface size*). Pane corners are tunable on their
+  own axis.
+- **A pane that needs you says so** — its border pulses amber while its agent
+  waits on input, and so does its tab's dot, so a background tab that has
+  stopped is visible from whichever one you are in.
 - **SSH-host detection** in the pane chrome, and synthesized UI sound effects.
 
 ## Install
@@ -208,6 +255,7 @@ Updates** or *Settings → Config*, and turn the automatic check off there.
 | `⌘↑` / `⌘↓` | Jump to previous / next prompt |
 | `⌘K` | Command palette |
 | `⌘⇧A` | Agent command center |
+| `⌘⇧M` | Orbit — the fleet map |
 | `⌘F` | Find in scrollback / Claude conversation |
 | `⌘G` / `⌘⇧G` | Next / previous match |
 | `⌘E` | Use selection for find |
