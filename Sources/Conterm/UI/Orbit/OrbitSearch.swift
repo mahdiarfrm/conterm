@@ -200,8 +200,7 @@ extension OrbitOverlay {
         if state.orbitSearchOpen {
             OrbitSearchPanel(corpus: searchCorpus,
                              onCommit: { commitSearch($0) },
-                             onDismiss: { state.toggleOrbitSearch() },
-                             frame: $searchFrame)
+                             onDismiss: { state.toggleOrbitSearch() })
                 .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
         }
     }

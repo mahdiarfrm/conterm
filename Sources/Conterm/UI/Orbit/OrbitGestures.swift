@@ -71,10 +71,24 @@ extension OrbitOverlay {
         return nil
     }
 
+    /// Take first responder away from whatever accepts text — a docked
+    /// terminal, or a field on the canvas. Only when something actually holds
+    /// it, so this is free on the common path.
+    func releaseTerminalFocus() {
+        guard let window = NSApp.keyWindow,
+              window.firstResponder is NSTextInputClient || window.firstResponder is NSText
+        else { return }
+        window.makeFirstResponder(nil)
+    }
+
     func dragGesture(graph: Graph, center: CGPoint) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { g in
                 if grabbedID == nil {
+                    // Touching the canvas hands the keyboard back to the map. A
+                    // docked terminal owns every bare key while it holds focus,
+                    // so without this the shortcuts stay dead until you close it.
+                    releaseTerminalFocus()
                     if let id = node(at: g.startLocation, in: graph, center: center) {
                         grabbedID = id; grabbedStartWorld = sim.position(id); dragMoved = false
                     }

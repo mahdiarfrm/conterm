@@ -385,11 +385,11 @@ struct OrbitOverlay: View {
                 // The search palette owns the wheel over its own rectangle so
                 // its results scroll. `loc` is window coords (bottom-left
                 // origin); flip to the top-left origin the frame was captured in.
-                if state.orbitSearchOpen {
-                    guard searchFrame != .zero,
-                          let h = NSApp.keyWindow?.contentView?.frame.height else { return false }
-                    return !searchFrame.contains(CGPoint(x: loc.x, y: h - loc.y))
-                }
+                // The palette owns the wheel outright while it is up. Deciding
+                // by its rectangle meant scroll only reached the list when that
+                // rectangle was current, and the map has no business panning
+                // behind an open search anyway.
+                if state.orbitSearchOpen { return false }
                 if showHelp {
                     guard helpFrame != .zero,
                           let h = NSApp.keyWindow?.contentView?.frame.height else { return false }
@@ -428,6 +428,9 @@ struct OrbitOverlay: View {
             }
             .frame(width: 0, height: 0)
             spaceEmptyState
+            // Beneath every panel. A terminal is a big opaque rectangle, and a
+            // panel that opened behind one could not be read or reached.
+            panePreview
             header
             controls
             actionDock.zIndex(3)   // above the deck: its suggestions open upward
@@ -443,7 +446,6 @@ struct OrbitOverlay: View {
             steerPanel
             guestPanel
             sessionsPanel
-            panePreview
             routinesPanel
             helpPanel
             searchPanel.zIndex(20)   // over every panel: it can aim at any of them
@@ -608,9 +610,6 @@ struct OrbitOverlay: View {
     /// and the ranking belong to `OrbitSearchPanel`, so typing in it never
     /// redraws the graph.
     @State var searchCorpus: [SearchItem] = []
-    /// The palette's own rectangle, so a wheel over it scrolls its list rather
-    /// than panning the map beneath.
-    @State var searchFrame: CGRect = .zero
     /// Whether the overview map is open. Persisted: it is a working preference,
     /// not a per-visit one.
     @AppStorage("orbit.showMinimap") var showMinimap = true

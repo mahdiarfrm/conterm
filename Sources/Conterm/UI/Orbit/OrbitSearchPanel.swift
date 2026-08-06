@@ -38,10 +38,6 @@ struct OrbitSearchPanel: View {
     @State private var index = 0
     @State private var results: [OrbitOverlay.SearchItem] = []
     @FocusState private var fieldFocused: Bool
-    /// The panel's rectangle, so the map's wheel catcher can hand scroll to the
-    /// list instead of panning underneath it.
-    @Binding var frame: CGRect
-
     var body: some View {
         ZStack(alignment: .top) {
             Color.black.opacity(0.28).ignoresSafeArea()
@@ -61,12 +57,6 @@ struct OrbitSearchPanel: View {
                 }
             }
             .frame(maxWidth: 560)
-            .background(GeometryReader { g in
-                Color.clear
-                    .onAppear { frame = g.frame(in: .global) }
-                    .onChange(of: g.frame(in: .global)) { _, f in frame = f }
-                    .onDisappear { frame = .zero }
-            })
             .padding(.top, 84)
         }
         .onAppear {
