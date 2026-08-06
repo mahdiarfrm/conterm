@@ -574,6 +574,11 @@ final class AppState: ObservableObject {
         // transcript parsing — sub-agents, shell commands) refreshing while open.
         AgentCenter.shared.beginObserving()
         withAnimation(Theme.Spring.bouncy) { orbitOpen = true }
+        // The map takes the keyboard. Without this the pane you were last in
+        // keeps first responder, and since a terminal accepts text input every
+        // one of Orbit's bare-key shortcuts yields to a surface nobody can even
+        // see. Clicking a docked terminal hands focus back to it.
+        ownWindow?.makeFirstResponder(nil)
         syncSurfaceOcclusion()      // pause the covered panes
         // Orbit drives its own node/pane dragging; the window's
         // drag-by-background would otherwise steal every drag and move the
@@ -590,6 +595,11 @@ final class AppState: ObservableObject {
         // Finished playbooks keep their surface while Orbit is open so their
         // report stays readable; nothing is reading them once it closes.
         OrbitEngine.shared.releaseHeadlessRuns()
+        // Second net under the overlay's own sweep: if Orbit went away by a
+        // path that never ran `onDisappear`, a terminal is still mounted in a
+        // dock that is about to stop existing and its tile would come back
+        // blank.
+        for id in orbitPreviewPanes { PaneMounts.shared.sendHome(id) }
         orbitFocusSession = nil
         withAnimation(Theme.Spring.snappy) { orbitOpen = false }
         syncSurfaceOcclusion()      // resume the panes…

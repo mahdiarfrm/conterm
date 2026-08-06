@@ -766,6 +766,14 @@ final class PaneBox: NSView {
 
     override func layout() {
         super.layout()
+        // The registry is the truth about where this pane's terminal lives. If
+        // it says home and the view isn't here, some path dropped it between
+        // sites — re-adopt rather than draw an empty tile for the rest of the
+        // session. Cannot fight the cockpit dock or a window: while either
+        // holds the view, `isHome` is false.
+        if PaneMounts.shared.isHome(pane.id), host.superview !== self {
+            addSubview(host, positioned: .below, relativeTo: nil)
+        }
         let solid = prefs.opaquePanes
         layer?.backgroundColor = NSColor.clear.cgColor
         // Manually-added sublayers get CA's default implicit actions
