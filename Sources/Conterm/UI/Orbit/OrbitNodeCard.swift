@@ -93,9 +93,9 @@ struct NodeCard: View {
                     // one line that tells a session apart from the machine it
                     // is talking to, so it takes its natural width and the
                     // selection tick sits outside the text column entirely.
-                    // The state rides here as a dot rather than as a bar down
-                    // the card's edge: on a card three short lines tall, a full
-                    // height spine is most of what you see.
+                    // The state rides on this line as a dot. A bar down the
+                    // card's edge is most of what you see on a card three short
+                    // lines tall.
                     HStack(spacing: 5) {
                         if status != .neutral {
                             Circle()
@@ -141,8 +141,8 @@ struct NodeCard: View {
                     .fill(.ultraThinMaterial)
                 // Status is one flat wash through the glass — no sheen, no
                 // falloff. A gradient across a card this small reads as a
-                // smudge rather than as light, and the spine, the border and
-                // the halo already carry the state.
+                // smudge rather than as light, and the dot, the border and the
+                // halo already carry the state.
                 if underglow > 0.001 {
                     RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                         .fill(glowColor.opacity(underglow))
@@ -166,8 +166,8 @@ struct NodeCard: View {
                     .offset(x: 4, y: -4)
             }
         }
-        // The travelling light, kept from the old ring but run around the card
-        // itself: a short bright segment orbiting the edge while it works.
+        // A short bright segment orbiting the card's edge while it works — the
+        // one signal that reads as motion rather than as colour.
         .overlay { if busy { travellingLight } }
         // A wide, soft bloom only — the tight bright ring read as neon paint.
         .shadow(color: glowColor.opacity(haloStrength), radius: glows ? (hovered ? 18 : 13) : 0)

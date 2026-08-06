@@ -508,8 +508,13 @@ extension OrbitOverlay {
         }
     }
 
+    /// A chip in the bottom-right cluster. Deliberately does *not* wrap its
+    /// action in an animation: half of these move the camera, and the node
+    /// cards interpolate where the `Canvas` behind them jumps — so a glide
+    /// sends the wires ahead of the nodes they join. Every chip that opens a
+    /// panel animates that itself.
     func zoomButton(_ icon: String, _ action: @escaping () -> Void) -> some View {
-        Button { withAnimation(Theme.Spring.snappy, action) } label: {
+        Button(action: action) {
             Image(systemName: icon).font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.textSecondary).frame(width: 26, height: 22)
                 .contentShape(Rectangle())

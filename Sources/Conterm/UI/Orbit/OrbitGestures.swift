@@ -265,7 +265,7 @@ extension OrbitOverlay {
                 toggleHostSelection(target)
             }
         case .agent:
-            break   // background sessions are no longer placed on the map
+            break   // headless sessions have no place of their own on the map
         case .subagent:
             // Sub-agent work belongs to the session that spawned it.
             if let parent = parentNode(of: id, in: graph),

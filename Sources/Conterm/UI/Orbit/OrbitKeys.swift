@@ -129,9 +129,12 @@ extension OrbitOverlay {
         case .panDown:   aimDirection(dx: 0, dy: 1)
         case .panLeft:   aimDirection(dx: -1, dy: 0)
         case .panRight:  aimDirection(dx: 1, dy: 0)
-        case .zoomIn:    withAnimation(Theme.Spring.snappy) { zoom = min(zoom + 0.2, 2.6) }
-        case .zoomOut:   withAnimation(Theme.Spring.snappy) { zoom = max(zoom - 0.2, 0.45) }
-        case .zoomReset: withAnimation(Theme.Spring.snappy) { zoom = 1 }
+        // Unanimated, like the pan: the cards interpolate and the `Canvas`
+        // behind them does not, so a glide separates the wires from the nodes
+        // they join.
+        case .zoomIn:    zoom = min(zoom + 0.2, 2.6)
+        case .zoomOut:   zoom = max(zoom - 0.2, 0.45)
+        case .zoomReset: zoom = 1
         case .fit:       fitToContent(liveGraph())
         case .minimap:   withAnimation(Theme.Spring.snappy) { showMinimap.toggle() }
 

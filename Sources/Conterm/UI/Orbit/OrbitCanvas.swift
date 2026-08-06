@@ -261,7 +261,7 @@ extension OrbitOverlay {
             // these by value, so a still card whose inputs never change is not
             // re-evaluated at all — without this every card in the graph rebuilt
             // its material and glow on every frame of the render loop.
-            // Only the pulse needs the canvas clock now — the travelling light
+            // Only the pulse needs the canvas clock — the travelling light
             // carries its own — so a still card stays out of the render pass.
             let animated = n.status == .working || n.status == .attention
             let tag = kindTag(n, ordinals: ordinals)

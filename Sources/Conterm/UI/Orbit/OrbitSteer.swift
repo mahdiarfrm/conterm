@@ -7,8 +7,8 @@ import SwiftUI
 extension OrbitOverlay {
 
     /// What the host's probe knows about one guest — a VM from `virsh list` or a
-    /// container from `docker ps`. Clicking a guest used to fall through to its
-    /// host, which answered a question you hadn't asked.
+    /// container from `docker ps`. A guest answers for itself: handing the click
+    /// to its host answers a question nobody asked.
     @ViewBuilder
     var guestPanel: some View {
         if let g = inspector.guestOnHost {
