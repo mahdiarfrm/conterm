@@ -52,10 +52,10 @@ struct NodeCard: View {
         return hover * (busy ? 1 + 0.012 * CGFloat(pulse) : 1)
     }
 
-    /// Squarer than a stadium. At the height these cards run, a radius near
-    /// half the height reads as a blob and loses the card's own shape among the
-    /// pills in the chrome.
-    static let corner: CGFloat = 15
+    /// Generously round. These are the objects the mode is about, and a soft
+    /// capsule-adjacent shape separates them from the square panels and pills
+    /// of the chrome around them.
+    static let corner: CGFloat = 22
 
     /// Below this zoom a card drops to its name alone. Shrinking the full card
     /// instead put three lines of type below legibility and left an overview
@@ -70,18 +70,22 @@ struct NodeCard: View {
     var body: some View {
         HStack(alignment: .center, spacing: 11) {
             // The mark sits on the card, in nothing. A container around it
-            // reads as chrome, and there is already a spine, a border and a
-            // glow carrying state — the glyph only has to say what this is.
+            // reads as chrome — and these glyphs are worth looking at, so they
+            // are drawn large and given the colour rather than boxed in.
             Group {
                 if let distro {
-                    DistroMark(distro: distro, size: 16)
+                    DistroMark(distro: distro, size: 21)
                 } else {
-                    Image(systemName: glyph).font(.system(size: 14, weight: .medium))
+                    Image(systemName: glyph).font(.system(size: 18, weight: .regular))
                 }
             }
             .foregroundStyle(status == .neutral
-                             ? Theme.textPrimary.opacity(0.7) : tint)
-            .frame(width: 19)
+                             ? Theme.textPrimary.opacity(0.78) : tint)
+            // Its own soft bloom, so an active node's mark glows rather than
+            // only sitting inside something that does.
+            .shadow(color: status == .neutral ? .clear : tint.opacity(0.5 + 0.3 * pulse),
+                    radius: status == .neutral ? 0 : 7)
+            .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 3) {
                 if let kindTag, !compact {
@@ -89,12 +93,9 @@ struct NodeCard: View {
                     // one line that tells a session apart from the machine it
                     // is talking to, so it takes its natural width and the
                     // selection tick sits outside the text column entirely.
-                    Text(kindTag)
-                        .font(OrbitFont.face(8)).tracking(1.1)
+                    OrbitText(text: kindTag, size: 8, tracking: 1.2)
                         .foregroundStyle(selected ? Theme.accent.opacity(0.95)
-                                                  : Theme.textSecondary.opacity(0.68))
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
+                                                  : Theme.textSecondary.opacity(0.7))
                 }
                 Text(label)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -111,18 +112,28 @@ struct NodeCard: View {
             }
             .frame(width: contentWidth, alignment: .leading)
         }
-        .padding(.leading, 13).padding(.trailing, 15)
-        .padding(.vertical, compact ? 8 : 10)
+        .padding(.leading, 15).padding(.trailing, 17)
+        .padding(.vertical, compact ? 9 : 12)
         .background(
             ZStack {
-                // A bed under the glass. The material alone let the edges and
-                // action wires beneath read straight through the card, so a card
-                // sitting on a busy part of the graph had lines running across
-                // its label.
+                // A bed under the glass, thin enough that the frost still reads
+                // as frost. Fully opaque killed the material; fully clear let
+                // the edges and action wires beneath run straight across the
+                // card's own label.
                 RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
-                    .fill(light ? Color.white.opacity(0.9) : Color.black.opacity(0.86))
+                    .fill(light ? Color.white.opacity(0.55) : Color.black.opacity(0.55))
                 RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                     .fill(.ultraThinMaterial)
+                // Frost over frost: a second pass of material deepens the blur
+                // so what shows through is light and colour rather than shapes.
+                RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                // A soft sheen down the surface, so the card reads as a piece
+                // of glass catching light and not a flat rounded rectangle.
+                RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [Color.white.opacity(light ? 0.22 : 0.10), .clear],
+                        startPoint: .top, endPoint: .bottom))
                 // The colour lives *under* the surface — a soft bloom that
                 // breathes through the glass rather than a bright ring on top
                 // of it, so an active card glows instead of shouting.
@@ -141,17 +152,26 @@ struct NodeCard: View {
         // scaled down, which the glow does not.
         .overlay(alignment: .leading) {
             if status != .neutral {
-                UnevenRoundedRectangle(
-                    topLeadingRadius: Self.corner, bottomLeadingRadius: Self.corner,
-                    bottomTrailingRadius: 1.5, topTrailingRadius: 1.5, style: .continuous)
+                Capsule()
                     .fill(tint.opacity(wants || busy ? 0.55 + 0.35 * pulse : 0.7))
-                    .frame(width: 3)
-                    .padding(.vertical, 6)
+                    .frame(width: 3.5)
+                    .padding(.vertical, 11)
+                    .padding(.leading, 5)
+                    .shadow(color: tint.opacity(0.7), radius: 5)
             }
         }
         .overlay(
             RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: selected ? 2.2 : 1)
+        )
+        // The lit top edge every piece of glass in this app wears.
+        .overlay(
+            RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
+                .stroke(LinearGradient(colors: [Color.white.opacity(0.34), .clear],
+                                       startPoint: .top, endPoint: .center),
+                        lineWidth: 1)
+                .blendMode(.plusLighter)
+                .allowsHitTesting(false)
         )
         // Selection drives the action bar, so it has to read at a glance — a
         // tint alone is lost among the statuses. On the corner rather than in
