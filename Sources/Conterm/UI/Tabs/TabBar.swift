@@ -1243,6 +1243,9 @@ private struct AutoHideToggleButton: View {
     @Environment(\.onRedPill) private var onRedPill
     @State private var hovering = false
     var bare: Bool = false
+    /// False inside the floating traffic-light pill, whose geometry is AppKit's
+    /// and does not move with the interface size.
+    var scaled: Bool = true
 
     var body: some View {
         Button {
@@ -1252,12 +1255,12 @@ private struct AutoHideToggleButton: View {
         } label: {
             Image(systemName: prefs.autoHideSidebar
                   ? "sidebar.leading" : "sidebar.left")
-                .font(.system(size: Theme.ui(12), weight: .semibold))
+                .font(.system(size: scaled ? Theme.ui(12) : 12, weight: .semibold))
                 .foregroundStyle(prefs.autoHideSidebar
                     ? (onRedPill ? Color.white : Theme.accent)
                     : toolbarIconColor(hovering: hovering, onRed: onRedPill))
                 .padding(.horizontal, bare ? 6 : 8)
-                .frame(height: TabBar.toolbarPillHeight)
+                .frame(height: scaled ? TabBar.toolbarPillHeight : 26)
                 .glassPill(enabled: !bare)
                 .contentShape(Capsule())
         }
@@ -1278,7 +1281,11 @@ private struct AutoHideToggleButton: View {
 /// pane area below it can use the full top of the window.
 struct FloatingLightsAutohidePill: View {
     var body: some View {
-        HStack(spacing: Theme.ui(6)) {
+        // Nothing in here scales — see the note on the spacer below. The
+        // toggle is passed `scaled: false` for the same reason: it sits beside
+        // fixed-size window buttons, so growing it pushes it off their line and
+        // shrinking it strands it in the middle of the capsule.
+        HStack(spacing: 6) {
             // SwiftUI prunes `Color.clear.frame(...)` in some layouts
             // (the frame collapses to 0pt), which let the auto-hide
             // icon ride up onto the native traffic lights. A clear
@@ -1296,7 +1303,7 @@ struct FloatingLightsAutohidePill: View {
             Rectangle()
                 .fill(Color.clear)
                 .frame(width: 54, height: 22)
-            AutoHideToggleButton(bare: true)
+            AutoHideToggleButton(bare: true, scaled: false)
         }
         .padding(.horizontal, 8)
         .frame(height: 32)

@@ -205,10 +205,6 @@ struct OrbitOverlay: View {
     /// so an id had to be resolved against whichever graph happened to contain
     /// it — and when that lookup missed, the bar silently never appeared.
     @State var barNode: MapNode?
-    /// What has been typed toward a node's hint label. Whether hints are *up*
-    /// lives on `AppState`, because the key monitor has to know that letters
-    /// spell a label rather than run a command.
-    @State var hintBuffer = ""
     @State var showHelp = false
     /// Which page of the help panel: the explanation, or the key list.
     @State var helpTabIndex = 0
@@ -347,7 +343,7 @@ struct OrbitOverlay: View {
                         nodeCards(graph: graph, center: center, now: now)
                         groupChips(graph: graph, center: center)
                         actionChips(graph: graph, center: center, now: now)
-                        if state.orbitHintMode { hintBadges(graph: graph, center: center) }
+                        hintBadges(graph: graph, center: center)
                         // Fit needs the viewport and the settled positions, and
                         // neither exists until the graph has drawn once.
                         Color.clear

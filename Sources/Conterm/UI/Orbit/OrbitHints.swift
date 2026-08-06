@@ -1,17 +1,22 @@
 import AppKit
 import SwiftUI
 
-/// Reaching any node without the mouse.
+/// Reaching a node without the mouse.
 ///
 /// Tab walks the graph in order, which is fine for a handful and useless for
-/// forty — you hold it down and watch. Hints answer the other question: *that*
-/// one. Every node wears a short label, you type it, and the bar is aimed
-/// there. The labels are assigned in reading order down the canvas, so the same
-/// fleet gives the same letters every time.
+/// forty — you hold it down and watch. So every node wears its own key, drawn
+/// on the card: hold ⌥ and press it. Nothing to enter and nothing to remember,
+/// which is the whole point of a label being *on* the thing it names.
+///
+/// ⌥ rather than a bare letter because the bare ones are already the action
+/// verbs (`C`onnect, `R`un, `P`laybook…), and a mode you have to enter first is
+/// a mode nobody discovers. Labels are assigned in reading order down the
+/// canvas, so the same fleet gives the same keys every time.
 extension OrbitOverlay {
 
-    /// Home row first, because the point is that your hands do not move. Two
-    /// letters only once there are more nodes than there are keys here.
+    /// Home row first, because the point is that your hands do not move. Nine
+    /// keys, nine labels: past that the map is better answered by ⌘K or Tab
+    /// than by a two-key sequence nobody would rather type.
     static let hintAlphabet = Array("asdfghjkl")
 
     /// Every node on the canvas, in the order they are read: down the screen,
@@ -27,43 +32,23 @@ extension OrbitOverlay {
                 let rowA = ($0.at.y / 90).rounded(.down), rowB = ($1.at.y / 90).rounded(.down)
                 return rowA == rowB ? $0.at.x < $1.at.x : rowA < rowB
             }
+            .prefix(Self.hintAlphabet.count)
         return zip(ordered, Self.hintLabels(count: ordered.count))
             .map { (id: $0.0.id, label: $0.1) }
     }
 
-    /// `count` distinct labels: single letters while they last, then pairs. Kept
-    /// static and pure so `OrbitHintTests` can pin the shape of them.
+    /// `count` labels, one key each. Kept static and pure so `OrbitHintTests`
+    /// can pin them.
     static func hintLabels(count: Int) -> [String] {
-        guard count > hintAlphabet.count else {
-            return hintAlphabet.prefix(count).map(String.init)
-        }
-        var out: [String] = []
-        for a in hintAlphabet {
-            for b in hintAlphabet where out.count < count {
-                out.append(String(a) + String(b))
-            }
-        }
-        return out
+        hintAlphabet.prefix(count).map(String.init)
     }
 
-    /// A typed letter. Extends the buffer, and commits the moment it names
-    /// exactly one node — so a fleet small enough for single letters never
-    /// needs a second keystroke.
+    /// ⌥ and a letter: aim at the node wearing it.
     func handleHintKey(_ char: String, graph: Graph, center: CGPoint) {
-        let next = hintBuffer + char.lowercased()
-        let targets = hintTargets(graph, center: center)
-        guard targets.contains(where: { $0.label.hasPrefix(next) }) else {
-            // A letter that leads nowhere is a typo, not a reason to drop out
-            // of hint mode and start running commands.
-            hintBuffer = ""
-            return
-        }
-        hintBuffer = next
-        if let hit = targets.first(where: { $0.label == next }) {
-            endHints()
-            handleTap(hit.id, in: graph)
-            centerOn(hit.id)
-        }
+        guard let hit = hintTargets(graph, center: center)
+            .first(where: { $0.label == char.lowercased() }) else { return }
+        handleTap(hit.id, in: graph)
+        centerOn(hit.id)
     }
 
     /// Whatever the key monitor last sent: a letter toward a hint, or a
@@ -79,50 +64,33 @@ extension OrbitOverlay {
         if let key = state.orbitKey { runOrbitKey(key) }
     }
 
-    func toggleHints() {
-        if state.orbitHintMode { endHints() } else { beginHints() }
-    }
-
-    func beginHints() {
-        hintBuffer = ""
-        // The canvas parks its render loop once the graph settles, and the
-        // labels are drawn inside it — without a wake they can arrive a beat
-        // late, which reads as the key not having worked.
-        sim.wake()
-        withAnimation(Theme.Spring.snappy) { state.orbitHintMode = true }
-    }
-
-    func endHints() {
-        hintBuffer = ""
-        withAnimation(Theme.Spring.snappy) { state.orbitHintMode = false }
-    }
-
-    /// The labels themselves, over the cards. Drawn in the overlay rather than
-    /// the `Canvas` so they sit above the node they belong to, and dimmed once
-    /// they can no longer match what has been typed.
+    /// The keys themselves, on the cards. Always drawn — a label you have to
+    /// press something to reveal teaches nobody it exists. Quiet until ⌥ is
+    /// down, when they are the only thing you are looking at.
     func hintBadges(graph: Graph, center: CGPoint) -> some View {
-        ForEach(hintTargets(graph, center: center), id: \.id) { target in
-            let live = target.label.hasPrefix(hintBuffer)
+        let armed = state.orbitHintsArmed
+        return ForEach(hintTargets(graph, center: center), id: \.id) { target in
             let size = cardSize(graph.nodes.first { $0.id == target.id }
                                 ?? MapNode(id: "", kind: .mac, label: "", subtitle: nil,
                                            status: .neutral, pane: nil))
-            HStack(spacing: 0) {
-                ForEach(Array(target.label.enumerated()), id: \.offset) { i, c in
-                    Text(String(c).uppercased())
-                        .font(.system(size: 10, weight: .heavy, design: .monospaced))
-                        // What you have already typed reads as spent.
-                        .foregroundStyle(i < hintBuffer.count ? Theme.accent.opacity(0.45)
-                                                              : Color.black)
-                }
-            }
-            .padding(.horizontal, 5).padding(.vertical, 2)
-            .background(Capsule().fill(live ? Theme.accent : Theme.accent.opacity(0.18)))
-            .opacity(live ? 1 : 0.35)
-            .position(screen(target.id, center: center))
-            .offset(x: -size.width / 2 - 2, y: -size.height / 2 - 2)
+            Text(target.label.uppercased())
+                .font(.system(size: armed ? 10 : 8.5, weight: .heavy, design: .monospaced))
+                .foregroundStyle(armed ? Color.black : Theme.textSecondary)
+                .frame(width: armed ? 17 : 14, height: armed ? 17 : 14)
+                .background(Circle().fill(armed ? Theme.accent
+                                                : (light ? Color.black.opacity(0.10)
+                                                         : Color.white.opacity(0.13))))
+                .shadow(color: armed ? Theme.accent.opacity(0.6) : .clear, radius: 6)
+                .position(screen(target.id, center: center))
+                .offset(x: -size.width / 2 - 1, y: -size.height / 2 - 1)
+                .animation(.easeOut(duration: 0.12), value: armed)
         }
         .allowsHitTesting(false)
     }
+
+    /// True when the map is light-glass — the badge's resting fill has to sit
+    /// on whichever bed the canvas is using.
+    private var light: Bool { prefs.lightGlass }
 
     // MARK: - Walking the graph by direction
 

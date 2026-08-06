@@ -381,6 +381,15 @@ struct TimelineDeckView: View {
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 0)
+            // How long it took, in words. At a twelve-hour span a five-second
+            // command is a fraction of a pixel wide, so width alone can only
+            // answer the question at close range — this answers it at any.
+            if let d = it.duration, width > 90 {
+                Text(Self.durationLabel(d))
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize()
+            }
         }
         // The glyph carries the colour; the command itself is read, so it takes
         // the full-strength ink rather than a tint at a fifth of it.

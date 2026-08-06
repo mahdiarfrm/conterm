@@ -553,11 +553,11 @@ final class AppState: ObservableObject {
         orbitKeyTick &+= 1
     }
 
-    /// While hints are up, every node on the canvas wears a short label and the
-    /// letters you type spell one rather than running a command. The monitor
-    /// has to know, because the same letters mean something else the rest of
-    /// the time.
-    @Published var orbitHintMode = false
+    /// Whether ⌥ is being held. Every node wears its key at all times; this is
+    /// what lights them up, so the modifier that uses them is also the one that
+    /// shows them.
+    @Published var orbitHintsArmed = false
+    /// The letter pressed with ⌥ — which node to aim at.
     @Published var orbitHintChar: String?
 
     /// Rides the same tick as the commands. One channel, because the view's

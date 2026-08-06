@@ -52,15 +52,21 @@ extension OrbitOverlay {
             // Wordmark centered over the bar, independent of the left/right
             // controls' widths.
             .overlay(alignment: .top) {
-                HStack(spacing: 9) {
+                // Aligned on the wordmark's baseline rather than by centre.
+                // The display face carries far more internal leading than the
+                // system one, so centring the box centres the *metrics* and
+                // leaves the letters sitting low against the mark beside them.
+                HStack(alignment: .firstTextBaseline, spacing: 9) {
                     OrbitMark(color: Theme.accent, size: 18)
-                    Text("Orbit").font(orbitTitleFont).tracking(-0.5)
+                        .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
+                    OrbitText(text: "Orbit", size: 17, tracking: -0.5)
                         .foregroundStyle(Theme.textPrimary)
                     Text("BETA")
                         .font(.system(size: 8.5, weight: .heavy)).tracking(0.6)
                         .foregroundStyle(.black)
                         .padding(.horizontal, 6).padding(.vertical, 2.5)
                         .background(Capsule().fill(.white))
+                        .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 4 }
                 }
                 .padding(.top, 15)
             }
@@ -391,9 +397,6 @@ extension OrbitOverlay {
     }
 
     var hintText: String {
-        if state.orbitHintMode {
-            return "Type a node's letters to aim at it · Esc to stop"
-        }
         if linkMode {
             return "Tap a node to link it to this note · Esc to cancel · tap a line's middle to remove it"
         }
@@ -409,7 +412,7 @@ extension OrbitOverlay {
         if isFleetView {
             return "Every host you've connected to · tap to select · Run, Playbook or Connect"
         }
-        return "What's running now · tap to act · G to pick a node by keyboard · ? for every key"
+        return "What's running now · tap to act · ⌥ and a node's letter picks it · ? for every key"
     }
 
     /// Floating flow-authoring bar: appears once tasks are staged. Run releases
@@ -469,10 +472,6 @@ extension OrbitOverlay {
                     // A key nobody is told about is a key nobody presses.
                     zoomButton("magnifyingglass") { state.toggleOrbitSearch() }
                         .help("Find a host, session or routine (⌘K)")
-                    zoomButton(state.orbitHintMode ? "keyboard.fill" : "keyboard") {
-                        toggleHints()
-                    }
-                    .help("Label every node so you can pick one by typing (G)")
                     zoomButton(showSessions ? "rectangle.stack.fill" : "rectangle.stack") {
                         withAnimation(Theme.Spring.snappy) { showSessions.toggle() }
                     }

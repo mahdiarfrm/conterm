@@ -13,7 +13,7 @@ import SwiftUI
 /// anything — see `OrbitKey.isEditing`.
 enum OrbitKey: String, CaseIterable {
     // Getting around
-    case nextNode, prevNode, hints
+    case nextNode, prevNode
     case panUp, panDown, panLeft, panRight
     case zoomIn, zoomOut, zoomReset
     case fit, minimap
@@ -33,7 +33,7 @@ enum OrbitKey: String, CaseIterable {
     static let sections: [(String, [(String, [OrbitKey], String)])] = [
         ("Getting around", [
             ("⌘K", [], "Find a host, session, cluster or routine"),
-            ("G", [hints], "Label every node — type a label to aim at it"),
+            ("⌥ + a node's letter", [], "Aim at that node — every card shows its own"),
             ("⇥ / ⇧⇥", [nextNode, prevNode], "Aim at the next / previous node"),
             ("↑ ↓ ← →", [panUp, panDown, panLeft, panRight],
              "Walk to the next node that way, or pan when nothing is aimed"),
@@ -90,7 +90,6 @@ enum OrbitKey: String, CaseIterable {
     /// modifiers are known.
     static func plain(_ char: String) -> OrbitKey? {
         switch char {
-        case "g": return .hints
         case "f": return .fit
         case "m": return .minimap
         case "1": return .viewLive
@@ -122,7 +121,6 @@ extension OrbitOverlay {
         switch key {
         case .nextNode:  aimAtNeighbour(1)
         case .prevNode:  aimAtNeighbour(-1)
-        case .hints:     toggleHints()
         // With a node aimed the arrows walk the graph; with nothing aimed there
         // is nothing to walk, so they move the camera instead.
         case .panUp:     aimDirection(dx: 0, dy: -1)

@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var titleBarClickMonitor: Any?
     private var scrollMonitor: Any?
     private var mouseMovedMonitor: Any?
+    private var flagsMonitor: Any?
     private var occlusionObservers: [NSObjectProtocol] = []
     /// Accumulated trackpad scroll travel (points) since the last
     /// palette focus step. A gentle two-finger scroll reports
@@ -322,6 +323,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Catches app-level shortcuts before they reach the SurfaceView.
     /// `nil` swallows; returning the event lets it pass through.
     private func installShortcutMonitor() {
+        // ⌥ held: light up the per-node keys Orbit draws on its cards. The
+        // modifier that uses them is the one that shows them, so there is no
+        // mode to enter and nothing to remember.
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
+            guard let self, self.state != nil, self.state.orbitOpen else { return event }
+            let held = event.modifierFlags.contains(.option)
+                && !event.modifierFlags.contains(.command)
+            if self.state.orbitHintsArmed != held { self.state.orbitHintsArmed = held }
+            return event
+        }
         // Re-arm palette hover on first mouse movement. While the
         // palette is open hover is suppressed so a stationary cursor
         // can't override arrow-key navigation.
@@ -398,12 +409,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if self.state.ansibleCockpit != nil { self.state.closeAnsibleCockpit(); return nil }
                 if self.state.clusterOverviewOpen { self.state.closeClusterOverview(); return nil }
                 if self.state.fleetRunOpen { self.state.closeFleetRun(); return nil }
-                // Hints are the innermost thing Orbit can have up.
-                if self.state.orbitOpen, self.state.orbitHintMode {
-                    self.state.orbitHintMode = false
-                    return nil
-                }
-                // Search is the next innermost, so it unwinds before the focus
+                // Search is the innermost thing Orbit can have open, so it
+                // unwinds before the focus
                 // and the map's own selection.
                 if self.state.orbitOpen, self.state.orbitSearchOpen {
                     self.state.toggleOrbitSearch()
@@ -547,10 +554,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // symbol on most layouts; we use the unshifted codepoint
             // from charactersIgnoringModifiers instead.
             if opt && !cmd && !ctrl && !shift {
+                // `charactersIgnoringModifiers`, because ⌥ composes: the layout
+                // turns ⌥A into `å` and there is no digit or letter left to
+                // match on the composed form.
                 let unshifted = event.charactersIgnoringModifiers ?? ""
                 if unshifted.count == 1, let digit = Int(unshifted),
                    digit >= 1, digit <= 9 {
                     self.state.selectPaneByIndex(digit)
+                    return nil
+                }
+                // ⌥ and the letter on a node's card aims the bar at it.
+                if self.state.orbitOpen, !self.state.orbitSearchOpen,
+                   unshifted.count == 1, !OrbitKey.isEditing,
+                   OrbitOverlay.hintAlphabet.contains(Character(unshifted.lowercased())) {
+                    self.state.sendOrbitHint(unshifted.lowercased())
                     return nil
                 }
             }
@@ -588,20 +605,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // is. The search palette runs its own key handling, above.
             if self.state.orbitOpen, !self.state.orbitSearchOpen,
                !cmd, !opt, !ctrl, !OrbitKey.isEditing {
-                // Hints are up: the letters spell a node's label rather than
-                // running a command, so they are claimed before anything else
-                // gets to look at them.
-                if self.state.orbitHintMode {
-                    let typed = (event.characters ?? "").lowercased()
-                    if typed.count == 1, typed.rangeOfCharacter(from: .letters) != nil {
-                        self.state.sendOrbitHint(typed)
-                        return nil
-                    }
-                    // Anything that isn't a letter leaves hint mode rather than
-                    // being silently eaten.
-                    self.state.orbitHintMode = false
-                    return nil
-                }
                 switch event.keyCode {
                 case 48:  // ⇥ — walk the graph
                     self.state.sendOrbitKey(shift ? .prevNode : .nextNode)
