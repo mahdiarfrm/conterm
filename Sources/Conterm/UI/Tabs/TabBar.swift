@@ -775,7 +775,11 @@ struct TabBar: View {
     /// Height of the two heavyweight cluster members — the stats
     /// widget and the red action bar — which deliberately stand
     /// taller than the plain toolbar pills.
-    static let heavyPillHeight: CGFloat = 30
+    /// Scaled at its source, like `tabBarHeight` and `pillCorner`: the widget
+    /// pills match this to share one silhouette across the toolbar row, and
+    /// they scale, so a raw constant here made the row ragged at any interface
+    /// size but 1.
+    static var heavyPillHeight: CGFloat { Theme.ui(30) }
 
     private var shortcutHint: some View {
         ShortcutHintButton()

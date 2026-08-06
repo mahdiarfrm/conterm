@@ -212,15 +212,6 @@ final class ContainerControl: ObservableObject {
         }
     }
 
-    /// Forget what was read about a container — used when its panel closes so a
-    /// second look shows the machine's state, not the last one's.
-    func forget(container name: String, host: String) {
-        let key = Self.key(host, name)
-        stats[key] = nil
-        logs[key] = nil
-        failures[key] = nil
-    }
-
     // MARK: - Transport
 
     nonisolated private static func ssh(host: String, line: String) -> String? {

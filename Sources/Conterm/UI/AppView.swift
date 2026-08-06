@@ -25,9 +25,9 @@ struct AppView: View {
             // still cover it.
             floatingSidebar.id("overlay.sidebar")
             // Floating glass capsule top-left holding the native
-            // traffic-light footprint + auto-hide toggle. Only present
-            // in vertical + auto-hide mode; replaces the old wide
-            // empty top strip so the panes can use the full top.
+            // traffic-light footprint + auto-hide toggle. Vertical tabs
+            // only; the panes own the full top rather than losing it to
+            // a wide empty strip.
             floatingTopLeftLightsPill.id("overlay.lights")
             // Stable explicit identities. These overlays are
             // conditionally-rendered siblings; without fixed `.id`s,
@@ -45,8 +45,9 @@ struct AppView: View {
             // exit on screen.
             searchOverlay.id("overlay.search").zIndex(10)
             notificationsOverlay.id("overlay.notifications").zIndex(11)
-            // Above Orbit (z 15) so its "Overview" action opens over the mode
-            // rather than being hidden behind it.
+            // Orbit renders inside `content`, at the bottom of this stack, so
+            // this sits above it and the map's "Overview" opens over the mode
+            // rather than behind it.
             hostOverviewOverlay.id("overlay.hostOverview").zIndex(16)
             ansibleCockpitOverlay.id("overlay.ansible").zIndex(13)
             clusterOverviewOverlay.id("overlay.cluster").zIndex(13)
@@ -234,9 +235,8 @@ struct AppView: View {
     /// A small Liquid Glass capsule anchored to the very top-left of
     /// the window. Contains the AppKit traffic-light footprint (so the
     /// system buttons sit "inside" the capsule) and the auto-hide
-    /// toggle. Only rendered when the sidebar is in floating
-    /// (auto-hide) mode — that's the case where there'd otherwise be a
-    /// wide empty top strip across the pane area.
+    /// toggle. Rendered in vertical-tab mode, where the pane area would
+    /// otherwise carry a wide empty strip across its top.
     @ViewBuilder
     private var floatingTopLeftLightsPill: some View {
         let isVertical = prefs.tabOrientation == .vertical
@@ -693,7 +693,7 @@ struct AppView: View {
         }
     }
 
-    /// Arc-style intro overlay; visible only on launch when enabled.
+    /// Intro overlay; visible only on launch when enabled.
     @ViewBuilder
     private var launchOverlay: some View {
         if state.launchOverlayVisible {

@@ -313,9 +313,9 @@ final class AnsibleCenter: ObservableObject {
         }
     }
 
-    /// Bring a run's pane forward and open its cockpit — shared by the
-    /// pane badge and the Ansible widget's popover (which may target a
-    /// pane in another window).
+    /// Bring a run's pane forward and open its cockpit. The pane may be in
+    /// another window, so every window is searched before its tab is
+    /// selected.
     func jump(paneID: UUID) {
         guard let wc = (NSApp.delegate as? AppDelegate)?.windows.first(where: { wc in
             wc.state.tabs.contains { tab in

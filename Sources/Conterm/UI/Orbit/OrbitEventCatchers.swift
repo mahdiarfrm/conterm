@@ -2,8 +2,13 @@ import AppKit
 import Combine
 import SwiftUI
 
+/// The two gestures that aim the action bar: a right-click, and a left
+/// double-click. Both come from an AppKit monitor rather than SwiftUI gestures —
+/// the canvas already runs a `DragGesture(minimumDistance: 0)`, which claims the
+/// interaction the moment a press lands, and a `SpatialTapGesture(count: 2)`
+/// alongside it recognises only intermittently.
 struct CanvasClickCatcher: NSViewRepresentable {
-    /// Window coordinates, and whether this was a right-click or a double-click.
+    /// Window coordinates of the aiming click.
     var onAim: (CGPoint) -> Void
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeNSView(context: Context) -> NSView {
@@ -29,6 +34,9 @@ struct CanvasClickCatcher: NSViewRepresentable {
     final class Coordinator { var monitor: Any?; var onAim: ((CGPoint) -> Void)? }
 }
 
+/// Turns two-finger / wheel scrolling into a pan callback, so one-finger drag
+/// stays reserved for placing nodes. A local monitor consumes scroll while the
+/// map is on screen.
 struct ScrollPanCatcher: NSViewRepresentable {
     /// Returns true when it consumed the scroll (panned); false lets the event
     /// through to whatever is under the cursor.

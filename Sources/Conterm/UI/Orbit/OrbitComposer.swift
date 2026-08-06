@@ -99,8 +99,6 @@ extension OrbitOverlay {
         sim.wake()
     }
 
-    /// Fire due actions and resolve running ones. Cheap no-op when the plan is
-    /// empty; called on the 1 Hz tick and right after any action is queued.
     /// Advance the plan. The clock and the execution live in `OrbitEngine` so a
     /// schedule fires with Orbit closed; the map only nudges it after queueing
     /// something and wakes its own render loop.

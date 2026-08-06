@@ -84,14 +84,6 @@ struct TerminalBlur: NSViewRepresentable {
     }
 }
 
-/// Turns two-finger / wheel scrolling into a pan callback, so one-finger drag
-/// stays reserved for placing nodes. A local monitor consumes scroll while the
-/// map is on screen.
-/// The two gestures that aim the action bar: a right-click, and a left
-/// double-click. Both come from an AppKit monitor rather than SwiftUI gestures —
-/// the canvas already runs a `DragGesture(minimumDistance: 0)`, which claims the
-/// interaction the moment a press lands, and a `SpatialTapGesture(count: 2)`
-/// alongside it recognised only intermittently.
 /// The pane's own terminal, borrowed from the pane tree and shown over the map.
 /// It hosts the *same* `SurfaceHostView` — the surface is welded to that view
 /// for life, so a preview has to move the view, never rebuild it. Giving it back
