@@ -147,7 +147,7 @@ final class OrbitModel: ObservableObject {
                     add(MapNode(id: paneID, kind: .pane(pane.id),
                                 label: Self.paneLabel(pane),
                                 subtitle: Self.paneSubtitle(pane, isCurrent: isCurrent),
-                                status: Self.status(for: pane.agent.phase), pane: pane))
+                                status: Self.status(for: pane), pane: pane))
                     // Two truths about an ssh session, and it needs both lines:
                     // it *runs here*, in a tab on this Mac, and it is *talking
                     // to* that host. The Mac line is drawn direct rather than
@@ -183,7 +183,7 @@ final class OrbitModel: ObservableObject {
                             ? Self.paneSubtitle(pane, isCurrent: false)
                             : (pane.agent.phase != .idle
                                ? pane.agent.tool.displayName : "floating"),
-                        status: Self.status(for: pane.agent.phase), pane: pane))
+                        status: Self.status(for: pane), pane: pane))
             if let host = pane.remoteHost {
                 hosts[host] = true
                 link(macID, paneID, flowing: working)     // placed by you, not by its host
@@ -279,6 +279,7 @@ final class OrbitModel: ObservableObject {
     /// is the resolved one, so the session and its host agree on what to call
     /// the machine instead of one saying `sib-02` and the other an IP.
     static func paneSubtitle(_ pane: Pane, isCurrent: Bool) -> String? {
+        if pane.awaitingTrust { return "waiting for you to trust the folder" }
         if pane.agent.phase != .idle { return pane.agent.tool.displayName }
         // Which machine, under the directory — unless the label already is the
         // machine, because the far end reported no directory to put above it.
@@ -343,6 +344,14 @@ final class OrbitModel: ObservableObject {
             }
         }
         return nil
+    }
+
+    /// A session waiting on Claude's trust prompt wants a person, which is
+    /// exactly what `.attention` means — and it has no transcript yet, so its
+    /// phase says `.idle` and would otherwise draw as a dormant shell.
+    private static func status(for pane: Pane) -> MapNode.Status {
+        if pane.awaitingTrust { return .attention }
+        return status(for: pane.agent.phase)
     }
 
     private static func status(for phase: AgentStatus.Phase) -> MapNode.Status {

@@ -1088,8 +1088,8 @@ extension OrbitOverlay {
             // Starting work shouldn't mean leaving the map to make a tab first.
             dockAction("plus.rectangle", "New shell", primary: true) { newSession(nil) }
                 .help("Open a terminal session here")
-            dockAction("sparkle", "New Claude") { newSession("claude") }
-                .help("Open a session and start claude in it")
+            dockMenu("sparkle", "New Claude") { newAgentMenuItems() }
+                .help("Start an agent — here, or in a directory you pick")
             dockAction("scope", "Whole fleet") {
                 withAnimation(Theme.Spring.snappy) {
                     state.orbitFocusSession = nil; barNode = nil

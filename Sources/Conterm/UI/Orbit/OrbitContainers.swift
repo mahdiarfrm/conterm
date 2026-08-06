@@ -79,6 +79,31 @@ extension OrbitOverlay {
         .opacity(enabled ? 1 : 0.4)
     }
 
+    /// A dock chip that opens a menu instead of firing. Same shell as
+    /// `dockAction`, so a choice and an action read as the same kind of thing
+    /// on the bar.
+    func dockMenu<Content: View>(_ icon: String, _ label: String,
+                                 primary: Bool = false,
+                                 @ViewBuilder content: @escaping () -> Content) -> some View {
+        Menu {
+            content()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 10.5, weight: .semibold))
+                Text(label).font(.system(size: 12, weight: .semibold, design: .rounded))
+                Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold))
+                    .opacity(0.7)
+            }
+            .foregroundStyle(primary ? Theme.accent : Theme.textPrimary)
+            .padding(.horizontal, 11).padding(.vertical, 6)
+            .background(Capsule().fill(primary ? chromeFill(prefs, selected: true) : chromeFill(prefs)))
+            .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 1))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+
     /// An immediate action stays in Orbit and draws a connection from the Mac to
     /// the targets, rather than closing the mode. It fires this same tick.
     func runOnSelection() {

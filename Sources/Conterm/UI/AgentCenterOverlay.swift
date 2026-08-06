@@ -270,6 +270,20 @@ private struct AddAgentMenu: View {
                           systemImage: "chevron.left.forwardslash.chevron.right")
                 }
             }
+            // Where you have run Claude before. Read from disk on open, which
+            // is what a menu is for — a picker every time makes starting an
+            // agent in a project you use daily a four-click errand.
+            let recents = ClaudeProjects.recent(limit: 8)
+            if !recents.isEmpty {
+                Divider()
+                Section("Claude, in a recent project") {
+                    ForEach(recents, id: \.self) { dir in
+                        Button(ClaudeProjects.shortLabel(dir)) {
+                            state.openAgent(command: "claude", in: dir)
+                        }
+                    }
+                }
+            }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: Theme.ui(12.5), weight: .bold))

@@ -67,6 +67,13 @@ final class Pane: ObservableObject, Identifiable {
     /// split or a "new tab" inheriting from another active pane.
     /// libghostty config: `working_directory`.
     var startingDir: String?
+    /// Set when an agent was launched into a directory Claude has not been run
+    /// in before. That first run stops on "do you trust the files in this
+    /// folder", and until it is answered nothing is running and no transcript
+    /// exists — so without this the session reads as idle when it is in fact
+    /// waiting on a person. Cleared the moment its agent shows any sign of
+    /// life.
+    @Published var awaitingTrust = false
 
     /// Saved scrollback text from the previous session, set when this pane is
     /// restored; replayed once via a typed `cat`, then cleared. nil for fresh

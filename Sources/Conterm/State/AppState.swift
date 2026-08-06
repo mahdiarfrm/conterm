@@ -932,8 +932,33 @@ final class AppState: ObservableObject {
     @discardableResult
     func openAgent(command: String, in dir: String) -> Tab {
         let leaf = (dir as NSString).lastPathComponent
-        return openTabRunning(command: command,
-                              title: leaf.isEmpty ? nil : leaf, in: dir)
+        let tab = openTabRunning(command: command,
+                                 title: leaf.isEmpty ? nil : leaf, in: dir)
+        // A directory Claude has never seen stops on its trust prompt before
+        // anything runs — no transcript, no phase, and a session that reads as
+        // a dormant shell when it is in fact waiting on a person.
+        if command.hasPrefix("claude"), !ClaudeProjects.isTrusted(dir),
+           let pane = tab.paneTree.activePane {
+            pane.awaitingTrust = true
+            Self.clearTrustFlagWhenAnswered(pane, dir: dir)
+        }
+        return tab
+    }
+
+    /// Drop the trust flag once the session is running. Polled, because the
+    /// signal is a transcript appearing on disk; it gives up after a couple of
+    /// minutes so a prompt you walked away from doesn't want you forever.
+    private static func clearTrustFlagWhenAnswered(_ pane: Pane, dir: String,
+                                                   attemptsLeft: Int = 60) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak pane] in
+            guard let pane, pane.awaitingTrust else { return }
+            if pane.agent.phase != .idle || ClaudeProjects.isTrusted(dir) || attemptsLeft <= 0 {
+                pane.awaitingTrust = false
+                OrbitModel.shared.rebuild()
+                return
+            }
+            clearTrustFlagWhenAnswered(pane, dir: dir, attemptsLeft: attemptsLeft - 1)
+        }
     }
 
     func closeTab(_ tab: Tab) {
