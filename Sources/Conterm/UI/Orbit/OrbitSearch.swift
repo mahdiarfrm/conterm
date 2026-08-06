@@ -105,9 +105,20 @@ extension OrbitOverlay {
         // Hosts you know about but aren't connected to. These are the whole
         // point of the feature: they are inventory, they are numerous, and the
         // Live map deliberately doesn't draw them.
-        for t in SSHHistory.recentTargets(limit: 60) {
+        //
+        // The cap is high on purpose. Everywhere else a short list is a
+        // considered choice about what to show; here it is a search, and a
+        // search that silently omits the machine you are looking for is worse
+        // than no search. A real history holds a few hundred targets.
+        for t in SSHHistory.recentTargets(limit: 500) {
             offer("host:\(t)", HostNameStore.name(for: t) ?? t, t,
                   "externaldrive.connected.to.line.below.fill", "Host", .host(t), 3)
+        }
+        // Aliases from ~/.ssh/config. You may never have typed one of these at
+        // a shell, which is exactly why the history alone can't find them.
+        for h in SSHHosts.loadAll() {
+            offer("host:\(h.alias)", h.alias, h.hostname,
+                  "externaldrive.connected.to.line.below.fill", "Host", .host(h.alias), 3)
         }
 
         searchCorpus = out.sorted {

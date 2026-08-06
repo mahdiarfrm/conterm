@@ -42,8 +42,8 @@ enum SSHHistory {
         var entries: [(time: Double, target: String)] = []
         var fallback: Double = 0
 
-        // zsh
-        if let zsh = readFile("\(home)/.zsh_history") {
+        for path in zshHistoryPaths(home: home) {
+            guard let zsh = readFile(path) else { continue }
             for raw in zsh.split(separator: "\n", omittingEmptySubsequences: false) {
                 let line = String(raw).trimmingCharacters(in: .whitespaces)
                 if line.isEmpty { continue }
@@ -55,7 +55,8 @@ enum SSHHistory {
         }
         // bash (no per-line timestamps unless HISTTIMEFORMAT is set, which
         // we don't try to parse — just use file order)
-        if let bash = readFile("\(home)/.bash_history") {
+        for path in ["\(home)/.bash_history", "\(home)/.history"] {
+            guard let bash = readFile(path) else { continue }
             for raw in bash.split(separator: "\n", omittingEmptySubsequences: false) {
                 let line = String(raw).trimmingCharacters(in: .whitespaces)
                 if line.isEmpty || line.hasPrefix("#") { continue }
@@ -68,7 +69,8 @@ enum SSHHistory {
 
         // fish keeps a YAML-ish log: `- cmd: ssh foo` with `  when: <epoch>`
         // on the following line.
-        if let fish = readFile("\(home)/.local/share/fish/fish_history") {
+        for path in fishHistoryPaths(home: home) {
+            guard let fish = readFile(path) else { continue }
             var pending: String?
             for raw in fish.split(separator: "\n", omittingEmptySubsequences: false) {
                 let line = String(raw)
@@ -125,6 +127,35 @@ enum SSHHistory {
         }
         fallback += 1
         return (fallback, line)
+    }
+
+    /// Where zsh may have put its history. The default is `~/.zsh_history`, but
+    /// `HISTFILE` is routinely repointed — `~/.histfile` is the setting most
+    /// starter configs ship, and the XDG paths are what a tidied dotfile repo
+    /// uses. Reading all of them costs a failed `open` for the ones absent.
+    private static func zshHistoryPaths(home: String) -> [String] {
+        var paths = [
+            "\(home)/.zsh_history",
+            "\(home)/.histfile",
+            "\(home)/.config/zsh/.zsh_history",
+            "\(home)/.config/zsh/history",
+            "\(home)/.local/share/zsh/history",
+        ]
+        // Only set when the app was launched from a shell, which is rare for a
+        // GUI app — but when it is, it is the authoritative answer.
+        if let env = ProcessInfo.processInfo.environment["HISTFILE"], !env.isEmpty {
+            paths.insert(env, at: 0)
+        }
+        return paths
+    }
+
+    /// Current fish keeps history under XDG data; older versions kept it beside
+    /// the config.
+    private static func fishHistoryPaths(home: String) -> [String] {
+        [
+            "\(home)/.local/share/fish/fish_history",
+            "\(home)/.config/fish/fish_history",
+        ]
     }
 
     private static func readFile(_ path: String) -> String? {
