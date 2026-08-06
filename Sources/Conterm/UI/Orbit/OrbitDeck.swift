@@ -58,7 +58,15 @@ extension OrbitOverlay {
                                  }
                              },
                              schedule: { scheduleLine($0) },
-                             onClearDone: { scheduler.clearFinished() })
+                             onClearDone: { scheduler.clearFinished() },
+                             // A command's id is its tool_use id, which is what
+                             // the shell-output modal keys on.
+                             onOpenAgent: { id in
+                                 guard id.hasPrefix("cmd:") else { return }
+                                 withAnimation(Theme.Spring.snappy) {
+                                     modal = .shell(String(id.dropFirst("cmd:".count)))
+                                 }
+                             })
                 .frame(maxWidth: 600)
                 .frame(height: deckHidden ? 0 : deckHeight)
                 .opacity(deckHidden ? 0 : 1)

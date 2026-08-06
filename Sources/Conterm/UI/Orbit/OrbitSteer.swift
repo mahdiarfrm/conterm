@@ -460,11 +460,13 @@ extension OrbitOverlay {
         var items: [AgentDeckItem] = []
         for sub in u.subAgents {
             items.append(AgentDeckItem(id: "sub:\(sub.id)", label: agentShort(sub.task ?? "sub-agent"),
-                                       at: sub.lastActivity ?? Date(), isSubagent: true))
+                                       at: sub.lastActivity ?? Date(), isSubagent: true,
+                                       detail: sub.task ?? "sub-agent"))
         }
         for cmd in u.shellCommands {
             items.append(AgentDeckItem(id: "cmd:\(cmd.id)", label: agentShort(cmd.command),
-                                       at: cmd.at, isSubagent: false))
+                                       at: cmd.at, endedAt: cmd.endedAt, isSubagent: false,
+                                       detail: cmd.command, output: cmd.output))
         }
         return Array(items.sorted { $0.at > $1.at }.prefix(5))
     }

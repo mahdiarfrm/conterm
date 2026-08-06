@@ -14,7 +14,16 @@ struct AgentDeckItem: Identifiable {
     let id: String
     let label: String
     let at: Date
+    /// When it finished, when that is known. A running command has no end yet,
+    /// and a sub-agent's activity is a point rather than a span.
+    var endedAt: Date? = nil
     let isSubagent: Bool
+    /// The full text, for the hover report — `label` is shortened to fit a
+    /// block and a block is often narrower than the command that made it.
+    var detail: String = ""
+    var output: String? = nil
+
+    var duration: TimeInterval? { endedAt.map { $0.timeIntervalSince(at) } }
 }
 
 struct TimelineDeckView: View {
@@ -36,6 +45,12 @@ struct TimelineDeckView: View {
     let onSelect: (UUID) -> Void
     let schedule: (OrbitScheduler.Action) -> String
     let onClearDone: () -> Void
+    /// Opening one of the agent's own commands — its full output.
+    let onOpenAgent: (String) -> Void
+
+    /// The agent block under the cursor. Its own state rather than the task
+    /// hover, so pointing at a command cannot leave a task's card behind.
+    @State var hoveredAgent: String?
 
     struct Laid { let a: OrbitScheduler.Action; let lane: Int }
     let laneH: CGFloat = 20, laneGap: CGFloat = 5, axisH: CGFloat = 14
@@ -159,17 +174,24 @@ struct TimelineDeckView: View {
                 // footprint. Newest first, so a dense burst keeps its most recent
                 // commands; anything that can't fit a lane without overlapping is
                 // dropped rather than drawn on top of another block.
-                let agW: CGFloat = 148, agGap: CGFloat = 6
-                let agPlaced: [(item: AgentDeckItem, lane: Int, px: CGFloat)] = {
+                // A block spans the time its command actually took, so a run
+                // that held the agent for two minutes reads as two minutes.
+                // Below a floor it would be unclickable and unreadable, so
+                // short work draws at the floor and the hover card carries the
+                // real duration. Anything with no recorded end — still running,
+                // or a sub-agent, whose activity is a point — gets the floor.
+                let agFloor: CGFloat = 132, agGap: CGFloat = 6
+                let agPlaced: [(item: AgentDeckItem, lane: Int, px: CGFloat, w: CGFloat)] = {
                     var laneLeft = [CGFloat](repeating: .greatestFiniteMagnitude, count: agMaxLanes)
-                    var out: [(AgentDeckItem, Int, CGFloat)] = []
+                    var out: [(AgentDeckItem, Int, CGFloat, CGFloat)] = []
                     for it in agSorted.reversed() {
                         let px = max(x(it.at), 0)
+                        let w = it.endedAt.map { max(x($0) - x(it.at), agFloor) } ?? agFloor
                         // First lane whose current content sits fully to the right.
-                        guard let lane = (0..<agMaxLanes).first(where: { px + agW + agGap <= laneLeft[$0] })
+                        guard let lane = (0..<agMaxLanes).first(where: { px + w + agGap <= laneLeft[$0] })
                         else { continue }   // no lane free here → drop this one
                         laneLeft[lane] = px
-                        out.append((it, lane, px))
+                        out.append((it, lane, px, w))
                     }
                     return out
                 }()
@@ -203,8 +225,16 @@ struct TimelineDeckView: View {
                     }
                     // Agent activity band below the tasks.
                     ForEach(agPlaced, id: \.item.id) { entry in
-                        agentBlock(entry.item, width: agW, x: entry.px,
+                        agentBlock(entry.item, width: entry.w, x: entry.px,
                                    y: axisH + 2 + CGFloat(actionLanes + entry.lane) * (laneH + laneGap))
+                    }
+                    if let id = hoveredAgent,
+                       let entry = agPlaced.first(where: { $0.item.id == id }) {
+                        agentReport(entry.item)
+                            // Above its own block, clamped inside the track so a
+                            // command near either edge is still readable.
+                            .offset(x: min(max(entry.px - 40, 4), max(W - 300, 4)),
+                                    y: max(axisH + 2, entry.px == 0 ? axisH : axisH))
                     }
                     if agDropped > 0 {
                         Text("+\(agDropped)").font(OrbitFont.face(8))
@@ -284,6 +314,60 @@ struct TimelineDeckView: View {
         .offset(x: x0, y: y)
     }
 
+    /// What a block could not fit: the whole command, how long it took, and the
+    /// first of what it returned. The block itself is sized by time, so a fast
+    /// command is narrow however long its text is.
+    func agentReport(_ it: AgentDeckItem) -> some View {
+        let tint = it.isSubagent ? Color(red: 0.62, green: 0.52, blue: 0.96)
+                                 : Color(red: 0.38, green: 0.78, blue: 0.86)
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: it.isSubagent ? "person.2.fill"
+                                                : "chevron.left.forwardslash.chevron.right")
+                    .font(.system(size: 8.5, weight: .bold)).foregroundStyle(tint)
+                Text(hm(it.at)).font(OrbitFont.face(8))
+                    .foregroundStyle(Theme.textSecondary)
+                if let d = it.duration {
+                    Text("· \(Self.durationLabel(d))").font(OrbitFont.face(8))
+                        .foregroundStyle(Theme.textSecondary)
+                } else if !it.isSubagent {
+                    Text("· running").font(OrbitFont.face(8)).foregroundStyle(tint)
+                }
+                Spacer(minLength: 0)
+            }
+            Text(it.detail.isEmpty ? it.label : it.detail)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+            if let out = it.output, !out.isEmpty {
+                Text(out.prefix(280))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(4).fixedSize(horizontal: false, vertical: true)
+                Text("Click for all of it")
+                    .font(.system(size: 9, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary.opacity(0.7))
+            }
+        }
+        .padding(10)
+        .frame(width: 290, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 11, style: .continuous)
+            .fill(light ? Color.white.opacity(0.95) : Color.black.opacity(0.9)))
+        .background(RoundedRectangle(cornerRadius: 11, style: .continuous)
+            .fill(.ultraThinMaterial))
+        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+            .strokeBorder(tint.opacity(0.45), lineWidth: 1))
+        .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
+        .allowsHitTesting(false)
+    }
+
+    /// Seconds as something you read at a glance.
+    static func durationLabel(_ d: TimeInterval) -> String {
+        if d < 1 { return String(format: "%.0fms", d * 1000) }
+        if d < 60 { return String(format: "%.1fs", d) }
+        return String(format: "%dm %02ds", Int(d) / 60, Int(d) % 60)
+    }
+
     /// A small marker for one agent activity — a sub-agent (violet) or a shell
     /// command (teal) — sat at its moment on the same time axis as the tasks.
     func agentBlock(_ it: AgentDeckItem, width: CGFloat, x: CGFloat, y: CGFloat) -> some View {
@@ -303,9 +387,16 @@ struct TimelineDeckView: View {
         .foregroundStyle(Theme.textPrimary.opacity(0.92))
         .padding(.horizontal, 7)
         .frame(width: width, height: laneH - 1, alignment: .leading)
-        .background(Capsule().fill(tint.opacity(0.14)))
-        .overlay(Capsule().strokeBorder(tint.opacity(0.5), lineWidth: 1))
-        .help(it.label)
+        .background(Capsule().fill(tint.opacity(hoveredAgent == it.id ? 0.24 : 0.14)))
+        .overlay(Capsule().strokeBorder(tint.opacity(hoveredAgent == it.id ? 0.9 : 0.5),
+                                        lineWidth: 1))
+        // A block is usually narrower than the command that made it, so the
+        // full text and what it returned live in a card rather than in a
+        // tooltip nobody waits for.
+        .onHover { inside in
+            hoveredAgent = inside ? it.id : (hoveredAgent == it.id ? nil : hoveredAgent)
+        }
+        .onTapGesture { onOpenAgent(it.id) }
         .offset(x: x, y: y)
     }
 

@@ -383,11 +383,13 @@ extension OrbitOverlay {
         for e in agents.entries {
             for sub in e.usage?.subAgents ?? [] {
                 items.append(AgentDeckItem(id: "sub:\(sub.id)", label: agentShort(sub.task ?? "sub-agent"),
-                                           at: sub.lastActivity ?? Date(), isSubagent: true))
+                                           at: sub.lastActivity ?? Date(), isSubagent: true,
+                                           detail: sub.task ?? "sub-agent"))
             }
             for cmd in e.usage?.shellCommands ?? [] {
                 items.append(AgentDeckItem(id: "cmd:\(cmd.id)", label: agentShort(cmd.command),
-                                           at: cmd.at, isSubagent: false))
+                                           at: cmd.at, endedAt: cmd.endedAt, isSubagent: false,
+                                           detail: cmd.command, output: cmd.output))
             }
         }
         return items
@@ -410,6 +412,16 @@ extension OrbitOverlay {
             }
         }
         return out
+    }
+
+    /// Everything one edge away from `id`, in either direction, plus `id`.
+    func adjacent(to id: String, in graph: Graph) -> Set<String> {
+        var set: Set<String> = [id]
+        for e in graph.edges {
+            if e.from == id { set.insert(e.to) }
+            if e.to == id { set.insert(e.from) }
+        }
+        return set
     }
 
     /// The path from your Mac to `id`, as the set of nodes along it.
@@ -458,7 +470,11 @@ extension OrbitOverlay {
     func focusGraph(_ g: Graph, session paneID: UUID) -> Graph {
         let paneNode = "pane:\(paneID.uuidString)"
         guard g.nodes.contains(where: { $0.id == paneNode }) else { return g }
-        var keep = neighborhood(of: paneNode, in: g)   // pane + host/Mac + cluster + blooms
+        // Everything touching the session, not the way back to the Mac:
+        // focusing is "show me this session and what it is doing", and its
+        // sub-agents and shell commands hang off it as children. The route is
+        // what a hover wants; this is not that.
+        var keep = adjacent(to: paneNode, in: g)   // pane + host/Mac + cluster + blooms
         keep.insert("mac")
         let nodes = g.nodes.filter { keep.contains($0.id) }
         let edges = g.edges.filter { keep.contains($0.from) && keep.contains($0.to) }

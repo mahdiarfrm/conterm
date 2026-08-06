@@ -67,8 +67,17 @@ struct ShellCommand: Equatable, Identifiable {
     let command: String
     /// Transcript timestamp of the turn that ran it; ages the feed out.
     let at: Date
+    /// When its result came back, from the `tool_result` turn. nil while it is
+    /// still running — a command's duration is the gap between the two, and it
+    /// is the only duration the transcript records.
+    var endedAt: Date? = nil
     /// Combined stdout/stderr, backfilled from the matching tool_result turn.
     var output: String? = nil
+
+    /// How long it ran, once it has finished.
+    var duration: TimeInterval? {
+        endedAt.map { $0.timeIntervalSince(at) }
+    }
 }
 
 /// One row in the agent command center: a live agent in some pane, its
@@ -309,13 +318,16 @@ final class AgentTranscriptStore: @unchecked Sendable {
         // leave the prior task in place.
         if type == "user", let msg = obj["message"] as? [String: Any] {
             if let prompt = Self.userPromptText(msg) { st.task = prompt }
-            // Backfill each shell command's output from its tool_result turn,
-            // matched by tool_use id, so tapping the node can show the result.
+            // Backfill each shell command's output and finish time from its
+            // tool_result turn, matched by tool_use id — the gap between the
+            // two turns is the only duration the transcript records.
+            let resultAt = Self.parseTimestamp(obj["timestamp"] as? String)
             if let content = msg["content"] as? [[String: Any]] {
                 for block in content where (block["type"] as? String) == "tool_result" {
                     guard let tid = block["tool_use_id"] as? String,
                           let bi = st.recentShell.firstIndex(where: { $0.id == tid && $0.output == nil })
                     else { continue }
+                    st.recentShell[bi].endedAt = resultAt ?? Date()
                     let text = Self.toolResultText(block["content"])
                     if !text.isEmpty {
                         st.recentShell[bi].output = text.count > 6000
