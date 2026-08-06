@@ -199,6 +199,15 @@ final class Preferences: ObservableObject {
             Theme.reloadUIScale()
         }
     }
+    /// Seconds to wait after a new tab's surface mounts before typing an
+    /// auto-run command (an SSH shortcut, an Orbit connect, a fleet run)
+    /// into it. Surface-mounted ≠ shell-ready: a heavy `.zshrc` can still be
+    /// loading, and a command typed too early is lost. Raise it for slow
+    /// shell startups. Read statically by the spawn helpers via
+    /// `Preferences.resolvedLaunchDelay`.
+    @Published var launchCommandDelay: Double {
+        didSet { ud.set(launchCommandDelay, forKey: K.launchCommandDelay) }
+    }
     /// Surface shell-command results (libghostty OSC 133 marks): a
     /// transient ✓/✗ + duration badge in the pane's corner when a
     /// command fails or runs a while, and a notification when a
@@ -380,6 +389,18 @@ final class Preferences: ObservableObject {
 
     private let ud = UserDefaults.standard
 
+    /// Default for `launchCommandDelay`. Sized above a typical shell's rc
+    /// load, below anything that reads as sluggish.
+    static let launchCommandDelayDefault: Double = 0.6
+
+    /// The launch delay read without a live `Preferences` instance — the
+    /// pane-spawn helpers that type a command into a new tab are static.
+    /// Mirrors the `launchCommandDelay` pref and its default.
+    static var resolvedLaunchDelay: Double {
+        UserDefaults.standard.object(forKey: K.launchCommandDelay) as? Double
+            ?? launchCommandDelayDefault
+    }
+
     private enum K {
         static let orientation = "conterm.tabOrientation"
         static let launchAnim  = "conterm.launchAnimation"
@@ -399,6 +420,7 @@ final class Preferences: ObservableObject {
         static let blinkOnAttention = "conterm.blinkOnAttention"
         static let paneCornerRadius = "conterm.paneCornerRadius"
         static let uiScale          = "conterm.uiScale"
+        static let launchCommandDelay = "conterm.launchCommandDelay"
         static let commandAlerts    = "conterm.commandAlerts"
         static let autoCheckUpdates  = "conterm.autoCheckUpdates"
         static let showSystemStats  = "conterm.showSystemStats"
@@ -507,6 +529,7 @@ final class Preferences: ObservableObject {
         self.blinkOnAttention       = ud.object(forKey: K.blinkOnAttention) as? Bool ?? true
         self.paneCornerRadius       = ud.object(forKey: K.paneCornerRadius) as? Double ?? 20
         self.uiScale                = ud.object(forKey: K.uiScale) as? Double ?? 1
+        self.launchCommandDelay     = ud.object(forKey: K.launchCommandDelay) as? Double ?? Self.launchCommandDelayDefault
         self.commandAlerts          = ud.object(forKey: K.commandAlerts) as? Bool ?? true
         self.autoCheckUpdates       = ud.object(forKey: K.autoCheckUpdates) as? Bool ?? true
         self.showSystemStats        = ud.object(forKey: K.showSystemStats) as? Bool ?? true

@@ -809,9 +809,9 @@ extension CommandPalette {
 
     // MARK: - Sending shell commands into a pane
 
-    /// Open a new tab and run `command` in its shell once the
-    /// surface is mounted. Newline is appended so the command runs
-    /// immediately.
+    /// Open a new tab and run `command` in its shell once the surface has
+    /// mounted and its shell is ready. Mounting is a few runloop ticks; shell
+    /// readiness is not observable, so `launchCommandDelay` waits it out.
     @MainActor
     static func runInNewTab(state: AppState, command: String) {
         state.togglePalette()
@@ -823,8 +823,15 @@ extension CommandPalette {
             attempts += 1
             if let pane = tab.paneTree.activePane,
                let ctrl = pane.controller {
-                ctrl.typeText(command)
-                ctrl.sendReturn()
+                // Surface-mounted ≠ shell-ready: a heavy rc may still be
+                // loading. Wait out the launch delay, then paste the whole
+                // line atomically — char-by-char typeText races libghostty's
+                // input and drops characters.
+                let delay = state.prefs.launchCommandDelay
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    ctrl.sendText(command)
+                    ctrl.sendReturn()
+                }
                 return
             }
             if attempts < 30 {

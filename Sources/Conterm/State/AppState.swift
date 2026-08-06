@@ -914,8 +914,13 @@ final class AppState: ObservableObject {
     private static func sendWhenMounted(_ pane: Pane, command: String,
                                         attempts: Int = 0) {
         if let ctrl = pane.controller {
-            ctrl.typeText(command)
-            ctrl.sendReturn()
+            // Surface-mounted ≠ shell-ready: wait out the launch delay so a
+            // slow rc doesn't swallow the command, then paste atomically.
+            let delay = Preferences.resolvedLaunchDelay
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                ctrl.sendText(command)
+                ctrl.sendReturn()
+            }
             return
         }
         guard attempts < 40 else { return }
