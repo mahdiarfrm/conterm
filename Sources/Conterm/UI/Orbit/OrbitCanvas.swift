@@ -364,10 +364,13 @@ extension OrbitOverlay {
         let titleW = TabPill.textWidth(n.label, size: 13)
         let tag = compact ? nil : kindOrdinalTag(n)
         let textW = contentWidth(n, tag: tag)
-        let w = 32 + 24 + 11 + textW         // padding + glyph + gap + text
+        // Padding + glyph + gap + text, plus the status dot's own column when
+        // the node has a state to show.
+        let dot: CGFloat = n.status == .neutral ? 0 : 10
+        let w = 30 + 24 + 11 + textW + dot
         // Vertical padding + the title line, plus the tag, a wrapped title and
         // any subtitle.
-        var h: CGFloat = (compact ? 34 : 40) + (tag == nil ? 0 : 14)
+        var h: CGFloat = (compact ? 32 : 34) + (tag == nil ? 0 : 13)
         if titleW > textW && !compact { h += 16 }
         if sub?.isEmpty == false { h += 15 }
         let scale = max(min(z, 1.0), NodeCard.minScale)   // matches NodeCard

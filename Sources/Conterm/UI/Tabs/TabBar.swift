@@ -1285,13 +1285,21 @@ struct FloatingLightsAutohidePill: View {
             // Rectangle keeps the footprint at its intended size:
             // 54pt is the lights group's span (close left edge → zoom
             // right edge, AppKit spacing preserved by the shifter).
+            //
+            // Deliberately unscaled, along with the pill's own height and
+            // its horizontal padding. This pill is drawn *around* AppKit's
+            // window buttons, and those are a fixed size at a fixed point
+            // whatever the interface scale is — shrinking the space held
+            // for them walks the auto-hide icon straight onto the lights,
+            // and shrinking the height lifts the capsule off their centre
+            // line. See the unscaled-measures rule in docs/ORBIT.md §7.
             Rectangle()
                 .fill(Color.clear)
-                .frame(width: Theme.ui(54), height: Theme.ui(22))
+                .frame(width: 54, height: 22)
             AutoHideToggleButton(bare: true)
         }
-        .padding(.horizontal, Theme.ui(8))
-        .frame(height: Theme.ui(32))
+        .padding(.horizontal, 8)
+        .frame(height: 32)
         .modifier(ActionBarGlass(redAllowed: false, solid: true))
         // Never let the pill compress — a narrow sidebar would
         // otherwise push the auto-hide icon on top of the native

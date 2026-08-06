@@ -391,6 +391,9 @@ extension OrbitOverlay {
     }
 
     var hintText: String {
+        if state.orbitHintMode {
+            return "Type a node's letters to aim at it · Esc to stop"
+        }
         if linkMode {
             return "Tap a node to link it to this note · Esc to cancel · tap a line's middle to remove it"
         }
@@ -406,7 +409,7 @@ extension OrbitOverlay {
         if isFleetView {
             return "Every host you've connected to · tap to select · Run, Playbook or Connect"
         }
-        return "What's running now · tap to act · Space menu → Fleet for every host"
+        return "What's running now · tap to act · G to pick a node by keyboard · ? for every key"
     }
 
     /// Floating flow-authoring bar: appears once tasks are staged. Run releases
@@ -466,6 +469,10 @@ extension OrbitOverlay {
                     // A key nobody is told about is a key nobody presses.
                     zoomButton("magnifyingglass") { state.toggleOrbitSearch() }
                         .help("Find a host, session or routine (⌘K)")
+                    zoomButton(state.orbitHintMode ? "keyboard.fill" : "keyboard") {
+                        toggleHints()
+                    }
+                    .help("Label every node so you can pick one by typing (G)")
                     zoomButton(showSessions ? "rectangle.stack.fill" : "rectangle.stack") {
                         withAnimation(Theme.Spring.snappy) { showSessions.toggle() }
                     }

@@ -169,6 +169,14 @@ enum SSHHistory {
     /// `user@host`, etc.), or nil for any other command. Skips over
     /// flags and their arguments, so `ssh -p 22 -i ~/.ssh/k user@h`
     /// returns `user@h`.
+    /// Seams for `SSHHistoryTests`. Every miss in either of these is a machine
+    /// you can no longer find by name, so they are pinned rather than trusted.
+    static func targetForTesting(_ command: String) -> String? { extractTarget(command) }
+    static func zshLineForTesting(_ line: String,
+                                  fallback: inout Double) -> (Double, String) {
+        parseZshLine(line, fallback: &fallback)
+    }
+
     private static func extractTarget(_ command: String) -> String? {
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true)

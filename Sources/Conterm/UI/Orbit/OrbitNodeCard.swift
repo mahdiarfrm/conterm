@@ -87,15 +87,26 @@ struct NodeCard: View {
                     radius: status == .neutral ? 0 : 7)
             .frame(width: 24)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 if let kindTag, !compact {
                     // What the card *is* — never abbreviated. The tag is the
                     // one line that tells a session apart from the machine it
                     // is talking to, so it takes its natural width and the
                     // selection tick sits outside the text column entirely.
-                    OrbitText(text: kindTag, size: 8, tracking: 1.2)
-                        .foregroundStyle(selected ? Theme.accent.opacity(0.95)
-                                                  : Theme.textSecondary.opacity(0.7))
+                    // The state rides here as a dot rather than as a bar down
+                    // the card's edge: on a card three short lines tall, a full
+                    // height spine is most of what you see.
+                    HStack(spacing: 5) {
+                        if status != .neutral {
+                            Circle()
+                                .fill(tint.opacity(wants || busy ? 0.6 + 0.4 * pulse : 0.85))
+                                .frame(width: 4.5, height: 4.5)
+                                .shadow(color: tint.opacity(0.8), radius: 3.5)
+                        }
+                        OrbitText(text: kindTag, size: 8, tracking: 1.2)
+                            .foregroundStyle(selected ? Theme.accent.opacity(0.95)
+                                                      : Theme.textSecondary.opacity(0.7))
+                    }
                 }
                 Text(label)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -112,8 +123,8 @@ struct NodeCard: View {
             }
             .frame(width: contentWidth, alignment: .leading)
         }
-        .padding(.leading, 15).padding(.trailing, 17)
-        .padding(.vertical, compact ? 9 : 12)
+        .padding(.leading, 14).padding(.trailing, 16)
+        .padding(.vertical, compact ? 8 : 9)
         .background(
             ZStack {
                 // A bed under the glass, thin enough that the frost still reads
@@ -138,20 +149,6 @@ struct NodeCard: View {
                 }
             }
         )
-        // A spine in the status colour down the leading edge. The underglow is
-        // gentle by design, which leaves a wall of quiet cards saying nothing
-        // at a glance; a hard edge of colour reads instantly and survives being
-        // scaled down, which the glow does not.
-        .overlay(alignment: .leading) {
-            if status != .neutral {
-                Capsule()
-                    .fill(tint.opacity(wants || busy ? 0.55 + 0.35 * pulse : 0.7))
-                    .frame(width: 3.5)
-                    .padding(.vertical, 11)
-                    .padding(.leading, 5)
-                    .shadow(color: tint.opacity(0.7), radius: 5)
-            }
-        }
         .overlay(
             RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: selected ? 2.2 : 1)

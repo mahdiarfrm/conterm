@@ -79,8 +79,16 @@ extension OrbitOverlay {
         if let key = state.orbitKey { runOrbitKey(key) }
     }
 
+    func toggleHints() {
+        if state.orbitHintMode { endHints() } else { beginHints() }
+    }
+
     func beginHints() {
         hintBuffer = ""
+        // The canvas parks its render loop once the graph settles, and the
+        // labels are drawn inside it — without a wake they can arrive a beat
+        // late, which reads as the key not having worked.
+        sim.wake()
         withAnimation(Theme.Spring.snappy) { state.orbitHintMode = true }
     }
 

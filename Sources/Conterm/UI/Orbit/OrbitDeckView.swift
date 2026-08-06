@@ -159,7 +159,7 @@ struct TimelineDeckView: View {
                 // footprint. Newest first, so a dense burst keeps its most recent
                 // commands; anything that can't fit a lane without overlapping is
                 // dropped rather than drawn on top of another block.
-                let agW: CGFloat = 116, agGap: CGFloat = 6
+                let agW: CGFloat = 148, agGap: CGFloat = 6
                 let agPlaced: [(item: AgentDeckItem, lane: Int, px: CGFloat)] = {
                     var laneLeft = [CGFloat](repeating: .greatestFiniteMagnitude, count: agMaxLanes)
                     var out: [(AgentDeckItem, Int, CGFloat)] = []
@@ -252,7 +252,12 @@ struct TimelineDeckView: View {
         HStack(spacing: 4) {
             Image(systemName: a.kind == .ansible ? "play.fill" : "chevron.right.circle.fill")
                 .font(.system(size: 8, weight: .bold))
-            Text(a.label).font(OrbitFont.face(9)).lineLimit(1)
+            // A command is shell text, so it is set as shell text. The mode's
+            // display face is for its own labels — times, headings — and turns
+            // `pwd && ls -1` into something you have to decipher.
+            Text(a.label)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 0)
         }
         .foregroundStyle(fg)
@@ -284,17 +289,22 @@ struct TimelineDeckView: View {
     func agentBlock(_ it: AgentDeckItem, width: CGFloat, x: CGFloat, y: CGFloat) -> some View {
         let tint = it.isSubagent ? Color(red: 0.62, green: 0.52, blue: 0.96)
                                  : Color(red: 0.38, green: 0.78, blue: 0.86)
-        return HStack(spacing: 3) {
+        return HStack(spacing: 5) {
             Image(systemName: it.isSubagent ? "person.2.fill" : "chevron.left.forwardslash.chevron.right")
-                .font(.system(size: 7.5, weight: .bold))
-            Text(it.label).font(OrbitFont.face(8.5)).lineLimit(1)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(tint)
+            Text(it.label)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 0)
         }
-        .foregroundStyle(tint)
-        .padding(.horizontal, 6)
+        // The glyph carries the colour; the command itself is read, so it takes
+        // the full-strength ink rather than a tint at a fifth of it.
+        .foregroundStyle(Theme.textPrimary.opacity(0.92))
+        .padding(.horizontal, 7)
         .frame(width: width, height: laneH - 1, alignment: .leading)
-        .background(Capsule().fill(tint.opacity(0.16)))
-        .overlay(Capsule().strokeBorder(tint.opacity(0.45), lineWidth: 1))
+        .background(Capsule().fill(tint.opacity(0.14)))
+        .overlay(Capsule().strokeBorder(tint.opacity(0.5), lineWidth: 1))
         .help(it.label)
         .offset(x: x, y: y)
     }

@@ -133,13 +133,16 @@ extension OrbitOverlay {
     /// node the simulation has never placed has no position yet — the first
     /// pass moves the camera to where it will be, the second corrects once the
     /// sim has actually put it somewhere.
+    /// Deliberately unanimated. The node cards are SwiftUI views whose
+    /// `.position` interpolates, while the edges are drawn in a `Canvas` that
+    /// reads `pan` at its next evaluation and jumps — so animating the camera
+    /// makes the wires arrive before the nodes they connect. Everything moves
+    /// together, at once.
     func centerOn(_ id: String) {
         func aim() {
             let w = sim.position(id)
-            withAnimation(Theme.Spring.soft) {
-                // Biased up by the deck's own band, or the node lands under it.
-                pan = CGSize(width: -w.x * z, height: -w.y * z - 40)
-            }
+            // Biased up by the deck's own band, or the node lands under it.
+            pan = CGSize(width: -w.x * z, height: -w.y * z - 40)
         }
         sim.wake()
         aim()

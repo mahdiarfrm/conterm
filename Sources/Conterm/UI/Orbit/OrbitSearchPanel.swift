@@ -66,6 +66,11 @@ struct OrbitSearchPanel: View {
             DispatchQueue.main.async { fieldFocused = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { fieldFocused = true }
         }
+        // The corpus is gathered by the map when the field opens, which lands a
+        // render *after* this view mounts — so `onAppear` alone showed whatever
+        // had been gathered the previous time it was opened, and on the first
+        // open showed nothing at all.
+        .onChange(of: corpus) { _, _ in rank() }
         .onChange(of: query) { _, _ in rank() }
         .onChange(of: bus.nav) { old, new in move(by: new - old) }
         .onChange(of: bus.runTick) { _, _ in commitFocused() }

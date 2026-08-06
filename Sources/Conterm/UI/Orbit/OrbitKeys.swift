@@ -122,7 +122,7 @@ extension OrbitOverlay {
         switch key {
         case .nextNode:  aimAtNeighbour(1)
         case .prevNode:  aimAtNeighbour(-1)
-        case .hints:     if state.orbitHintMode { endHints() } else { beginHints() }
+        case .hints:     toggleHints()
         // With a node aimed the arrows walk the graph; with nothing aimed there
         // is nothing to walk, so they move the camera instead.
         case .panUp:     aimDirection(dx: 0, dy: -1)
@@ -183,10 +183,11 @@ extension OrbitOverlay {
         act(t)
     }
 
+    /// Unanimated, for the reason `centerOn` is: the cards interpolate and the
+    /// `Canvas` behind them does not, so a glide separates the wires from the
+    /// nodes they join.
     func nudgePan(dx: CGFloat, dy: CGFloat) {
-        withAnimation(.easeOut(duration: 0.14)) {
-            pan.width += dx; pan.height += dy
-        }
+        pan.width += dx; pan.height += dy
         sim.wake()
     }
 
