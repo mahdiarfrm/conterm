@@ -807,36 +807,48 @@ extension OrbitOverlay {
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
-    /// Point kubectl at this context.
+    /// Point kubectl somewhere else.
     ///
-    /// Always the machine-wide switch, not the per-pane overlay the tab-bar
-    /// pill offers: Orbit is looking at the whole fleet, and there is no one
-    /// pane it could sensibly mean — the overlay would land in whichever tab
-    /// happens to be selected behind the map, where you cannot see it happen.
+    /// A menu rather than a verb on the card, because the map only draws the
+    /// context that is *in use* — the one card you can see is the one you would
+    /// be switching away from, so the alternatives have to come from the
+    /// kubeconfig rather than from the graph.
     ///
-    /// Gated when the target reads as production, because this is the moment
-    /// every command after it becomes dangerous.
+    /// Always the machine-wide switch, never the per-pane overlay the tab-bar
+    /// pill offers: Orbit looks at the whole fleet, and the overlay would land
+    /// in whichever tab happens to be selected behind the map, where you cannot
+    /// watch it happen.
     @ViewBuilder
-    func useContextAction(_ ctx: String) -> some View {
-        let current = kubeContext.current == ctx
-        dockAction("checkmark.circle", current ? "In use" : "Use this context",
-                   enabled: !current && kubeContext.canSwitch) {
-            guarded(ctx, verb: "Switch",
-                    subject: "Point kubectl at \(KubeContextWatch.shortLabel(ctx))",
-                    detail: "Every kubectl command on this machine goes here until "
-                        + "you switch again — including the ones this map runs.") {
-                kubeContext.switchContext(ctx)
-                // The graph draws the current context; it polls on its own
-                // clock, and waiting a tick to see the switch land reads as
-                // the button not having worked.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    OrbitModel.shared.rebuild(); sim.wake()
-                }
+    func switchContextMenu() -> some View {
+        let others = kubeContext.contexts.filter { $0.name != kubeContext.current }
+        dockMenu("arrow.triangle.2.circlepath", "Switch context") {
+            if others.isEmpty {
+                Text(kubeContext.canSwitch ? "No other contexts in your kubeconfig"
+                                           : "kubectl was not found")
+            }
+            ForEach(others) { ctx in
+                Button(KubeContextWatch.shortLabel(ctx.name)) { useContext(ctx.name) }
+                    .help(ctx.name)
             }
         }
-        .help(current ? "kubectl already points here"
-                      : (kubeContext.canSwitch ? "Point kubectl at this context"
-                                               : "kubectl was not found"))
+        .disabled(!kubeContext.canSwitch || others.isEmpty)
+        .opacity(kubeContext.canSwitch && !others.isEmpty ? 1 : 0.4)
+    }
+
+    /// Gated when the target reads as production — that is the moment every
+    /// command after it becomes dangerous.
+    func useContext(_ ctx: String) {
+        guarded(ctx, verb: "Switch",
+                subject: "Point kubectl at \(KubeContextWatch.shortLabel(ctx))",
+                detail: "Every kubectl command on this machine goes here until "
+                    + "you switch again — including the ones this map runs.") {
+            kubeContext.switchContext(ctx)
+            // The graph draws the current context and polls on its own clock;
+            // waiting a tick to see the switch land reads as nothing happening.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                OrbitModel.shared.rebuild(); sim.wake()
+            }
+        }
     }
 
     @ViewBuilder
@@ -847,7 +859,7 @@ extension OrbitOverlay {
                        expandedContexts.contains(ctx) ? "Hide nodes" : "Nodes",
                        primary: true) { toggleContext(ctx) }
             dockAction("rectangle.3.group", "Details") { state.openClusterOverview(context: ctx) }
-            useContextAction(ctx)
+            switchContextMenu()
         case .kubeNode(let name, _):
             if let ctx = kubeContext(ofNodeID: node.id) {
                 let open = expandedKubeNodes.contains(KubeDrill.podKey(ctx, name))
@@ -1127,6 +1139,10 @@ extension OrbitOverlay {
                 .help("Open a terminal session here")
             dockMenu("sparkle", "New Claude") { newAgentMenuItems() }
                 .help("Start an agent — here, or in a directory you pick")
+            // The context is a property of this machine, so its own card
+            // offers it too — and a fleet with no cluster node drawn has
+            // nowhere else to reach it from.
+            if !kubeContext.contexts.isEmpty { switchContextMenu() }
             dockAction("scope", "Whole fleet") {
                 withAnimation(Theme.Spring.snappy) {
                     state.orbitFocusSession = nil; barNode = nil
