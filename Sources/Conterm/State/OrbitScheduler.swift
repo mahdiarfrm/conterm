@@ -252,7 +252,25 @@ final class OrbitScheduler: ObservableObject {
         actions[i].finishedAt = Date()
         actions[i].resultNote = "exit \(exitCode)"
         actions[i].output = output
+        announce(actions[i])
         save()
+    }
+
+    /// Tell somebody when planned work fails.
+    ///
+    /// The engine runs app-wide and on its own clock, so a routine can fail at
+    /// three in the morning with Orbit shut. "Since you looked away" reports it
+    /// the next time the map is opened, which is the wrong end of the problem:
+    /// a failure is worth knowing about when it happens. Successes are not —
+    /// the whole point of scheduling something is not having to watch it.
+    private func announce(_ action: Action) {
+        guard action.status == .failed else { return }
+        let where_ = action.targets.isEmpty ? "locally"
+                                            : "on " + action.targets.joined(separator: ", ")
+        NotificationStore.shared?.post(
+            tool: .generic,
+            title: "\(action.label) failed",
+            message: "\(where_) · \(action.resultNote ?? "no result")")
     }
 
     /// Resolve running actions against a completion probe (the Ansible watcher).
@@ -266,6 +284,7 @@ final class OrbitScheduler: ObservableObject {
             // Snapshot the report now: the live run is tied to a pane, and the
             // pane will not outlive the session.
             if let out = o.output { actions[i].output = out }
+            announce(actions[i])
             changed = true
         }
         if changed { save() }

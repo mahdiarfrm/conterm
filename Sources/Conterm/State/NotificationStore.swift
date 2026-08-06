@@ -19,6 +19,11 @@ struct AppNotification: Identifiable, Equatable {
 /// app is in the background, so it never nags while you're watching.
 @MainActor
 final class NotificationStore: ObservableObject {
+    /// The one the app built, for services that run outside any window and so
+    /// have nothing injected into them — the plan's engine, most of all, which
+    /// fires whether or not a window is watching.
+    static weak var shared: NotificationStore?
+
     @Published private(set) var items: [AppNotification] = []
 
     private let cap = 60
@@ -38,6 +43,7 @@ final class NotificationStore: ObservableObject {
         ) { ok, _ in
             Task { @MainActor in self.bannerAuthorized = ok }
         }
+        Self.shared = self
     }
 
     var unreadCount: Int { items.lazy.filter { !$0.read }.count }
