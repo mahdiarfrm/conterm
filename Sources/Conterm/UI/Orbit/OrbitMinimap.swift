@@ -96,6 +96,10 @@ extension OrbitOverlay {
                 }
                 .padding(.horizontal, 7).padding(.vertical, 3)
             }
+            // The footer row carries a Spacer, which without this takes every
+            // point the surrounding HStack will give it — stretching the panel
+            // across the whole foot of the canvas.
+            .frame(width: minimapSize.width)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(prefs.lightGlass ? Color.white.opacity(0.82) : Color.black.opacity(0.72)))
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous)

@@ -69,11 +69,17 @@ enum OrbitKey: String, CaseIterable {
     }
 
     /// Whether a bare letter belongs to something being typed into rather than
-    /// to the map. The map has several fields — search, the command bar, a note,
-    /// a rename — and any of them makes every shortcut here wrong.
+    /// to the map.
+    ///
+    /// Anything that accepts text input owns its own keys — the map's fields
+    /// (search, the command bar, a note, a rename) and, importantly, a docked
+    /// terminal, whose `SurfaceView` is not an `NSText` but is an
+    /// `NSTextInputClient`. Checking only for `NSText` ate every letter typed
+    /// into a session on the canvas.
     @MainActor
     static var isEditing: Bool {
-        NSApp.keyWindow?.firstResponder is NSText
+        guard let responder = NSApp.keyWindow?.firstResponder else { return false }
+        return responder is NSText || responder is NSTextInputClient
     }
 
     /// The key for a bare character, or nil if that character means nothing

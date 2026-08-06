@@ -480,8 +480,12 @@ struct LayoutModeSwitcher: View {
         )
     }
 
+    /// Orbit is a mode of its own, so while it is up no tab layout is the
+    /// current one — the tab bar it would describe isn't on screen. Without
+    /// this the stored orientation kept its accent and two segments read as
+    /// active at once.
     private func iconColor(_ m: Preferences.TabOrientation) -> Color {
-        prefs.tabOrientation == m ? Theme.accent : Theme.textSecondary
+        prefs.tabOrientation == m && !state.orbitOpen ? Theme.accent : Theme.textSecondary
     }
 
     /// Orbit is a mode too — it rides the same switcher but toggles the Orbit

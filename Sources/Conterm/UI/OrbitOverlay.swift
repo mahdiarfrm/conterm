@@ -500,6 +500,11 @@ struct OrbitOverlay: View {
             paneCommand = ""
             applySpace()
         }
+        // Gathered on the way in, so the panel opens holding everything it can
+        // find and never has to reach for disk while you type.
+        .onChange(of: state.orbitSearchOpen) { _, open in
+            if open { refreshSearchCorpus() }
+        }
         .onChange(of: state.orbitKeyTick) { _, _ in
             if let k = state.orbitKey { runOrbitKey(k) }
         }
@@ -594,14 +599,11 @@ struct OrbitOverlay: View {
     /// What is typed into the map's search field, and which of its results is
     /// highlighted. Whether the field is *up* lives on `AppState`, because the
     /// key monitor has to route the arrows and Return to it.
-    @State var searchQuery = ""
-    @State var searchIndex = 0
-    @FocusState var searchFieldFocused: Bool
-    /// Everything findable, built once when the field opens; and the subset
-    /// matching what has been typed, recomputed once per keystroke. Neither is
-    /// derived in `body` — the corpus reads the shell history from disk.
+    /// Everything findable, gathered when the field opens and on nothing else —
+    /// building it reads the shell history off disk. The query, the highlight
+    /// and the ranking belong to `OrbitSearchPanel`, so typing in it never
+    /// redraws the graph.
     @State var searchCorpus: [SearchItem] = []
-    @State var searchResults: [SearchItem] = []
     /// The palette's own rectangle, so a wheel over it scrolls its list rather
     /// than panning the map beneath.
     @State var searchFrame: CGRect = .zero

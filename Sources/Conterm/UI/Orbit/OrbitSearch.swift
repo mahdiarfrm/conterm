@@ -114,33 +114,6 @@ extension OrbitOverlay {
             $0.natural != $1.natural ? $0.natural < $1.natural
                 : $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
         }
-        rankSearch()
-    }
-
-    /// Filter and order the corpus for the current query. Called once per
-    /// keystroke — never from `body`.
-    func rankSearch() {
-        let q = searchQuery.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else {
-            searchResults = searchCorpus
-            searchIndex = 0
-            return
-        }
-        var ranked: [(SearchItem, Int)] = []
-        for item in searchCorpus {
-            // A subtitle match is real but weaker than a name match — you
-            // usually type the name.
-            let byLabel = Self.searchRank(item.label, q)
-            let bySub = item.subtitle.flatMap { Self.searchRank($0, q) }.map { $0 + 4 }
-            guard let rank = [byLabel, bySub].compactMap({ $0 }).min() else { continue }
-            ranked.append((item, rank))
-        }
-        searchResults = ranked.sorted {
-            if $0.1 != $1.1 { return $0.1 < $1.1 }
-            if $0.0.label.count != $1.0.label.count { return $0.0.label.count < $1.0.label.count }
-            return $0.0.label.localizedCaseInsensitiveCompare($1.0.label) == .orderedAscending
-        }.map(\.0)
-        searchIndex = 0
     }
 
     // MARK: - Committing
@@ -162,16 +135,8 @@ extension OrbitOverlay {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { aim() }
     }
 
-    func runSearch() {
-        guard let hit = searchResults.indices.contains(searchIndex)
-                ? searchResults[searchIndex] : searchResults.first else { return }
-        commitSearch(hit)
-    }
-
     func commitSearch(_ hit: SearchItem) {
         state.orbitSearchOpen = false
-        searchQuery = ""
-        searchIndex = 0
         SoundEffects.shared.play(.paletteConfirm)
 
         switch hit.target {
@@ -225,142 +190,19 @@ extension OrbitOverlay {
         }
     }
 
-    // MARK: - The field
+    // MARK: - Mounting
 
-    /// Two detached bubbles — the input bar, then the results — the same shape
-    /// as the app's own command palette, so the one search here and the one
-    /// everywhere else are recognisably the same object.
+    /// The panel is its own view so that typing in it costs a redraw of the
+    /// panel and not of the graph. The map's only jobs are gathering the corpus
+    /// when it opens, and carrying out what gets picked.
     @ViewBuilder
     var searchPanel: some View {
         if state.orbitSearchOpen {
-            ZStack(alignment: .top) {
-                Color.black.opacity(0.28).ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture { state.toggleOrbitSearch() }
-                VStack(spacing: 10) {
-                    searchBar
-                        .modifier(PaletteBubble(cornerRadius: 27, darken: 0.14))
-                    if !searchResults.isEmpty {
-                        searchList
-                            .modifier(PaletteBubble(cornerRadius: 26))
-                    } else if !searchQuery.isEmpty {
-                        Text("Nothing matches “\(searchQuery)”.")
-                            .font(.system(size: 11, design: .rounded))
-                            .foregroundStyle(Theme.textSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(20)
-                            .modifier(PaletteBubble(cornerRadius: 26))
-                    }
-                }
-                .frame(maxWidth: 560)
-                // Its own frame, so a wheel over the list scrolls the list
-                // instead of panning the map underneath it.
-                .background(GeometryReader { g in
-                    Color.clear
-                        .onAppear { searchFrame = g.frame(in: .global) }
-                        .onChange(of: g.frame(in: .global)) { _, f in searchFrame = f }
-                })
-                .padding(.top, 84)
+            OrbitSearchPanel(corpus: searchCorpus,
+                             onCommit: { commitSearch($0) },
+                             onDismiss: { state.toggleOrbitSearch() },
+                             frame: $searchFrame)
                 .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
-            }
-            .onAppear {
-                searchQuery = ""
-                refreshSearchCorpus()
-                // Claiming focus synchronously races the field's mount and
-                // loses, leaving the bar deaf until it is clicked.
-                DispatchQueue.main.async { searchFieldFocused = true }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    searchFieldFocused = true
-                }
-            }
-            .onDisappear { searchFrame = .zero }
-            .onChange(of: searchQuery) { _, _ in rankSearch() }
-            .onChange(of: state.orbitSearchNav) { old, new in
-                guard !searchResults.isEmpty else { return }
-                let n = searchResults.count
-                searchIndex = ((searchIndex + (new - old)) % n + n) % n
-                SoundEffects.shared.play(.paletteMove)
-            }
-            .onChange(of: state.orbitSearchRunTick) { _, _ in runSearch() }
         }
-    }
-
-    var searchBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(Theme.textSecondary)
-                .font(.system(size: 15, weight: .medium))
-            NeonCaretField(text: $searchQuery,
-                           placeholder: "Find a host, session, cluster or routine",
-                           fontSize: 16, lightBackground: prefs.lightGlass)
-                .frame(height: 24)
-                .focused($searchFieldFocused)
-            Spacer()
-            if !searchResults.isEmpty {
-                Text("\(searchResults.count)")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Capsule().fill(Theme.stroke))
-            }
-            Text("esc")
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(Capsule().fill(Theme.stroke))
-        }
-        .padding(.horizontal, 18).padding(.vertical, 16)
-    }
-
-    var searchList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(searchResults.enumerated()), id: \.element.id) { i, hit in
-                        searchRow(hit, active: i == searchIndex)
-                            .id("orbit-hit-\(i)")
-                            .onTapGesture { commitSearch(hit) }
-                            .onHover { if $0 { searchIndex = i } }
-                    }
-                }
-                .padding(8)
-            }
-            .frame(maxHeight: 380)
-            .onChange(of: searchIndex) { _, i in
-                withAnimation(.easeOut(duration: 0.12)) {
-                    proxy.scrollTo("orbit-hit-\(i)", anchor: .center)
-                }
-            }
-        }
-    }
-
-    func searchRow(_ hit: SearchItem, active: Bool) -> some View {
-        HStack(spacing: 11) {
-            Image(systemName: hit.glyph)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(active ? Theme.accent : Theme.textSecondary)
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(hit.label)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
-                if let s = hit.subtitle, !s.isEmpty, s != hit.label {
-                    Text(s)
-                        .font(.system(size: 10.5, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1).truncationMode(.middle)
-                }
-            }
-            Spacer(minLength: 8)
-            Text(hit.kind.uppercased())
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .tracking(0.7)
-                .foregroundStyle(Theme.textSecondary.opacity(0.65))
-        }
-        .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(active ? Theme.selectionFill : .clear))
-        .contentShape(Rectangle())
     }
 }

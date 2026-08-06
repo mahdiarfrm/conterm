@@ -458,11 +458,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // Orbit's search field owns the arrows and Return while it's up,
             // for the same reason the palette does: the TextField consumes them
             // first, so a SwiftUI parent never sees them.
+            // Routed through the panel's own bus rather than AppState: the map
+            // observes AppState, so publishing there would re-evaluate the
+            // whole canvas for every arrow key and make a held-down key crawl.
             if self.state.orbitOpen, self.state.orbitSearchOpen {
                 switch event.keyCode {
-                case 126: self.state.orbitSearchNav -= 1; return nil
-                case 125: self.state.orbitSearchNav += 1; return nil
-                case 36:  self.state.orbitSearchRunTick &+= 1; return nil
+                case 126: OrbitSearchBus.shared.nav -= 1; return nil
+                case 125: OrbitSearchBus.shared.nav += 1; return nil
+                case 36:  OrbitSearchBus.shared.runTick &+= 1; return nil
                 default: break
                 }
             }

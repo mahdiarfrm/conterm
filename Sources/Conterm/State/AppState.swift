@@ -535,12 +535,9 @@ final class AppState: ObservableObject {
     /// Whether the map's search field is up. Held here rather than in the view
     /// because the key monitor has to route the arrows and Return to it: a
     /// focused `TextField` swallows them before any SwiftUI parent sees them.
+    /// The arrows and Return travel on `OrbitSearchBus` instead, which the map
+    /// does not observe — see the note there.
     @Published var orbitSearchOpen = false
-    /// A signed running counter the key monitor moves; the view applies the
-    /// difference, so one value carries both direction and repeats.
-    @Published var orbitSearchNav = 0
-    /// Bumped by Return — commit whatever the search has highlighted.
-    @Published var orbitSearchRunTick = 0
 
     /// A key pressed in Orbit that the view has to act on. The key monitor
     /// can't reach the map's own state — what is aimed at, what is selected —
@@ -557,7 +554,6 @@ final class AppState: ObservableObject {
 
     func toggleOrbitSearch() {
         withAnimation(Theme.Spring.snappy) { orbitSearchOpen.toggle() }
-        if orbitSearchOpen { orbitSearchNav = 0 }
     }
 
     /// Persisted so a relaunch reopens in Orbit when it was the active layer.
