@@ -339,16 +339,16 @@ extension OrbitOverlay {
     /// long name wraps instead of stretching the card across the map. The kind
     /// tag only sets a modest floor — it must not decide the width outright.
     func contentWidth(_ n: MapNode, tag: String?) -> CGFloat {
-        let titleW = TabPill.textWidth(n.label, size: 12)
+        let titleW = TabPill.textWidth(n.label, size: 13)
         // A compact card shows neither subtitle nor tag, so neither may widen
         // it — the whole point of the mode is a smaller footprint.
         let subW = cardsAreCompact ? 0
-            : (cardSubtitle(n).map { TabPill.textWidth($0, size: 9.5) } ?? 0)
+            : (cardSubtitle(n).map { TabPill.textWidth($0, size: 10) } ?? 0)
         // Tracking adds a little beyond the glyph run. The tag is never
         // compressed (it is `fixedSize`), so this only has to stop the card
         // being narrower than its own identity line.
-        let tagW = tag.map { OrbitFont.width($0, size: 7.5) + 6 } ?? 0
-        return min(150, max(max(titleW, subW), tagW))
+        let tagW = tag.map { OrbitFont.width($0, size: 8) + 8 } ?? 0
+        return min(160, max(max(titleW, subW), tagW))
     }
 
     /// The card's rect, which is also its hit target — the cards are
@@ -361,15 +361,15 @@ extension OrbitOverlay {
     func cardSize(_ n: MapNode) -> CGSize {
         let compact = cardsAreCompact
         let sub = compact ? nil : cardSubtitle(n)
-        let titleW = TabPill.textWidth(n.label, size: 12)
+        let titleW = TabPill.textWidth(n.label, size: 13)
         let tag = compact ? nil : kindOrdinalTag(n)
         let textW = contentWidth(n, tag: tag)
-        let w = 22 + 24 + 10 + textW         // padding + glyph well + gap + text
+        let w = 28 + 19 + 11 + textW         // padding + glyph + gap + text
         // Vertical padding + the title line, plus the tag, a wrapped title and
         // any subtitle.
-        var h: CGFloat = (compact ? 27 : 31) + (tag == nil ? 0 : 13)
-        if titleW > textW && !compact { h += 15 }
-        if sub?.isEmpty == false { h += 14 }
+        var h: CGFloat = (compact ? 32 : 36) + (tag == nil ? 0 : 14)
+        if titleW > textW && !compact { h += 16 }
+        if sub?.isEmpty == false { h += 15 }
         let scale = max(min(z, 1.0), NodeCard.minScale)   // matches NodeCard
         return CGSize(width: w * scale, height: h * scale)
     }

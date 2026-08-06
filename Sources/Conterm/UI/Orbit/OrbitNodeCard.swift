@@ -68,55 +68,51 @@ struct NodeCard: View {
     static let minScale: CGFloat = 0.82
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            // A well around the glyph, so the mixed marks this map draws —
-            // SF symbols with their own frame, ones without, and a fetched
-            // distribution logo — all sit in the same place at the same weight.
-            ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(glyphWell)
-                Group {
-                    if let distro {
-                        DistroMark(distro: distro, size: 13)
-                    } else {
-                        Image(systemName: glyph).font(.system(size: 11.5, weight: .semibold))
-                    }
+        HStack(alignment: .center, spacing: 11) {
+            // The mark sits on the card, in nothing. A container around it
+            // reads as chrome, and there is already a spine, a border and a
+            // glow carrying state — the glyph only has to say what this is.
+            Group {
+                if let distro {
+                    DistroMark(distro: distro, size: 16)
+                } else {
+                    Image(systemName: glyph).font(.system(size: 14, weight: .medium))
                 }
-                .foregroundStyle(status == .neutral
-                                 ? Theme.textPrimary.opacity(0.72) : tint)
             }
-            .frame(width: 24, height: 24)
+            .foregroundStyle(status == .neutral
+                             ? Theme.textPrimary.opacity(0.7) : tint)
+            .frame(width: 19)
 
-            VStack(alignment: .leading, spacing: 2.5) {
+            VStack(alignment: .leading, spacing: 3) {
                 if let kindTag, !compact {
                     // What the card *is* — never abbreviated. The tag is the
                     // one line that tells a session apart from the machine it
                     // is talking to, so it takes its natural width and the
                     // selection tick sits outside the text column entirely.
                     Text(kindTag)
-                        .font(OrbitFont.face(7.5)).tracking(0.9)
+                        .font(OrbitFont.face(8)).tracking(1.1)
                         .foregroundStyle(selected ? Theme.accent.opacity(0.95)
-                                                  : Theme.textSecondary.opacity(0.7))
+                                                  : Theme.textSecondary.opacity(0.68))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                 }
                 Text(label)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(compact ? 1 : 2)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 if let subtitle, !subtitle.isEmpty, subtitle != label, !compact {
                     Text(subtitle)
-                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary.opacity(0.9))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary.opacity(0.85))
                         .lineLimit(1).truncationMode(.tail)
                 }
             }
             .frame(width: contentWidth, alignment: .leading)
         }
-        .padding(.leading, 9).padding(.trailing, 13)
-        .padding(.vertical, compact ? 6 : 8)
+        .padding(.leading, 13).padding(.trailing, 15)
+        .padding(.vertical, compact ? 8 : 10)
         .background(
             ZStack {
                 // A bed under the glass. The material alone let the edges and
@@ -185,14 +181,6 @@ struct NodeCard: View {
         .scaleEffect(scale * max(min(zoom, 1.0), Self.minScale))
         .animation(.easeOut(duration: 0.16), value: hovered)
         .animation(.easeOut(duration: 0.16), value: selected)
-    }
-
-    /// The glyph's own bed. Tinted by status so the mark carries the state as
-    /// well as the spine does, and neutral cards stay quiet.
-    var glyphWell: Color {
-        if selected { return Theme.accent.opacity(0.18) }
-        if status == .neutral { return (light ? Color.black : Color.white).opacity(0.07) }
-        return tint.opacity(0.16)
     }
 
     /// How strongly the colour blooms beneath the glass. Deliberately gentle:
