@@ -809,7 +809,7 @@ struct SettingsPanel: View {
                     .labelsHidden()
                 }
                 SettingsRow(title: "SSH compatibility",
-                            subtitle: "Send xterm-256color over SSH so Shift / Option / Ctrl + Arrow work in remote vim, tmux, and similar.") {
+                            subtitle: "Send xterm-256color over SSH instead of installing terminfo on the remote. Fixes garbled typing and makes Shift / Option / Ctrl + Arrow work in remote vim, tmux, and similar.") {
                     Toggle("", isOn: Binding(
                         get: { prefs.sshCompatMode },
                         set: { newValue in

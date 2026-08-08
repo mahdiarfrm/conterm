@@ -152,7 +152,7 @@ extension CommandPalette {
             open("shortcuts", "Keyboard shortcuts", "keys bindings hotkeys",
                  .shortcuts, "keyboard"),
             toggle("sshCompatMode", "SSH compatibility mode",
-                   "remote vim tmux arrow keys term", .config, "network",
+                   "remote vim tmux arrow keys term terminfo garbled", .config, "network",
                    prefs.sshCompatMode) {
                        prefs.sshCompatMode = $0
                        Ghostty.App.shared?.reloadConfig()

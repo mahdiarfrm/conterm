@@ -316,13 +316,22 @@ extension Ghostty {
         nonisolated static func lastwordText() -> String {
             let sshBlock: String
             if sshCompatMode {
-                // SSH compatibility mode: skip the ssh-terminfo /
-                // ssh-env shell wrappers and map Shift / Option / Ctrl
-                // + Arrow to the standard xterm CSI modifier sequences
-                // so they work in remote TUIs regardless of the
-                // remote's TERM.
+                // SSH compatibility mode: `ssh-env` without
+                // `ssh-terminfo`. `ssh-env` is the feature that pins
+                // TERM to xterm-256color — universally resolvable, and
+                // exactly the terminal the arrow keybinds below encode
+                // for. It must stay listed: the wrapper only installs
+                // itself when a feature matches `ssh-*`, so dropping
+                // both leaves TERM as xterm-ghostty. `ssh-terminfo` is
+                // the untrustworthy half — it decides the entry is
+                // present by running `infocmp` on the remote, so a host
+                // whose `infocmp` reads a different terminfo database
+                // than its readline (a Homebrew-on-Linux PATH) reports
+                // success and then garbles every keystroke. COLORTERM
+                // still rides along via ssh-env, so remote apps keep
+                // true color.
                 sshBlock = """
-                shell-integration-features = cursor,sudo,title
+                shell-integration-features = cursor,sudo,title,ssh-env
 
                 keybind = shift+arrow_left=csi:1;2D
                 keybind = shift+arrow_right=csi:1;2C

@@ -345,8 +345,11 @@ final class Preferences: ObservableObject {
     /// Use a broadly-compatible TERM (`xterm-256color`) and standard
     /// xterm modifier sequences for `Shift`/`Option`/`Ctrl + Arrow`
     /// over SSH, so word- and line-motions work in remote vim, tmux,
-    /// and similar TUIs. Trade-off: with this enabled, `Shift+Arrow`
-    /// no longer extends libghostty's local text selection.
+    /// and similar TUIs. Also the escape hatch for a remote whose
+    /// ncurses can't resolve `xterm-ghostty` even though `infocmp`
+    /// can — the mismatch garbles line editing. Trade-off: with this
+    /// enabled, `Shift+Arrow` no longer extends libghostty's local
+    /// text selection.
     @Published var sshCompatMode: Bool {
         didSet {
             ud.set(sshCompatMode, forKey: K.sshCompatMode)
