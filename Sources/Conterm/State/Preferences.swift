@@ -342,18 +342,14 @@ final class Preferences: ObservableObject {
     @Published var lowPowerRendering: Bool {
         didSet { ud.set(lowPowerRendering, forKey: K.lowPowerRendering) }
     }
-    /// Use a broadly-compatible TERM (`xterm-256color`) and standard
-    /// xterm modifier sequences for `Shift`/`Option`/`Ctrl + Arrow`
-    /// over SSH, so word- and line-motions work in remote vim, tmux,
-    /// and similar TUIs. ON by default: it also keeps `ssh-terminfo`
-    /// off, and that feature garbles line editing on any remote whose
-    /// `infocmp` resolves a terminfo database its own ncurses doesn't
-    /// read. Trade-off: while enabled, `Shift+Arrow` sends the xterm
-    /// motion sequence everywhere rather than extending libghostty's
-    /// local text selection.
-    @Published var sshCompatMode: Bool {
+    /// Send the standard xterm modifier sequences for
+    /// `Shift`/`Option`/`Ctrl + Arrow`, so word- and line-motions work
+    /// inside remote vim, tmux, and similar TUIs. OFF by default: the
+    /// bindings are global, so `Shift+Arrow` stops extending
+    /// libghostty's local text selection while this is on.
+    @Published var remoteArrowKeys: Bool {
         didSet {
-            ud.set(sshCompatMode, forKey: K.sshCompatMode)
+            ud.set(remoteArrowKeys, forKey: K.remoteArrowKeys)
         }
     }
     /// Write internal diagnostics to ~/Library/Logs/Conterm/conterm.log.
@@ -449,7 +445,10 @@ final class Preferences: ObservableObject {
         static let solidGlass        = "conterm.solidGlass"   // pre-glassMode migration source
         static let glassMode         = "conterm.glassMode"
         static let liquidGlassPanels = "conterm.liquidGlassPanels"
-        static let sshCompatMode    = "conterm.sshCompatMode"
+        // Stored under the pre-rename name so an existing opt-in carries
+        // over; the setting narrowed to the arrow bindings once
+        // `ssh-terminfo` came off the default feature set.
+        static let remoteArrowKeys  = "conterm.sshCompatMode"
         static let actionAccent     = "conterm.actionAccent"
         static let newTabAccent     = "conterm.newTabAccent"
         static let opaquePanes      = "conterm.opaquePanes"
@@ -585,7 +584,7 @@ final class Preferences: ObservableObject {
             ?? (ud.object(forKey: K.solidGlass) as? Bool).map { $0 ? GlassMode.solid : .glass }
             ?? .blur
         self.liquidGlassPanels      = ud.object(forKey: K.liquidGlassPanels) as? Bool ?? false
-        self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? true
+        self.remoteArrowKeys        = ud.object(forKey: K.remoteArrowKeys) as? Bool ?? false
         self.actionAccent           = ActionAccent(
             rawValue: ud.string(forKey: K.actionAccent) ?? ActionAccent.red.rawValue
         ) ?? .red

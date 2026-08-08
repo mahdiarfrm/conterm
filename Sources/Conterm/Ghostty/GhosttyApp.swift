@@ -286,18 +286,13 @@ extension Ghostty {
                 as? Bool ?? false
         }
 
-        /// Whether SSH compatibility mode is enabled in Preferences.
-        /// Read from UserDefaults so the config loader stays decoupled
-        /// from the Preferences object. Key matches
-        /// `Preferences.K.sshCompatMode`. Defaults ON: a remote whose
-        /// `infocmp` resolves a terminfo database its own ncurses does
-        /// not read makes `ssh-terminfo` pick xterm-ghostty and garble
-        /// every keystroke, and nothing about the local machine
-        /// predicts it. `object(forKey:)` rather than `bool(forKey:)`
-        /// so an explicit opt-out survives.
-        nonisolated static var sshCompatMode: Bool {
+        /// Whether the remote arrow-key bindings are enabled in
+        /// Preferences. Read from UserDefaults so the config loader
+        /// stays decoupled from the Preferences object. Key matches
+        /// `Preferences.K.remoteArrowKeys`.
+        nonisolated static var remoteArrowKeys: Bool {
             UserDefaults.standard.object(forKey: "conterm.sshCompatMode")
-                as? Bool ?? true
+                as? Bool ?? false
         }
 
         /// Whether low-power rendering is enabled in Preferences. Read
@@ -319,52 +314,48 @@ extension Ghostty {
         /// both `init?()` and `applyConfigChain()` write the same
         /// content, and the content varies with user preferences.
         nonisolated static func lastwordText() -> String {
-            let sshBlock: String
-            if sshCompatMode {
-                // SSH compatibility mode: `ssh-env` without
-                // `ssh-terminfo`. `ssh-env` is the feature that pins
-                // TERM to xterm-256color — universally resolvable, and
-                // exactly the terminal the arrow keybinds below encode
-                // for. It must stay listed: the wrapper only installs
-                // itself when a feature matches `ssh-*`, so dropping
-                // both leaves TERM as xterm-ghostty. `ssh-terminfo` is
-                // the untrustworthy half — it decides the entry is
-                // present by running `infocmp` on the remote, so a host
-                // whose `infocmp` reads a different terminfo database
-                // than its readline (a Homebrew-on-Linux PATH) reports
-                // success and then garbles every keystroke. COLORTERM
-                // still rides along via ssh-env, so remote apps keep
-                // true color.
-                sshBlock = """
-                shell-integration-features = cursor,sudo,title,ssh-env
+            // `ssh-env` is the only ssh wrapper feature Conterm wants.
+            // It pins TERM to xterm-256color for the remote, which every
+            // ncurses build resolves, and forwards COLORTERM so remote
+            // apps still detect true color. At least one `ssh-*` feature
+            // must stay listed — the wrapper only defines itself when
+            // one matches, and without it TERM crosses as xterm-ghostty.
+            //
+            // `ssh-terminfo` is deliberately absent. It would install
+            // xterm-ghostty on the remote, but it decides the entry is
+            // already present by running `infocmp` there, so a host
+            // whose `infocmp` reads a different terminfo database than
+            // its readline (a Homebrew-on-Linux PATH) reports success
+            // and then garbles every keystroke. Conterm forces legacy
+            // xterm encoding anyway — see the keybind block below — so
+            // the richer terminfo buys nothing worth that risk.
+            let sshBlock = """
+            shell-integration-features = cursor,sudo,title,ssh-env
+            """
+            // Standard xterm CSI modifier sequences for the arrows.
+            // Opt-in because they displace Ghostty's `adjust_selection`
+            // bindings on Shift+Arrow in every pane, local ones
+            // included; the trade buys word- and line-motions inside
+            // remote vim, tmux, and similar TUIs.
+            let arrowBlock = remoteArrowKeys ? """
 
-                keybind = shift+arrow_left=csi:1;2D
-                keybind = shift+arrow_right=csi:1;2C
-                keybind = shift+arrow_up=csi:1;2A
-                keybind = shift+arrow_down=csi:1;2B
-                keybind = alt+arrow_left=csi:1;3D
-                keybind = alt+arrow_right=csi:1;3C
-                keybind = alt+arrow_up=csi:1;3A
-                keybind = alt+arrow_down=csi:1;3B
-                keybind = ctrl+arrow_left=csi:1;5D
-                keybind = ctrl+arrow_right=csi:1;5C
-                keybind = ctrl+arrow_up=csi:1;5A
-                keybind = ctrl+arrow_down=csi:1;5B
-                keybind = shift+alt+arrow_left=csi:1;4D
-                keybind = shift+alt+arrow_right=csi:1;4C
-                keybind = shift+alt+arrow_up=csi:1;4A
-                keybind = shift+alt+arrow_down=csi:1;4B
-                """
-            } else {
-                // Default: enable the bundled shell-integration ssh
-                // wrappers. `ssh-env` forwards COLORTERM / TERM_PROGRAM
-                // so remote apps detect true color; `ssh-terminfo`
-                // installs the xterm-ghostty terminfo on the remote on
-                // first connect.
-                sshBlock = """
-                shell-integration-features = cursor,sudo,title,ssh-env,ssh-terminfo
-                """
-            }
+            keybind = shift+arrow_left=csi:1;2D
+            keybind = shift+arrow_right=csi:1;2C
+            keybind = shift+arrow_up=csi:1;2A
+            keybind = shift+arrow_down=csi:1;2B
+            keybind = alt+arrow_left=csi:1;3D
+            keybind = alt+arrow_right=csi:1;3C
+            keybind = alt+arrow_up=csi:1;3A
+            keybind = alt+arrow_down=csi:1;3B
+            keybind = ctrl+arrow_left=csi:1;5D
+            keybind = ctrl+arrow_right=csi:1;5C
+            keybind = ctrl+arrow_up=csi:1;5A
+            keybind = ctrl+arrow_down=csi:1;5B
+            keybind = shift+alt+arrow_left=csi:1;4D
+            keybind = shift+alt+arrow_right=csi:1;4C
+            keybind = shift+alt+arrow_up=csi:1;4A
+            keybind = shift+alt+arrow_down=csi:1;4B
+            """ : ""
             // Power: with vsync off, the renderer stops presenting on
             // every display refresh and presents only when the terminal
             // content changes. Conterm's window is non-opaque (the glass
@@ -399,6 +390,7 @@ extension Ghostty {
             selection-word-chars = " \\t'\\"|:;,()[]{}<>$"
 
             \(sshBlock)
+            \(arrowBlock)
             \(vsyncBlock)
 
             # Force LEGACY (xterm-compatible) encoding for control keys

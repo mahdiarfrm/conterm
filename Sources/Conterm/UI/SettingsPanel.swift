@@ -808,12 +808,12 @@ struct SettingsPanel: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
-                SettingsRow(title: "SSH compatibility",
-                            subtitle: "Send xterm-256color over SSH instead of installing terminfo on the remote. Fixes garbled typing and makes Shift / Option / Ctrl + Arrow work in remote vim, tmux, and similar.") {
+                SettingsRow(title: "Remote arrow keys",
+                            subtitle: "Send Shift / Option / Ctrl + Arrow as xterm motion sequences so word and line jumps work in remote vim, tmux, and similar. Shift + Arrow stops extending text selection while this is on.") {
                     Toggle("", isOn: Binding(
-                        get: { prefs.sshCompatMode },
+                        get: { prefs.remoteArrowKeys },
                         set: { newValue in
-                            prefs.sshCompatMode = newValue
+                            prefs.remoteArrowKeys = newValue
                             // Reload the config so the change applies
                             // to live panes without a relaunch.
                             Ghostty.App.shared?.reloadConfig()

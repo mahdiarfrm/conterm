@@ -151,10 +151,10 @@ extension CommandPalette {
             // Shortcuts / config / about
             open("shortcuts", "Keyboard shortcuts", "keys bindings hotkeys",
                  .shortcuts, "keyboard"),
-            toggle("sshCompatMode", "SSH compatibility mode",
-                   "remote vim tmux arrow keys term terminfo garbled", .config, "network",
-                   prefs.sshCompatMode) {
-                       prefs.sshCompatMode = $0
+            toggle("remoteArrowKeys", "Remote arrow keys",
+                   "ssh vim tmux word jump motion csi", .config, "arrow.left.arrow.right",
+                   prefs.remoteArrowKeys) {
+                       prefs.remoteArrowKeys = $0
                        Ghostty.App.shared?.reloadConfig()
                    },
             toggle("useDefaultConfig", "Safe mode",
