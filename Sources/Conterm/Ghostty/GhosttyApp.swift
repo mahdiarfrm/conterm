@@ -289,10 +289,15 @@ extension Ghostty {
         /// Whether SSH compatibility mode is enabled in Preferences.
         /// Read from UserDefaults so the config loader stays decoupled
         /// from the Preferences object. Key matches
-        /// `Preferences.K.sshCompatMode`.
+        /// `Preferences.K.sshCompatMode`. Defaults ON: a remote whose
+        /// `infocmp` resolves a terminfo database its own ncurses does
+        /// not read makes `ssh-terminfo` pick xterm-ghostty and garble
+        /// every keystroke, and nothing about the local machine
+        /// predicts it. `object(forKey:)` rather than `bool(forKey:)`
+        /// so an explicit opt-out survives.
         nonisolated static var sshCompatMode: Bool {
             UserDefaults.standard.object(forKey: "conterm.sshCompatMode")
-                as? Bool ?? false
+                as? Bool ?? true
         }
 
         /// Whether low-power rendering is enabled in Preferences. Read

@@ -345,11 +345,12 @@ final class Preferences: ObservableObject {
     /// Use a broadly-compatible TERM (`xterm-256color`) and standard
     /// xterm modifier sequences for `Shift`/`Option`/`Ctrl + Arrow`
     /// over SSH, so word- and line-motions work in remote vim, tmux,
-    /// and similar TUIs. Also the escape hatch for a remote whose
-    /// ncurses can't resolve `xterm-ghostty` even though `infocmp`
-    /// can — the mismatch garbles line editing. Trade-off: with this
-    /// enabled, `Shift+Arrow` no longer extends libghostty's local
-    /// text selection.
+    /// and similar TUIs. ON by default: it also keeps `ssh-terminfo`
+    /// off, and that feature garbles line editing on any remote whose
+    /// `infocmp` resolves a terminfo database its own ncurses doesn't
+    /// read. Trade-off: while enabled, `Shift+Arrow` sends the xterm
+    /// motion sequence everywhere rather than extending libghostty's
+    /// local text selection.
     @Published var sshCompatMode: Bool {
         didSet {
             ud.set(sshCompatMode, forKey: K.sshCompatMode)
@@ -584,7 +585,7 @@ final class Preferences: ObservableObject {
             ?? (ud.object(forKey: K.solidGlass) as? Bool).map { $0 ? GlassMode.solid : .glass }
             ?? .blur
         self.liquidGlassPanels      = ud.object(forKey: K.liquidGlassPanels) as? Bool ?? false
-        self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? false
+        self.sshCompatMode          = ud.object(forKey: K.sshCompatMode) as? Bool ?? true
         self.actionAccent           = ActionAccent(
             rawValue: ud.string(forKey: K.actionAccent) ?? ActionAccent.red.rawValue
         ) ?? .red
