@@ -23,9 +23,10 @@ final class FloatingTerminal: NSObject, NSWindowDelegate {
          onClosed: @escaping (UUID) -> Void) {
         self.pane = pane
         self.onClosed = onClosed
-        let fill = FillView()
+        let fill = PaneMountBox()
+        fill.paneID = pane.id
         contentBox = fill
-        if let host = pane.controller?.hostView { fill.setChild(host) }
+        if let host = pane.controller?.hostView { fill.addSubview(host) }
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 420),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
@@ -53,17 +54,15 @@ final class FloatingTerminal: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        // This window is the pane's site, and closing it is the site's
+        // teardown: a borrowed pane goes home here, not in whatever opened
+        // the window. (The closed window keeps its content view, so the
+        // box's own leaving-the-window hook never fires for this site.)
+        PaneMounts.shared.sendHome(pane.id, ifMountedIn: contentBox)
         let id = self.id
         let cb = onClosed
         onClosed = nil
         DispatchQueue.main.async { cb?(id) }   // drop our retained copy next turn
-    }
-
-    /// Lays its single child out to fill — the surface host resizes with the window.
-    final class FillView: NSView {
-        private var child: NSView?
-        func setChild(_ v: NSView) { child?.removeFromSuperview(); child = v; addSubview(v) }
-        override func layout() { super.layout(); child?.frame = bounds }
     }
 }
 
@@ -86,24 +85,22 @@ struct TerminalBlur: NSViewRepresentable {
 
 /// The pane's own terminal, borrowed from the pane tree and shown over the map.
 /// It hosts the *same* `SurfaceHostView` — the surface is welded to that view
-/// for life, so a preview has to move the view, never rebuild it. Giving it back
-/// is `PaneMounts.sendHome`.
+/// for life, so a preview has to move the view, never rebuild it. The box sends
+/// the pane home from its own teardown, so a card SwiftUI unmounts — closing
+/// Orbit, focusing another preview — returns what it holds by construction.
 struct PaneHostBox: NSViewRepresentable {
     let paneID: UUID
 
-    func makeNSView(context: Context) -> FillBox { FillBox() }
-
-    func updateNSView(_ v: FillBox, context: Context) {
-        // The registry performs the move, so the tile it came from is emptied in
-        // the same breath — two boxes can never both believe they hold it.
-        PaneMounts.shared.mount(paneID, into: v)
+    func makeNSView(context: Context) -> PaneMountBox {
+        let box = PaneMountBox()
+        box.paneID = paneID
+        return box
     }
 
-    /// Lays its single child out to fill — the surface resizes with the card.
-    final class FillBox: NSView {
-        /// Whatever the registry mounted here fills it. Asking the view for its
-        /// own subview rather than keeping a second reference means the box and
-        /// the registry can't disagree about what it is holding.
-        override func layout() { super.layout(); subviews.first?.frame = bounds }
+    func updateNSView(_ v: PaneMountBox, context: Context) {
+        // The registry performs the move, so the tile it came from is emptied in
+        // the same breath — two boxes can never both believe they hold it.
+        v.paneID = paneID
+        PaneMounts.shared.mount(paneID, into: v)
     }
 }

@@ -495,10 +495,14 @@ struct OrbitOverlay: View {
             // Marks for distributions learned in an earlier session, in case the
             // fetch never got a chance to land.
             DistroArt.shared.ensureKnown()
+            redockSavedPreviews()
         }
         .onDisappear {
             // Where the next visit's "since you looked away" is measured from.
             OrbitSeen.save(currentSnapshot())
+            // What's docked survives the mode closing — recorded before the
+            // sweep below empties the list.
+            state.orbitDockRoster = previewPanes.map(\.id)
             for t in floatingTerminals { t.close() }
             OrbitModel.shared.floatingPanes = []
             // Every borrowed host must go home, or its tile comes back blank.

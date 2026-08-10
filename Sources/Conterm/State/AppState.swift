@@ -528,6 +528,11 @@ final class AppState: ObservableObject {
     /// Bumped by Esc while Orbit is open. The map's selection lives in the
     /// view, so the key handler asks rather than reaches in.
     @Published var orbitEscTick = 0
+    /// The panes docked in Orbit's cockpit when the mode last closed, so
+    /// reopening it docks them again — panes live in Orbit rather than
+    /// visiting. Ids, not panes: a session that ended in between simply
+    /// doesn't resolve. In-memory; a relaunch starts the dock empty.
+    var orbitDockRoster: [UUID] = []
 
     /// Whether the map's search field is up. Held here rather than in the view
     /// because the key monitor has to route the arrows and Return to it: a

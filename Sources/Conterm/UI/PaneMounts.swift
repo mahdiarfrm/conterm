@@ -79,6 +79,14 @@ final class PaneMounts {
         if wasAway { occlusionChanged() }
     }
 
+    /// A site's own teardown: send the pane home only when this container is
+    /// where it is currently mounted. A box torn down after its pane already
+    /// moved on must not yank it back from the new site.
+    func sendHome(_ paneID: UUID, ifMountedIn container: NSView) {
+        guard entries[paneID]?.away === container else { return }
+        sendHome(paneID)
+    }
+
     /// True when the pane is showing in its own tile.
     func isHome(_ paneID: UUID) -> Bool { entries[paneID]?.away == nil }
 
@@ -125,5 +133,26 @@ final class PaneMounts {
             for sub in away.subviews { sub.removeFromSuperview() }
         }
         entries[paneID] = nil
+    }
+}
+
+/// The one container a pane's terminal mounts into away from its tile —
+/// Orbit's dock cards and floating terminal windows both hold panes in this.
+/// It lays its single child out to fill, and it sends its pane home from its
+/// own teardown: a site that goes away returns what it holds, so no feature
+/// exit path has to remember to.
+final class PaneMountBox: NSView {
+    var paneID: UUID?
+
+    override func layout() { super.layout(); subviews.first?.frame = bounds }
+
+    /// Leaving the window is this site's teardown — above all the dock card
+    /// SwiftUI unmounts, including when focusing one preview hides the rest.
+    /// A floating window keeps its content view after closing, so that site
+    /// sends home from its close delegate instead of from here.
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        guard newWindow == nil, let id = paneID else { return }
+        PaneMounts.shared.sendHome(id, ifMountedIn: self)
     }
 }

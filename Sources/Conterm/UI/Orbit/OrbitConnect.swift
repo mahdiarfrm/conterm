@@ -168,9 +168,10 @@ extension OrbitOverlay {
         closePreview(pane)                        // a surface can only be in one place
         guard PaneMounts.shared.canMount(pane.id) else { return }
         let title = OrbitModel.paneLabel(pane)
+        // The window sends the pane home itself on close (it is the pane's
+        // site); the callback only retires it from the list.
         let term = FloatingTerminal(target: title, title: title, pane: pane) { id in
             floatingTerminals.removeAll { $0.id == id }
-            PaneMounts.shared.sendHome(pane.id)     // home before anything relayouts
         }
         term.ownsPane = false
         PaneMounts.shared.record(pane.id, at: term.contentBox)
@@ -453,6 +454,28 @@ extension OrbitOverlay {
         }
     }
 
+
+    /// Panes live in Orbit: what was docked when the mode closed docks again
+    /// when it reopens. A session that ended in between doesn't resolve and
+    /// simply leaves the dock.
+    func redockSavedPreviews() {
+        for id in state.orbitDockRoster {
+            if let pane = paneAnywhere(id) { openPreview(pane) }
+        }
+    }
+
+    /// A pane by id, in any window — the dock can hold sessions from all of
+    /// them, so re-docking after the mode reopens must look everywhere.
+    func paneAnywhere(_ id: UUID) -> Pane? {
+        for wc in (NSApp.delegate as? AppDelegate)?.windows ?? [] {
+            for tab in wc.state.tabs {
+                if let p = tab.paneTree.root.leaves().first(where: { $0.id == id }) {
+                    return p
+                }
+            }
+        }
+        return nil
+    }
 
     func openPreview(_ pane: Pane) {
         // A floating session's terminal already has a window. Its surface is
