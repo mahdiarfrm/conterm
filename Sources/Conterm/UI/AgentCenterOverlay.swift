@@ -220,16 +220,8 @@ struct AgentSidebar: View {
             // Floating cards.
             if center.entries.isEmpty && background.sessions.isEmpty {
                 EmptyAgents().frame(maxHeight: .infinity)
-            } else {
-                ScrollView(showsIndicators: false) {
-                    GroupedRoster(entries: center.entries, floating: true) { entry in
-                        AgentCenter.shared.jump(to: entry)
-                    }
-                    // Room so the cards' drop shadows aren't clipped by the
-                    // scroll bounds.
-                    .padding(.horizontal, Theme.ui(4)).padding(.vertical, Theme.ui(8))
-                }
-                .frame(maxHeight: .infinity)
+            } else if let tree = state.selectedTab?.paneTree {
+                SidebarRoster(tree: tree, entries: center.entries)
             }
 
             // Floating layout switcher + notification bell.
@@ -245,6 +237,29 @@ struct AgentSidebar: View {
         .frame(width: prefs.sidebarWidth)
         .onAppear { AgentCenter.shared.beginObserving() }
         .onDisappear { AgentCenter.shared.endObserving() }
+    }
+}
+
+/// The sidebar's card list. Observes the selected tab's pane tree so the
+/// focus halo tracks keyboard focus live — roster entries refresh on a 2s
+/// tick, far too slow for a focus signal. Pane ids are unique across
+/// windows, so matching the active pane id alone can never light a card
+/// that belongs to another window.
+private struct SidebarRoster: View {
+    @ObservedObject var tree: PaneTree
+    let entries: [AgentCenterEntry]
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            GroupedRoster(entries: entries, floating: true,
+                          currentPaneID: tree.activePaneID) { entry in
+                AgentCenter.shared.jump(to: entry)
+            }
+            // Room so the cards' drop shadows aren't clipped by the
+            // scroll bounds.
+            .padding(.horizontal, Theme.ui(4)).padding(.vertical, Theme.ui(8))
+        }
+        .frame(maxHeight: .infinity)
     }
 }
 
@@ -555,6 +570,9 @@ private struct GroupedRoster: View {
     /// Floating: each card is solid + shadowed so it reads on the bare glass
     /// of the agents sidebar (vs the rail, where cards sit on a panel bed).
     var floating: Bool = false
+    /// Active pane of the window showing this roster; the matching card
+    /// carries the focus halo. nil (the rail) draws no halo.
+    var currentPaneID: UUID? = nil
     var onJump: (AgentCenterEntry) -> Void
     @ObservedObject private var background = BackgroundAgents.shared
 
@@ -569,7 +587,8 @@ private struct GroupedRoster: View {
                     AgentRowView(entry: entry,
                                  number: (entries.firstIndex { $0.id == entry.id } ?? 0) + 1,
                                  total: entries.count,
-                                 floating: floating) { onJump(entry) }
+                                 floating: floating,
+                                 current: entry.id == currentPaneID) { onJump(entry) }
                 }
             }
             // Sessions running outside any pane (`claude --bg`); a
@@ -700,6 +719,10 @@ private struct AgentRowView: View {
     var number: Int = 1
     var total: Int = 1
     var floating: Bool = false
+    /// This card's pane owns keyboard focus in its window — it wears the
+    /// same cool rim as a focused pane tile, so the sidebar answers
+    /// "which agent am I in" at a glance.
+    var current: Bool = false
     var onJump: () -> Void
 
     @State private var reply = ""
@@ -746,9 +769,31 @@ private struct AgentRowView: View {
                     .shadow(color: v.color.opacity(0.6), radius: 4)
             }
         }
+        .overlay { if current { focusRim } }
         // Floating cards lift off the bare sidebar glass with a soft shadow.
         .shadow(color: floating ? .black.opacity(0.28) : .clear,
                 radius: floating ? 9 : 0, y: floating ? 4 : 0)
+        // Focus glow rides outside the drop shadow so the halo tints the
+        // glass around the card, not the card's own shadow.
+        .shadow(color: current ? Theme.highlight.opacity(0.35) : .clear,
+                radius: current ? 9 : 0)
+        .animation(Theme.Spring.snappy, value: current)
+    }
+
+    /// Two concentric strokes matching the pane tile's focus rim: a wide
+    /// soft band under a bright hairline. Each stroke's corner radius sheds
+    /// its inset — a rounded rect held at full radius on an inset frame
+    /// bows off the curve and opens a gap at every corner.
+    private var focusRim: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 11.5, style: .continuous)
+                .stroke(Theme.highlight.opacity(0.20), lineWidth: 3)
+                .padding(1.5)
+            RoundedRectangle(cornerRadius: 12.25, style: .continuous)
+                .stroke(Theme.highlight.opacity(0.75), lineWidth: 1.5)
+                .padding(0.75)
+        }
+        .allowsHitTesting(false)
     }
 
     @ViewBuilder
