@@ -27,7 +27,6 @@ final class NotificationStore: ObservableObject {
     @Published private(set) var items: [AppNotification] = []
 
     private let cap = 60
-    private var bannerAuthorized = false
     /// Last OS-banner time per tool. A flapping agent (working↔needs-you)
     /// would otherwise post one banner per transition and flood Notification
     /// Center; the in-app list still records every event.
@@ -35,14 +34,13 @@ final class NotificationStore: ObservableObject {
     private let bannerThrottle: TimeInterval = 8
 
     init() {
-        // Best-effort. Ad-hoc / translocated apps may not get banner
-        // permission — the in-app center works regardless, so failure
-        // here is fine and silent.
+        // On a Developer-ID build this raises the system permission prompt
+        // at first launch. An ad-hoc build is refused outright
+        // (UNErrorDomain 1, no prompt) — the legacy fallback in
+        // `postBanner` is that build's route, so failure here is fine
+        // and silent.
         UNUserNotificationCenter.current().requestAuthorization(
-            options: [.alert, .sound]
-        ) { ok, _ in
-            Task { @MainActor in self.bannerAuthorized = ok }
-        }
+            options: [.alert, .sound]) { _, _ in }
         Self.shared = self
     }
 
@@ -61,19 +59,51 @@ final class NotificationStore: ObservableObject {
         // whole point is "tell me when I've stepped away from a long
         // agent run". Frontmost → the in-app pill/center already shows
         // it, no need to interrupt.
-        guard !NSApp.isActive, bannerAuthorized else { return }
+        guard !NSApp.isActive else { return }
         // Rate-limit banners per tool so a flapping agent can't flood
         // Notification Center.
         let now = Date()
         if let last = lastBannerAt[tool], now.timeIntervalSince(last) < bannerThrottle { return }
         lastBannerAt[tool] = now
-        let c = UNMutableNotificationContent()
-        c.title = title
-        c.body = message
-        c.sound = .default
-        UNUserNotificationCenter.current().add(
-            UNNotificationRequest(identifier: n.id.uuidString,
-                                   content: c, trigger: nil))
+        postBanner(id: n.id.uuidString, title: title, message: message)
+    }
+
+    /// Routes a banner through UserNotifications when the app holds
+    /// authorization, else through the legacy NSUserNotification center.
+    /// UserNotifications needs a valid signing identity even to ask for
+    /// permission — on an ad-hoc build `requestAuthorization` fails with
+    /// UNErrorDomain 1 and never prompts — while a legacy deliver both
+    /// presents the banner and raises the system permission prompt. The
+    /// fallback is what makes banners exist at all on the shipping
+    /// (ad-hoc signed) app.
+    private func postBanner(id: String, title: String, message: String) {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let authorized = settings.authorizationStatus == .authorized
+                || settings.authorizationStatus == .provisional
+            DispatchQueue.main.async {
+                guard authorized else {
+                    Self.legacyPost(title: title, message: message)
+                    return
+                }
+                let c = UNMutableNotificationContent()
+                c.title = title
+                c.body = message
+                c.sound = .default
+                UNUserNotificationCenter.current().add(
+                    UNNotificationRequest(identifier: id,
+                                          content: c, trigger: nil)) { err in
+                    guard err != nil else { return }
+                    DispatchQueue.main.async {
+                        Self.legacyPost(title: title, message: message)
+                    }
+                }
+            }
+        }
+    }
+
+    private static func legacyPost(title: String, message: String) {
+        (LegacyBanner.self as LegacyBannerPosting.Type)
+            .post(title: title, message: message)
     }
 
     func markAllRead() {
@@ -84,5 +114,32 @@ final class NotificationStore: ObservableObject {
     func clearAll() {
         items.removeAll()
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+        (LegacyBanner.self as LegacyBannerPosting.Type).clearDelivered()
+    }
+}
+
+/// NSUserNotification is deprecated but remains the only banner path open
+/// to a build without a real signing identity. Calls go through this
+/// protocol's metatype so the deprecation stays confined to the witness
+/// below instead of warning at every call site.
+private protocol LegacyBannerPosting {
+    static func post(title: String, message: String)
+    static func clearDelivered()
+}
+
+private enum LegacyBanner: LegacyBannerPosting {}
+extension LegacyBanner {
+    @available(macOS, deprecated: 11.0)
+    static func post(title: String, message: String) {
+        let n = NSUserNotification()
+        n.title = title
+        n.informativeText = message
+        n.soundName = NSUserNotificationDefaultSoundName
+        NSUserNotificationCenter.default.deliver(n)
+    }
+
+    @available(macOS, deprecated: 11.0)
+    static func clearDelivered() {
+        NSUserNotificationCenter.default.removeAllDeliveredNotifications()
     }
 }
