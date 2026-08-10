@@ -25,7 +25,6 @@ conterm_video/
 # name — a new one is out of the repo from its first save, which is the
 # only point at which keeping it out still works.
 /docs/*.md
-/Tests/ContermTests/
 conterm-monitor-*.log
 archive/
 .build-ghostty/
