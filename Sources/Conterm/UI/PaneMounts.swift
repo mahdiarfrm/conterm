@@ -51,8 +51,11 @@ final class PaneMounts {
             container.addSubview(host)
             host.frame = container.bounds
         }
-        entry(paneID).away = container
+        let e = entry(paneID)
+        let moved = e.away !== container
+        e.away = container
         container.needsLayout = true
+        if moved { occlusionChanged() }
         return true
     }
 
@@ -60,19 +63,54 @@ final class PaneMounts {
     /// its own initialiser. The registry still has to know, or it will believe
     /// the pane is home.
     func record(_ paneID: UUID, at container: NSView) {
-        entry(paneID).away = container
+        let e = entry(paneID)
+        let moved = e.away !== container
+        e.away = container
+        if moved { occlusionChanged() }
     }
 
     /// Send a pane's terminal back to its tile. Safe to call for a pane that is
     /// already home, so a teardown path never has to check first.
     func sendHome(_ paneID: UUID) {
         guard let e = entries[paneID] else { return }
+        let wasAway = e.away != nil
         e.away = nil
         e.tile?.reclaimHost()
+        if wasAway { occlusionChanged() }
     }
 
     /// True when the pane is showing in its own tile.
     func isHome(_ paneID: UUID) -> Bool { entries[paneID]?.away == nil }
+
+    /// True when the pane's terminal is mounted somewhere other than its tile —
+    /// a dock card or a floating window. Occlusion asks this: a pane mounted
+    /// away is on screen even while its tab, or the whole tree, is hidden.
+    /// `away` is weak, so a container that died without sending the pane home
+    /// reads as home — the safe answer for visibility.
+    func isMountedAway(_ paneID: UUID) -> Bool { entries[paneID]?.away != nil }
+
+    /// Panes currently mounted in a container inside `window`, or in one
+    /// already detached from every window. The close-Orbit sweep sends exactly
+    /// these home: another window's dock keeps what it holds, and a floating
+    /// terminal returns its pane through its own close delegate.
+    func awayPaneIDs(in window: NSWindow?) -> [UUID] {
+        entries.compactMap { id, e in
+            guard let away = e.away else { return nil }
+            return (away.window === window || away.window == nil) ? id : nil
+        }
+    }
+
+    /// Renderer visibility follows the mount map, so every move recomputes
+    /// every window's occlusion — a pane mounted into a dock must wake even
+    /// though its tab is hidden, and one sent home behind Orbit must pause
+    /// again. The registry is the only place that sees every move, including
+    /// the mount a dock card performs a beat after the feature that opened it
+    /// returned.
+    private func occlusionChanged() {
+        for wc in (NSApp.delegate as? AppDelegate)?.windows ?? [] {
+            wc.state.syncSurfaceOcclusion()
+        }
+    }
 
     /// The pane is going away. Called before its surface is freed, so nothing is
     /// left holding a view that is about to stop existing.

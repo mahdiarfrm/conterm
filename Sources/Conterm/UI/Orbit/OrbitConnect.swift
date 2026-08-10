@@ -167,14 +167,10 @@ extension OrbitOverlay {
         }
         closePreview(pane)                        // a surface can only be in one place
         guard PaneMounts.shared.canMount(pane.id) else { return }
-        state.orbitPreviewPanes.insert(pane.id)   // exempt it from the occlusion pause
-        state.syncSurfaceOcclusion()
         let title = OrbitModel.paneLabel(pane)
         let term = FloatingTerminal(target: title, title: title, pane: pane) { id in
             floatingTerminals.removeAll { $0.id == id }
             PaneMounts.shared.sendHome(pane.id)     // home before anything relayouts
-            state.orbitPreviewPanes.remove(pane.id)
-            state.syncSurfaceOcclusion()
         }
         term.ownsPane = false
         PaneMounts.shared.record(pane.id, at: term.contentBox)
@@ -472,8 +468,6 @@ extension OrbitOverlay {
             focusPreview(pane)
             return
         }
-        state.orbitPreviewPanes.insert(pane.id)
-        state.syncSurfaceOcclusion()          // wake this pane's renderer
         withAnimation(Theme.Spring.snappy) { previewPanes.append(pane) }
         focusPreview(pane)
         // The surface was paused while Orbit was open, so its last frame is
@@ -518,8 +512,6 @@ extension OrbitOverlay {
         previewFrames[pane.id] = nil
         if focusedPreview == pane.id { focusedPreview = nil }
         PaneMounts.shared.sendHome(pane.id)
-        state.orbitPreviewPanes.remove(pane.id)
-        state.syncSurfaceOcclusion()          // back to paused behind Orbit
     }
 
     /// Hand every borrowed view home at once — leaving Orbit, or closing it.
@@ -528,8 +520,6 @@ extension OrbitOverlay {
         previewPanes.removeAll()
         previewFrames.removeAll()
         focusedPreview = nil
-        state.orbitPreviewPanes.removeAll()
-        state.syncSurfaceOcclusion()
     }
 
     func focusPreview(_ pane: Pane) {

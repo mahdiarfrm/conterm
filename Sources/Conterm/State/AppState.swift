@@ -528,9 +528,6 @@ final class AppState: ObservableObject {
     /// Bumped by Esc while Orbit is open. The map's selection lives in the
     /// view, so the key handler asks rather than reaches in.
     @Published var orbitEscTick = 0
-    /// The panes Orbit is showing live. Exempt from the occlusion pause — a set,
-    /// because the cockpit can have several terminals open at once.
-    @Published var orbitPreviewPanes: Set<UUID> = []
 
     /// Whether the map's search field is up. Held here rather than in the view
     /// because the key monitor has to route the arrows and Return to it: a
@@ -613,7 +610,9 @@ final class AppState: ObservableObject {
         // path that never ran `onDisappear`, a terminal is still mounted in a
         // dock that is about to stop existing and its tile would come back
         // blank.
-        for id in orbitPreviewPanes { PaneMounts.shared.sendHome(id) }
+        for id in PaneMounts.shared.awayPaneIDs(in: ownWindow) {
+            PaneMounts.shared.sendHome(id)
+        }
         orbitFocusSession = nil
         withAnimation(Theme.Spring.snappy) { orbitOpen = false }
         syncSurfaceOcclusion()      // resume the panes…
@@ -1044,10 +1043,13 @@ final class AppState: ObservableObject {
             // fully covered — pause their renderers while it's the mode.
             let visible = windowVisible && tab.id == selectedID && !orbitOpen
             for pane in tab.paneTree.root.leaves() {
-                // A pane showing in Orbit's preview is on screen even though the
-                // tree behind Orbit isn't — without this exemption its renderer
-                // stays paused and the preview draws an empty black rectangle.
-                pane.controller?.setVisible(visible || orbitPreviewPanes.contains(pane.id))
+                // A pane mounted away from its tile — a dock card, a floating
+                // window — is on screen even though the tree behind it isn't.
+                // The registry is the one place that knows where every pane is,
+                // across windows: without this its renderer stays paused and
+                // the mount draws an empty black rectangle.
+                pane.controller?.setVisible(
+                    visible || PaneMounts.shared.isMountedAway(pane.id))
             }
         }
     }
@@ -1058,13 +1060,13 @@ final class AppState: ObservableObject {
     func forceRedrawVisibleSurfaces() {
         guard ownWindow?.occlusionState.contains(.visible) ?? true else { return }
         for tab in tabs {
-            // The selected tab, plus any pane on show in Orbit's dock — a
-            // terminal docked from another tab is on screen too, and leaving it
-            // out of the post-wake redraw left it holding a frame from before
-            // the machine slept.
+            // The selected tab, plus any pane mounted away in a dock or a
+            // floating window — a terminal docked from another tab is on
+            // screen too, and leaving it out of the post-wake redraw left it
+            // holding a frame from before the machine slept.
             let onScreen = tab.id == selectedID
             for pane in tab.paneTree.root.leaves()
-            where onScreen || orbitPreviewPanes.contains(pane.id) {
+            where onScreen || PaneMounts.shared.isMountedAway(pane.id) {
                 pane.controller?.draw()
             }
         }
