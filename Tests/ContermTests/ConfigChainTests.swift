@@ -173,7 +173,37 @@ import GhosttyKit
             #expect(text.contains("keybind = ctrl+bracket_right=text:\\x1d"))
             #expect(text.contains("keybind = ctrl+space=text:\\x00"))
             #expect(text.contains("selection-word-chars"))
-            #expect(text.contains("macos-option-as-alt = true"))
+        }
+    }
+
+    // MARK: - Firstword block
+
+    /// Firstword carries Conterm's overridable defaults. It must parse
+    /// clean and set ⌥-as-Alt on.
+    @Test func firstwordParsesCleanAndSetsOptionAsAlt() {
+        guard let cfg = loadConfig([Ghostty.App.firstwordText()]) else {
+            Issue.record("ghostty_config_new failed")
+            return
+        }
+        defer { ghostty_config_free(cfg) }
+        #expect(diagnostics(cfg).isEmpty, "\(diagnostics(cfg))")
+        #expect(stringValue(cfg, "macos-option-as-alt") == "true")
+    }
+
+    /// `macos-option-as-alt` must stay in firstword, never lastword:
+    /// a user's `false` (native ⌥ accent composition) has to survive
+    /// the full chain.
+    @Test func userConfigOverridesOptionAsAlt() {
+        withDefaults([:]) {
+            guard let cfg = loadConfig([Ghostty.App.firstwordText(),
+                                        "macos-option-as-alt = false",
+                                        Ghostty.App.lastwordText()]) else {
+                Issue.record("ghostty_config_new failed")
+                return
+            }
+            defer { ghostty_config_free(cfg) }
+            #expect(stringValue(cfg, "macos-option-as-alt") == "false")
+            #expect(!Ghostty.App.lastwordText().contains("macos-option-as-alt"))
         }
     }
 

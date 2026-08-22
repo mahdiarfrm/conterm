@@ -80,7 +80,11 @@ extension Ghostty {
             // `config-file = ...ghostty/config` line in conterm config,
             // which libghostty processes recursively.)
 
-            // 2) Conterm-specific user overrides. In SAFE MODE
+            // 2) Firstword: Conterm's own defaults, loaded BEFORE the
+            //    user config so any of them can be overridden there.
+            App.writeAndLoadFirstword(into: cfg)
+
+            // 3) Conterm-specific user overrides. In SAFE MODE
             //    (useDefaultGhosttyConfig ON) we skip loading it
             //    entirely so a broken config can't stop the terminal
             //    from starting — the user fixes the file, then turns
@@ -119,6 +123,10 @@ extension Ghostty {
                 # theme = "Tokyo Night"
                 # background-opacity = 0.85
                 # cursor-style = block
+                #
+                # Conterm treats ⌥ as Alt by default. Uncomment to
+                # restore macOS accent composition (⌥e e → é):
+                # macos-option-as-alt = false
                 """
                 try? seed.write(toFile: contermConfigPath,
                                 atomically: true, encoding: .utf8)
@@ -155,6 +163,7 @@ extension Ghostty {
             // generic reader.
             App.logConfigValue(cfg, "cursor-style")
             App.logConfigValue(cfg, "shell-integration")
+            App.logConfigValue(cfg, "macos-option-as-alt")
 
             self.config = cfg
             self.handle = nil  // satisfy "all properties initialized"
@@ -307,6 +316,39 @@ extension Ghostty {
                 as? Bool ?? true
         }
 
+        /// Builds the Conterm firstword config text — defaults that
+        /// differ from Ghostty's but stay user-overridable. Loaded
+        /// after the bundled default and BEFORE the user config, so a
+        /// line in ~/.config/conterm/config wins over anything here.
+        /// Settings that must always win belong in `lastwordText()`
+        /// instead.
+        nonisolated static func firstwordText() -> String {
+            return """
+            # Conterm firstword — overridable defaults.
+
+            # Treat ⌥ as Alt for terminal input on both sides.
+            # SurfaceView's translation-mods round-trip reads this value
+            # via `ghostty_surface_key_translation_mods` and strips
+            # Option from the character-composition pass while still
+            # reporting Alt as a physical modifier — so ⌥a is encoded
+            # by libghostty as ESC+a (or the kitty alt form) rather
+            # than reaching the PTY as a macOS-composed `å`. Override
+            # to `false` in user config to restore the platform glyph
+            # composition (⌥e e → é).
+            macos-option-as-alt = true
+            """
+        }
+
+        /// Writes the current `firstwordText()` to a temp file and
+        /// loads it into the given `ghostty_config_t`.
+        nonisolated static func writeAndLoadFirstword(into cfg: ghostty_config_t) {
+            let path = NSTemporaryDirectory() + "conterm-firstword.conf"
+            if (try? firstwordText().write(toFile: path, atomically: true,
+                                            encoding: .utf8)) != nil {
+                path.withCString { ghostty_config_load_file(cfg, $0) }
+            }
+        }
+
         /// Builds the Conterm lastword config text — the block that
         /// is applied AFTER any user config so a few correctness-only
         /// settings (shell integration, control-key encoding, word
@@ -371,17 +413,6 @@ extension Ghostty {
             return """
             # Conterm lastword — functional correctness only (no taste).
             shell-integration = detect
-
-            # Treat ⌥ as Alt for terminal input on both sides.
-            # SurfaceView's translation-mods round-trip reads this value
-            # via `ghostty_surface_key_translation_mods` and strips
-            # Option from the character-composition pass while still
-            # reporting Alt as a physical modifier — so ⌥a is encoded
-            # by libghostty as ESC+a (or the kitty alt form) rather
-            # than reaching the PTY as a macOS-composed `å`. Override
-            # to `false` in user config to restore the platform glyph
-            # composition.
-            macos-option-as-alt = true
 
             # Word separators for double-click word-select. Quoted so
             # whitespace (space + tab) is preserved through the config
@@ -479,7 +510,9 @@ extension Ghostty {
                fm.fileExists(atPath: bundled) {
                 bundled.withCString { ghostty_config_load_file(cfg, $0) }
             }
-            // 2) Conterm's single user-facing config (highest priority).
+            // 2) Firstword: overridable Conterm defaults.
+            writeAndLoadFirstword(into: cfg)
+            // 3) Conterm's single user-facing config (highest priority).
             //    The user pulls in their Ghostty config from inside it via
             //    `config-file = …`, which libghostty resolves recursively —
             //    so the Ghostty config is NOT auto-loaded here, matching
@@ -492,7 +525,7 @@ extension Ghostty {
                     contermConfigPath.withCString { ghostty_config_load_file(cfg, $0) }
                 }
             }
-            // 3) Lastword: regenerated each reload so preference
+            // 4) Lastword: regenerated each reload so preference
             //    changes (e.g. SSH compatibility mode) take effect.
             writeAndLoadLastword(into: cfg)
         }
