@@ -114,6 +114,12 @@ extension Ghostty {
                 let sb = action.action.scrollbar
                 decoded = .scrollbar(total: sb.total, offset: sb.offset,
                                      len: sb.len)
+            case GHOSTTY_ACTION_RENDERER_HEALTH:
+                // Metal reports per-frame health; an errored command buffer
+                // skips its present, so an unhealthy renderer is a pane that
+                // silently stops updating while the shell keeps running.
+                decoded = .rendererHealth(
+                    healthy: action.action.renderer_health == GHOSTTY_RENDERER_HEALTH_HEALTHY)
             case GHOSTTY_ACTION_OPEN_URL:
                 // `url` is not guaranteed null-terminated — it carries an
                 // explicit length. Copy it here, while the buffer is alive.

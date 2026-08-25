@@ -639,6 +639,11 @@ extension Ghostty {
             /// Core asks the app to open a link — a cmd+click on a
             /// detected URL, or an OSC 8 hyperlink.
             case openURL(String)
+            /// Renderer health flipped. Unhealthy = a Metal command
+            /// buffer errored and its frame was never presented; the
+            /// pane can appear frozen or black while the pty and
+            /// input keep working.
+            case rendererHealth(healthy: Bool)
         }
 
         func handle(decoded: DecodedAction) {
@@ -713,6 +718,12 @@ extension Ghostty {
                 // App-scoped; SurfaceRegistry opens it without a surface
                 // controller, so it never reaches this router.
                 break
+
+            case .rendererHealth(let healthy):
+                clog("conterm: renderer \(healthy ? "recovered" : "UNHEALTHY") pane=\(paneID?.uuidString ?? "?") title=\(title)")
+                // On recovery the last errored frame was never presented;
+                // force one so the pane doesn't hold a stale image.
+                if healthy { draw() }
             }
         }
 
