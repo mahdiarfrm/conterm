@@ -83,6 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // RemoteStatePublisher.
         RemoteStatePublisher.start()
         RemoteControl.start()
+        // Announce this Mac on the local network so the phone can find it
+        // without anyone typing a hostname into a form.
+        NearbyBeacon.shared.start()
         ghostty = Ghostty.App()
         // Register the sleep/wake gate early so its NSWorkspace observers
         // are live before the first sleep — it pauses every renderer
@@ -901,6 +904,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Remove the published snapshot rather than leaving one frozen at the
         // moment of quit: the phone should say "not running" rather than show
         // a session list that no longer exists.
+        NearbyBeacon.shared.stop()
         RemoteControl.stop()
         RemoteStatePublisher.clear()
         // The plan's writes are coalesced to one per run-loop turn, so a
