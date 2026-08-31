@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Network
+import SystemConfiguration
 
 /// Tells Conterm on iOS that this Mac exists.
 ///
@@ -69,12 +70,26 @@ final class NearbyBeacon: NSObject {
         let record: [String: Data] = [
             "user": Data(NSUserName().utf8),
             "host": Data((Host.current().localizedName ?? "Mac").utf8),
+            // The name that actually resolves. Deriving it from the Bonjour
+            // instance name does not work: "Sam's MacBook Air" becomes
+            // `sams-MacBook-Air.local`, with the apostrophe dropped
+            // rather than hyphenated, and every other piece of punctuation
+            // has its own rule. The machine already knows the answer.
+            "lhost": Data((Self.localHostName() ?? "").utf8),
             "ssh": Data((reachable ? "on" : "off").utf8),
             "version": Data((Bundle.main.infoDictionary?["CFBundleShortVersionString"]
                              as? String ?? "0").utf8),
         ]
         service.setTXTRecord(NetService.data(fromTXTRecord: record))
         lastReachable = reachable
+    }
+
+    /// `scutil --get LocalHostName`, without the shell.
+    private static func localHostName() -> String? {
+        guard let store = SCDynamicStoreCreate(nil, "conterm" as CFString, nil, nil),
+              let name = SCDynamicStoreCopyLocalHostName(store) as String?
+        else { return nil }
+        return name
     }
 
     /// Whether sshd is actually accepting connections.
