@@ -1031,18 +1031,21 @@ final class AppState: ObservableObject {
         // glass). Defer the pause and re-check: only a window that's still
         // hidden after a short settle is genuinely occluded (covered,
         // minimized, off-space) and worth pausing for battery.
+        clog("conterm: window occluded — pause deferred 0.35s")
         let gen = occlusionGeneration
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.occlusionGeneration == gen else { return }
                 let stillHidden = !(self.ownWindow?
                     .occlusionState.contains(.visible) ?? true)
+                clog("conterm: occlusion re-check stillHidden=\(stillHidden)")
                 self.applySurfaceVisibility(windowVisible: !stillHidden)
             }
         }
     }
 
     private func applySurfaceVisibility(windowVisible: Bool) {
+        logVisibilityInputs(windowVisible: windowVisible)
         for tab in tabs {
             // Orbit takes over the pane frame, so the panes underneath are
             // fully covered — pause their renderers while it's the mode.
@@ -1057,6 +1060,25 @@ final class AppState: ObservableObject {
                     visible || PaneMounts.shared.isMountedAway(pane.id))
             }
         }
+    }
+
+    /// Record what this sync is about to decide from, but only when it
+    /// changes at least one pane. Every pause of a visible pane has a
+    /// reason among these four inputs; the log line pairs with the
+    /// `surface PAUSED` line each controller writes.
+    private func logVisibilityInputs(windowVisible: Bool) {
+        guard DiagnosticLog.isEnabled else { return }
+        let changes = tabs.contains { tab in
+            let visible = windowVisible && tab.id == selectedID && !orbitOpen
+            return tab.paneTree.root.leaves().contains { pane in
+                guard let ctrl = pane.controller else { return false }
+                return (visible || PaneMounts.shared.isMountedAway(pane.id)) != ctrl.isVisible
+            }
+        }
+        guard changes else { return }
+        clog("conterm: visibility sync window=\(windowVisible) "
+             + "selected=\(selectedID.map { String($0.uuidString.prefix(8)) } ?? "none") "
+             + "orbit=\(orbitOpen) asleep=\(PowerState.shared.isAsleep)")
     }
 
     /// Force a fresh frame for every on-screen surface. Used on wake:

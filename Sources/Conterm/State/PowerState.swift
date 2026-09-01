@@ -60,6 +60,7 @@ final class PowerState {
         wakeRetry?.cancel(); wakeRetry = nil
         guard !isAsleep else { return }
         isAsleep = true
+        clog("conterm: power asleep — pausing all surfaces")
         // Pause every renderer so a CA-driven `drawFrame` (or our own
         // `draw()`) can't touch a surface while its GPU/IOSurface backing
         // is in a sleep-transition state. The bool is `visible`.
@@ -82,6 +83,7 @@ final class PowerState {
         wakeRetry?.cancel()
         let displayAwake = CGDisplayIsAsleep(CGMainDisplayID()) == 0
         if displayAwake || attempt >= 5 {
+            clog("conterm: power awake — displayAwake=\(displayAwake) attempt=\(attempt)")
             isAsleep = false
             NotificationCenter.default.post(name: .contermPowerDidWake,
                                             object: nil)

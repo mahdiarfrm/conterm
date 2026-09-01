@@ -117,6 +117,11 @@ extension Ghostty {
         /// creation.
         var paneID: UUID?
 
+        /// Pane identity for the diagnostic log — the UUID's first
+        /// field, which is unique enough to follow one pane through a
+        /// session without filling the log with full UUIDs.
+        var logID: String { paneID.map { String($0.uuidString.prefix(8)) } ?? "?" }
+
         /// Font point size to create the surface at; 0 defers to the config
         /// default. Set before `start(view:)`. Orbit's floating terminals use a
         /// smaller size than the main panes.
@@ -397,6 +402,11 @@ extension Ghostty {
             guard let h = handle else { return }
             guard visible != isVisible else { return }
             isVisible = visible
+            // A paused renderer is indistinguishable from a hung one at
+            // the window: the pty keeps flowing and the pane stops
+            // repainting. Log the transition so a stuck pane can be told
+            // apart from a stuck terminal.
+            clog("conterm: surface \(visible ? "resumed" : "PAUSED") pane=\(logID) title=\(title)")
             ghostty_surface_set_occlusion(h, visible)
             // A paused surface stops presenting; its CAMetalLayer can read
             // back empty, and a translucent terminal then shows the desktop
@@ -720,7 +730,7 @@ extension Ghostty {
                 break
 
             case .rendererHealth(let healthy):
-                clog("conterm: renderer \(healthy ? "recovered" : "UNHEALTHY") pane=\(paneID?.uuidString ?? "?") title=\(title)")
+                clog("conterm: renderer \(healthy ? "recovered" : "UNHEALTHY") pane=\(logID) title=\(title)")
                 // On recovery the last errored frame was never presented;
                 // force one so the pane doesn't hold a stale image.
                 if healthy { draw() }

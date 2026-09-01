@@ -166,6 +166,7 @@ extension Ghostty {
 
         override func becomeFirstResponder() -> Bool {
             let ok = super.becomeFirstResponder()
+            clog("conterm: pane=\(controller?.logID ?? "?") took keyboard ok=\(ok)")
             controller?.setFocus(true)
             controller?.onActivate?()
             return ok
@@ -173,6 +174,10 @@ extension Ghostty {
 
         override func resignFirstResponder() -> Bool {
             let ok = super.resignFirstResponder()
+            // A pane that loses first responder keeps its shell and pty
+            // but stops receiving keys, which reads at the window as a
+            // terminal that ignores input.
+            clog("conterm: pane=\(controller?.logID ?? "?") lost keyboard ok=\(ok)")
             controller?.setFocus(false)
             return ok
         }
