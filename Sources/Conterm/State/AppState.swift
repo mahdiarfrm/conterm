@@ -386,7 +386,7 @@ final class AppState: ObservableObject {
     /// the user's own most recent `ssh` invocation of that host (which
     /// carries the login — `root@web-01`), then the bare host.
     private static func resolveHostTarget(_ host: String) -> String {
-        let overrides = UserDefaults.standard
+        let overrides = InstanceState.defaults
             .dictionary(forKey: hostTargetOverridesKey) as? [String: String]
         if let t = overrides?[host], !t.isEmpty { return t }
         if let match = SSHHistory.recentTargets(limit: 50)
@@ -399,10 +399,10 @@ final class AppState: ObservableObject {
     /// Re-probe as a different target and remember it for this host.
     func retryHostOverview(as newTarget: String) {
         guard var req = hostOverview, !newTarget.isEmpty else { return }
-        var map = (UserDefaults.standard
+        var map = (InstanceState.defaults
             .dictionary(forKey: Self.hostTargetOverridesKey) as? [String: String]) ?? [:]
         map[req.paneHost] = newTarget
-        UserDefaults.standard.set(map, forKey: Self.hostTargetOverridesKey)
+        InstanceState.defaults.set(map, forKey: Self.hostTargetOverridesKey)
         req.target = newTarget
         hostOverview = req
     }
@@ -587,7 +587,7 @@ final class AppState: ObservableObject {
             return
         }
         orbitFocusSession = focusSession
-        UserDefaults.standard.set(true, forKey: Self.orbitWasOpenKey)
+        InstanceState.defaults.set(true, forKey: Self.orbitWasOpenKey)
         OrbitModel.shared.beginObserving()
         // Orbit visualizes live agent activity, so keep the agent roster (and its
         // transcript parsing — sub-agents, shell commands) refreshing while open.
@@ -608,7 +608,7 @@ final class AppState: ObservableObject {
 
     func closeOrbit() {
         guard orbitOpen else { return }
-        UserDefaults.standard.set(false, forKey: Self.orbitWasOpenKey)
+        InstanceState.defaults.set(false, forKey: Self.orbitWasOpenKey)
         OrbitModel.shared.endObserving()
         AgentCenter.shared.endObserving()
         // Second net under the overlay's own sweep: if Orbit went away by a
@@ -739,6 +739,125 @@ final class AppState: ObservableObject {
     func closeAnsibleCockpit() {
         guard ansibleCockpit != nil else { return }
         withAnimation(Theme.Spring.snappy) { ansibleCockpit = nil }
+        focusActiveSurface()
+        SoundEffects.shared.play(.paletteClose)
+    }
+
+    /// Working-tree review overlay, keyed by repository root. Holds the
+    /// root rather than a pane: two agents in one repo share a tree, and
+    /// the review outlives the pane that opened it.
+    @Published var worktreeReview: String?
+
+    func openWorktreeReview(root: String) {
+        WorktreeWatch.shared.pin(root: root)
+        withAnimation(Theme.Spring.bouncy) { worktreeReview = root }
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    /// Open the review for the focused pane's repo. Resolving the root can
+    /// need a subprocess, so it answers asynchronously; outside a repo it
+    /// never opens, which lets the palette offer the command everywhere.
+    func openWorktreeReviewForActivePane() {
+        let cwd = selectedTab?.paneTree.activePane?.cwd
+        WorktreeWatch.shared.resolveRoot(forCwd: cwd) { [weak self] root in
+            guard let self, let root else { return }
+            self.openWorktreeReview(root: root)
+        }
+    }
+
+    func closeWorktreeReview() {
+        guard worktreeReview != nil else { return }
+        withAnimation(Theme.Spring.snappy) { worktreeReview = nil }
+        focusActiveSurface()
+        SoundEffects.shared.play(.paletteClose)
+    }
+
+    /// Terraform cockpit: a pane's latest plan, or the machine's last one.
+    enum TerraformCockpitTarget: Equatable {
+        case pane(UUID)
+        case lastPlan
+    }
+    @Published var terraformCockpit: TerraformCockpitTarget?
+
+    func openTerraformCockpit(paneID: UUID) {
+        withAnimation(Theme.Spring.bouncy) { terraformCockpit = .pane(paneID) }
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    func openTerraformLastPlan() {
+        withAnimation(Theme.Spring.bouncy) { terraformCockpit = .lastPlan }
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    /// The plan worth showing: this pane's if it ran one, else the most
+    /// recent on the machine. No-op when neither exists.
+    func openTerraformPlan() {
+        if let id = selectedTab?.paneTree.activePaneID,
+           TerraformCenter.shared.plans[id] != nil {
+            openTerraformCockpit(paneID: id)
+        } else if TerraformCenter.shared.lastPlan != nil {
+            openTerraformLastPlan()
+        }
+    }
+
+    func closeTerraformCockpit() {
+        guard terraformCockpit != nil else { return }
+        withAnimation(Theme.Spring.snappy) { terraformCockpit = nil }
+        focusActiveSurface()
+        SoundEffects.shared.play(.paletteClose)
+    }
+
+    /// Agent tools panel: the infrastructure calls the agent in a pane has
+    /// made, optionally opened on one of them. nil when closed.
+    struct AgentToolsTarget: Equatable {
+        let paneID: UUID
+        var runID: String?
+    }
+    @Published var agentTools: AgentToolsTarget?
+
+    func openAgentTools(paneID: UUID, runID: String? = nil) {
+        withAnimation(Theme.Spring.bouncy) {
+            agentTools = AgentToolsTarget(paneID: paneID, runID: runID)
+        }
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    /// The focused pane's record, empty or not — the palette offers the
+    /// command everywhere.
+    func openAgentToolsForActivePane() {
+        guard let id = selectedTab?.paneTree.activePaneID else { return }
+        openAgentTools(paneID: id)
+    }
+
+    func closeAgentTools() {
+        guard agentTools != nil else { return }
+        withAnimation(Theme.Spring.snappy) { agentTools = nil }
+        focusActiveSurface()
+        SoundEffects.shared.play(.paletteClose)
+    }
+
+    /// The pane with this id in this window, if it still exists.
+    func pane(id: UUID) -> Pane? {
+        for tab in tabs {
+            if let p = tab.paneTree.root.leaves().first(where: { $0.id == id }) { return p }
+        }
+        return nil
+    }
+
+    /// "While you were away" card. One window shows it — the app delegate
+    /// picks the key one — so a return doesn't stack the same summary on
+    /// every open window.
+    @Published var briefingOpen = false
+
+    func openBriefing() {
+        Briefing.shared.willPresent()
+        withAnimation(Theme.Spring.bouncy) { briefingOpen = true }
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    func closeBriefing() {
+        guard briefingOpen else { return }
+        withAnimation(Theme.Spring.snappy) { briefingOpen = false }
         focusActiveSurface()
         SoundEffects.shared.play(.paletteClose)
     }

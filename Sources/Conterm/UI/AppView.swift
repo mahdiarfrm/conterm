@@ -50,6 +50,13 @@ struct AppView: View {
             // rather than behind it.
             hostOverviewOverlay.id("overlay.hostOverview").zIndex(16)
             ansibleCockpitOverlay.id("overlay.ansible").zIndex(13)
+            // Opened from the agent center (14) and the briefing (15),
+            // so it sits above both — a review that appears behind the
+            // thing you clicked reads as nothing having happened.
+            worktreeOverlay.id("overlay.worktree").zIndex(17)
+            terraformOverlay.id("overlay.terraform").zIndex(13)
+            agentToolsOverlay.id("overlay.agentTools").zIndex(13)
+            briefingOverlay.id("overlay.briefing").zIndex(15)
             clusterOverviewOverlay.id("overlay.cluster").zIndex(13)
             agentCenterOverlay.id("overlay.agentCenter").zIndex(14)
             renameOverlay.id("overlay.rename").zIndex(12)
@@ -454,8 +461,8 @@ struct AppView: View {
                     .ignoresSafeArea()
                     .onTapGesture { state.togglePalette() }
                     .transition(.asymmetric(
-                        insertion: .opacity.animation(.easeOut(duration: 0.20)),
-                        removal:   .opacity.animation(.easeIn(duration: 0.18))
+                        insertion: .opacity.animation(.easeOut(duration: 0.14)),
+                        removal:   .opacity.animation(.easeIn(duration: 0.16))
                     ))
                 VStack {
                     CommandPalette()
@@ -465,13 +472,13 @@ struct AppView: View {
                         // toward the top, so dismissal reads as the
                         // palette receding rather than vanishing.
                         .transition(.asymmetric(
-                            insertion: .scale(scale: 0.96, anchor: .top)
+                            insertion: .scale(scale: 0.97, anchor: .top)
                                 .combined(with: .opacity)
-                                .animation(.spring(response: 0.40,
-                                                    dampingFraction: 0.78)),
+                                .animation(.spring(response: 0.26,
+                                                    dampingFraction: 0.82)),
                             removal: .scale(scale: 0.96, anchor: .top)
                                 .combined(with: .opacity)
-                                .animation(.easeIn(duration: 0.18))
+                                .animation(.easeIn(duration: 0.16))
                         ))
                     Spacer()
                 }
@@ -528,6 +535,38 @@ struct AppView: View {
         BriefingPresenter(item: state.ansibleCockpit,
                           onDismiss: { state.closeAnsibleCockpit() }) { target, glass in
             AnsibleCockpitOverlay(target: target, glassLive: glass)
+        }
+    }
+
+    private var worktreeOverlay: some View {
+        BriefingPresenter(item: state.worktreeReview,
+                          onDismiss: { state.closeWorktreeReview() }) { root, glass in
+            WorktreeOverlay(root: root, glassLive: glass)
+                .environmentObject(state)
+        }
+    }
+
+    private var terraformOverlay: some View {
+        BriefingPresenter(item: state.terraformCockpit,
+                          onDismiss: { state.closeTerraformCockpit() }) { target, glass in
+            TerraformCockpitOverlay(target: target, glassLive: glass)
+                .environmentObject(state)
+        }
+    }
+
+    private var agentToolsOverlay: some View {
+        BriefingPresenter(item: state.agentTools,
+                          onDismiss: { state.closeAgentTools() }) { target, glass in
+            AgentToolOverlay(target: target, glassLive: glass)
+                .environmentObject(state)
+        }
+    }
+
+    private var briefingOverlay: some View {
+        BriefingPresenter(item: state.briefingOpen ? true : nil,
+                          onDismiss: { state.closeBriefing() }) { _, glass in
+            BriefingOverlay(glassLive: glass)
+                .environmentObject(state)
         }
     }
 
@@ -679,17 +718,17 @@ struct AppView: View {
                     // Same receding close as the palette: shrink-and-
                     // fade toward where it came from.
                     .transition(.asymmetric(
-                        insertion: .scale(scale: 0.96)
+                        insertion: .scale(scale: 0.97)
                             .combined(with: .opacity)
-                            .animation(.spring(response: 0.40,
-                                                dampingFraction: 0.78)),
+                            .animation(.spring(response: 0.26,
+                                                dampingFraction: 0.82)),
                         removal: .scale(scale: 0.96)
                             .combined(with: .opacity)
-                            .animation(.easeIn(duration: 0.18))
+                            .animation(.easeIn(duration: 0.16))
                     ))
                     .frame(maxHeight: .infinity, alignment: .top)
             }
-            .transition(.opacity.animation(.easeInOut(duration: 0.18)))
+            .transition(.opacity.animation(.easeInOut(duration: 0.14)))
         }
     }
 

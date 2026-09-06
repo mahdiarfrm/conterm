@@ -32,8 +32,8 @@ extension CommandPalette {
                         .opacity(appeared ? 1 : 0)
                         .offset(y: appeared ? 0 : 10)
                         .animation(
-                            .spring(response: 0.42, dampingFraction: 0.82)
-                                .delay(min(Double(index) * 0.028, 0.22)),
+                            .spring(response: 0.30, dampingFraction: 0.86)
+                                .delay(min(Double(index) * 0.016, 0.10)),
                             value: appeared)
                         .onTapGesture { runCommand(command) }
                         .onHover { hovering in
@@ -478,6 +478,26 @@ extension CommandPalette {
                     subtitle: "Jump to the next agent waiting on you; repeat to cycle",
                     shortcut: "",
                     run: { AgentCenter.shared.jumpToNextAttention() }),
+            Command(id: "agent_changes", icon: "arrow.triangle.pull",
+                    title: "Review Changes",
+                    subtitle: "Review what an agent changed in this repo",
+                    shortcut: "",
+                    run: { state.openWorktreeReviewForActivePane() }),
+            Command(id: "agent_tools", icon: "circle.hexagongrid",
+                    title: "Agent Tools",
+                    subtitle: "What the agent in this pane ran: terraform, kubectl, docker, ssh…",
+                    shortcut: "",
+                    run: { state.openAgentToolsForActivePane() }),
+            Command(id: "terraform_plan", icon: TerraformMark.iconName,
+                    title: "Terraform Plan",
+                    subtitle: "What the last plan creates and destroys",
+                    shortcut: "",
+                    run: { state.openTerraformPlan() }),
+            Command(id: "briefing", icon: "sun.horizon",
+                    title: "While You Were Away",
+                    subtitle: "What happened while you were away",
+                    shortcut: "",
+                    run: { state.openBriefing() }),
             Command(id: "tab_groups", icon: "square.stack.3d.up",
                     title: "Tab Groups",
                     subtitle: "Create, rename, recolor & reorder groups",
@@ -598,6 +618,10 @@ extension CommandPalette {
         ("clipboard_history", "Clipboard History",          "doc.on.clipboard"),
         ("agents",           "Agents",                      RobotGlyph.iconName),
         ("agent_next",       "Next Blocked Agent",          "bell.badge"),
+        ("agent_changes",    "Review Changes",              "arrow.triangle.pull"),
+        ("agent_tools",      "Agent Tools",                 "circle.hexagongrid"),
+        ("terraform_plan",   "Terraform Plan",              TerraformMark.iconName),
+        ("briefing",         "While You Were Away",         "sun.horizon"),
         ("notes",            "Notes",                       "note.text"),
         ("new_note",         "New Note",                    "square.and.pencil"),
         ("new_tab",          "New Tab",                     "plus.square.on.square"),

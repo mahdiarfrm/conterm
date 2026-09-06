@@ -88,10 +88,21 @@ One search over everything:
 ### Agent-aware
 
 - **Status pills** — a per-pane pill shows when
-  [Claude Code](https://www.anthropic.com/claude-code) or
+  [Claude Code](https://www.anthropic.com/claude-code),
+  [Codex](https://github.com/openai/codex) or
   [opencode](https://opencode.ai) is *ready*, *thinking*, or *needs you*, with
   a notification center for what finished while you were away. Hooks are
-  installed non-destructively.
+  installed non-destructively (Claude's in `~/.claude/settings.json`,
+  Codex's in `~/.codex/hooks.json`; both run one script).
+- **Activity bubbles** — whatever Claude or Codex is doing pops up beside the pill
+  as a monochrome bubble, one per kind in flight, its ring sweeping in that
+  kind's colour: terraform, ansible, kubectl, helm, docker, ssh, git, gh,
+  plain shell, reading and editing files, searching code, web search and
+  fetch, sub-agents, task lists, skills, MCP tools. The cluster stays
+  centred as bubbles come and go; finished calls fold into a glass
+  *History* capsule at the pane's top-left. Click either for each call's
+  command, duration, verdict and output; an *Agent Tools* palette command
+  opens the same record for the focused pane.
 - **Command center** (`⌘⇧A`) — a docked rail listing every running agent across
   all windows, *needs you* first. Each card shows its branch, the task it's
   working on, live cost / burn rate / tokens / model, and how long since it
@@ -109,6 +120,16 @@ One search over everything:
 - **Command markers** *(shell integration)* — a ✓ / ✗ chip with the run time
   when a command fails or takes a while, a notification when a long command
   finishes while you've stepped away, and `⌘↑` / `⌘↓` to jump between prompts.
+- **Working-tree review** — the pill says the agent is thinking; this says
+  what it changed. Each agent card carries a live count of the files it has
+  touched since it started, with the insertions and deletions; click through
+  for the full picture — the commits it made, every file still uncommitted,
+  and the diff of whichever one you pick. *Reviewed* re-baselines, so the
+  next look starts from what you just read. Also on `⌘K` → *Review Changes*.
+- **While you were away** — come back after a real absence and one card sums
+  up what happened: agents that finished or got blocked, playbooks and
+  rollouts, cluster alerts, failed commands, and any changes left unreviewed.
+  The threshold for "away" is yours to set; `⌘K` opens it on demand.
 
 ### Hosts & clusters
 
@@ -143,6 +164,13 @@ One search over everything:
   results, task durations with a slowest callout, the changed footprint,
   and a failure feed with messages. A widget tracks runs across all
   windows and keeps the machine's most recent report across relaunches.
+- **Terraform cockpit** — `terraform plan` (or `tofu plan`) comes back as a
+  card instead of a wall of `~` and `->`: what it destroys and replaces
+  first, then what it creates and updates, with the attributes each update
+  actually touches. The saved plan is read back with `terraform show -json`
+  and deleted immediately — a plan file carries state values, secrets
+  included. Off in *Settings → Integrations* if you'd rather terraform not
+  save a plan at all.
 
 ### Orbit — the fleet as a map *(beta)*
 

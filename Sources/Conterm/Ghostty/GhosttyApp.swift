@@ -90,7 +90,7 @@ extension Ghostty {
             //    from starting — the user fixes the file, then turns
             //    safe mode back off. The file is still SEEDED if
             //    missing so first run gets the template.
-            let contermDir = (configHome as NSString).appendingPathComponent("conterm")
+            let contermDir = InstanceState.configDir
             let contermConfigPath = (contermDir as NSString).appendingPathComponent("config")
             if fm.fileExists(atPath: contermConfigPath) {
                 if App.useDefaultGhosttyConfig {
@@ -291,7 +291,7 @@ extension Ghostty {
         /// can't stop the terminal from starting. Default OFF: normal
         /// mode uses the user's config (conterm config highest priority).
         nonisolated static var useDefaultGhosttyConfig: Bool {
-            UserDefaults.standard.object(forKey: "conterm.useDefaultConfig")
+            InstanceState.defaults.object(forKey: "conterm.useDefaultConfig")
                 as? Bool ?? false
         }
 
@@ -300,7 +300,7 @@ extension Ghostty {
         /// stays decoupled from the Preferences object. Key matches
         /// `Preferences.K.remoteArrowKeys`.
         nonisolated static var remoteArrowKeys: Bool {
-            UserDefaults.standard.object(forKey: "conterm.sshCompatMode")
+            InstanceState.defaults.object(forKey: "conterm.sshCompatMode")
                 as? Bool ?? false
         }
 
@@ -312,7 +312,7 @@ extension Ghostty {
         /// on every display refresh — the dominant WindowServer cost on
         /// Conterm's non-opaque glass window.
         nonisolated static var lowPowerRendering: Bool {
-            UserDefaults.standard.object(forKey: "conterm.lowPowerRendering")
+            InstanceState.defaults.object(forKey: "conterm.lowPowerRendering")
                 as? Bool ?? true
         }
 
@@ -519,8 +519,7 @@ extension Ghostty {
             //    init(). SKIPPED in safe mode so a broken config can't
             //    break a reload.
             if !useDefaultGhosttyConfig {
-                let contermConfigPath = (configHome as NSString)
-                    .appendingPathComponent("conterm/config")
+                let contermConfigPath = InstanceState.configPath("config")
                 if fm.fileExists(atPath: contermConfigPath) {
                     contermConfigPath.withCString { ghostty_config_load_file(cfg, $0) }
                 }
