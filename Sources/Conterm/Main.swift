@@ -78,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if prefs?.hasCompletedSetup == true {
             SetupAssistant.migrateToSingleSource()
         }
+        if prefs.companionEnabled { Self.startCompanion() }
         ghostty = Ghostty.App()
         // Register the sleep/wake gate early so its NSWorkspace observers
         // are live before the first sleep — it pauses every renderer
@@ -892,7 +893,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return .terminateNow
     }
 
+    /// Publish what this Mac is doing for Conterm on iOS to read over SSH,
+    /// watch for what it asks back, and announce the Mac on the local
+    /// network so the phone can find it without anyone typing a hostname
+    /// into a form. Files, not a server — see `RemoteStatePublisher`.
+    ///
+    /// All three are idempotent, so the preference can drive them directly.
+    static func startCompanion() {
+        RemoteStatePublisher.start()
+        RemoteControl.start()
+        NearbyBeacon.shared.start()
+    }
+
+    static func stopCompanion() {
+        NearbyBeacon.shared.stop()
+        RemoteControl.stop()
+        // Removes the published snapshot rather than leaving one frozen at
+        // the moment the switch went off: the phone should say "not
+        // running" rather than show a session list that no longer updates.
+        RemoteStatePublisher.clear()
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        Self.stopCompanion()
         // The plan's writes are coalesced to one per run-loop turn, so a
         // just-queued schedule could still be pending here.
         OrbitScheduler.shared.flush()

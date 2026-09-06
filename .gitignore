@@ -28,3 +28,8 @@ conterm_video/
 conterm-monitor-*.log
 archive/
 .build-ghostty/
+
+# Throwaway test instance: renamed app copy, config backup, logs.
+ContermTest.app/
+.test-config-backup/
+.test-logs/
