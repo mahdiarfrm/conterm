@@ -91,7 +91,45 @@ final class Pane: ObservableObject, Identifiable {
     /// agent is running — `.ready` while it waits, `.working` while it
     /// thinks (rotating neon), `.attention` when it needs you — and
     /// only vanishes (`.idle`) when the session ends.
-    @Published var agent: AgentStatus = .idle
+    @Published var agent: AgentStatus = .idle {
+        didSet {
+            guard agent.phase != oldValue.phase else { return }
+            if oldValue.phase == .idle {
+                agentSince = Date()
+                clog("agent tools: agent appeared (\(agent.phase))")
+            }
+            switch agent.phase {
+            case .idle:
+                // The session is over; its history goes with it.
+                if !toolRuns.isEmpty { toolRuns = [] }
+                toolFeedPath = nil
+                toolFeedCursor = 0
+                agentSince = nil
+            case .ready:
+                // A turn that ends closes every tool it ran. `.ready` reached
+                // from attention is the chrome's own timeout, not a Stop hook,
+                // and the prompted tool may still be pending.
+                if oldValue.phase == .working || oldValue.phase == .interrupted {
+                    settleToolRuns()
+                }
+                AgentCenter.shared.scheduleToolEnrichment()
+            case .working, .attention, .interrupted:
+                break
+            }
+        }
+    }
+
+    /// Infrastructure tool calls the agent has made this session — the
+    /// bubbles beside the pill and the history row (see `AgentToolRun`).
+    /// Appended by the hook's tool events, filled in from the transcript.
+    @Published var toolRuns: [AgentToolRun] = []
+    /// Where the transcript read for `toolRuns` left off: the file and how
+    /// many of its tool calls have been consumed (see `applyToolFeed`).
+    var toolFeedPath: String?
+    var toolFeedCursor = 0
+    /// When the agent first showed up in this pane. Transcript calls from
+    /// before it — a resumed session's earlier life — are not this pane's.
+    var agentSince: Date?
 
     /// Absolute path to the running agent's transcript JSONL, carried in the
     /// agent OSC by the hook. Lets the command center read THIS pane's
@@ -148,20 +186,25 @@ final class Pane: ObservableObject, Identifiable {
 
 /// Which agent is running — selects the pill's logo + name.
 enum AgentTool: String, Equatable {
-    case claude, opencode, generic
+    case claude, opencode, codex, generic
     var displayName: String {
         switch self {
         case .claude:   return "Claude"
         case .opencode: return "opencode"
+        case .codex:    return "Codex"
         case .generic:  return "Agent"
         }
     }
+    /// Reads a session transcript Conterm can parse (see
+    /// `AgentTranscriptStore`): Claude's project JSONL, Codex's rollout.
+    var hasTranscript: Bool { self == .claude || self == .codex }
     /// Bundled monochrome mark (flat Resources png, template-tinted);
     /// nil → SF Symbol fallback.
     var markAsset: String? {
         switch self {
         case .claude:   return "claude-mark"
         case .opencode: return "opencode-mark"
+        case .codex:    return "codex-mark"
         case .generic:  return nil
         }
     }
@@ -175,6 +218,7 @@ enum AgentTool: String, Equatable {
         // The opencode mark is its own two-tone artwork (white over dark) —
         // render it as-is rather than flattening it to a tint.
         case .opencode: return false
+        case .codex:    return true
         case .generic:  return true
         }
     }
@@ -183,6 +227,7 @@ enum AgentTool: String, Equatable {
         switch self {
         case .claude:   return "sparkle"
         case .opencode: return "chevron.left.forwardslash.chevron.right"
+        case .codex:    return "asterisk"
         case .generic:  return "circle.dotted"
         }
     }
@@ -191,6 +236,7 @@ enum AgentTool: String, Equatable {
         switch self {
         case .claude:   return Color(red: 0.93, green: 0.49, blue: 0.20) // warm orange
         case .opencode: return Color(red: 0.55, green: 0.36, blue: 0.92) // deep violet
+        case .codex:    return Color(red: 0.16, green: 0.78, blue: 0.62) // OpenAI green
         case .generic:  return Color(red: 0.60, green: 0.78, blue: 1.00) // soft blue
         }
     }

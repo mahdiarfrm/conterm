@@ -133,6 +133,22 @@ func makePaneSurface(pane: Pane,
             guard let toolRaw = parts.first else { return }
             let tool = AgentTool(rawValue: toolRaw) ?? .generic
             let stateStr = parts.count > 1 ? parts[1] : ""
+            // A tool call, not a phase: `tool:start:…` / `tool:end:…` (see
+            // AgentToolEvent). Only a live session's calls count — a pill that
+            // isn't showing has no bubbles to hang. A call starting is also
+            // the agent working: after a permission prompt the pill reads
+            // "needs you" until this says otherwise.
+            if stateStr == "tool" {
+                guard pane.agent.phase != .idle, parts.count > 2,
+                      let event = AgentToolEvent.parse(parts[2]) else { return }
+                if case .start = event, pane.agent.phase != .working {
+                    pane.agent = AgentStatus(phase: .working, tool: tool, progress: nil)
+                    owningTab?.recomputeAgentPhase()
+                }
+                pane.applyToolEvent(event)
+                AgentCenter.shared.scheduleToolEnrichment()
+                return
+            }
             if parts.count > 2, !parts[2].isEmpty { pane.agentTranscriptPath = parts[2] }
             let phase: AgentStatus.Phase
             switch stateStr {
@@ -205,10 +221,10 @@ func makePaneSurface(pane: Pane,
             let dir = friendlyDirLabel(for: pane.cwd)
             let dur = formatCommandDuration(durationNs)
             if result.failed {
-                notifications.post(tool: .generic, title: "Command failed",
+                notifications.post(tool: .generic, briefing: .command, title: "Command failed",
                                    message: "exit \(exitCode) · \(dur) · \(dir)")
             } else {
-                notifications.post(tool: .generic, title: "Command finished",
+                notifications.post(tool: .generic, briefing: .command, title: "Command finished",
                                    message: "\(dur) · \(dir)")
             }
         }
@@ -863,6 +879,31 @@ struct PaneChrome: View {
     @State private var commandBadge: Pane.CommandResult?
     @State private var attentionGen = 0
 
+    /// Tool bubbles take the pill's own height, measured rather than
+    /// assumed, so the row reads as one set whatever the label's metrics.
+    @State private var pillHeight: CGFloat = 36
+    /// Between the pill and the first bubble, and between bubbles.
+    private static let bubbleGap: CGFloat = 8
+    /// The bubbles beside the pill, one per kind in flight.
+    @StateObject private var liveBubbles = LiveToolBubbles()
+
+    private var finishedTools: [AgentToolRun] {
+        prefs.agentToolBubbles ? pane.toolRuns.filter { !$0.isRunning } : []
+    }
+
+    /// The window state that owns this pane; nil during teardown.
+    private var owningState: AppState? {
+        (NSApp.delegate as? AppDelegate)?.windows.first { wc in
+            wc.state.tabs.contains { t in
+                t.paneTree.root.leaves().contains { $0.id == pane.id }
+            }
+        }?.state
+    }
+
+    private func openTools(_ run: AgentToolRun?) {
+        owningState?.openAgentTools(paneID: pane.id, runID: run?.id)
+    }
+
     /// `.key` only when this view's window is key and the app is frontmost.
     /// The attention pulse is gated on it: an off-screen animation still
     /// drives continuous compositor recomposites.
@@ -979,21 +1020,47 @@ struct PaneChrome: View {
             .allowsHitTesting(false)
 
             // Agent status pill — the on-pane "thinking" indicator. Interactive:
-            // click it to open Orbit focused on this session.
+            // click it to open Orbit focused on this session. Calls in flight
+            // hang off its right as bubbles, and the whole cluster stays
+            // centred: each bubble that pops in nudges the pill left, each
+            // that leaves lets it back. Keyed on the set of kinds, so a
+            // count or transcript write doesn't re-trigger the spring.
             if pane.agent.phase != .idle {
-                Button {
-                    (NSApp.delegate as? AppDelegate)?.windows.first { wc in
-                        wc.state.tabs.contains { t in
-                            t.paneTree.root.leaves().contains { $0.id == pane.id }
+                HStack(spacing: Self.bubbleGap) {
+                    Button {
+                        owningState?.openOrbit(focusSession: pane.id)
+                    } label: {
+                        AgentPill(status: pane.agent)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open this session in Orbit")
+                    .background(GeometryReader { g in
+                        Color.clear.preference(key: PillHeightKey.self, value: g.size.height)
+                    })
+                    ForEach(liveBubbles.items) { item in
+                        AgentToolBubble(run: item.run, count: item.count, size: pillHeight) {
+                            openTools(item.run)
                         }
-                    }?.state.openOrbit(focusSession: pane.id)
-                } label: {
-                    AgentPill(status: pane.agent)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.1).combined(with: .opacity),
+                            removal: .scale(scale: 0.3).combined(with: .opacity)))
+                    }
                 }
-                .buttonStyle(.plain)
-                .help("Open this session in Orbit")
+                .onPreferenceChange(PillHeightKey.self) { h in
+                    if h > 0, abs(h - pillHeight) > 0.5 { pillHeight = h }
+                }
                 .padding(.top, 10)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .animation(Theme.Spring.bouncy, value: liveBubbles.items.map(\.id))
+            }
+
+            // Finished tool calls fold into one capsule: the count, and the
+            // way in to the panel.
+            if pane.agent.phase != .idle, !finishedTools.isEmpty {
+                AgentToolHistoryButton(count: finishedTools.count) { openTools(nil) }
+                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    .padding(.top, 15).padding(.leading, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
 
             // Ansible run badge — interactive, opens the cockpit;
@@ -1029,7 +1096,15 @@ struct PaneChrome: View {
             }
         }
         .animation(Theme.Spring.snappy, value: pane.agent)
+        .animation(Theme.Spring.snappy, value: pane.toolRuns)
         .animation(Theme.Spring.soft, value: isActive)
+        .onAppear { liveBubbles.sync(prefs.agentToolBubbles ? pane.toolRuns : []) }
+        .onChange(of: pane.toolRuns) { _, runs in
+            liveBubbles.sync(prefs.agentToolBubbles ? runs : [])
+        }
+        .onChange(of: prefs.agentToolBubbles) { _, on in
+            liveBubbles.sync(on ? pane.toolRuns : [])
+        }
         .onReceive(SystemPressure.shared.$wantsLowAnimation) { systemLite = $0 }
         .onChange(of: pane.lastCommand) { _, result in
             guard prefs.commandAlerts, let result,
@@ -1066,6 +1141,15 @@ struct PaneChrome: View {
                 }
             }
         }
+    }
+}
+
+/// The agent pill's rendered height, read by the chrome to size the tool
+/// bubbles beside it.
+private struct PillHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

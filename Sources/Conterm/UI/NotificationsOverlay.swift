@@ -88,9 +88,7 @@ struct NotificationsOverlay: View {
 
     private func row(_ n: AppNotification) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: n.tool == .claude ? "sparkle"
-                  : (n.tool == .opencode ? "chevron.left.forwardslash.chevron.right"
-                     : "bell"))
+            Image(systemName: n.tool == .generic ? "bell" : n.tool.fallbackSymbol)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(n.tool.glowColor)
                 .frame(width: 18)
