@@ -33,6 +33,13 @@ enum RemoteStatePublisher {
 
     private static var timer: Timer?
 
+    /// The window tree as last written. The reader keys on the file's
+    /// mtime, so writing every tick streams the whole payload to the phone
+    /// every tick however little has happened — on a cellular connection,
+    /// a radio wakeup every ten seconds to say nothing. Only a real change
+    /// is worth the wire.
+    private static var lastWindows: [Payload.Window]?
+
     /// Start publishing. Idempotent.
     ///
     /// The cadence is slow because the reader polls slower still, and because
@@ -59,10 +66,16 @@ enum RemoteStatePublisher {
     /// a snapshot frozen at the moment you closed the lid.
     static func clear() {
         stop()
+        lastWindows = nil
         try? FileManager.default.removeItem(at: url)
     }
 
-    static func publish() {
+    /// Write the current state, if it differs from what was written last.
+    ///
+    /// `force` is for answering the phone: an explicit `refresh` has to
+    /// produce a file the reader sees change, even when the answer is the
+    /// same one it already had.
+    static func publish(force: Bool = false) {
         guard let delegate = NSApp.delegate as? AppDelegate else { return }
 
         var windows: [Payload.Window] = []
@@ -102,6 +115,11 @@ enum RemoteStatePublisher {
                 tabs: tabs))
         }
 
+        // `publishedAt` moves on every call and so can never take part in
+        // this comparison; the window tree is the whole of what changed.
+        guard force || windows != lastWindows else { return }
+        lastWindows = windows
+
         let payload = Payload(
             version: formatVersion,
             publishedAt: Date(),
@@ -131,21 +149,21 @@ enum RemoteStatePublisher {
     /// The wire format. Kept as its own type rather than encoding the live
     /// model so a refactor of `Tab` or `Pane` can't silently change what a
     /// phone three versions old is parsing.
-    struct Payload: Codable {
+    struct Payload: Codable, Equatable {
         var version: Int
         var publishedAt: Date
         var hostName: String?
         var appVersion: String?
         var windows: [Window]
 
-        struct Window: Codable {
+        struct Window: Codable, Equatable {
             var index: Int
             var title: String?
             var isKey: Bool
             var tabs: [Tab]
         }
 
-        struct Tab: Codable {
+        struct Tab: Codable, Equatable {
             var index: Int
             var title: String
             var isSelected: Bool
@@ -154,7 +172,7 @@ enum RemoteStatePublisher {
             var panes: [Pane]
         }
 
-        struct Pane: Codable {
+        struct Pane: Codable, Equatable {
             var id: String
             var index: Int
             var title: String?
