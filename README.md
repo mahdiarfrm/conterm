@@ -120,6 +120,11 @@ One search over everything:
 - **Command markers** *(shell integration)* — a ✓ / ✗ chip with the run time
   when a command fails or takes a while, a notification when a long command
   finishes while you've stepped away, and `⌘↑` / `⌘↓` to jump between prompts.
+- **Tool bubbles** — a bubble per kind of tool call in flight beside the
+  agent pill, so a glance says what the agent has its hands in — terraform,
+  kubernetes, the shell, the web, a sub-agent. Finished calls fold into a
+  History capsule that opens the record: every call with what it was about,
+  how long it took, how it ended, and its output.
 - **Working-tree review** — the pill says the agent is thinking; this says
   what it changed. Each agent card carries a live count of the files it has
   touched since it started, with the insertions and deletions; click through
@@ -211,6 +216,21 @@ Treat it as beta.
 - **Drill in** — a host blooms open into its containers, VMs and kubelet; a
   cluster into nodes, pods and containers, each with its own verbs. An
   overview map keeps the whole graph in one corner when you have zoomed in.
+
+### Conterm for iOS
+
+- **Your sessions on your phone** — every window, tab and pane, which agent
+  is waiting on you, and a reply back to it. Conterm publishes what it's
+  doing to a file the phone reads over the SSH connection you already have:
+  no listening port, no account, no relay, and nothing to authenticate that
+  your own key doesn't already cover. It works from anywhere you can reach
+  the machine, jump hosts included.
+- **Nearby** — the Mac advertises itself on the local network, so the phone
+  lists it instead of asking you to type a hostname. The advertisement
+  carries the username to prefill and whether Remote Login is actually
+  accepting connections, so a host that would refuse never gets offered.
+- Off until you ask for it, in *Settings → Integrations*. Nothing is
+  published while it's off.
 
 ### Updates and backups
 

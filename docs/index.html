@@ -1260,6 +1260,69 @@ footer{
   background:linear-gradient(165deg, rgba(26,26,32,.5), rgba(16,16,21,.44));
   border-color:rgba(255,255,255,.1);
 }
+
+/* Review + companion mocks (08, 09) */
+.review-mock{
+  position:absolute; inset:24px;
+  display:flex; flex-direction:column; gap:10px;
+  font-family: var(--mono); font-size:11.5px;
+}
+.review-mock .bubbles{display:flex; align-items:center; gap:7px}
+.review-mock .bub{
+  display:flex; align-items:center; gap:5px;
+  padding:3px 9px; border-radius:999px;
+  color:rgba(255,255,255,.72);
+  border:1px solid rgba(255,248,230,.14); background:rgba(10,10,14,.7);
+}
+.review-mock .bub b{color:#fff; font-weight:600}
+.review-mock .hist{margin-left:auto; color:rgba(255,255,255,.42); font-size:10px}
+.review-mock .rcard{
+  flex:1;
+  background: rgba(10,10,14,.86);
+  border:1px solid var(--hairline-2);
+  border-radius:10px;
+  padding:13px 15px;
+}
+.review-mock .top{display:flex; align-items:center; gap:9px}
+.review-mock .name{color:#fff; font-weight:600}
+.review-mock .cnt{margin-left:auto; font-size:10px}
+.review-mock .add{color:#5ad57f}
+.review-mock .del{color:var(--red)}
+.review-mock .file{
+  display:flex; align-items:center; gap:10px; margin-top:10px;
+  color:rgba(255,255,255,.72);
+}
+.review-mock .file em{
+  margin-left:auto; font-style:normal; font-size:10px;
+  color:rgba(255,255,255,.42);
+}
+.phone-mock{
+  position:absolute; inset:24px;
+  display:flex; align-items:center; justify-content:center;
+}
+.phone-mock .body{
+  width:196px; height:100%; max-height:330px;
+  border-radius:26px; padding:12px 11px;
+  background: rgba(10,10,14,.9);
+  border:1px solid var(--hairline-2);
+  font-family: var(--mono); font-size:11px;
+  display:flex; flex-direction:column; gap:9px;
+}
+.phone-mock .hdr{display:flex; align-items:center; gap:7px; color:#fff; font-weight:600}
+.phone-mock .hdr .dotk{
+  width:6px; height:6px; border-radius:50%; background:#5ad57f;
+  box-shadow:0 0 8px #5ad57f;
+}
+.phone-mock .row2{
+  display:flex; align-items:center; gap:8px;
+  padding:7px 9px; border-radius:9px;
+  border:1px solid rgba(255,248,230,.10);
+  color:rgba(255,255,255,.72);
+}
+.phone-mock .row2.attn{border-color:rgba(255,56,60,.35); color:#fff}
+.phone-mock .row2 em{margin-left:auto; font-style:normal; font-size:9.5px; color:rgba(255,255,255,.42)}
+.phone-mock .near{margin-top:auto; font-size:9.5px; color:rgba(255,255,255,.42)}
+
 </style>
 <script>
   /* Set the theme before first paint to avoid a flash. Dark is the
@@ -1700,11 +1763,104 @@ footer{
     </div>
   </section>
 
+
+  <section class="feature wrap reverse" id="review">
+    <div class="row">
+      <div class="copy reveal">
+        <div class="num"><span class="chip">08</span> Review</div>
+        <h2>What the agent actually did.</h2>
+        <p>
+          The pill says an agent is thinking. This says what it changed. A
+          bubble per tool call in flight sits beside it — terraform,
+          kubernetes, the shell, the web — and the finished ones fold into a
+          record of every call, how long it took and what it said. Each agent
+          card carries the files and lines it has touched since it started,
+          measured from the commit it began at, so work it has already
+          committed still counts. Open it for the file list and the diffs.
+          Come back after a while away and one card sums up what happened
+          while you were gone.
+        </p>
+        <div class="sub">
+          <span>diffs · commits</span>
+          <span>tool record</span>
+          <span>away briefing</span>
+        </div>
+      </div>
+      <div class="visual reveal">
+        <div class="review-mock">
+          <div class="bubbles">
+            <span class="bub"><b>terraform</b></span>
+            <span class="bub"><b>search</b></span>
+            <span class="hist">14 done</span>
+          </div>
+          <div class="rcard">
+            <div class="top">
+              <span class="name">api-gateway</span>
+              <span class="cnt"><span class="add">+412</span> <span class="del">&minus;96</span></span>
+            </div>
+            <div class="file">
+              routes/auth.go
+              <em>+188 &minus;12</em>
+            </div>
+            <div class="file">
+              middleware/jwt.go
+              <em>+141 &minus;60</em>
+            </div>
+            <div class="file">
+              config/dev.yaml
+              <em>+83 &minus;24</em>
+            </div>
+            <div class="file">
+              1 commit — harden the token path
+              <em>reviewed</em>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="feature wrap" id="companion">
+    <div class="row">
+      <div class="copy reveal">
+        <div class="num"><span class="chip">09</span> Companion</div>
+        <h2>The sessions you left running.</h2>
+        <p>
+          Conterm for iOS shows every window, tab and pane on your Mac, which
+          agent is waiting on you, and lets you answer it. It reads what the
+          Mac publishes over the SSH connection you already have — no
+          listening port, no account, no relay, nothing to authenticate that
+          your own key doesn't already cover, and it works from anywhere you
+          can reach the machine. The Mac announces itself on the local
+          network, so the phone lists it rather than asking you to type a
+          hostname, and says up front whether Remote Login would even answer.
+        </p>
+        <div class="sub">
+          <span>over your own SSH</span>
+          <span>no server · no account</span>
+          <span>off by default</span>
+        </div>
+      </div>
+      <div class="visual reveal">
+        <div class="phone-mock">
+          <div class="body">
+            <div class="hdr"><span class="dotk"></span> Sam's Air</div>
+            <div class="row2 attn">Claude <em>needs you</em></div>
+            <div class="row2">api-gateway <em>~/code/api</em></div>
+            <div class="row2">db-primary <em>ssh · prod</em></div>
+            <div class="row2">terraform plan <em>2 destroy</em></div>
+            <div class="near">Nearby — one tap to add</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============ CHEATSHEET ============ -->
   <section class="cheat wrap" id="cheat">
     <div class="head reveal">
       <div>
-        <div class="num"><span class="chip">08</span> Keys</div>
+        <div class="num"><span class="chip">10</span> Keys</div>
         <h2>The whole app in one card.</h2>
       </div>
       <p>
@@ -1763,7 +1919,7 @@ footer{
 
   <!-- ============ DOWNLOAD ============ -->
   <section class="download wrap" id="download">
-    <div class="num"><span class="chip">07</span> Get it</div>
+    <div class="num"><span class="chip">11</span> Get it</div>
     <h2>Ready to <span class="grad">try Conterm</span>?</h2>
     <p class="lede">
       Download the latest release, drag it to Applications, and
