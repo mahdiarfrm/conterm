@@ -20,12 +20,18 @@ enum SessionStore {
 
     static var path: String {
         if let pathOverride { return pathOverride }
-        let home = NSHomeDirectory()
-        return "\(home)/.config/conterm/sessions.json"
+        return InstanceState.configPath("sessions.json")
     }
 
     struct Snapshot: Codable {
         var windows: [Window]
+        /// State home that wrote this file. A snapshot that arrived from
+        /// somewhere else — copied in by a sandbox seeded too eagerly, or by
+        /// hand — describes windows this instance does not own, and opening
+        /// them is the exact failure the whole mechanism exists to prevent.
+        /// Absent in files written before instances were a concept, which
+        /// are trusted so an upgrade doesn't lose anyone's windows.
+        var stateHome: String?
     }
 
     struct Window: Codable {
@@ -102,7 +108,11 @@ enum SessionStore {
     }
 
     static func save(windows: [WindowController]) {
-        var snap = Snapshot(windows: [])
+        // A second instance restoring these windows would be surprising;
+        // a second instance *overwriting* them is the bug. Only the lock
+        // holder writes.
+        guard InstanceState.ownsSession else { return }
+        var snap = Snapshot(windows: [], stateHome: InstanceState.home)
         for wc in windows {
             // (No `isVisible` guard — by the time AppKit dispatches
             // willClose / willTerminate, our windows may be flagged
@@ -156,14 +166,22 @@ enum SessionStore {
     }
 
     static func load() -> Snapshot? {
+        // Another instance owns these windows and is still in them: open
+        // clean rather than a second copy of someone else's session.
+        guard InstanceState.ownsSession else { return nil }
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
               let snap = try? JSONDecoder().decode(Snapshot.self, from: data),
               !snap.windows.isEmpty
         else { return nil }
+        guard snap.stateHome == nil || snap.stateHome == InstanceState.home else {
+            clog("conterm: session written by \(snap.stateHome ?? "?") — not ours to restore")
+            return nil
+        }
         return snap
     }
 
     static func clear() {
+        guard InstanceState.ownsSession else { return }
         try? FileManager.default.removeItem(atPath: path)
     }
 }

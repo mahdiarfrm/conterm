@@ -331,7 +331,7 @@ final class OrbitScheduler: ObservableObject {
     /// get to run.
     func flush() {
         guard let data = try? JSONEncoder().encode(actions) else { return }
-        UserDefaults.standard.set(data, forKey: storeKey)
+        InstanceState.defaults.set(data, forKey: storeKey)
     }
 
     /// Load the plan across launches: keep finished actions as history, keep
@@ -339,7 +339,7 @@ final class OrbitScheduler: ObservableObject {
     /// else (running, overdue-pending, immediate-pending) so nothing stale can
     /// auto-fire on a fresh launch. Stale pane ids are cleared.
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: storeKey),
+        guard let data = InstanceState.defaults.data(forKey: storeKey),
               let decoded = try? JSONDecoder().decode([Action].self, from: data) else { return }
         let cutoff = Date().addingTimeInterval(30)   // a little slack past "now"
         var kept: [Action] = []

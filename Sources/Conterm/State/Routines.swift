@@ -266,8 +266,8 @@ final class RoutineStore: ObservableObject {
     /// board, so there is one of them and this is it. `OrbitSpace.flows` still
     /// decodes so an older library opens; nothing writes it again.
     func adoptSavedFlows(from spaces: OrbitSpaces) {
-        guard !UserDefaults.standard.bool(forKey: Self.adoptedKey) else { return }
-        UserDefaults.standard.set(true, forKey: Self.adoptedKey)
+        guard !InstanceState.defaults.bool(forKey: Self.adoptedKey) else { return }
+        InstanceState.defaults.set(true, forKey: Self.adoptedKey)
         var lifted = 0
         for space in spaces.spaces {
             for flow in space.flows where !flow.steps.isEmpty {

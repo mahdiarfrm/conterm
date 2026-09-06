@@ -28,3 +28,7 @@ conterm_video/
 conterm-monitor-*.log
 archive/
 .build-ghostty/
+
+# Second instance for testing: renamed app copy and its isolated state home.
+ContermDev.app/
+.dev-home/

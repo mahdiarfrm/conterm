@@ -39,7 +39,7 @@ final class KubeContextWatch: ObservableObject {
     /// case-insensitive and substring-based, so "prod" also catches
     /// "production" and "prod-eu".
     nonisolated static func dangerPatterns() -> [String] {
-        let raw = UserDefaults.standard
+        let raw = InstanceState.defaults
             .string(forKey: "conterm.kubeDangerPatterns") ?? "prod"
         let parts = raw.split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
@@ -132,7 +132,7 @@ final class KubeContextWatch: ObservableObject {
                 .filter { !$0.isEmpty }
                 .map { $0.hasPrefix("~") ? NSHomeDirectory() + $0.dropFirst() : $0 }
         }
-        if let manual = UserDefaults.standard.string(forKey: "conterm.kubeConfigPaths"),
+        if let manual = InstanceState.defaults.string(forKey: "conterm.kubeConfigPaths"),
            !manual.trimmingCharacters(in: .whitespaces).isEmpty {
             return split(manual)
         }

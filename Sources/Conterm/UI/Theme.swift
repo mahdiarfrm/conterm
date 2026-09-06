@@ -175,7 +175,7 @@ enum Theme {
     }
     static func reloadUIScale() { uiScaleCache = loadUIScale() }
     private static func loadUIScale() -> CGFloat {
-        guard let v = UserDefaults.standard.object(forKey: "conterm.uiScale") as? Double
+        guard let v = InstanceState.defaults.object(forKey: "conterm.uiScale") as? Double
         else { return 1 }
         // Clamped hard: chrome sizes are tuned against fixed hit targets and
         // fixed bar heights, and a scale far outside this range doesn't shrink
@@ -194,7 +194,7 @@ enum Theme {
         (size * uiScale * 2).rounded() / 2
     }
     private static func loadPaneCorner() -> CGFloat {
-        guard let v = UserDefaults.standard.object(forKey: "conterm.paneCornerRadius") as? Double
+        guard let v = InstanceState.defaults.object(forKey: "conterm.paneCornerRadius") as? Double
         else { return windowCorner }
         return CGFloat(min(max(v, 0), 24))
     }
