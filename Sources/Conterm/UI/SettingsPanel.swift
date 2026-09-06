@@ -21,7 +21,7 @@ struct SettingsPanel: View {
     @State private var themeFilter: String = ""
 
     enum Section: String, CaseIterable, Identifiable {
-        case appearance, tabs, widgets, panes, window, launch, palette, shortcuts, config, about
+        case appearance, tabs, widgets, panes, window, integrations, launch, palette, shortcuts, config, about
         var id: String { rawValue }
         var label: String {
             switch self {
@@ -30,6 +30,7 @@ struct SettingsPanel: View {
             case .widgets:    return "Widgets"
             case .panes:      return "Panes"
             case .window:     return "Window"
+            case .integrations: return "Integrations"
             case .launch:     return "Launch"
             case .palette:    return "Palette"
             case .shortcuts:  return "Shortcuts"
@@ -44,6 +45,7 @@ struct SettingsPanel: View {
             case .widgets:    return "square.grid.2x2.fill"
             case .panes:      return "rectangle.split.2x1.fill"
             case .window:     return "macwindow"
+            case .integrations: return "puzzlepiece.extension"
             case .launch:     return "sparkles"
             case .palette:    return "command.circle"
             case .shortcuts:  return "keyboard"
@@ -193,6 +195,7 @@ struct SettingsPanel: View {
                 case .widgets:    widgets
                 case .panes:      panes
                 case .window:     window
+                case .integrations: integrations
                 case .launch:     launch
                 case .palette:    palette
                 case .shortcuts:  shortcuts
@@ -546,6 +549,21 @@ struct SettingsPanel: View {
                 SettingsRow(title: "Command alerts",
                             subtitle: "Show a ✓/✗ result badge when a command fails or runs a while, and notify you when a long command finishes while you're away. ⌘↑/⌘↓ jump between prompts. Needs shell integration.") {
                     Toggle("", isOn: $prefs.commandAlerts.withSound()).labelsHidden()
+                }
+            }
+        }
+    }
+
+    private var integrations: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader("Integrations",
+                          subtitle: "What Conterm reads from the tools you run.")
+            card {
+                SettingsRow(title: "Conterm for iOS",
+                            subtitle: "Publish this Mac's sessions for the phone app to read over SSH, act on what it asks, and advertise the Mac on the local network so it can be found without typing a hostname. Nothing is published while this is off.") {
+                    Toggle("", isOn: $prefs.companionEnabled.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
                 }
             }
         }

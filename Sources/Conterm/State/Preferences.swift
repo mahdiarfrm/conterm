@@ -282,6 +282,18 @@ final class Preferences: ObservableObject {
     @Published var kubeRememberContext: Bool {
         didSet { ud.set(kubeRememberContext, forKey: K.kubeRememberContext) }
     }
+    /// Publish this Mac's sessions for Conterm on iOS, act on what it asks,
+    /// and advertise the Mac on the local network so the phone can find it.
+    ///
+    /// Off until asked for. All three cost something continuously — a timer
+    /// walking every pane, a directory watch, a Bonjour advertisement — and
+    /// most people will never install the phone app.
+    @Published var companionEnabled: Bool {
+        didSet {
+            ud.set(companionEnabled, forKey: K.companionEnabled)
+            companionEnabled ? AppDelegate.startCompanion() : AppDelegate.stopCompanion()
+        }
+    }
     /// Cluster pulse: poll kubectl for pod health across all
     /// namespaces (pill gem, warning notifications). Off by default —
     /// it's network traffic against the cluster.
@@ -432,6 +444,7 @@ final class Preferences: ObservableObject {
         static let clockShowSeconds = "conterm.clockShowSeconds"
         static let clockShowDate    = "conterm.clockShowDate"
         static let kubeDangerPatterns = "conterm.kubeDangerPatterns"
+        static let companionEnabled = "conterm.companionEnabled"
         static let kubeConfigPaths  = "conterm.kubeConfigPaths"
         static let kubeRememberContext = "conterm.kubeRememberContext"
         static let kubeWatchCluster = "conterm.kubeWatchCluster"
@@ -572,6 +585,7 @@ final class Preferences: ObservableObject {
         self.kubeDangerPatterns     = ud.string(forKey: K.kubeDangerPatterns) ?? "prod"
         self.kubeConfigPaths        = ud.string(forKey: K.kubeConfigPaths) ?? ""
         self.kubeRememberContext    = ud.object(forKey: K.kubeRememberContext) as? Bool ?? false
+        self.companionEnabled       = ud.object(forKey: K.companionEnabled) as? Bool ?? false
         self.kubeWatchCluster       = ud.object(forKey: K.kubeWatchCluster) as? Bool ?? false
         self.autoHideSidebar        = ud.object(forKey: K.autoHideSidebar) as? Bool ?? false
         self.toolbarCollapsed       = ud.object(forKey: K.toolbarCollapsed) as? Bool ?? true
