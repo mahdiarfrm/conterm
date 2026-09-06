@@ -46,9 +46,15 @@ final class NotificationStore: ObservableObject {
 
     var unreadCount: Int { items.lazy.filter { !$0.read }.count }
 
-    func post(tool: AgentTool, title: String, message: String) {
+    /// `kind` places the event in the briefing's bands. Callers that know
+    /// what they are reporting say so; the rest are classified by tool,
+    /// which is right for the agent transitions that make up most of them.
+    func post(tool: AgentTool, briefing kind: Briefing.Kind? = nil,
+              title: String, message: String) {
         let n = AppNotification(tool: tool, title: title, message: message)
         items.insert(n, at: 0)
+        Briefing.shared.record(kind: kind ?? (tool == .generic ? .run : .agent),
+                               title: title, message: message)
         if items.count > cap { items.removeLast(items.count - cap) }
         // Soft in-app chime, separate from the macOS banner sound
         // below (which only fires when Conterm isn't frontmost).
