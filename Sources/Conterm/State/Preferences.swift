@@ -181,6 +181,12 @@ final class Preferences: ObservableObject {
     @Published var blinkOnAttention: Bool {
         didSet { ud.set(blinkOnAttention, forKey: K.blinkOnAttention) }
     }
+    /// A bubble beside a pane's agent pill for each infrastructure call in
+    /// flight (terraform, kubectl, docker, ssh…), and the finished ones as
+    /// a row of history at the pane's top-left.
+    @Published var agentToolBubbles: Bool {
+        didSet { ud.set(agentToolBubbles, forKey: K.agentToolBubbles) }
+    }
     /// Pane tile corner radius (0…24). Default 20 = the window's own radius;
     /// lower it toward the ~10 pt system radius for tighter corners.
     /// `Theme.paneCorner` reads this key.
@@ -294,6 +300,30 @@ final class Preferences: ObservableObject {
             companionEnabled ? AppDelegate.startCompanion() : AppDelegate.stopCompanion()
         }
     }
+    /// Terraform cockpit: save each `terraform plan` to a plan file the
+    /// app reads back as a card. Terraform prints its own "Saved the plan
+    /// to…" lines when a plan is saved, so this is the one integration
+    /// that changes what the console shows — hence a switch.
+    @Published var terraformCockpit: Bool {
+        didSet {
+            ud.set(terraformCockpit, forKey: K.terraformCockpit)
+            TerraformCenter.syncEnabledMarker(terraformCockpit)
+        }
+    }
+    /// Summarise what happened while the app went unattended.
+    @Published var briefingEnabled: Bool {
+        didSet {
+            ud.set(briefingEnabled, forKey: K.briefingEnabled)
+            Briefing.shared.enabled = briefingEnabled
+        }
+    }
+    /// Hours unattended before a return is worth summarising.
+    @Published var briefingAfterHours: Double {
+        didSet {
+            ud.set(briefingAfterHours, forKey: K.briefingAfterHours)
+            Briefing.shared.afterHours = briefingAfterHours
+        }
+    }
     /// Cluster pulse: poll kubectl for pod health across all
     /// namespaces (pill gem, warning notifications). Off by default —
     /// it's network traffic against the cluster.
@@ -399,7 +429,7 @@ final class Preferences: ObservableObject {
     /// truth, so the value transfers with a Ghostty config.
     @Published var paneBlurRadius: Int = 0
 
-    private let ud = UserDefaults.standard
+    private let ud = InstanceState.defaults
 
     /// Default for `launchCommandDelay`. Sized above a typical shell's rc
     /// load, below anything that reads as sluggish.
@@ -409,7 +439,7 @@ final class Preferences: ObservableObject {
     /// pane-spawn helpers that type a command into a new tab are static.
     /// Mirrors the `launchCommandDelay` pref and its default.
     static var resolvedLaunchDelay: Double {
-        UserDefaults.standard.object(forKey: K.launchCommandDelay) as? Double
+        InstanceState.defaults.object(forKey: K.launchCommandDelay) as? Double
             ?? launchCommandDelayDefault
     }
 
@@ -426,10 +456,10 @@ final class Preferences: ObservableObject {
         static let paletteOrder      = "conterm.paletteCommandOrder"
         static let hiddenPaletteCommands = "conterm.hiddenPaletteCommands"
         static let paletteSeeds     = "conterm.paletteSeeds"
-        static let widgetSeeds      = "conterm.widgetSeeds"
         static let showPaneTitleBar = "conterm.showPaneTitleBar"
         static let showLayoutSwitcher = "conterm.showLayoutSwitcher"
         static let blinkOnAttention = "conterm.blinkOnAttention"
+        static let agentToolBubbles = "conterm.agentToolBubbles"
         static let paneCornerRadius = "conterm.paneCornerRadius"
         static let uiScale          = "conterm.uiScale"
         static let launchCommandDelay = "conterm.launchCommandDelay"
@@ -445,6 +475,9 @@ final class Preferences: ObservableObject {
         static let clockShowDate    = "conterm.clockShowDate"
         static let kubeDangerPatterns = "conterm.kubeDangerPatterns"
         static let companionEnabled = "conterm.companionEnabled"
+        static let terraformCockpit = "conterm.terraformCockpit"
+        static let briefingEnabled  = "conterm.briefingEnabled"
+        static let briefingAfterHours = "conterm.briefingAfterHours"
         static let kubeConfigPaths  = "conterm.kubeConfigPaths"
         static let kubeRememberContext = "conterm.kubeRememberContext"
         static let kubeWatchCluster = "conterm.kubeWatchCluster"
@@ -470,7 +503,7 @@ final class Preferences: ObservableObject {
     }
 
     init() {
-        let ud = UserDefaults.standard
+        let ud = InstanceState.defaults
         self.tabOrientation = TabOrientation(
             rawValue: ud.string(forKey: K.orientation) ?? TabOrientation.horizontal.rawValue
         ) ?? .horizontal
@@ -525,6 +558,24 @@ final class Preferences: ObservableObject {
                                at: anchor.map { $0 + 1 } ?? storedOrder.endIndex)
             ud.set(storedOrder, forKey: K.paletteOrder)
         }
+        if !storedOrder.isEmpty, !storedOrder.contains("agent_changes") {
+            let anchor = storedOrder.firstIndex(of: "agent_next")
+            storedOrder.insert("agent_changes",
+                               at: anchor.map { $0 + 1 } ?? storedOrder.endIndex)
+            ud.set(storedOrder, forKey: K.paletteOrder)
+        }
+        if !storedOrder.isEmpty, !storedOrder.contains("terraform_plan") {
+            let anchor = storedOrder.firstIndex(of: "fleet_run")
+            storedOrder.insert("terraform_plan",
+                               at: anchor.map { $0 + 1 } ?? storedOrder.endIndex)
+            ud.set(storedOrder, forKey: K.paletteOrder)
+        }
+        if !storedOrder.isEmpty, !storedOrder.contains("briefing") {
+            let anchor = storedOrder.firstIndex(of: "agent_changes")
+            storedOrder.insert("briefing",
+                               at: anchor.map { $0 + 1 } ?? storedOrder.endIndex)
+            ud.set(storedOrder, forKey: K.paletteOrder)
+        }
         self.paletteCommandOrder    = storedOrder
         // Commands that ship hidden are seeded into the stored set
         // exactly once (recorded in paletteSeeds), so unhiding them in
@@ -543,6 +594,7 @@ final class Preferences: ObservableObject {
         self.showPaneTitleBar       = ud.object(forKey: K.showPaneTitleBar) as? Bool ?? true
         self.showLayoutSwitcher     = ud.object(forKey: K.showLayoutSwitcher) as? Bool ?? true
         self.blinkOnAttention       = ud.object(forKey: K.blinkOnAttention) as? Bool ?? true
+        self.agentToolBubbles       = ud.object(forKey: K.agentToolBubbles) as? Bool ?? true
         self.paneCornerRadius       = ud.object(forKey: K.paneCornerRadius) as? Double ?? 20
         self.uiScale                = ud.object(forKey: K.uiScale) as? Double ?? 1
         self.launchCommandDelay     = ud.object(forKey: K.launchCommandDelay) as? Double ?? Self.launchCommandDelayDefault
@@ -565,15 +617,8 @@ final class Preferences: ObservableObject {
         if let i = widgets.firstIndex(of: "docker") {
             widgets[i] = "containers"
         }
-        // Self-hiding widgets that ship enabled get appended exactly
-        // once (recorded in widgetSeeds), so removing them sticks.
-        // Only self-hiding widgets earn a seed — an always-visible pill
-        // (public IP) stays off until the user turns it on.
-        var widgetSeeds = Set(ud.stringArray(forKey: K.widgetSeeds) ?? [])
-        for id in ["ansible"] where widgetSeeds.insert(id).inserted {
-            if !widgets.contains(id) { widgets.append(id) }
-        }
-        ud.set(Array(widgetSeeds), forKey: K.widgetSeeds)
+        // Every widget beyond the stats pill ships off, the self-hiding
+        // ones included: a rail is something to opt into, not to prune.
         self.enabledWidgets = widgets
         ud.set(widgets, forKey: K.enabledWidgets)
         self.statsShowCPU           = ud.object(forKey: K.statsShowCPU) as? Bool ?? true
@@ -586,6 +631,9 @@ final class Preferences: ObservableObject {
         self.kubeConfigPaths        = ud.string(forKey: K.kubeConfigPaths) ?? ""
         self.kubeRememberContext    = ud.object(forKey: K.kubeRememberContext) as? Bool ?? false
         self.companionEnabled       = ud.object(forKey: K.companionEnabled) as? Bool ?? false
+        self.terraformCockpit       = ud.object(forKey: K.terraformCockpit) as? Bool ?? true
+        self.briefingEnabled        = ud.object(forKey: K.briefingEnabled) as? Bool ?? true
+        self.briefingAfterHours     = ud.object(forKey: K.briefingAfterHours) as? Double ?? 3
         self.kubeWatchCluster       = ud.object(forKey: K.kubeWatchCluster) as? Bool ?? false
         self.autoHideSidebar        = ud.object(forKey: K.autoHideSidebar) as? Bool ?? false
         self.toolbarCollapsed       = ud.object(forKey: K.toolbarCollapsed) as? Bool ?? true
@@ -608,6 +656,10 @@ final class Preferences: ObservableObject {
         self.opaquePanes            = ud.object(forKey: K.opaquePanes) as? Bool ?? false
         self.diagnosticLogging      = ud.object(forKey: K.diagnosticLogging) as? Bool ?? false
         refreshPaneBlurFromConfig()
+        // `didSet` doesn't fire during init, so the services these settings
+        // drive are handed their values once here.
+        Briefing.shared.enabled = briefingEnabled
+        Briefing.shared.afterHours = briefingAfterHours
         NotificationCenter.default.addObserver(
             forName: .contermConfigReloaded,
             object: nil,
@@ -629,7 +681,7 @@ final class Preferences: ObservableObject {
         (NSHomeDirectory() as NSString).appendingPathComponent(".config/ghostty/config")
     }
     private var contermConfigPath: String {
-        (NSHomeDirectory() as NSString).appendingPathComponent(".config/conterm/config")
+        InstanceState.configPath("config")
     }
 
     /// Read `background-blur` from a config file (last uncommented

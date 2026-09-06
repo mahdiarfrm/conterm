@@ -69,7 +69,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything reads a preference or a state file: an isolated
+        // instance copies the real profile in on its first run, so a build
+        // under test opens looking like the Conterm it was launched beside.
+        InstanceState.seedIfNeeded()
         prefs = Preferences()
+        if InstanceState.isolated {
+            clog("conterm: isolated instance — state under \(InstanceState.home)")
+        } else if !InstanceState.ownsSession {
+            clog("conterm: another instance owns the session — starting clean")
+        }
         // Single-source migration: if the user finished setup before
         // Conterm switched to reading ONLY ~/.config/conterm/config
         // and they relied on the old auto-loaded Ghostty config, add
@@ -95,13 +104,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         AnsibleCenter.shared.notifications = notifications
         ClusterPulse.shared.notifications = notifications
         RolloutWatch.shared.notifications = notifications
+        TerraformCenter.shared.notifications = notifications
+        // The shell hook can't read a preference, so the setting lives on
+        // disk as a marker file; keep it true to the preference at launch.
+        TerraformCenter.syncEnabledMarker(prefs?.terraformCockpit ?? true)
         tabGroups = TabGroupStore.shared
 
         // If the agent integrations are enabled, rewrite their on-disk
         // hooks/plugin to the version shipped in THIS build — so a
         // bug-fix update takes effect on next launch without the user
         // having to re-toggle the setting.
-        ClaudeIntegration.refreshIfInstalled()
+        AgentHooks.refreshIfInstalled()
         OpenCodeIntegration.refreshIfInstalled()
 
         MainMenu.install(delegate: self)
@@ -125,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         // Reopen in Orbit when it was the active layer at last quit, so the
         // mode survives a relaunch like the tab orientation does.
-        if UserDefaults.standard.bool(forKey: AppState.orbitWasOpenKey),
+        if InstanceState.defaults.bool(forKey: AppState.orbitWasOpenKey),
            let first = windows.first {
             DispatchQueue.main.async { first.state.openOrbit() }
         }
@@ -408,6 +421,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if self.state.searchOpen       { self.state.toggleSearch();       return nil }
                 if self.state.hostOverview != nil { self.state.closeHostOverview(); return nil }
                 if self.state.ansibleCockpit != nil { self.state.closeAnsibleCockpit(); return nil }
+                if self.state.agentTools != nil { self.state.closeAgentTools(); return nil }
                 if self.state.clusterOverviewOpen { self.state.closeClusterOverview(); return nil }
                 if self.state.fleetRunOpen { self.state.closeFleetRun(); return nil }
                 // Search is the innermost thing Orbit can have open, so it
@@ -721,6 +735,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// window. Per-window occlusion-state changes stay local to each
     /// WindowController. AppDelegate lives for the process lifetime, so
     /// these are never torn down.
+    /// Show the "while you were away" card in one window only — the key
+    /// one, else the first. Every window shares the same Briefing, so
+    /// presenting per window would stack the same summary N times.
+    private func presentBriefingIfDue() {
+        guard Briefing.shared.shouldPresent else { return }
+        Briefing.shared.shouldPresent = false
+        let target = windows.first { $0.window.isKeyWindow } ?? windows.first
+        guard let target, !target.state.briefingOpen else { return }
+        target.state.openBriefing()
+    }
+
     private func installOcclusionCoordinator() {
         let nc = NotificationCenter.default
         occlusionObservers = [
@@ -734,6 +759,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                            object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
                     self?.windows.forEach { $0.state.syncSurfaceOcclusion() }
+                }
+            },
+            // The briefing decides whether a return counts as "away" from
+            // its own observer of this notification; the async hop lands
+            // after every observer has run, so the answer is settled.
+            nc.addObserver(forName: NSApplication.didBecomeActiveNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { self?.presentBriefingIfDue() }
                 }
             },
             // Display confirmed awake after sleep: restore each surface's

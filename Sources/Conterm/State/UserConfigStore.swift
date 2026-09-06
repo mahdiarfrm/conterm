@@ -8,7 +8,7 @@ import Foundation
 enum UserConfigStore {
     static var path: String {
         let home = NSHomeDirectory()
-        return "\(home)/.config/conterm/config"
+        return InstanceState.configPath("config")
     }
 
     /// Parsed config keyed by the file's modification date. A whole-file

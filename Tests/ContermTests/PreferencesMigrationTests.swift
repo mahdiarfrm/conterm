@@ -79,30 +79,36 @@ import Foundation
         withDefaults(["conterm.paletteCommandOrder":
                         ["sessions", "shell_history", "notes"]]) { ud in
             #expect(Preferences().paletteCommandOrder
-                    == ["sessions", "shell_history", "clipboard_history",
-                        "agents", "agent_next", "notes", "open_vscode",
-                        "fleet_run"])
+                    == expectedAfterShellHistory)
             // The repaired order is persisted, not just in-memory.
             #expect(ud.stringArray(forKey: "conterm.paletteCommandOrder")
-                    == ["sessions", "shell_history", "clipboard_history",
-                        "agents", "agent_next", "notes", "open_vscode",
-                        "fleet_run"])
+                    == expectedAfterShellHistory)
         }
     }
 
+    private var expectedAfterShellHistory: [String] {
+        ["sessions", "shell_history", "clipboard_history", "agents",
+         "agent_next", "agent_changes", "briefing", "notes", "open_vscode",
+         "fleet_run", "terraform_plan"]
+    }
+
     @Test func agentsSplicedAfterSessionsWhenNoShellHistory() {
-        withDefaults(["conterm.paletteCommandOrder": ["sessions", "notes"]]) { _ in
+        withDefaults(["conterm.paletteCommandOrder":
+                        ["sessions", "notes"]]) { _ in
             #expect(Preferences().paletteCommandOrder
-                    == ["sessions", "agents", "agent_next", "notes",
-                        "open_vscode", "fleet_run", "clipboard_history"])
+                    == ["sessions", "agents", "agent_next", "agent_changes",
+                        "briefing", "notes", "open_vscode", "fleet_run",
+                        "terraform_plan", "clipboard_history"])
         }
     }
 
     @Test func agentsAppendedWhenNoAnchorExists() {
-        withDefaults(["conterm.paletteCommandOrder": ["notes", "themes"]]) { _ in
+        withDefaults(["conterm.paletteCommandOrder":
+                        ["notes", "themes"]]) { _ in
             #expect(Preferences().paletteCommandOrder
                     == ["notes", "themes", "agents", "agent_next",
-                        "open_vscode", "fleet_run", "clipboard_history"])
+                        "agent_changes", "briefing", "open_vscode",
+                        "fleet_run", "terraform_plan", "clipboard_history"])
         }
     }
 
@@ -110,8 +116,9 @@ import Foundation
         withDefaults(["conterm.paletteCommandOrder":
                         ["agents", "sessions", "shell_history"]]) { _ in
             #expect(Preferences().paletteCommandOrder
-                    == ["agents", "agent_next", "sessions", "shell_history",
-                        "clipboard_history", "open_vscode", "fleet_run"])
+                    == ["agents", "agent_next", "agent_changes", "briefing",
+                        "sessions", "shell_history", "clipboard_history",
+                        "open_vscode", "fleet_run", "terraform_plan"])
         }
     }
 
@@ -120,7 +127,8 @@ import Foundation
                         ["reveal_finder", "open_cursor", "agents", "notes"]]) { _ in
             #expect(Preferences().paletteCommandOrder
                     == ["reveal_finder", "open_cursor", "open_vscode",
-                        "agents", "agent_next", "notes", "fleet_run",
+                        "agents", "agent_next", "agent_changes", "briefing",
+                        "notes", "fleet_run", "terraform_plan",
                         "clipboard_history"])
         }
     }
@@ -128,10 +136,11 @@ import Foundation
     @Test func fleetRunSplicedDirectlyAfterSSH() {
         withDefaults(["conterm.paletteCommandOrder":
                         ["sessions", "agents", "ssh_hosts", "notes",
-                         "open_vscode"]]) { _ in
+                        "open_vscode"]]) { _ in
             #expect(Preferences().paletteCommandOrder
-                    == ["sessions", "agents", "agent_next", "ssh_hosts",
-                        "fleet_run", "notes", "open_vscode",
+                    == ["sessions", "agents", "agent_next", "agent_changes",
+                        "briefing", "ssh_hosts", "fleet_run",
+                        "terraform_plan", "notes", "open_vscode",
                         "clipboard_history"])
         }
     }
@@ -139,11 +148,32 @@ import Foundation
     @Test func clipboardSplicedDirectlyAfterShellHistory() {
         withDefaults(["conterm.paletteCommandOrder":
                         ["agents", "shell_history", "ssh_hosts", "fleet_run",
-                         "open_vscode"]]) { _ in
+                        "open_vscode"]]) { _ in
             #expect(Preferences().paletteCommandOrder
-                    == ["agents", "agent_next", "shell_history",
-                        "clipboard_history", "ssh_hosts", "fleet_run",
-                        "open_vscode"])
+                    == ["agents", "agent_next", "agent_changes", "briefing",
+                        "shell_history", "clipboard_history", "ssh_hosts",
+                        "fleet_run", "terraform_plan", "open_vscode"])
+        }
+    }
+
+    @Test func agentChangesAndBriefingRideAgentNext() {
+        withDefaults(["conterm.paletteCommandOrder":
+                        ["agents", "agent_next", "notes"]]) { _ in
+            #expect(Preferences().paletteCommandOrder
+                    == ["agents", "agent_next", "agent_changes", "briefing",
+                        "notes", "open_vscode", "fleet_run",
+                        "terraform_plan", "clipboard_history"])
+        }
+    }
+
+    @Test func terraformSplicedDirectlyAfterFleetRun() {
+        withDefaults(["conterm.paletteCommandOrder":
+                        ["ssh_hosts", "fleet_run", "agents", "agent_next",
+                        "agent_changes", "briefing", "notes"]]) { _ in
+            #expect(Preferences().paletteCommandOrder
+                    == ["ssh_hosts", "fleet_run", "terraform_plan", "agents",
+                        "agent_next", "agent_changes", "briefing", "notes",
+                        "open_vscode", "clipboard_history"])
         }
     }
 

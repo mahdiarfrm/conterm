@@ -47,7 +47,7 @@ final class NotesStore: ObservableObject {
 
     init() {
         let home = NSHomeDirectory()
-        let dir = "\(home)/.config/conterm"
+        let dir = InstanceState.configDir
         try? FileManager.default.createDirectory(atPath: dir,
                                                  withIntermediateDirectories: true)
         self.url = URL(fileURLWithPath: dir).appendingPathComponent("notes.json")

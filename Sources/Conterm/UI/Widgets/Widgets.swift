@@ -9,7 +9,7 @@ import SwiftUI
 /// reads as one family via the shared `WidgetShell` chrome.
 enum WidgetKind: String, CaseIterable, Identifiable {
     case systemStats, clock, battery, gitStatus
-    case notes, ping, sessionStats, kubernetes, containers, ansible, github, pixelPet
+    case notes, ping, sessionStats, kubernetes, containers, ansible, terraform, github, pixelPet
     case publicIP
     var id: String { rawValue }
 
@@ -25,6 +25,7 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .kubernetes:   return "Kubernetes"
         case .containers:   return "Containers"
         case .ansible:      return "Ansible"
+        case .terraform:    return "Terraform"
         case .github:       return "GitHub"
         case .pixelPet:     return "Pixel pet"
         case .publicIP:     return "Public IP"
@@ -42,6 +43,7 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .kubernetes:   return "Current kubectl context — click to switch; prod turns red."
         case .containers:   return "Running containers by runtime — Docker, Podman, containerd, Apple."
         case .ansible:      return "Live playbook runs — click for the cockpit."
+        case .terraform:    return "The last plan's counts — click for the cockpit."
         case .github:       return "PR review + checks for the active repo (uses gh)."
         case .pixelPet:     return "A tiny companion that naps, blinks, and watches your agents."
         case .publicIP:     return "Your public IP, VPN-aware; re-checks on network changes and notifies when it moves."
@@ -66,6 +68,7 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .kubernetes:   return "helm"
         case .containers:   return "shippingbox"
         case .ansible:      return "circle.grid.3x3"
+        case .terraform:    return TerraformMark.iconName
         case .github:       return "checkmark.seal"
         case .pixelPet:     return "pawprint"
         case .publicIP:     return "globe"
@@ -117,6 +120,7 @@ struct WidgetRail: View {
         case .kubernetes:   KubernetesWidget(compact: compact)
         case .containers:   ContainersWidget(compact: compact)
         case .ansible:      AnsibleWidget(compact: compact)
+        case .terraform:    TerraformWidget(compact: compact)
         case .github:       GitHubWidget(compact: compact)
         case .pixelPet:     PixelPetWidget(compact: compact)
         case .publicIP:     PublicIPWidget(compact: compact)

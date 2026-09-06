@@ -7,7 +7,7 @@ import SwiftUI
 @MainActor
 enum SetupAssistant {
     private static var home: String { NSHomeDirectory() }
-    static var contermDir: String { "\(home)/.config/conterm" }
+    static var contermDir: String { InstanceState.configDir }
     static var contermConfigPath: String { "\(contermDir)/config" }
 
     /// Every standard place Ghostty might store its config, in
@@ -282,12 +282,22 @@ struct WelcomeWizard: View {
     private var ghosttyPresent: Bool { SetupAssistant.ghosttyConfigExists() }
     private var hasContermConfig: Bool { SetupAssistant.hasCustomContermConfig() }
 
+    /// The window's height, so a step with a long list can scroll inside
+    /// the card instead of pushing it past the edges of a short window.
+    @State private var availableHeight: CGFloat = 800
+
     var body: some View {
         ZStack {
             // Dim scrim over the app.
             Color.black.opacity(0.5)
                 .ignoresSafeArea()
                 .onTapGesture {} // swallow taps; force a choice/skip
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: WizardHeightKey.self, value: g.size.height)
+                })
+                .onPreferenceChange(WizardHeightKey.self) { h in
+                    if h > 0, abs(h - availableHeight) > 1 { availableHeight = h }
+                }
 
             card
                 .frame(width: 540)
@@ -470,6 +480,10 @@ struct WelcomeWizard: View {
         }
     }
 
+    /// Room the card's chrome takes around the widget list: masthead,
+    /// section title and blurb, footer, and the margins between them.
+    private static let widgetsStepChrome: CGFloat = 330
+
     private var widgetsStep: some View {
         VStack(alignment: .leading, spacing: 14) {
             sectionTitle("Tab-bar widgets", systemImage: "square.grid.2x2.fill")
@@ -477,9 +491,15 @@ struct WelcomeWizard: View {
                 .font(.system(size: 11, design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(WidgetKind.allCases) { widgetPickRow($0) }
+            // The list scrolls inside the card: it is the one step whose
+            // content outgrows a short window.
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(WidgetKind.allCases) { widgetPickRow($0) }
+                }
+                .padding(.trailing, 6)
             }
+            .frame(maxHeight: max(160, availableHeight - Self.widgetsStepChrome))
         }
     }
 
@@ -488,10 +508,16 @@ struct WelcomeWizard: View {
         // so icons/titles align on the left and toggles align on the right
         // regardless of subtitle length.
         HStack(spacing: 10) {
-            Image(systemName: kind.icon)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Theme.textSecondary)
-                .frame(width: 22)
+            Group {
+                if kind.icon == TerraformMark.iconName {
+                    TerraformGlyph(color: Theme.textSecondary, size: 13)
+                } else {
+                    Image(systemName: kind.icon)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+            .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
                 Text(kind.title)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -565,14 +591,14 @@ struct WelcomeWizard: View {
             // Temporarily override the SFX preference, play, then
             // restore the prior value. Avoids threading a "force"
             // parameter through the engine just for this preview.
-            let was = UserDefaults.standard.object(forKey: "conterm.soundEffects") as? Bool
-            UserDefaults.standard.set(true, forKey: "conterm.soundEffects")
+            let was = InstanceState.defaults.object(forKey: "conterm.soundEffects") as? Bool
+            InstanceState.defaults.set(true, forKey: "conterm.soundEffects")
             SoundEffects.shared.play(effect)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 if let was = was {
-                    UserDefaults.standard.set(was, forKey: "conterm.soundEffects")
+                    InstanceState.defaults.set(was, forKey: "conterm.soundEffects")
                 } else {
-                    UserDefaults.standard.removeObject(forKey: "conterm.soundEffects")
+                    InstanceState.defaults.removeObject(forKey: "conterm.soundEffects")
                 }
             }
         } label: {
@@ -902,5 +928,14 @@ struct WelcomeWizard: View {
         withAnimation(.easeOut(duration: 0.25)) {
             onFinish()
         }
+    }
+}
+
+/// The wizard overlay's height, read so long steps can size their scroll
+/// area to the window.
+private struct WizardHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }

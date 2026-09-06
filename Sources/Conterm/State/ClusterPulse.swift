@@ -108,7 +108,7 @@ final class ClusterPulse: ObservableObject {
     private var scopeKey = ""
 
     nonisolated private static func watchEnabled() -> Bool {
-        UserDefaults.standard.bool(forKey: "conterm.kubeWatchCluster")
+        InstanceState.defaults.bool(forKey: "conterm.kubeWatchCluster")
     }
 
     private init() {
@@ -370,7 +370,7 @@ final class ClusterPulse: ObservableObject {
             let key = "node/\(node)|NotReady"
             current.insert(key)
             if announced.insert(key).inserted, !suppress {
-                notifications?.post(tool: .generic,
+                notifications?.post(tool: .generic, briefing: .alert,
                                     title: "Node down",
                                     message: "\(node) is NotReady")
                 SoundEffects.shared.play(.error)
@@ -380,7 +380,7 @@ final class ClusterPulse: ObservableObject {
             let key = "\(pod.namespace)/\(pod.name)|\(pod.status)"
             current.insert(key)
             if announced.insert(key).inserted, !suppress {
-                notifications?.post(tool: .generic,
+                notifications?.post(tool: .generic, briefing: .alert,
                                     title: "Cluster warning",
                                     message: "\(pod.namespace)/\(pod.name): \(pod.status)")
                 SoundEffects.shared.play(.error)

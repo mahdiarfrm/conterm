@@ -42,13 +42,13 @@ enum OrbitSeen {
     private static let key = "conterm.orbit.lastSeen"
 
     static func load() -> OrbitSnapshot? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        guard let data = InstanceState.defaults.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(OrbitSnapshot.self, from: data)
     }
 
     static func save(_ snapshot: OrbitSnapshot) {
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        UserDefaults.standard.set(data, forKey: key)
+        InstanceState.defaults.set(data, forKey: key)
     }
 }
 

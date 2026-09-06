@@ -55,7 +55,7 @@ final class SoundEffects {
     /// `Preferences.K.soundEffects`; default is `true`.
     private static let prefKey = "conterm.soundEffects"
     static var isEnabled: Bool {
-        UserDefaults.standard.object(forKey: prefKey) as? Bool ?? true
+        InstanceState.defaults.object(forKey: prefKey) as? Bool ?? true
     }
 
     // MARK: - Engine
@@ -119,17 +119,61 @@ final class SoundEffects {
         // configuration-change observer is needed.
     }
 
-    /// Reconnect the graph and restart after a stop. The internal
-    /// connections all use the fixed 48 kHz format, so only the
-    /// hardware-facing mixer link can have gone stale; reconnecting it
+    /// Every engine transition runs here, and only here. `start()` costs
+    /// ~30 ms on a warm HAL and ~50 ms cold — a visible stall if it lands
+    /// on the main thread, and it would land there on the first sound
+    /// after every idle park, which is to say on most deliberate ⌘K
+    /// presses. Serial, so a start and a park can never interleave.
+    private let engineQueue = DispatchQueue(label: "conterm.sfx.engine",
+                                            qos: .userInitiated)
+    /// A start is in flight. Holds off both a second start and the idle
+    /// park, which would otherwise stop an engine still coming up.
+    private var starting = false
+
+    /// Bring the engine up off the main thread and play `buffer` when it
+    /// is running. The sound lands a frame or two late; the alternative is
+    /// the animation it accompanies arriving that much late instead.
+    ///
+    /// The internal connections all use the fixed 48 kHz format, so only
+    /// the hardware-facing mixer link can have gone stale; reconnecting it
     /// is cheap insurance before `start()`.
-    private func restartEngine() {
-        guard !engine.isRunning else { return }
-        engine.connect(mixer, to: engine.mainMixerNode, format: format)
-        do {
-            try engine.start()
-        } catch {
-            clog("conterm: SoundEffects engine failed to restart: \(error)")
+    private func startEngine(thenPlay buffer: AVAudioPCMBuffer) {
+        guard !starting else { return }
+        starting = true
+        // Confined to `engineQueue` from here: the engine and its mixer
+        // are touched on no other thread while `starting` holds.
+        nonisolated(unsafe) let engine = self.engine
+        nonisolated(unsafe) let mixer = self.mixer
+        let format = self.format
+        nonisolated(unsafe) let pending = buffer
+        engineQueue.async {
+            engine.connect(mixer, to: engine.mainMixerNode, format: format)
+            var failure: String?
+            do { try engine.start() } catch { failure = "\(error)" }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    Self.shared.engineDidStart(failure: failure, play: pending)
+                }
+            }
+        }
+    }
+
+    private func engineDidStart(failure: String?, play buffer: AVAudioPCMBuffer) {
+        starting = false
+        if let failure {
+            clog("conterm: SoundEffects engine failed to restart: \(failure)")
+            return
+        }
+        guard engine.isRunning else { return }
+        emit(buffer)
+    }
+
+    /// Park the engine, off the main thread for the same reason starting
+    /// is: `stop()` measures ~10 ms and there is nothing to wait for.
+    private func stopEngine() {
+        nonisolated(unsafe) let engine = self.engine
+        engineQueue.async {
+            if engine.isRunning { engine.stop() }
         }
     }
 
@@ -141,14 +185,21 @@ final class SoundEffects {
     /// variant was rendered for the requested effect.
     func play(_ effect: Effect) {
         guard Self.isEnabled else { return }
-        // Lazy recovery: if a config change stopped the engine and the
-        // proactive observer hasn't fired yet, bring it back here.
-        if !engine.isRunning { restartEngine() }
-        guard engine.isRunning else { return }
         guard let bucket = variants[effect], let buffer = bucket.randomElement() else {
             return
         }
+        // A parked engine — the state after every few seconds of quiet —
+        // comes back on its own queue rather than holding up the caller.
+        guard engine.isRunning else {
+            startEngine(thenPlay: buffer)
+            return
+        }
+        emit(buffer)
+    }
 
+    /// Schedule and play one buffer on the next free player. The engine is
+    /// running by the time this is called.
+    private func emit(_ buffer: AVAudioPCMBuffer) {
         let player = pool[nextSlot]
         nextSlot = (nextSlot &+ 1) % pool.count
 
@@ -178,11 +229,12 @@ final class SoundEffects {
         DispatchQueue.main.asyncAfter(deadline: .now() + idleStopDelay) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, self.idleStopGeneration == gen else { return }
+                guard !self.starting else { return }
                 for p in self.pool where p.isPlaying { p.stop() }
                 // stop() (not pause()) fully releases the output audio
                 // unit's IOProc, so the HAL I/O thread parks instead of
                 // idling — the difference between ~1k wakeups/s and zero.
-                if self.engine.isRunning { self.engine.stop() }
+                self.stopEngine()
             }
         }
     }

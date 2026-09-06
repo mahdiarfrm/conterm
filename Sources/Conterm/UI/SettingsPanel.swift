@@ -17,6 +17,7 @@ struct SettingsPanel: View {
     // would repeat a settings.json read + parse on the main thread. Config
     // isn't the default section, so the initial `false` is never shown.
     @State private var claudeIntegrationOn = false
+    @State private var codexIntegrationOn = false
     @State private var openCodeIntegrationOn = false
     @State private var themeFilter: String = ""
 
@@ -76,6 +77,7 @@ struct SettingsPanel: View {
             // One disk read per panel-open for the integration toggles
             // (see the @State declarations above).
             claudeIntegrationOn = ClaudeIntegration.isInstalled
+            codexIntegrationOn = CodexIntegration.isInstalled
             openCodeIntegrationOn = OpenCodeIntegration.isInstalled
             // Jump to the section a palette settings result asked for.
             applyRequestedSection()
@@ -151,8 +153,14 @@ struct SettingsPanel: View {
         .frame(width: 204)
     }
 
+    /// One selection bubble shared by every row, so changing section
+    /// glides it rather than blinking it from one row to the next.
+    @Namespace private var selectionBubble
+    @State private var hovered: Section?
+
     private func sidebarItem(_ item: Section) -> some View {
         let active = section == item
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return Button {
             withAnimation(Theme.Spring.snappy) { section = item }
             // Suppress the click sound on a re-tap of the active
@@ -167,20 +175,31 @@ struct SettingsPanel: View {
                 Text(item.label)
                     .font(.system(size: 13.5, weight: active ? .semibold : .medium, design: .rounded))
                     .foregroundStyle(active ? Color.white : Theme.textPrimary)
-                Spacer()
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(active ? Theme.accent.opacity(0.30) : Color.clear)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(active ? Theme.accent.opacity(0.50) : Color.clear, lineWidth: 0.5)
-                    )
-            )
+            .background {
+                if active {
+                    shape
+                        .fill(Theme.accent.opacity(0.30))
+                        .overlay(shape.stroke(Theme.accent.opacity(0.50), lineWidth: 0.5))
+                        .matchedGeometryEffect(id: "settings.section", in: selectionBubble)
+                } else if hovered == item {
+                    shape.fill(Color.white.opacity(0.07))
+                }
+            }
+            // Without this the row is only clickable where it draws — the
+            // icon and the label — and the rest of it, including the gap
+            // the bubble covers, ignores the pointer.
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
+        .onHover { inside in
+            withAnimation(.easeOut(duration: 0.12)) {
+                hovered = inside ? item : (hovered == item ? nil : hovered)
+            }
+        }
     }
 
     // MARK: - Content
@@ -189,6 +208,23 @@ struct SettingsPanel: View {
     private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                sectionBody
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Keyed on the section so switching is a change of content
+            // rather than a redraw in place, which is what lets it move.
+            .id(section)
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .offset(x: 14)),
+                removal: .opacity.combined(with: .offset(x: -10))))
+        }
+        .animation(Theme.Spring.snappy, value: section)
+    }
+
+    @ViewBuilder
+    private var sectionBody: some View {
+        Group {
                 switch section {
                 case .appearance: appearance
                 case .tabs:       tabs
@@ -202,9 +238,6 @@ struct SettingsPanel: View {
                 case .config:     config
                 case .about:      about
                 }
-            }
-            .padding(24)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -331,6 +364,12 @@ struct SettingsPanel: View {
                 SettingsRow(title: "Blink when an agent needs you",
                             subtitle: "Pulse a pane's border in amber while its Claude agent is waiting on your input.") {
                     Toggle("", isOn: $prefs.blinkOnAttention.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+                SettingsRow(title: "Tool bubbles on the agent pill",
+                            subtitle: "A bubble beside the Claude pill for each terraform, kubectl, helm, docker, ssh, git or gh call in flight, ringed in the tool's colour; finished calls line up at the pane's top-left. Click one for the command and its output.") {
+                    Toggle("", isOn: $prefs.agentToolBubbles.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()
                 }
@@ -494,6 +533,8 @@ struct SettingsPanel: View {
                         .interpolation(.high)
                         .frame(width: 13, height: 13)
                         .foregroundStyle(Theme.textSecondary)
+                } else if kind.icon == TerraformMark.iconName {
+                    TerraformGlyph(color: Theme.textSecondary, size: 14)
                 } else if kind.icon == RobotGlyph.iconName {
                     RobotGlyph(color: Theme.textSecondary, size: 14)
                 } else {
@@ -564,6 +605,28 @@ struct SettingsPanel: View {
                     Toggle("", isOn: $prefs.companionEnabled.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()
+                }
+                SettingsRow(title: "Terraform cockpit",
+                            subtitle: "Read each `terraform plan` back as a card: what it destroys, replaces and creates. With this on, terraform saves the plan to a file and prints where — a few lines the console would not otherwise show.") {
+                    Toggle("", isOn: $prefs.terraformCockpit.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+                SettingsRow(title: "While you were away",
+                            subtitle: "Coming back after a long absence, sum up what happened: agents that finished, runs that failed, alerts, and changes left unreviewed.") {
+                    Toggle("", isOn: $prefs.briefingEnabled.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+                SettingsRow(title: "Away means",
+                            subtitle: "Hours unattended before a return is worth summarising.") {
+                    Stepper(value: $prefs.briefingAfterHours, in: 1...24, step: 1) {
+                        Text("\(Int(prefs.briefingAfterHours))h")
+                            .font(.system(size: 11, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    .disabled(!prefs.briefingEnabled)
                 }
             }
         }
@@ -659,6 +722,8 @@ struct SettingsPanel: View {
                         Group {
                             if item.icon == RobotGlyph.iconName {
                                 RobotGlyph(color: Theme.textSecondary, size: 14)
+                            } else if item.icon == TerraformMark.iconName {
+                                TerraformGlyph(color: Theme.textSecondary, size: 13)
                             } else {
                                 Image(systemName: item.icon)
                                     .font(.system(size: 12, weight: .medium))
@@ -863,6 +928,19 @@ struct SettingsPanel: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
+                SettingsRow(title: "Codex integration",
+                            subtitle: "Add hooks to ~/.codex/hooks.json so a running Codex shows ready / thinking / needs-input and its tool bubbles, like Claude. Your other hooks are preserved.") {
+                    Toggle("", isOn: Binding(
+                        get: { codexIntegrationOn },
+                        set: { on in
+                            if on { CodexIntegration.install() }
+                            else  { CodexIntegration.uninstall() }
+                            codexIntegrationOn = CodexIntegration.isInstalled
+                        }
+                    ).withSound())
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
                 SettingsRow(title: "opencode integration",
                             subtitle: "Install an opencode plugin that drives the same status pill. Your config and other plugins are untouched.") {
                     Toggle("", isOn: Binding(
@@ -951,7 +1029,7 @@ struct SettingsPanel: View {
     /// docs to understand what's active.
     @ViewBuilder
     private var configSourceRow: some View {
-        let path = "\(NSHomeDirectory())/.config/conterm/config"
+        let path = InstanceState.configPath("config")
         let linked = SetupAssistant.isLinkedToGhostty()
         let status = linked
             ? "Includes ~/.config/ghostty/config (edits in either apply)."
@@ -1138,7 +1216,7 @@ private struct ConfigEditor: View {
 
     private var configPath: String {
         let home = NSHomeDirectory()
-        return "\(home)/.config/conterm/config"
+        return InstanceState.configPath("config")
     }
 
     var body: some View {

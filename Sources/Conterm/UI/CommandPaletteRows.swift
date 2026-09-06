@@ -145,6 +145,8 @@ struct CircleSuggestion: View {
                 .foregroundStyle(tint)
         } else if command.icon == RobotGlyph.iconName {
             RobotGlyph(color: tint, size: 22)
+        } else if command.icon == TerraformMark.iconName {
+            TerraformGlyph(color: tint, size: 19)
         } else {
             Image(systemName: command.icon)
                 .font(.system(size: 18, weight: .medium))
@@ -344,6 +346,9 @@ struct CommandRow: View {
         } else if command.icon == RobotGlyph.iconName {
             RobotGlyph(color: isFocused ? Theme.accent : Theme.textSecondary,
                        size: 16)
+        } else if command.icon == TerraformMark.iconName {
+            TerraformGlyph(color: isFocused ? Theme.accent : Theme.textSecondary,
+                           size: 14)
         } else {
             // Always-safe fallback: the SF Symbol. We reach here when
             // the asset can't be loaded — which must NEVER crash.

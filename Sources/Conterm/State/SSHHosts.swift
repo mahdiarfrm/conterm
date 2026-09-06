@@ -8,7 +8,7 @@ enum SSHRecents {
     private static let cap = 10
 
     static func load() -> [String] {
-        let ud = UserDefaults.standard
+        let ud = InstanceState.defaults
         return (ud.array(forKey: key) as? [String]) ?? []
     }
 
@@ -17,7 +17,7 @@ enum SSHRecents {
         list.removeAll { $0 == alias }
         list.insert(alias, at: 0)
         if list.count > cap { list.removeLast(list.count - cap) }
-        UserDefaults.standard.set(list, forKey: key)
+        InstanceState.defaults.set(list, forKey: key)
     }
 }
 

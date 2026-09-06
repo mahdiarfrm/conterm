@@ -175,7 +175,7 @@ private struct EmptyAgents: View {
             Text("No agents running")
                 .font(.system(size: Theme.ui(11), design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
-            Text("Start Claude Code or opencode in a pane")
+            Text("Start Claude Code, Codex or opencode in a pane")
                 .font(.system(size: Theme.ui(10), design: .rounded))
                 .foregroundStyle(Theme.textSecondary.opacity(0.7))
         }
@@ -285,6 +285,13 @@ private struct AddAgentMenu: View {
                           systemImage: "chevron.left.forwardslash.chevron.right")
                 }
             }
+            Button { open("codex") } label: {
+                if let mark = Self.menuMark("codex-mark") {
+                    Label { Text("New Codex agent…") } icon: { Image(nsImage: mark) }
+                } else {
+                    Label("New Codex agent…", systemImage: AgentTool.codex.fallbackSymbol)
+                }
+            }
             // Where you have run Claude before. Read from disk on open, which
             // is what a menu is for — a picker every time makes starting an
             // agent in a project you use daily a four-click errand.
@@ -310,7 +317,7 @@ private struct AddAgentMenu: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Open Claude Code or opencode in a directory")
+        .help("Open Claude Code, Codex or opencode in a directory")
     }
 
     /// Bundled agent mark scaled for a menu row and template-rendered:
@@ -727,6 +734,7 @@ private struct AgentRowView: View {
 
     @State private var reply = ""
     @FocusState private var replyFocused: Bool
+    @ObservedObject private var worktree = WorktreeWatch.shared
 
     private var v: (label: String, color: Color) { agentVisual(entry.phase) }
     /// Where this agent runs — a remote host wins, else the branch, else the
@@ -750,6 +758,7 @@ private struct AgentRowView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             footer
+            changesRow
             subAgentChildren
             shellFeed
             replyRow
@@ -971,6 +980,58 @@ private struct AgentRowView: View {
             }
             .padding(.leading, Theme.ui(2))
         }
+    }
+
+    /// What this agent has changed in its repo, since it started. The one
+    /// number the status pill can't give you — click through for the diff.
+    @ViewBuilder
+    private var changesRow: some View {
+        if let snap = worktree.snapshot(forCwd: entry.cwd), !snap.isEmpty {
+            Button { entry.owningState?.openWorktreeReview(root: snap.root) } label: {
+                HStack(spacing: Theme.ui(7)) {
+                    Image(systemName: "arrow.triangle.pull")
+                        .font(.system(size: Theme.ui(10), weight: .semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                    Text(changesLabel(snap))
+                        .font(.system(size: Theme.ui(11)))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.textPrimary.opacity(0.85))
+                        .lineLimit(1)
+                    Text(verbatim: "+\(snap.added)")
+                        .foregroundStyle(Color(red: 0.42, green: 0.83, blue: 0.52))
+                    Text(verbatim: "−\(snap.removed)")
+                        .foregroundStyle(Color(red: 0.93, green: 0.42, blue: 0.42))
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: Theme.ui(8.5), weight: .bold))
+                        .foregroundStyle(Theme.textSecondary.opacity(0.7))
+                }
+                .font(.system(size: Theme.ui(10.5), weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .padding(.horizontal, Theme.ui(9))
+                .padding(.vertical, Theme.ui(6))
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Theme.selectionFill.opacity(0.55))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Theme.stroke, lineWidth: 0.75))
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Review what this agent changed")
+        }
+    }
+
+    private func changesLabel(_ snap: WorktreeWatch.Snapshot) -> String {
+        var parts: [String] = []
+        if snap.fileCount > 0 {
+            parts.append("\(snap.fileCount) file\(snap.fileCount == 1 ? "" : "s")")
+        }
+        if !snap.commits.isEmpty {
+            parts.append("\(snap.commits.count) commit\(snap.commits.count == 1 ? "" : "s")")
+        }
+        return parts.joined(separator: ", ")
     }
 
     @ViewBuilder

@@ -119,8 +119,10 @@ final class AnsibleCenter: ObservableObject {
     nonisolated private static var feedDir: String {
         "\(NSHomeDirectory())/.conterm/ansible"
     }
+    /// The persisted report is this instance's own — unlike the run feeds
+    /// beside it, which the shell writes and the app only reads.
     nonisolated private static var lastReportPath: String {
-        "\(feedDir)/last-report.json"
+        InstanceState.configPath("ansible-last-report.json")
     }
 
     private init() {

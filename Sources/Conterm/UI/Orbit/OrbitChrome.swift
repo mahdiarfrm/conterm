@@ -1113,6 +1113,8 @@ extension OrbitOverlay {
                         startAgent("opencode", in: p)
                     }
                     .help("Run opencode in this shell")
+                    dockAction(AgentTool.codex.fallbackSymbol, "Codex") { startAgent("codex", in: p) }
+                        .help("Run codex in this shell")
                 }
                 if let host = p.remoteHost {
                     dockAction("externaldrive.connected.to.line.below.fill", Self.hostShort(host)) {

@@ -25,10 +25,10 @@ enum BackupStore {
     /// `../` relative path to escape the config directories.
     private static var files: [(rel: String, abs: String)] {
         [
-            ("conterm/config",          "\(home)/.config/conterm/config"),
-            ("conterm/sessions.json",   "\(home)/.config/conterm/sessions.json"),
-            ("conterm/notes.json",      "\(home)/.config/conterm/notes.json"),
-            ("conterm/tab-groups.json", "\(home)/.config/conterm/tab-groups.json"),
+            ("conterm/config",          InstanceState.configPath("config")),
+            ("conterm/sessions.json",   InstanceState.configPath("sessions.json")),
+            ("conterm/notes.json",      InstanceState.configPath("notes.json")),
+            ("conterm/tab-groups.json", InstanceState.configPath("tab-groups.json")),
             ("ghostty/config",          "\(home)/.config/ghostty/config"),
         ]
     }
@@ -39,7 +39,7 @@ enum BackupStore {
     /// if serialization fails.
     static func makeBackupData() -> Data? {
         var preferences: [String: Any] = [:]
-        for (k, v) in UserDefaults.standard.dictionaryRepresentation()
+        for (k, v) in InstanceState.defaults.dictionaryRepresentation()
         where k.hasPrefix("conterm.") {
             preferences[k] = v
         }
@@ -71,7 +71,7 @@ enum BackupStore {
               root["files"] != nil || root["preferences"] != nil else { return false }
 
         if let preferences = root["preferences"] as? [String: Any] {
-            let ud = UserDefaults.standard
+            let ud = InstanceState.defaults
             for (k, v) in preferences where k.hasPrefix("conterm.") {
                 ud.set(v, forKey: k)
             }

@@ -11,13 +11,10 @@ enum DiagnosticLog {
     /// UserDefaults key mirrored by `Preferences.diagnosticLogging`.
     static let defaultsKey = "conterm.diagnosticLogging"
 
-    static var directory: URL {
-        FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Logs/Conterm", isDirectory: true)
-    }
+    static var directory: URL { InstanceState.logsDirectory }
     static var fileURL: URL { directory.appendingPathComponent("conterm.log") }
 
-    static var isEnabled: Bool { UserDefaults.standard.bool(forKey: defaultsKey) }
+    static var isEnabled: Bool { InstanceState.defaults.bool(forKey: defaultsKey) }
 
     // `handle` is touched only inside `queue`, whose serialization
     // provides the synchronization the compiler can't see.

@@ -69,7 +69,7 @@ final class TabGroupStore: ObservableObject {
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let dir = "\(home)/.config/conterm"
+        let dir = InstanceState.configDir
         try? FileManager.default.createDirectory(atPath: dir,
                                                   withIntermediateDirectories: true)
         self.path = "\(dir)/tab-groups.json"

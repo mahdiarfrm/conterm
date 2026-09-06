@@ -526,25 +526,25 @@ final class OrbitSpaces: ObservableObject {
     @Published private(set) var spaces: [OrbitSpace] = []
     /// nil = the Live (auto-layout) space.
     @Published var currentID: UUID? {
-        didSet { UserDefaults.standard.set(currentID?.uuidString, forKey: curKey) }
+        didSet { InstanceState.defaults.set(currentID?.uuidString, forKey: curKey) }
     }
 
     private let key = "conterm.orbit.spaces"
     private let curKey = "conterm.orbit.currentSpace"
 
     init() {
-        if let data = UserDefaults.standard.data(forKey: key),
+        if let data = InstanceState.defaults.data(forKey: key),
            let decoded = try? JSONDecoder().decode([OrbitSpace].self, from: data) {
             spaces = decoded
         }
-        if let s = UserDefaults.standard.string(forKey: curKey), let id = UUID(uuidString: s),
+        if let s = InstanceState.defaults.string(forKey: curKey), let id = UUID(uuidString: s),
            spaces.contains(where: { $0.id == id }) { currentID = id }
     }
 
     var current: OrbitSpace? { spaces.first { $0.id == currentID } }
 
     private func persist() {
-        if let data = try? JSONEncoder().encode(spaces) { UserDefaults.standard.set(data, forKey: key) }
+        if let data = try? JSONEncoder().encode(spaces) { InstanceState.defaults.set(data, forKey: key) }
     }
 
     @discardableResult
@@ -634,12 +634,12 @@ final class OrbitSpaces: ObservableObject {
 enum HostNameStore {
     private static let key = "conterm.map.hostNames"
     static func name(for target: String) -> String? {
-        (UserDefaults.standard.dictionary(forKey: key) as? [String: String])?[target]
+        (InstanceState.defaults.dictionary(forKey: key) as? [String: String])?[target]
     }
     static func set(_ name: String?, for target: String) {
-        var d = (UserDefaults.standard.dictionary(forKey: key) as? [String: String]) ?? [:]
+        var d = (InstanceState.defaults.dictionary(forKey: key) as? [String: String]) ?? [:]
         if let name, !name.isEmpty { d[target] = name } else { d.removeValue(forKey: target) }
-        UserDefaults.standard.set(d, forKey: key)
+        InstanceState.defaults.set(d, forKey: key)
     }
 }
 
@@ -717,21 +717,21 @@ enum HostDistroStore {
     private static let key = "conterm.map.hostDistros"
 
     static func distro(for target: String) -> Distro? {
-        (UserDefaults.standard.dictionary(forKey: key) as? [String: String])?[target]
+        (InstanceState.defaults.dictionary(forKey: key) as? [String: String])?[target]
             .flatMap(Distro.init(rawValue:))
     }
 
     /// Every target whose distribution is known, so the art for them can be
     /// fetched without waiting for each host to be probed again.
     static var all: [String: Distro] {
-        ((UserDefaults.standard.dictionary(forKey: key) as? [String: String]) ?? [:])
+        ((InstanceState.defaults.dictionary(forKey: key) as? [String: String]) ?? [:])
             .compactMapValues(Distro.init(rawValue:))
     }
 
     static func set(_ distro: Distro?, for target: String) {
-        var d = (UserDefaults.standard.dictionary(forKey: key) as? [String: String]) ?? [:]
+        var d = (InstanceState.defaults.dictionary(forKey: key) as? [String: String]) ?? [:]
         if let distro { d[target] = distro.rawValue } else { d.removeValue(forKey: target) }
-        UserDefaults.standard.set(d, forKey: key)
+        InstanceState.defaults.set(d, forKey: key)
     }
 }
 

@@ -29,7 +29,6 @@ conterm-monitor-*.log
 archive/
 .build-ghostty/
 
-# Throwaway test instance: renamed app copy, config backup, logs.
-ContermTest.app/
-.test-config-backup/
-.test-logs/
+# Second instance for testing: renamed app copy and its isolated state home.
+ContermDev.app/
+.dev-home/
