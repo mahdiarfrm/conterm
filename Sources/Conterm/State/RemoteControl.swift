@@ -81,7 +81,16 @@ enum RemoteControl {
             let url = inboxURL.appendingPathComponent(name)
             defer { try? fm.removeItem(at: url) }
             guard executing, let data = try? Data(contentsOf: url) else { continue }
-            guard let command = try? JSONDecoder().decode(Command.self, from: data) else { continue }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = Self.lenientDates
+            guard let command = try? decoder.decode(Command.self, from: data) else {
+                clog("conterm: remote inbox — undecodable command \(name)")
+                continue
+            }
+            guard fresh(command) else {
+                clog("conterm: remote inbox — dropped stale \(command.action.rawValue)")
+                continue
+            }
             perform(command)
             acted = true
         }
@@ -89,7 +98,52 @@ enum RemoteControl {
         // Publish straight away so the phone sees the consequence of what it
         // asked for rather than waiting out the next timer tick. This is most
         // of what makes the pair feel connected rather than merely linked.
-        if acted { RemoteStatePublisher.publish() }
+        if acted { RemoteStatePublisher.publish(force: true) }
+    }
+
+    /// Accept a date however the phone encoded it.
+    ///
+    /// The two sides pick their own `JSONEncoder` strategies, and a mismatch
+    /// fails the whole decode — which would drop every command silently, not
+    /// just the timestamp. Reading both shapes means the two apps can ship
+    /// in either order.
+    nonisolated(unsafe) static let lenientDates =
+        JSONDecoder.DateDecodingStrategy.custom { decoder in
+            let container = try decoder.singleValueContainer()
+            if let text = try? container.decode(String.self) {
+                if let date = iso8601Frac.date(from: text) { return date }
+                if let date = iso8601Plain.date(from: text) { return date }
+                throw DecodingError.dataCorruptedError(
+                    in: container, debugDescription: "unparseable date \(text)")
+            }
+            // `.deferredToDate`, the JSONEncoder default, writes a number of
+            // seconds since the reference date.
+            return Date(timeIntervalSinceReferenceDate:
+                            try container.decode(Double.self))
+        }
+
+    nonisolated(unsafe) private static let iso8601Frac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    nonisolated(unsafe) private static let iso8601Plain = ISO8601DateFormatter()
+
+    /// How long a command stays worth acting on.
+    ///
+    /// The startup drain discards what arrived while the app was gone, for
+    /// the reason that acting on an intention from an unknown time ago is
+    /// wrong. A running Mac with the lid shut is the same situation and the
+    /// drain never sees it: the command lands, the Mac sleeps, and hours
+    /// later it wakes and types into a terminal. Same rule, applied to the
+    /// case the drain can't reach.
+    static let commandTTL: TimeInterval = 60
+
+    static func fresh(_ command: Command) -> Bool {
+        guard let sentAt = command.sentAt else { return true }
+        // Clock skew between two machines cuts both ways, so a command from
+        // the near future is not evidence of anything.
+        return abs(Date().timeIntervalSince(sentAt)) <= commandTTL
     }
 
     // MARK: - Doing it
@@ -175,6 +229,11 @@ enum RemoteControl {
         var text: String?
         var submit: Bool?
         var windowIndex: Int?
+        /// When the phone sent it. Absent from commands written by a phone
+        /// older than this field, which are accepted: refusing them would
+        /// break a paired phone on the Mac's upgrade, and the startup drain
+        /// already covers the case this guards.
+        var sentAt: Date?
 
         enum Action: String, Codable {
             case refresh
