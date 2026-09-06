@@ -29,6 +29,17 @@ func makePaneSurface(pane: Pane,
         tab.paneTree.root.leaves().contains { $0.id == pane.id }
     }
 
+    // Capture restore intent before starting, then clear it so a later
+    // re-mount of this pane never replays it.
+    let resumeSession = pane.pendingAgentResume
+    let scrollback = pane.pendingScrollback
+    pane.pendingAgentResume = nil
+    pane.pendingScrollback = nil
+    let pendingRestore = restoreCommandLine(resumeSession: resumeSession,
+                                            scrollback: scrollback,
+                                            cwd: pane.cwd)
+        .map { PendingRestore(command: $0, controller: controller) }
+
     controller.onPwdChange = { [weak pane, weak owningTab] newPwd in
         DispatchQueue.main.async {
             let decoded = decodePwd(newPwd)
@@ -53,6 +64,10 @@ func makePaneSurface(pane: Pane,
                 tab.pwdLabel = decodePwdForTitle(newPwd)
                 tab.refreshTitleFromMetadata()
             }
+            // The integration reports the directory at every prompt, so the
+            // first one is the shell saying it has finished its rc and is
+            // reading. That is the moment a restore line can be typed.
+            pendingRestore?.fire()
         }
     }
     controller.onTitleChange = { [weak pane, weak owningTab] newTitle in
@@ -230,13 +245,6 @@ func makePaneSurface(pane: Pane,
         }
     }
 
-    // Capture restore intent before starting, then clear it so a later
-    // re-mount of this pane never replays it.
-    let resumeSession = pane.pendingAgentResume
-    let scrollback = pane.pendingScrollback
-    pane.pendingAgentResume = nil
-    pane.pendingScrollback = nil
-
     _ = controller.start(view: view)
     pane.startingDir = nil
     state.syncSurfaceOcclusion()
@@ -247,18 +255,63 @@ func makePaneSurface(pane: Pane,
     // cwd alone (working_directory) covers a plain pane. The surface `command`
     // config would replace the shell (`/bin/sh -c`, wait-after-command forced)
     // rather than run a line inside it, so the input path stays the mechanism.
-    if let cmd = restoreCommandLine(resumeSession: resumeSession,
-                                    scrollback: scrollback,
-                                    cwd: pane.cwd) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak controller] in
-            // Send the whole line in one paste (atomic) then a real Return —
-            // char-by-char typeText raced libghostty's input and dropped
-            // characters (corrupted the path).
-            controller?.sendText(cmd)
-            controller?.sendReturn()
+    //
+    // The prompt report above is the real trigger. This is the backstop for a
+    // shell that never sends one — no integration, or a login shell that
+    // fails its rc — and it honours the same preference the palette's
+    // run-in-a-new-tab path uses, so a slow machine can be given longer.
+    pendingRestore?.armFallback()
+    return controller
+}
+
+/// A restore line waiting for the shell that will run it.
+///
+/// This used to go out on a fixed delay, which is a guess about how long an
+/// rc file takes. After a restart it is the wrong guess — cold caches, a
+/// prompt framework to load — and the line lands before zsh is reading, so
+/// the terminal echoes it instead of running it and the pane restores
+/// nothing. Waiting for the shell to say it is ready replaces the guess;
+/// the delay survives only as a backstop for shells that never say so.
+///
+/// Fires once, whichever trigger gets there first.
+@MainActor
+final class PendingRestore {
+    private var command: String?
+    private weak var controller: Ghostty.SurfaceController?
+    /// A prompt report can arrive before the shell can act on input — an
+    /// instant-prompt framework draws one while its rc is still running.
+    private static let floor: TimeInterval = 0.4
+    private let armedAt = Date()
+
+    init(command: String, controller: Ghostty.SurfaceController) {
+        self.command = command
+        self.controller = controller
+    }
+
+    func fire() {
+        guard command != nil else { return }
+        let waited = Date().timeIntervalSince(armedAt)
+        guard waited >= Self.floor else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + (Self.floor - waited)) {
+                [weak self] in self?.fire()
+            }
+            return
+        }
+        guard let cmd = command else { return }
+        command = nil
+        // Send the whole line in one paste (atomic) then a real Return —
+        // char-by-char typeText raced libghostty's input and dropped
+        // characters (corrupted the path).
+        controller?.sendText(cmd)
+        controller?.sendReturn()
+    }
+
+    func armFallback() {
+        let delay = max(Preferences.resolvedLaunchDelay, 0.8)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.fire()
         }
     }
-    return controller
 }
 
 /// The setup line typed into a freshly-restored pane: resume the agent if one
