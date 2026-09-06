@@ -675,11 +675,15 @@ extension CommandPalette {
         var id: String { (isRecent ? "r-" : "a-") + host.alias }
     }
 
+    /// Last computed rows, held across palette opens so a reopen shows
+    /// the list immediately while the refresh runs behind it.
+    nonisolated(unsafe) static var lastSSHRows: [SSHRow] = []
+
     /// Builds the full SSH row list: recents from shell history and
     /// palette clicks, followed by the remaining `~/.ssh/config`
-    /// hosts. Reads the history file, so call from
-    /// `refreshSSHRowsIfNeeded()` rather than from a SwiftUI body.
-    func computeAllSSHRows() -> [SSHRow] {
+    /// hosts. Reads several history files, so it never runs on the main
+    /// thread — see `refreshSSHRowsIfNeeded()`.
+    nonisolated static func computeAllSSHRows() -> [SSHRow] {
         let hostByAlias = Dictionary(uniqueKeysWithValues:
             Self.sshHosts.map { ($0.alias, $0) })
         var seen = Set<String>()
@@ -698,11 +702,23 @@ extension CommandPalette {
         return recentRows + restRows
     }
 
-    /// Rebuilds `cachedAllSSHRows` from the latest shell history
-    /// and `~/.ssh/config`. Called once each time the user enters
-    /// SSH mode in the palette.
+    /// Rebuilds `cachedAllSSHRows` from the latest shell history and
+    /// `~/.ssh/config`. Called each time the palette opens, so the work
+    /// happens off the main thread: parsing a long shell history is the
+    /// difference between the palette appearing this frame or two frames
+    /// from now. The previous rows show meanwhile.
     func refreshSSHRowsIfNeeded() {
-        cachedAllSSHRows = computeAllSSHRows()
+        if cachedAllSSHRows.isEmpty { cachedAllSSHRows = Self.lastSSHRows }
+        Task.detached(priority: .userInitiated) {
+            let rows = Self.computeAllSSHRows()
+            await MainActor.run {
+                Self.lastSSHRows = rows
+                cachedAllSSHRows = rows
+                // The suggestion tray can hold ssh rows, so its count is
+                // only final once these land.
+                syncTrayState(focusTray: false)
+            }
+        }
     }
 
     var filteredSSHRows: [SSHRow] {
