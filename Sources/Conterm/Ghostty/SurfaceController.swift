@@ -3,6 +3,23 @@ import Foundation
 import GhosttyKit
 
 extension Ghostty {
+    /// What a surface is being created as. libghostty picks the matching
+    /// `window`/`tab`/`split`-`inherit-working-directory` key from it, and
+    /// when the surface carries no explicit `working_directory` it either
+    /// inherits from the focused surface or falls back to the config's
+    /// `working-directory` accordingly.
+    enum SurfaceContext {
+        case window, tab, split
+
+        var cValue: ghostty_surface_context_e {
+            switch self {
+            case .window: return GHOSTTY_SURFACE_CONTEXT_WINDOW
+            case .tab:    return GHOSTTY_SURFACE_CONTEXT_TAB
+            case .split:  return GHOSTTY_SURFACE_CONTEXT_SPLIT
+            }
+        }
+    }
+
     /// Stable heap box handed to libghostty as a surface's `userdata`.
     /// Holds the controller WEAKLY: the surface-scoped C callbacks
     /// (read-clipboard, close) receive only this pointer — not the surface
@@ -107,8 +124,13 @@ extension Ghostty {
         /// Initial working directory for the shell. Set by TerminalContainer
         /// before `start(view:)` from the owning Pane's `startingDir`.
         /// Read once when libghostty creates the surface and ignored
-        /// afterwards (the shell's own pwd takes over).
+        /// afterwards (the shell's own pwd takes over). nil hands the
+        /// choice to libghostty, which resolves it from `surfaceContext`.
         var startingDir: String?
+
+        /// How this surface came to be. Set before `start(view:)` from the
+        /// owning Pane; decides which inherit key libghostty applies.
+        var surfaceContext: SurfaceContext = .window
 
         /// Owning pane's id, exported into the shell as CONTERM_PANE_ID
         /// so Conterm's shell-integration hooks can address this pane
@@ -159,7 +181,7 @@ extension Ghostty {
             )
             cfg.scale_factor = Double(view.window?.backingScaleFactor ?? 2.0)
             cfg.font_size = Float(fontSize)
-            cfg.context = GHOSTTY_SURFACE_CONTEXT_WINDOW
+            cfg.context = surfaceContext.cValue
             // userdata is a retained weak-box, not the controller itself:
             // the surface can outlive the controller, so a raw unretained
             // controller pointer here would dangle for the off-thread

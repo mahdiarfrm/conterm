@@ -21,6 +21,7 @@ func makePaneSurface(pane: Pane,
     controller.hostView = host
     view.controller = controller
     controller.startingDir = pane.startingDir
+    controller.surfaceContext = pane.surfaceContext
     controller.paneID = pane.id
     controller.fontSize = fontSize
     pane.controller = controller

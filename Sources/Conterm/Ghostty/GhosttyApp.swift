@@ -13,6 +13,27 @@ extension Ghostty {
         private(set) var handle: ghostty_app_t!
         let config: ghostty_config_t
 
+        /// Which `*-inherit-working-directory` keys are on, resolved from
+        /// the config chain and refreshed on every reload (`config` above
+        /// is the boot-time chain and goes stale). libghostty applies
+        /// these itself for a surface created with no explicit
+        /// `working_directory`; Conterm reads them because it hands over a
+        /// cwd of its own for tabs and splits.
+        struct InheritWorkingDirectory {
+            var window = true
+            var tab = true
+            var split = true
+
+            func applies(to context: SurfaceContext) -> Bool {
+                switch context {
+                case .window: return window
+                case .tab: return tab
+                case .split: return split
+                }
+            }
+        }
+        private(set) var inheritWorkingDirectory = InheritWorkingDirectory()
+
         /// Coalesces libghostty wakeups into one queued tick. `wakeup_cb`
         /// fires far faster than the main runloop drains — and a tick can
         /// itself schedule the next wakeup — so posting one `app.tick()`
@@ -166,6 +187,7 @@ extension Ghostty {
             App.logConfigValue(cfg, "macos-option-as-alt")
 
             self.config = cfg
+            self.inheritWorkingDirectory = App.readInheritWorkingDirectory(cfg)
             self.handle = nil  // satisfy "all properties initialized"
 
             // Reserve the back-pointer slot. We can't take Unmanaged of self
@@ -264,6 +286,7 @@ extension Ghostty {
                     ghostty_surface_update_config(h, newCfg)
                 }
             }
+            inheritWorkingDirectory = App.readInheritWorkingDirectory(newCfg)
             // Free the ephemeral config — both app + surfaces have
             // copied what they need internally.
             ghostty_config_free(newCfg)
@@ -530,6 +553,35 @@ extension Ghostty {
         }
 
         nonisolated(unsafe) static var shared: App?
+
+        /// Reads a boolean key out of a resolved config. The generic
+        /// getter reports whether the key exists and is stored as a bool;
+        /// `fallback` covers a key this libghostty build doesn't have.
+        private static func configBool(_ cfg: ghostty_config_t,
+                                        _ key: String,
+                                        default fallback: Bool) -> Bool {
+            var value = false
+            let ok = key.withCString { keyPtr in
+                ghostty_config_get(cfg, &value, keyPtr, UInt(strlen(keyPtr)))
+            }
+            return ok ? value : fallback
+        }
+
+        /// Defaults mirror libghostty's own (all three inherit).
+        static func readInheritWorkingDirectory(
+            _ cfg: ghostty_config_t
+        ) -> InheritWorkingDirectory {
+            let inherit = InheritWorkingDirectory(
+                window: configBool(cfg, "window-inherit-working-directory",
+                                   default: true),
+                tab: configBool(cfg, "tab-inherit-working-directory",
+                                default: true),
+                split: configBool(cfg, "split-inherit-working-directory",
+                                  default: true))
+            clog("conterm: inherit-working-directory window=\(inherit.window) "
+                 + "tab=\(inherit.tab) split=\(inherit.split)")
+            return inherit
+        }
 
         /// Best-effort introspection of a resolved config value. We don't
         /// know the underlying C type for every key, so we try the two
