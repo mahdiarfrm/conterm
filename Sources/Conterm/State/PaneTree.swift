@@ -243,7 +243,7 @@ enum AgentTool: String, Equatable {
         switch self {
         case .claude:   return Color(red: 0.93, green: 0.49, blue: 0.20) // warm orange
         case .opencode: return Color(red: 0.55, green: 0.36, blue: 0.92) // deep violet
-        case .codex:    return Color(red: 0.16, green: 0.78, blue: 0.62) // OpenAI green
+        case .codex:    return Color(red: 0.13, green: 0.55, blue: 0.90) // ChatGPT blue
         case .generic:  return Color(red: 0.60, green: 0.78, blue: 1.00) // soft blue
         }
     }
