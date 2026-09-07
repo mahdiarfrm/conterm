@@ -285,6 +285,29 @@ struct WelcomeWizard: View {
     /// The window's height, so a step with a long list can scroll inside
     /// the card instead of pushing it past the edges of a short window.
     @State private var availableHeight: CGFloat = 800
+    /// Height of the card's fixed chrome — masthead and footer, dividers
+    /// included — measured rather than assumed, so a step's scroll
+    /// viewport keeps matching the card after either one changes.
+    @State private var chromeHeight: CGFloat = 200
+    /// The current step's own content height, measured inside the scroll
+    /// view (scroll content is laid out at its ideal height, so this is
+    /// independent of the viewport it feeds).
+    @State private var bodyHeight: CGFloat = 260
+
+    /// Room left around the card so it never runs into the window edges
+    /// or under the title bar.
+    private static let cardMargin: CGFloat = 56
+    /// Floor for the step viewport: below this the card is unusable, so a
+    /// very short window scrolls rather than shrinking further.
+    private static let minStepHeight: CGFloat = 140
+
+    /// Height of the step's scroll viewport: the step's own content,
+    /// capped by what the window leaves once the chrome and margins are
+    /// out. A step that fits shows whole and doesn't scroll.
+    private var stepViewportHeight: CGFloat {
+        let room = availableHeight - chromeHeight - Self.cardMargin
+        return max(Self.minStepHeight, min(bodyHeight, room))
+    }
 
     var body: some View {
         ZStack {
@@ -327,14 +350,34 @@ struct WelcomeWizard: View {
 
     private var card: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-            Divider().opacity(0.25)
-            stepBody
-                .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
-                .padding(.horizontal, 22)
-                .padding(.vertical, 16)
-            Divider().opacity(0.25)
-            footer
+            VStack(spacing: 0) {
+                header
+                Divider().opacity(0.25)
+            }
+            .measuringHeight(WizardChromeKey.self)
+            // Every step scrolls, not just the long ones: the card is
+            // pinned to its content height, so anything that doesn't fit
+            // the viewport would otherwise render past the window.
+            ScrollView(.vertical) {
+                stepBody
+                    .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 16)
+                    .measuringHeight(WizardBodyHeightKey.self)
+            }
+            .frame(height: stepViewportHeight)
+            .scrollBounceBehavior(.basedOnSize)
+            VStack(spacing: 0) {
+                Divider().opacity(0.25)
+                footer
+            }
+            .measuringHeight(WizardChromeKey.self)
+        }
+        .onPreferenceChange(WizardChromeKey.self) { h in
+            if h > 0, abs(h - chromeHeight) > 1 { chromeHeight = h }
+        }
+        .onPreferenceChange(WizardBodyHeightKey.self) { h in
+            if h > 0, abs(h - bodyHeight) > 1 { bodyHeight = h }
         }
         .background(
             OverlayPanelBackground(cornerRadius: 24)
@@ -480,10 +523,6 @@ struct WelcomeWizard: View {
         }
     }
 
-    /// Room the card's chrome takes around the widget list: masthead,
-    /// section title and blurb, footer, and the margins between them.
-    private static let widgetsStepChrome: CGFloat = 330
-
     private var widgetsStep: some View {
         VStack(alignment: .leading, spacing: 14) {
             sectionTitle("Tab-bar widgets", systemImage: "square.grid.2x2.fill")
@@ -491,15 +530,9 @@ struct WelcomeWizard: View {
                 .font(.system(size: 11, design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            // The list scrolls inside the card: it is the one step whose
-            // content outgrows a short window.
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(WidgetKind.allCases) { widgetPickRow($0) }
-                }
-                .padding(.trailing, 6)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(WidgetKind.allCases) { widgetPickRow($0) }
             }
-            .frame(maxHeight: max(160, availableHeight - Self.widgetsStepChrome))
         }
     }
 
@@ -937,5 +970,33 @@ private struct WizardHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+/// The card's fixed chrome. Two contributors — masthead and footer — so
+/// this one sums rather than taking the larger.
+private struct WizardChromeKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value += nextValue()
+    }
+}
+
+/// The current step's content height. Two steps overlap for the length of
+/// a step transition; the taller one sizes the card through it.
+private struct WizardBodyHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private extension View {
+    /// Reports this view's laid-out height through `key`.
+    func measuringHeight<K: PreferenceKey>(_ key: K.Type) -> some View
+    where K.Value == CGFloat {
+        background(GeometryReader { g in
+            Color.clear.preference(key: key, value: g.size.height)
+        })
     }
 }
