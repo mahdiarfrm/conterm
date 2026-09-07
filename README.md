@@ -346,6 +346,19 @@ background-blur = 20
 # command = "/opt/homebrew/bin/fish"   # default is $SHELL
 ```
 
+New windows, tabs and splits start in the directory you were in. Each reads
+its own key, so you can change your mind for one without touching the rest;
+turn one off and libghostty's `working-directory` decides instead — `home`,
+`inherit`, or a path of your own.
+
+```ini
+window-inherit-working-directory = true
+tab-inherit-working-directory = false
+split-inherit-working-directory = true
+
+working-directory = home       # where the ones turned off start
+```
+
 ## Backup & restore
 
 From *Settings → Config*, **Back Up** writes a single `.contermbackup` file
@@ -370,6 +383,22 @@ open ./Conterm.app
 
 `scripts/build.sh` produces a release, arm64, ad-hoc-codesigned `Conterm.app`
 with the bundled config, terminfo, and icon.
+
+Working on Conterm from inside Conterm? `scripts/dev.sh` builds a second copy
+named *Conterm Dev* and launches it against its own state home, so it keeps
+its own session, settings and log rather than restoring — and then
+overwriting — the ones belonging to the Conterm you are typing in:
+
+```bash
+bash scripts/dev.sh          # build + launch
+bash scripts/dev.sh stop     # kill it
+bash scripts/dev.sh log      # tail its own diagnostic log
+bash scripts/dev.sh reset    # throw its state away
+```
+
+Any build does the same when given `CONTERM_STATE_HOME`. An instance that
+cannot claim the session file neither restores nor saves it, so two Conterms
+never trade windows even without the variable.
 
 `setup.sh` fetches the prebuilt GhosttyKit at the pinned commit. Official
 releases instead ship a GhosttyKit built from source with the local patches
