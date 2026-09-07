@@ -348,9 +348,46 @@ enum ClaudeIntegration {
 
 /// Codex's hooks in `~/.codex/hooks.json` (lifecycle hooks are on by
 /// default in Codex; `features.hooks = false` would silence these).
+///
+/// Codex will not run a hook it has not been told to trust: it hashes each
+/// hook's command and skips the ones whose hash it has no record of, so an
+/// install here is inert until the user trusts it from `/hooks` inside
+/// Codex. The hash covers the command line only, which is why rewriting
+/// `agent-hook.sh` at every launch keeps trust — changing the event set
+/// does not.
 @MainActor
 enum CodexIntegration {
     static var isInstalled: Bool { AgentHooks.isInstalled(AgentHooks.codex) }
     static func install() { AgentHooks.install(AgentHooks.codex) }
     static func uninstall() { AgentHooks.uninstall(AgentHooks.codex) }
+
+    /// Installed, with nothing in Codex's config recording trust for the
+    /// file — the hooks are on disk and doing nothing. Codex keeps its
+    /// decisions in `~/.codex/config.toml` under
+    /// `[hooks.state."file:<hooks.json>:<event>:<group>:<hook>"]`, so the
+    /// file's own path identifies ours. Only absence is detectable: a hook
+    /// whose recorded hash has gone stale reads as trusted here.
+    static var awaitsTrust: Bool { isInstalled && !hasTrustRecord }
+
+    private static var hasTrustRecord: Bool {
+        let path = "\(NSHomeDirectory())/.codex/config.toml"
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
+        return trustRecorded(in: text, for: AgentHooks.codex.settingsPath)
+    }
+
+    /// Whether `config` carries a `trusted_hash` for a hook declared in
+    /// `hooksFile`. The record is either its own table headed by the hook
+    /// key or a line under `[hooks.state]` keyed the same way, so both
+    /// shapes count.
+    static func trustRecorded(in config: String, for hooksFile: String) -> Bool {
+        var table = ""
+        for raw in config.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("[") { table = line; continue }
+            guard table.contains("hooks.state") else { continue }
+            if table.contains(hooksFile), line.hasPrefix("trusted_hash") { return true }
+            if line.contains(hooksFile), line.contains("trusted_hash") { return true }
+        }
+        return false
+    }
 }

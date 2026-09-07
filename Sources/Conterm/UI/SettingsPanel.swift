@@ -18,6 +18,7 @@ struct SettingsPanel: View {
     // isn't the default section, so the initial `false` is never shown.
     @State private var claudeIntegrationOn = false
     @State private var codexIntegrationOn = false
+    @State private var codexAwaitsTrust = false
     @State private var openCodeIntegrationOn = false
     @State private var themeFilter: String = ""
 
@@ -78,6 +79,7 @@ struct SettingsPanel: View {
             // (see the @State declarations above).
             claudeIntegrationOn = ClaudeIntegration.isInstalled
             codexIntegrationOn = CodexIntegration.isInstalled
+            codexAwaitsTrust = CodexIntegration.awaitsTrust
             openCodeIntegrationOn = OpenCodeIntegration.isInstalled
             // Jump to the section a palette settings result asked for.
             applyRequestedSection()
@@ -923,17 +925,28 @@ struct SettingsPanel: View {
                     .labelsHidden()
                 }
                 SettingsRow(title: "Codex integration",
-                            subtitle: "Add hooks to ~/.codex/hooks.json so a running Codex shows ready / thinking / needs-input and its tool bubbles, like Claude. Your other hooks are preserved.") {
-                    Toggle("", isOn: Binding(
-                        get: { codexIntegrationOn },
-                        set: { on in
-                            if on { CodexIntegration.install() }
-                            else  { CodexIntegration.uninstall() }
-                            codexIntegrationOn = CodexIntegration.isInstalled
+                            subtitle: codexAwaitsTrust
+                                ? "Hooks are in ~/.codex/hooks.json, and Codex is ignoring them until you say they are yours: type /hooks in Codex, open the Conterm entries and trust them."
+                                : "Add hooks to ~/.codex/hooks.json so a running Codex shows ready / thinking / needs-input and its tool bubbles, like Claude. Codex runs a new hook only after you trust it from its /hooks screen. Your other hooks are preserved.") {
+                    HStack(spacing: 10) {
+                        if codexAwaitsTrust {
+                            Label("Trust in /hooks", systemImage: "exclamationmark.triangle.fill")
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(Theme.warning)
+                                .fixedSize()
                         }
-                    ).withSound())
-                    .toggleStyle(.switch)
-                    .labelsHidden()
+                        Toggle("", isOn: Binding(
+                            get: { codexIntegrationOn },
+                            set: { on in
+                                if on { CodexIntegration.install() }
+                                else  { CodexIntegration.uninstall() }
+                                codexIntegrationOn = CodexIntegration.isInstalled
+                                codexAwaitsTrust = CodexIntegration.awaitsTrust
+                            }
+                        ).withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                    }
                 }
                 SettingsRow(title: "opencode integration",
                             subtitle: "Install an opencode plugin that drives the same status pill. Your config and other plugins are untouched.") {

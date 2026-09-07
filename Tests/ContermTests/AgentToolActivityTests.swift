@@ -355,6 +355,37 @@ struct AgentToolActivityTests {
         #expect(try runHook("PostToolUse", post, agent: "codex") == ["tool:end:call_78:ok"])
     }
 
+    @Test func codexTrustIsReadFromEitherConfigShape() {
+        let hooks = "/Users/u/.codex/hooks.json"
+        let table = """
+        [features]
+        hooks = true
+
+        [hooks.state."file:/Users/u/.codex/hooks.json:pre_tool_use:0:0"]
+        enabled = true
+        trusted_hash = "9f2b"
+        """
+        #expect(CodexIntegration.trustRecorded(in: table, for: hooks))
+
+        let inline = """
+        [hooks.state]
+        "file:/Users/u/.codex/hooks.json:stop:0:0" = { trusted_hash = "9f2b" }
+        """
+        #expect(CodexIntegration.trustRecorded(in: inline, for: hooks))
+
+        // A decision about someone else's hooks file says nothing about ours,
+        // and neither does a hook that is merely enabled.
+        let other = """
+        [hooks.state."file:/Users/u/work/.codex/hooks.json:stop:0:0"]
+        trusted_hash = "9f2b"
+
+        [hooks.state."file:/Users/u/.codex/hooks.json:stop:0:0"]
+        enabled = true
+        """
+        #expect(!CodexIntegration.trustRecorded(in: other, for: hooks))
+        #expect(!CodexIntegration.trustRecorded(in: "", for: hooks))
+    }
+
     /// The single `tool:start:…` event in an emission, decoded.
     private func startEvent(_ emitted: [String]) -> AgentToolEvent? {
         AgentToolEvent.parse(String((emitted.first ?? "").dropFirst(5)))
