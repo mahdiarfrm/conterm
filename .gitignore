@@ -32,3 +32,8 @@ archive/
 # Second instance for testing: renamed app copy and its isolated state home.
 ContermDev.app/
 .dev-home/
+
+# Local test state: config snapshots, logs and sandbox homes captured from a
+# real run. These carry session scrollback and cwds, so they stay out of the
+# repo by shape rather than by name.
+.test-*/
