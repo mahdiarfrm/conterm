@@ -19,8 +19,8 @@
 **Conterm** is a native macOS terminal built on
 [Ghostty's](https://github.com/ghostty-org/ghostty) engine. It adds a `⌘K`
 command palette, vertical tabs and tab groups, widgets, notifications, a
-command center for AI coding agents like Claude Code and opencode, and
-live overviews of your SSH hosts, Kubernetes clusters, and containers.
+command center for AI coding agents like Claude Code, Codex and opencode,
+and live overviews of your SSH hosts, Kubernetes clusters, and containers.
 
 > Conterm is an independent frontend built on **libghostty**. It is not
 > affiliated with, endorsed by, or sponsored by the Ghostty project. The
@@ -112,8 +112,9 @@ One search over everything:
   cycles through the agents waiting on you. A toolbar pill appears with the
   running count.
 - **Agents layout** — a third window layout whose sidebar *is* the live agent
-  roster; an **Add agent** button opens Claude Code or opencode in a directory
-  you pick — or one you have worked in before, listed for you — and a panes
+  roster; an **Add agent** button opens Claude Code, Codex or opencode in a
+  directory you pick — or one you have worked in before, listed for you —
+  and a panes
   dropdown jumps to any open pane. A session started somewhere Claude has
   never run says it is waiting on the trust prompt rather than reading as
   idle.
