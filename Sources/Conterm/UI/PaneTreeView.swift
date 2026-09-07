@@ -267,12 +267,12 @@ func makePaneSurface(pane: Pane,
 
 /// A restore line waiting for the shell that will run it.
 ///
-/// This used to go out on a fixed delay, which is a guess about how long an
-/// rc file takes. After a restart it is the wrong guess — cold caches, a
-/// prompt framework to load — and the line lands before zsh is reading, so
-/// the terminal echoes it instead of running it and the pane restores
-/// nothing. Waiting for the shell to say it is ready replaces the guess;
-/// the delay survives only as a backstop for shells that never say so.
+/// A fixed delay would be a guess about how long an rc file takes, and
+/// after a restart it is the wrong guess — cold caches, a prompt framework
+/// to load — so the line lands before zsh is reading and the terminal
+/// echoes it instead of running it. The shell's first prompt report is the
+/// signal to type on; a delay survives only as the backstop for shells
+/// that never send one.
 ///
 /// Fires once, whichever trigger gets there first.
 @MainActor
