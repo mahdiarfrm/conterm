@@ -50,9 +50,11 @@ enum AgentHooks {
         events: ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
                  "PostToolUseFailure", "Stop", "Notification", "SessionEnd"])
 
-    /// Codex raises the same events under the same payload fields; a tool
-    /// that fails still ends in PostToolUse, and a prompt for approval is
-    /// PermissionRequest.
+    /// Codex raises the same events under the same payload field names,
+    /// with two differences: a prompt for approval is PermissionRequest,
+    /// and there is no PostToolUseFailure — PostToolUse fires only after a
+    /// tool succeeds, so a failed call's bubble is retired by the rollout
+    /// poll or by `settleToolRuns` when the turn ends.
     static let codex = AgentHookSpec(
         identity: "codex",
         settingsPath: "\(NSHomeDirectory())/.codex/hooks.json",
@@ -109,12 +111,14 @@ enum AgentHooks {
     event=$1
     agent=${2:-claude}
     input=$(cat 2>/dev/null)
+    case $agent in codex) idpos=first ;; *) idpos=last ;; esac
 
     # jfield <key> <first|last>: the string value of a JSON key, by its
     # first or last occurrence in the input. The value keeps its JSON
     # escapes. Keys nested inside tool_input / tool_response can repeat a
     # top-level name, so the caller picks the occurrence that is the real
-    # key: tool_name precedes both, tool_use_id follows both.
+    # key. tool_name precedes both. tool_use_id sits after both for Claude
+    # and before them for Codex, so $idpos carries the side it is on.
     jfield() {
         printf '%s' "$input" | awk -v k="$1" -v which="$2" '
         {
@@ -170,7 +174,7 @@ enum AgentHooks {
             # desktop notification per second app-wide, and the second of a
             # pair is the one that is lost. A tool starting is the agent
             # working; the app reads it that way.
-            tid=$(jfield tool_use_id last)
+            tid=$(jfield tool_use_id "$idpos")
             [ -n "$tid" ] || { send "prompt:$(jfield transcript_path first)"; exit 0; }
             tn=$(jfield tool_name first)
             # What the call is about, in the input's own words: the command
@@ -184,11 +188,11 @@ enum AgentHooks {
             send "tool:start:$tid:$tn:$cmd"
             ;;
         PostToolUse)
-            tid=$(jfield tool_use_id last)
+            tid=$(jfield tool_use_id "$idpos")
             [ -n "$tid" ] && send "tool:end:$tid:ok"
             ;;
         PostToolUseFailure)
-            tid=$(jfield tool_use_id last)
+            tid=$(jfield tool_use_id "$idpos")
             [ -n "$tid" ] && send "tool:end:$tid:fail"
             ;;
         Stop)             send "idle:$(jfield transcript_path first)" ;;
