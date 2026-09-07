@@ -114,8 +114,7 @@ One search over everything:
 - **Agents layout** — a third window layout whose sidebar *is* the live agent
   roster; an **Add agent** button opens Claude Code, Codex or opencode in a
   directory you pick — or one you have worked in before, listed for you —
-  and a panes
-  dropdown jumps to any open pane. A session started somewhere Claude has
+  and a panes dropdown jumps to any open pane. A session started somewhere Claude has
   never run says it is waiting on the trust prompt rather than reading as
   idle.
 - **Command markers** *(shell integration)* — a ✓ / ✗ chip with the run time
