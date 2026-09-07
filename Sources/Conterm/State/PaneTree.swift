@@ -65,8 +65,15 @@ final class Pane: ObservableObject, Identifiable {
     /// Initial working directory to pass to libghostty when this
     /// pane's surface is created. Set when the pane is born from a
     /// split or a "new tab" inheriting from another active pane.
-    /// libghostty config: `working_directory`.
+    /// libghostty config: `working_directory`. Left nil when the
+    /// matching `*-inherit-working-directory` key is off, which hands
+    /// the choice back to libghostty's own `working-directory`.
     var startingDir: String?
+
+    /// What this pane is to libghostty — a window's first pane, a new
+    /// tab's, or a split. Selects the inherit key that applies to it.
+    var surfaceContext: Ghostty.SurfaceContext = .window
+
     /// Set when an agent was launched into a directory Claude has not been run
     /// in before. That first run stops on "do you trust the files in this
     /// folder", and until it is answered nothing is running and no transcript
@@ -236,7 +243,7 @@ enum AgentTool: String, Equatable {
         switch self {
         case .claude:   return Color(red: 0.93, green: 0.49, blue: 0.20) // warm orange
         case .opencode: return Color(red: 0.55, green: 0.36, blue: 0.92) // deep violet
-        case .codex:    return Color(red: 0.16, green: 0.78, blue: 0.62) // OpenAI green
+        case .codex:    return Color(red: 0.13, green: 0.55, blue: 0.90) // ChatGPT blue
         case .generic:  return Color(red: 0.60, green: 0.78, blue: 1.00) // soft blue
         }
     }
@@ -427,8 +434,11 @@ final class PaneTree: ObservableObject {
         guard case .leaf(let existing) = activeLeafNode.kind else { return false }
 
         let newPane = Pane()
-        newPane.startingDir = existing.cwd
-        clog("conterm: split newPane.startingDir=\(existing.cwd ?? "<nil>")")
+        newPane.surfaceContext = .split
+        if Ghostty.App.shared?.inheritWorkingDirectory.applies(to: .split) ?? true {
+            newPane.startingDir = existing.cwd
+        }
+        clog("conterm: split newPane.startingDir=\(newPane.startingDir ?? "<nil>")")
         // Re-key the active leaf node into a split: its place in the tree
         // is taken over by transforming THIS node from a leaf to a split
         // whose children are two fresh leaf nodes (old + new).

@@ -990,10 +990,15 @@ final class AppState: ObservableObject {
         while inUse.contains(n) { n += 1 }
         // Inherit cwd from the currently-active pane in the currently-
         // selected tab so the new tab opens "where I am right now".
-        let inheritedCwd = selectedTab?.paneTree.activePane?.cwd
+        // `tab-inherit-working-directory = false` suppresses it, leaving
+        // the cwd to libghostty's `working-directory`.
+        let inherits = Ghostty.App.shared?.inheritWorkingDirectory
+            .applies(to: .tab) ?? true
+        let inheritedCwd = inherits ? selectedTab?.paneTree.activePane?.cwd : nil
         clog("conterm: addTab inheritedCwd=\(inheritedCwd ?? "<nil>")")
         let tab = Tab(indexLabel: "Terminal \(n)", customTitle: title)
         if let firstPane = tab.paneTree.root.leaves().first {
+            firstPane.surfaceContext = .tab
             firstPane.startingDir = inheritedCwd
         }
         withAnimation(Theme.Spring.crisp) {
@@ -1015,7 +1020,10 @@ final class AppState: ObservableObject {
         var n = 1
         while inUse.contains(n) { n += 1 }
         let tab = Tab(indexLabel: "Terminal \(n)", customTitle: title)
-        tab.paneTree.root.leaves().first?.startingDir = dir
+        if let firstPane = tab.paneTree.root.leaves().first {
+            firstPane.surfaceContext = .tab
+            firstPane.startingDir = dir
+        }
         withAnimation(Theme.Spring.crisp) {
             tabs.append(tab)
             selectedID = tab.id

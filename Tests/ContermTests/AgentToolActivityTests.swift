@@ -295,14 +295,100 @@ struct AgentToolActivityTests {
                                transcriptPath: nil, claudeFallback: false) == nil)
     }
 
-    @Test func hookSpeaksForCodexToo() throws {
-        let json = #"{"session_id":"s","transcript_path":"/r.jsonl","cwd":"/w","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"rm -rf build"},"turn_id":"t1"}"#
-        #expect(try runHook("PermissionRequest", json, agent: "codex") == ["attention:/r.jsonl"])
-        let pre = #"{"transcript_path":"/r.jsonl","hook_event_name":"PreToolUse","tool_name":"apply_patch","tool_input":{"file_path":"src/App.swift"},"tool_use_id":"call_9","turn_id":"t1"}"#
-        let emitted = try runHook("PreToolUse", pre, agent: "codex")
-        #expect(emitted.count == 1)
-        #expect(AgentToolEvent.parse(String((emitted.first ?? "").dropFirst(5)))
-                == .start(id: "call_9", toolName: "apply_patch", command: "src/App.swift"))
+    // MARK: Codex payloads
+    //
+    // Codex speaks the same hook protocol as Claude Code, so these carry
+    // its own payload shape: the fields, their order and their spelling as
+    // `codex-rs/core/src/hook_runtime.rs` serializes them. Codex is the
+    // one agent whose wire format Conterm cannot try locally without an
+    // account, so the contract is pinned here instead.
+
+    @Test func codexPhaseEventsCarryTheRolloutPath() throws {
+        let rollout = "/Users/u/.codex/sessions/2026/09/07/rollout-2026-09-07T09-00-00-abc.jsonl"
+        let start = #"{"session_id":"s1","transcript_path":"\#(rollout)","cwd":"/w","hook_event_name":"SessionStart","model":"gpt-5-codex","source":"startup"}"#
+        #expect(try runHook("SessionStart", start, agent: "codex") == ["start:\(rollout)"])
+        let prompt = #"{"session_id":"s1","turn_id":"t1","cwd":"/w","transcript_path":"\#(rollout)","model":"gpt-5-codex","permission_mode":"on-request","hook_event_name":"UserPromptSubmit","prompt":"ship it"}"#
+        #expect(try runHook("UserPromptSubmit", prompt, agent: "codex") == ["prompt:\(rollout)"])
+        let stop = #"{"session_id":"s1","turn_id":"t1","transcript_path":"\#(rollout)","hook_event_name":"Stop","stop_hook_active":false,"last_assistant_message":"done"}"#
+        #expect(try runHook("Stop", stop, agent: "codex") == ["idle:\(rollout)"])
+        // Codex asks for approval through PermissionRequest; it has no
+        // Notification event.
+        let perm = #"{"session_id":"s1","turn_id":"t1","transcript_path":"\#(rollout)","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"rm -rf build"}}"#
+        #expect(try runHook("PermissionRequest", perm, agent: "codex") == ["attention:\(rollout)"])
+        let end = #"{"session_id":"s1","transcript_path":"\#(rollout)","cwd":"/w","hook_event_name":"SessionEnd","reason":"other"}"#
+        #expect(try runHook("SessionEnd", end, agent: "codex") == ["end:"])
+    }
+
+    @Test func codexToolCallsReadTheirCommandString() throws {
+        // Both of the tools Codex reports carry their subject in
+        // tool_input.command — the shell line for Bash, the patch itself
+        // for apply_patch.
+        let bash = #"{"session_id":"s1","turn_id":"t1","transcript_path":"/r.jsonl","model":"gpt-5-codex","permission_mode":"on-request","tool_name":"Bash","matcher_aliases":["shell","local_shell"],"tool_use_id":"call_42","tool_input":{"command":"cd infra && terraform plan","workdir":"/w"},"hook_event_name":"PreToolUse"}"#
+        let shell = try runHook("PreToolUse", bash, agent: "codex")
+        #expect(shell.count == 1)
+        #expect(startEvent(shell) == .start(id: "call_42", toolName: "Bash",
+                                            command: "cd infra && terraform plan"))
+
+        let patch = #"{"tool_name":"apply_patch","matcher_aliases":["edit"],"tool_use_id":"call_43","tool_input":{"command":"*** Begin Patch\n*** Update File: src/App.swift"},"hook_event_name":"PreToolUse"}"#
+        #expect(startEvent(try runHook("PreToolUse", patch, agent: "codex"))
+                == .start(id: "call_43", toolName: "apply_patch",
+                          command: "*** Begin Patch\n*** Update File: src/App.swift"))
+
+        // An MCP call names its server the same way Claude does, and its
+        // arguments hold none of the keys worth quoting: a bubble with no
+        // excerpt, not a dropped call.
+        let mcp = #"{"tool_name":"mcp__kubernetes__list_pods","tool_use_id":"call_44","tool_input":{"namespace":"prod"},"hook_event_name":"PreToolUse"}"#
+        #expect(startEvent(try runHook("PreToolUse", mcp, agent: "codex"))
+                == .start(id: "call_44", toolName: "mcp__kubernetes__list_pods", command: nil))
+    }
+
+    @Test func codexToolUseIdComesAheadOfTheInput() throws {
+        // The mirror of Claude's ordering: Codex serializes tool_use_id
+        // before tool_input / tool_response, so a nested key of the same
+        // name must not displace it.
+        let pre = #"{"tool_name":"Bash","tool_use_id":"call_77","tool_input":{"command":"cat x","meta":{"tool_use_id":"call_FAKE"}},"hook_event_name":"PreToolUse"}"#
+        #expect(startEvent(try runHook("PreToolUse", pre, agent: "codex"))
+                == .start(id: "call_77", toolName: "Bash", command: "cat x"))
+        // PostToolUse only fires for a tool that succeeded; a failed one
+        // is retired from the rollout or when the turn ends.
+        let post = #"{"tool_name":"Bash","tool_use_id":"call_78","tool_input":{"command":"cat x"},"tool_response":{"meta":{"tool_use_id":"call_FAKE"}},"hook_event_name":"PostToolUse"}"#
+        #expect(try runHook("PostToolUse", post, agent: "codex") == ["tool:end:call_78:ok"])
+    }
+
+    @Test func codexTrustIsReadFromEitherConfigShape() {
+        let hooks = "/Users/u/.codex/hooks.json"
+        let table = """
+        [features]
+        hooks = true
+
+        [hooks.state."file:/Users/u/.codex/hooks.json:pre_tool_use:0:0"]
+        enabled = true
+        trusted_hash = "9f2b"
+        """
+        #expect(CodexIntegration.trustRecorded(in: table, for: hooks))
+
+        let inline = """
+        [hooks.state]
+        "file:/Users/u/.codex/hooks.json:stop:0:0" = { trusted_hash = "9f2b" }
+        """
+        #expect(CodexIntegration.trustRecorded(in: inline, for: hooks))
+
+        // A decision about someone else's hooks file says nothing about ours,
+        // and neither does a hook that is merely enabled.
+        let other = """
+        [hooks.state."file:/Users/u/work/.codex/hooks.json:stop:0:0"]
+        trusted_hash = "9f2b"
+
+        [hooks.state."file:/Users/u/.codex/hooks.json:stop:0:0"]
+        enabled = true
+        """
+        #expect(!CodexIntegration.trustRecorded(in: other, for: hooks))
+        #expect(!CodexIntegration.trustRecorded(in: "", for: hooks))
+    }
+
+    /// The single `tool:start:…` event in an emission, decoded.
+    private func startEvent(_ emitted: [String]) -> AgentToolEvent? {
+        AgentToolEvent.parse(String((emitted.first ?? "").dropFirst(5)))
     }
 
     // MARK: Hook script

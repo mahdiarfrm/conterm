@@ -50,9 +50,11 @@ enum AgentHooks {
         events: ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
                  "PostToolUseFailure", "Stop", "Notification", "SessionEnd"])
 
-    /// Codex raises the same events under the same payload fields; a tool
-    /// that fails still ends in PostToolUse, and a prompt for approval is
-    /// PermissionRequest.
+    /// Codex raises the same events under the same payload field names,
+    /// with two differences: a prompt for approval is PermissionRequest,
+    /// and there is no PostToolUseFailure — PostToolUse fires only after a
+    /// tool succeeds, so a failed call's bubble is retired by the rollout
+    /// poll or by `settleToolRuns` when the turn ends.
     static let codex = AgentHookSpec(
         identity: "codex",
         settingsPath: "\(NSHomeDirectory())/.codex/hooks.json",
@@ -109,12 +111,14 @@ enum AgentHooks {
     event=$1
     agent=${2:-claude}
     input=$(cat 2>/dev/null)
+    case $agent in codex) idpos=first ;; *) idpos=last ;; esac
 
     # jfield <key> <first|last>: the string value of a JSON key, by its
     # first or last occurrence in the input. The value keeps its JSON
     # escapes. Keys nested inside tool_input / tool_response can repeat a
     # top-level name, so the caller picks the occurrence that is the real
-    # key: tool_name precedes both, tool_use_id follows both.
+    # key. tool_name precedes both. tool_use_id sits after both for Claude
+    # and before them for Codex, so $idpos carries the side it is on.
     jfield() {
         printf '%s' "$input" | awk -v k="$1" -v which="$2" '
         {
@@ -170,7 +174,7 @@ enum AgentHooks {
             # desktop notification per second app-wide, and the second of a
             # pair is the one that is lost. A tool starting is the agent
             # working; the app reads it that way.
-            tid=$(jfield tool_use_id last)
+            tid=$(jfield tool_use_id "$idpos")
             [ -n "$tid" ] || { send "prompt:$(jfield transcript_path first)"; exit 0; }
             tn=$(jfield tool_name first)
             # What the call is about, in the input's own words: the command
@@ -184,11 +188,11 @@ enum AgentHooks {
             send "tool:start:$tid:$tn:$cmd"
             ;;
         PostToolUse)
-            tid=$(jfield tool_use_id last)
+            tid=$(jfield tool_use_id "$idpos")
             [ -n "$tid" ] && send "tool:end:$tid:ok"
             ;;
         PostToolUseFailure)
-            tid=$(jfield tool_use_id last)
+            tid=$(jfield tool_use_id "$idpos")
             [ -n "$tid" ] && send "tool:end:$tid:fail"
             ;;
         Stop)             send "idle:$(jfield transcript_path first)" ;;
@@ -344,9 +348,46 @@ enum ClaudeIntegration {
 
 /// Codex's hooks in `~/.codex/hooks.json` (lifecycle hooks are on by
 /// default in Codex; `features.hooks = false` would silence these).
+///
+/// Codex will not run a hook it has not been told to trust: it hashes each
+/// hook's command and skips the ones whose hash it has no record of, so an
+/// install here is inert until the user trusts it from `/hooks` inside
+/// Codex. The hash covers the command line only, which is why rewriting
+/// `agent-hook.sh` at every launch keeps trust — changing the event set
+/// does not.
 @MainActor
 enum CodexIntegration {
     static var isInstalled: Bool { AgentHooks.isInstalled(AgentHooks.codex) }
     static func install() { AgentHooks.install(AgentHooks.codex) }
     static func uninstall() { AgentHooks.uninstall(AgentHooks.codex) }
+
+    /// Installed, with nothing in Codex's config recording trust for the
+    /// file — the hooks are on disk and doing nothing. Codex keeps its
+    /// decisions in `~/.codex/config.toml` under
+    /// `[hooks.state."file:<hooks.json>:<event>:<group>:<hook>"]`, so the
+    /// file's own path identifies ours. Only absence is detectable: a hook
+    /// whose recorded hash has gone stale reads as trusted here.
+    static var awaitsTrust: Bool { isInstalled && !hasTrustRecord }
+
+    private static var hasTrustRecord: Bool {
+        let path = "\(NSHomeDirectory())/.codex/config.toml"
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
+        return trustRecorded(in: text, for: AgentHooks.codex.settingsPath)
+    }
+
+    /// Whether `config` carries a `trusted_hash` for a hook declared in
+    /// `hooksFile`. The record is either its own table headed by the hook
+    /// key or a line under `[hooks.state]` keyed the same way, so both
+    /// shapes count.
+    static func trustRecorded(in config: String, for hooksFile: String) -> Bool {
+        var table = ""
+        for raw in config.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("[") { table = line; continue }
+            guard table.contains("hooks.state") else { continue }
+            if table.contains(hooksFile), line.hasPrefix("trusted_hash") { return true }
+            if line.contains(hooksFile), line.contains("trusted_hash") { return true }
+        }
+        return false
+    }
 }
