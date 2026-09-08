@@ -426,23 +426,35 @@ final class AppState: ObservableObject {
     /// the local path-paste.
     func uploadDroppedFiles(_ paths: [String], to pane: Pane) -> Bool {
         guard let host = pane.remoteHost, !paths.isEmpty else { return false }
-        let target = Self.resolveHostTarget(host)
-        // The pane's cwd is the remote directory only once the remote
-        // shell has reported OSC 7; a path still under the LOCAL home
-        // is a stale local report, so those uploads land in the remote
-        // $HOME instead.
+        // The dial is how the shell reached this machine; the host alone is
+        // whatever the far end calls itself, which may resolve nowhere here
+        // or resolve on the wrong port.
+        let dial = pane.remoteDial
+        let target = dial?.target ?? Self.resolveHostTarget(host)
+        // Only the far end can say where the remote shell is. Until it has
+        // reported one, `cwd` holds a local path that means nothing there,
+        // so those uploads land in the remote $HOME instead.
         let cwd = pane.cwd ?? ""
-        let dir = (cwd.hasPrefix("/") && !cwd.hasPrefix(NSHomeDirectory()))
-            ? cwd : ""
+        let dir = (pane.cwdIsRemote && cwd.hasPrefix("/")) ? cwd : ""
         let names = paths.map { ($0 as NSString).lastPathComponent }
         let label = names.count == 1 ? names[0] : "\(names.count) files"
         pane.upload = Pane.Upload(label: label, phase: .uploading)
         Task.detached(priority: .userInitiated) {
+            // A dropped folder is a directory tree; without -r scp refuses it.
+            let recursive = paths.contains { path in
+                var isDir: ObjCBool = false
+                return FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
+                    && isDir.boolValue
+            }
+            let destination = "\(target):\(dir.isEmpty ? "" : dir + "/")"
+            let args = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-q"]
+                + (recursive ? ["-r"] : [])
+                + (dial?.scpFlags ?? [])
+                + paths + [destination]
+            clog("upload: scp " + args.joined(separator: " "))
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/usr/bin/scp")
-            p.arguments = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-                           "-q"] + paths
-                + ["\(target):\(dir.isEmpty ? "" : dir + "/")"]
+            p.arguments = args
             let err = Pipe()
             p.standardOutput = FileHandle.nullDevice
             p.standardError = err
@@ -462,6 +474,9 @@ final class AppState: ObservableObject {
             let stderr = String(data: err.fileHandleForReading.readDataToEndOfFile(),
                                 encoding: .utf8) ?? ""
             let status = p.terminationStatus
+            clog("upload: scp exited \(status)"
+                 + (stderr.isEmpty ? "" : " — " + stderr
+                    .trimmingCharacters(in: .whitespacesAndNewlines)))
             await MainActor.run {
                 if status == 0 {
                     Self.settleUpload(pane, label: label, phase: .done)
@@ -475,16 +490,39 @@ final class AppState: ObservableObject {
                     SoundEffects.shared.play(.notify)
                 } else {
                     Self.settleUpload(pane, label: label, phase: .failed)
-                    let detail = stderr.split(whereSeparator: \.isNewline)
-                        .first.map(String.init) ?? "scp exited \(status)"
-                    self.notificationStore?.post(tool: .generic,
-                                                 title: "Upload failed",
-                                                 message: detail)
+                    self.notificationStore?.post(
+                        tool: .generic,
+                        title: "Upload failed",
+                        message: Self.uploadFailure(stderr, status: status, target: target))
                     SoundEffects.shared.play(.error)
                 }
             }
         }
         return true
+    }
+
+    /// scp's own first line, unless it names a cause the user can act on.
+    /// A GUI process has no terminal to ask a passphrase on, so every
+    /// interactive path shows up here as a refusal.
+    private static func uploadFailure(_ stderr: String, status: Int32,
+                                      target: String) -> String {
+        let line = stderr.split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+            ?? "scp exited \(status)"
+        let low = line.lowercased()
+        if low.contains("permission denied") || low.contains("publickey") {
+            return "\(target) refused the key. Uploads can't type a password — "
+                + "load the key with ssh-add first."
+        }
+        if low.contains("could not resolve hostname") {
+            return "\(target) isn't a name this Mac can reach. Connect by the "
+                + "name in ~/.ssh/config so the upload can follow."
+        }
+        if low.contains("host key verification failed") {
+            return "\(target)'s host key isn't trusted for this login yet."
+        }
+        return line
     }
 
     /// Flip the pane's upload badge to its verdict, then retire it —

@@ -45,6 +45,13 @@ final class Pane: ObservableObject, Identifiable {
     /// `exit` the ssh session).
     @Published var remoteHost: String?
 
+    /// How that session was dialled, when the pane saw the `ssh` command
+    /// line go by. `remoteHost` follows the far end's self-reported
+    /// hostname once a prompt or OSC 7 arrives, and that name is not
+    /// necessarily one this Mac can reach — an upload has to reconnect
+    /// the way the shell did.
+    @Published var remoteDial: SSHDial?
+
     /// Whether `cwd` was reported by the machine on the far end. An ssh session
     /// is often recognised from the window title alone, with no OSC 7 coming
     /// back — and then `cwd` is still the *local* directory the tab started in.

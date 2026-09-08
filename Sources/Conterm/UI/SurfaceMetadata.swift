@@ -144,6 +144,35 @@ private func expandTilde(_ p: String) -> String {
     return p
 }
 
+/// How a pane's ssh session was dialled, recovered from the command
+/// line in the window title. The far end reports its own hostname over
+/// OSC 7 and in its prompt, and that name is often unreachable from
+/// here — it resolves nowhere, or it resolves on a different port than
+/// the one that was typed. Anything that has to reconnect to the same
+/// machine (`scp` for a dropped file) needs the dial, not the report.
+struct SSHDial: Equatable, Sendable {
+    var user: String?
+    var host: String
+    var port: String?
+    var identity: String?
+    var jump: String?
+
+    /// `[user@]host`, the half of an `scp` argument before the colon.
+    var target: String { user.map { "\($0)@\(host)" } ?? host }
+
+    /// The dial's connection flags in `scp` spelling — the port is
+    /// `-P` there, where `ssh` spells it `-p`.
+    var scpFlags: [String] {
+        var out: [String] = []
+        if let port, !port.isEmpty { out += ["-P", port] }
+        if let identity, !identity.isEmpty {
+            out += ["-i", (identity as NSString).expandingTildeInPath]
+        }
+        if let jump, !jump.isEmpty { out += ["-J", jump] }
+        return out
+    }
+}
+
 /// If the title looks like a command line that starts with `ssh`
 /// (or `mosh`, also a remote-shell tool), extract the target host
 /// argument. Aliases from `~/.ssh/config` come through as the user
@@ -153,35 +182,57 @@ private func expandTilde(_ p: String) -> String {
 /// Returns nil for anything that isn't an ssh/mosh command line.
 @MainActor
 func extractSshTarget(from title: String) -> String? {
+    extractSshDial(from: title)?.host
+}
+
+/// The full dial behind such a title: user, host, and the flags that
+/// decide *which* machine it reaches (`-p`, `-i`, `-J`). Flags are
+/// walked the same way `ssh` walks them, so a value never gets mistaken
+/// for the host.
+@MainActor
+func extractSshDial(from title: String) -> SSHDial? {
     let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
     let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
     guard let first = parts.first,
           first == "ssh" || first == "mosh" || first == "ssh-copy-id" else {
         return nil
     }
-    // Walk past flags. Some ssh flags take an argument (e.g. `-i key`,
-    // `-p port`, `-o opt`); we consume both flag and value.
+    // Some ssh flags take an argument (e.g. `-i key`, `-p port`,
+    // `-o opt`); we consume both flag and value.
     let flagsWithArg: Set<Character> = ["i", "p", "o", "F", "L", "R", "D", "l", "J", "W", "b", "B", "c", "E", "I", "m", "O", "Q", "S", "w"]
+    var dial = SSHDial(host: "")
     var i = 1
     while i < parts.count {
         let p = parts[i]
-        if p.hasPrefix("-") {
-            // `-X` may take an arg; `-Xvalue` is bundled (no arg
-            // needed); `--foo=bar` always has the arg inline.
-            if p.count == 2, let ch = p.last, flagsWithArg.contains(ch), i + 1 < parts.count {
-                i += 2
-                continue
+        guard p.hasPrefix("-") else { break }
+        // `-X` may take an arg; `-Xvalue` is bundled (no arg needed);
+        // `--foo=bar` always has the arg inline.
+        if p.count == 2, let ch = p.last, flagsWithArg.contains(ch), i + 1 < parts.count {
+            let value = parts[i + 1]
+            switch ch {
+            case "p": dial.port = value
+            case "i": dial.identity = value
+            case "J": dial.jump = value
+            case "l": dial.user = value
+            default: break
             }
-            i += 1
+            i += 2
             continue
         }
-        // First non-flag word is the host (possibly `user@host`).
-        if let atIdx = p.firstIndex(of: "@") {
-            return String(p[p.index(after: atIdx)...])
-        }
-        return p
+        i += 1
     }
-    return nil
+    // First non-flag word is the host (possibly `user@host`). A shell
+    // line-continuation `\` clings to it when the command wrapped.
+    guard i < parts.count else { return nil }
+    var word = parts[i]
+    if word.hasSuffix("\\") { word = String(word.dropLast()) }
+    if let atIdx = word.firstIndex(of: "@") {
+        dial.user = String(word[word.startIndex..<atIdx])
+        dial.host = String(word[word.index(after: atIdx)...])
+    } else {
+        dial.host = word
+    }
+    return dial.host.isEmpty ? nil : dial
 }
 
 /// Is this title in the local `user@<localhostname>:path` form? We

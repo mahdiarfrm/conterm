@@ -71,6 +71,54 @@ import Foundation
         #expect(extractSshTarget(from: "") == nil)
     }
 
+    // MARK: - SSH dial extraction
+
+    /// An upload has to reconnect the way the shell did, so the user
+    /// survives the trip even though `remoteHost` drops it.
+    @Test func dialKeepsTheUser() {
+        let dial = extractSshDial(from: "ssh admin@example.com")
+        #expect(dial?.user == "admin")
+        #expect(dial?.host == "example.com")
+        #expect(dial?.target == "admin@example.com")
+    }
+
+    @Test func dialWithoutUserTargetsTheHost() {
+        #expect(extractSshDial(from: "ssh example.com")?.target == "example.com")
+    }
+
+    /// A port typed on the command line is nowhere in what the far end
+    /// reports, and scp spells it `-P`.
+    @Test func dialCarriesPortAsScpSpellsIt() {
+        let dial = extractSshDial(from: "ssh -p 2222 admin@example.com")
+        #expect(dial?.port == "2222")
+        #expect(dial?.scpFlags == ["-P", "2222"])
+    }
+
+    @Test func dialCarriesIdentityAndJump() {
+        let dial = extractSshDial(from: "ssh -J gate -i /tmp/key host")
+        #expect(dial?.jump == "gate")
+        #expect(dial?.scpFlags == ["-i", "/tmp/key", "-J", "gate"])
+    }
+
+    /// `-l user` is the other spelling of `user@`.
+    @Test func dialAcceptsDashLForTheUser() {
+        #expect(extractSshDial(from: "ssh -l admin host")?.target == "admin@host")
+    }
+
+    /// Flag values must never be mistaken for the host.
+    @Test func dialSkipsFlagValues() {
+        #expect(extractSshDial(from: "ssh -o BatchMode=yes -F /tmp/cfg host")?.host == "host")
+    }
+
+    @Test func dialRejectsNonSshCommands() {
+        #expect(extractSshDial(from: "vim notes") == nil)
+        #expect(extractSshDial(from: "ssh -p 22") == nil)
+    }
+
+    @Test func dialWithNoFlagsHasNoScpFlags() {
+        #expect(extractSshDial(from: "ssh host")?.scpFlags == [])
+    }
+
     // MARK: - Title → cwd extraction
 
     @Test func cwdFromTitleTilde() {

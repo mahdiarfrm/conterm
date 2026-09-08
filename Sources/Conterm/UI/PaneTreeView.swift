@@ -54,6 +54,7 @@ func makePaneSurface(pane: Pane,
             if let host = decoded.host?.lowercased() {
                 if localHostnames.contains(host) {
                     if pane?.remoteHost != nil { pane?.remoteHost = nil }
+                    pane?.remoteDial = nil
                     pane?.cwdIsRemote = false
                 } else {
                     if pane?.remoteHost != host { pane?.remoteHost = host }
@@ -74,14 +75,16 @@ func makePaneSurface(pane: Pane,
     controller.onTitleChange = { [weak pane, weak owningTab] newTitle in
         DispatchQueue.main.async {
             if newTitle.contains("\u{FFFD}") { return }
-            if let host = extractSshTarget(from: newTitle) {
-                if pane?.remoteHost != host { pane?.remoteHost = host }
+            if let dial = extractSshDial(from: newTitle) {
+                if pane?.remoteHost != dial.host { pane?.remoteHost = dial.host }
+                if pane?.remoteDial != dial { pane?.remoteDial = dial }
                 // Learned from the title, so `cwd` is still whatever the local
                 // shell last reported.
                 pane?.cwdIsRemote = false
             } else if let candidate = extractCwdFromTitle(newTitle) {
                 if isLocalPromptTitle(newTitle), pane?.remoteHost != nil {
                     pane?.remoteHost = nil
+                    pane?.remoteDial = nil
                 }
                 if isPlausibleAbsolutePath(candidate), pane?.cwd != candidate {
                     pane?.cwd = candidate
