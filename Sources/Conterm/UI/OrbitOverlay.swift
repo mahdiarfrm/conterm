@@ -30,6 +30,7 @@ struct OrbitOverlay: View {
     /// context — which is a different object and a different question.
     @ObservedObject var kubeContext = KubeContextWatch.shared
     @ObservedObject var routines = RoutineStore.shared
+    @ObservedObject var health = HostHealthStore.shared
     /// The routine being edited, and the one being filled in to launch.
     @State var editingRoutine: Routine?
     @State var launchingRoutine: Routine?
@@ -496,6 +497,11 @@ struct OrbitOverlay: View {
             // fetch never got a chance to land.
             DistroArt.shared.ensureKnown()
             redockSavedPreviews()
+            // Readings age out between visits, so entering is when the map
+            // earns its answer to "is anything wrong". Only the stale and the
+            // unknown are probed, a few at a time — this is the one place a
+            // sweep starts on its own, and it is an arrival, not a clock.
+            health.sweep(knownHostTargets())
         }
         .onDisappear {
             // Where the next visit's "since you looked away" is measured from.

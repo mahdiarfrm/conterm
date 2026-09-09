@@ -285,7 +285,8 @@ extension OrbitOverlay {
                      faded: isFadedHost(n),
                      light: prefs.lightGlass,
                      compact: cardsAreCompact,
-                     phase: Double(abs(n.id.hashValue) % 100))
+                     phase: Double(abs(n.id.hashValue) % 100),
+                     health: nodeHealth(n))
                 .position(screen(n.id, center: center))
         }
         .allowsHitTesting(false)

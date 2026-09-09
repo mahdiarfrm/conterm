@@ -161,14 +161,7 @@ extension OrbitOverlay {
             withAnimation(Theme.Spring.snappy) { launchingRoutine = r }
 
         case .host(let target):
-            // Not on any graph: Fleet is the view that draws every known host,
-            // so go there rather than reporting nothing found.
-            withAnimation(Theme.Spring.soft) {
-                state.orbitFocusSession = nil
-                spaces.currentID = nil
-                autoView = "fleet"
-            }
-            reveal("host:\(target)") { select(target) }
+            aimAtHost(target)
 
         case .node(let id):
             // A focused session or a saved board hides most of the fleet, so
@@ -183,6 +176,19 @@ extension OrbitOverlay {
             }
             reveal(id) { handleTap(id, in: liveGraph()) }
         }
+    }
+
+    /// Centre the map on a host and aim the bar at it. A host may not be on
+    /// any graph — Live drops the ones you aren't connected to — so this goes
+    /// to Fleet, the view that draws every known host, rather than reporting
+    /// nothing found.
+    func aimAtHost(_ target: String) {
+        withAnimation(Theme.Spring.soft) {
+            state.orbitFocusSession = nil
+            spaces.currentID = nil
+            autoView = "fleet"
+        }
+        reveal("host:\(target)") { select(target) }
     }
 
     /// Whether `id` names a host that isn't currently connected — Live drops

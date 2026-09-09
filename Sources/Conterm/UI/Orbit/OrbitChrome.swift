@@ -321,9 +321,25 @@ extension OrbitOverlay {
         let running = scheduler.actions.filter { $0.status == .running }
         let queued = scheduler.actions.filter { $0.status == .pending && !$0.held }
 
+        // The one count that is deliberately not "what this view holds": a
+        // condition is worth knowing about precisely on the machines you are
+        // not looking at, so it is taken against every host the map knows
+        // rather than the ones this view happens to draw.
+        let known = Set(knownHostTargets())
+        let ailing = health.needingAttention.filter { known.contains($0.target) }
+
         HStack(spacing: 7) {
             if !needsYou.isEmpty {
                 situationPill("\(needsYou.count) need you", Theme.warning) { focusSession(needsYou[0]) }
+            }
+            if !ailing.isEmpty {
+                situationPill(ailing.count == 1 ? "1 host ailing"
+                                                : "\(ailing.count) hosts ailing",
+                              NodeCard.alarm) { aimAtHost(ailing[0].target) }
+            }
+            if health.sweepRemaining > 0 {
+                inventoryPill("antenna.radiowaves.left.and.right",
+                              health.sweepRemaining, "hosts left to check")
             }
             if !working.isEmpty {
                 situationPill("\(working.count) working", Theme.accent) { focusSession(working[0]) }

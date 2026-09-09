@@ -63,6 +63,24 @@ extension OrbitOverlay {
         }
     }
     func isNote(_ n: MapNode) -> Bool { if case .note = n.kind { return true }; return false }
+
+    /// Every host the map can draw, whether or not it is on the current view —
+    /// a machine you are not connected to is exactly the one whose condition
+    /// you cannot otherwise see.
+    func knownHostTargets() -> [String] {
+        model.nodes.compactMap {
+            if case .host(let target, _) = $0.kind { return target }
+            return nil
+        }
+    }
+
+    /// A host card's last reading. Keyed by the ssh target rather than the
+    /// label, because the label is the machine's own name and the target is
+    /// what was dialled to get there.
+    func nodeHealth(_ n: MapNode) -> HostHealth? {
+        guard case .host(let target, _) = n.kind else { return nil }
+        return HostHealthStore.shared.health(for: target)
+    }
     func rgb(_ n: MapNode) -> (CGFloat, CGFloat, CGFloat) {
         if case .mac = n.kind { return (0.86, 0.92, 1.0) }
         switch n.status {

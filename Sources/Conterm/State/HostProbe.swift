@@ -130,6 +130,8 @@ final class HostProbeModel: ObservableObject {
                     self.phase = .loaded(info)
                     self.fetchedAt = Date()
                     Self.snapshotCache[target] = (info, Date())
+                    HostHealthStore.shared
+                        .record(HostHealth(target: target, info: info))
                     // Every probe is a chance to learn what the machine runs, so
                     // the map's mark for it doesn't depend on which panel you
                     // happened to open. A host that reports an OS re-states it,
@@ -141,12 +143,28 @@ final class HostProbeModel: ObservableObject {
                         if let distro { DistroArt.shared.ensure(distro) }
                     }
                 case .failure(let message):
+                    // The panel keeps a stale snapshot, but the map must not:
+                    // a probe that didn't land is the reading, whatever is
+                    // still on screen.
+                    HostHealthStore.shared
+                        .record(.unreachable(target: target, note: message))
                     // A stale snapshot beats an error screen; the header
                     // age shows it isn't fresh.
                     if case .loaded = self.phase { return }
                     self.phase = .failed(message)
                 }
             }
+        }
+    }
+
+    /// One probe with no view attached, for the map's sweep. Blocking, so
+    /// callers run it off the main actor; `fetch` carries its own watchdog.
+    nonisolated static func probeHealth(target: String) -> HostHealth {
+        switch fetch(target: target) {
+        case .success(let raw):
+            return HostHealth(target: target, info: parse(raw))
+        case .failure(let message):
+            return .unreachable(target: target, note: message)
         }
     }
 

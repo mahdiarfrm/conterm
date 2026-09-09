@@ -37,6 +37,23 @@ struct NodeCard: View {
     let compact: Bool
     /// Phase offset so a wall of working nodes doesn't pulse in lockstep.
     let phase: Double
+    /// The host's last reading, when this card is a host and one exists. Worn
+    /// on the corner opposite the selection tick — the tag row is the card's
+    /// identity and anything added there takes width from it.
+    var health: HostHealth?
+
+    /// The map's own danger red (`OrbitStyle.rgb`), so a condition mark and a
+    /// danger-status card read as the same alarm.
+    static let alarm = Color(red: 1.0, green: 0.36, blue: 0.36)
+
+    /// Unreachable and failed units are wrong now; a pending reboot or a hot
+    /// load is a machine to get to, not an alarm.
+    func concernTint(_ health: HostHealth) -> Color {
+        switch health.concerns.first {
+        case .unreachable, .failedUnits: return Self.alarm
+        default: return Theme.warning
+        }
+    }
 
     var busy: Bool { status == .working }
     var wants: Bool { status == .attention }
@@ -164,6 +181,25 @@ struct NodeCard: View {
                     .foregroundStyle(Theme.accent)
                     .background(Circle().fill(light ? Color.white : Color.black).padding(1))
                     .offset(x: 4, y: -4)
+            }
+        }
+        // Condition rides the corner, not the status dot: the dot says what the
+        // node is doing and this says what the machine underneath is like, and
+        // a busy host with a full disk has to be able to say both.
+        .overlay(alignment: .topLeading) {
+            if let health, health.needsAttention {
+                Image(systemName: health.glyph)
+                    .font(.system(size: 9.5, weight: .bold))
+                    .foregroundStyle(health.isStale
+                                     ? Theme.textSecondary : concernTint(health))
+                    .background(Circle().fill(light ? Color.white : Color.black)
+                        .padding(-1.5))
+                    .offset(x: -4, y: -4)
+                    // Stale readings stay on the card rather than vanishing —
+                    // "this was wrong 3 hours ago" is worth more than silence —
+                    // but they are drawn as history, not as news.
+                    .opacity(health.isStale ? 0.55 : 1)
+                    .help(health.summary + (health.isStale ? " · stale" : ""))
             }
         }
         // A short bright segment orbiting the card's edge while it works — the
