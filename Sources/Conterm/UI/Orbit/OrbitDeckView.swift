@@ -42,6 +42,10 @@ struct TimelineDeckView: View {
     let tint: (OrbitScheduler.Status) -> Color
     let onCancel: (UUID) -> Void
     let onOpen: (UUID) -> Void
+    /// Turn this block's action into a routine. On the block rather than in the
+    /// detail card because a block is sized by how long its action took, and a
+    /// fast command has no room for another button.
+    let onSaveRoutine: (UUID) -> Void
     let onSelect: (UUID) -> Void
     let schedule: (OrbitScheduler.Action) -> String
     let onClearDone: () -> Void
@@ -305,6 +309,11 @@ struct TimelineDeckView: View {
             }
         }
         .help(caption(a) + " · " + a.targets.joined(separator: ", "))
+        .contextMenu {
+            Button("Save as Routine…") { onSaveRoutine(a.id) }
+            if a.isTerminal { Button("Open output") { onOpen(a.id) } }
+            if !a.isTerminal { Button("Cancel") { onCancel(a.id) } }
+        }
         .onHover { inside in hovered = inside ? a.id : (hovered == a.id ? nil : hovered) }
         // Single click pins its detail + wire on the canvas; double-click opens
         // the captured output.

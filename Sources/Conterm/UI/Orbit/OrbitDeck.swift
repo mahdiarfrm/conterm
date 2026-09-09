@@ -50,6 +50,7 @@ extension OrbitOverlay {
                              caption: { actionCaption($0) }, tint: { actionColor($0) },
                              onCancel: { scheduler.cancel($0) },
                              onOpen: { id in withAnimation(Theme.Spring.snappy) { modal = .output(id) } },
+                             onSaveRoutine: { captureRoutine(from: $0) },
                              onSelect: { id in
                                  withAnimation(Theme.Spring.snappy) {
                                      pinnedActionID = (pinnedActionID == id) ? nil : id

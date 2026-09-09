@@ -654,3 +654,17 @@ extension OrbitOverlay {
         }
     }
 }
+
+extension OrbitOverlay {
+    /// Turn a planned or finished action into a routine and open it for a name.
+    ///
+    /// The editor rather than a silent save: a captured routine is a draft of
+    /// what you meant, and the one thing only you can supply is what to call it.
+    func captureRoutine(from actionID: UUID) {
+        guard let action = scheduler.actions.first(where: { $0.id == actionID }),
+              let routine = Routine.captured([FlowStep(action)]) else { return }
+        routines.add(routine)
+        SoundEffects.shared.play(.paletteConfirm)
+        withAnimation(Theme.Spring.snappy) { editingRoutine = routine }
+    }
+}

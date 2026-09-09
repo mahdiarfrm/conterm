@@ -129,6 +129,75 @@ struct Routine: Codable, Identifiable, Equatable {
     }
 }
 
+// MARK: - Capture
+
+extension FlowStep {
+    /// A planned action as a step — the two carry the same five fields, which
+    /// is what makes capturing one cheap.
+    init(_ action: OrbitScheduler.Action) {
+        self.init(kind: action.kind.rawValue, payload: action.payload,
+                  become: action.become, check: action.check,
+                  targets: action.targets)
+    }
+}
+
+extension Routine {
+    /// The input a captured routine is given for the machines it runs on.
+    static let hostsKey = "hosts"
+
+    /// A routine built from work already done.
+    ///
+    /// Authoring one from an empty editor is the reason routines don't accrue:
+    /// the moment you would write it down is the moment you are busy doing it.
+    /// Capture turns the thing you just ran into the thing you can run again.
+    ///
+    /// Targets are lifted into a `{{hosts}}` input seeded with the ones it was
+    /// captured on, rather than baked into each step — a sequence that can only
+    /// ever reach the three machines it was captured on is a note, not a tool.
+    /// The lift only happens when every targeted step aims at the *same* hosts;
+    /// otherwise the steps meant different machines and collapsing them into one
+    /// list would run each step everywhere.
+    static func captured(_ steps: [FlowStep], name: String? = nil) -> Routine? {
+        let steps = steps.filter { !$0.payload.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard !steps.isEmpty else { return nil }
+
+        let targeted = steps.filter { !$0.targets.isEmpty }
+        let uniform = targeted.dropFirst().allSatisfy { $0.targets == targeted[0].targets }
+        var lifted = steps
+        var inputs: [RoutineInput] = []
+        if let hosts = targeted.first?.targets, uniform,
+           !hosts.contains(where: { $0.contains("{{") }) {
+            for i in lifted.indices where !lifted[i].targets.isEmpty {
+                lifted[i].targets = ["{{\(hostsKey)}}"]
+            }
+            inputs = [RoutineInput(key: hostsKey, label: "Hosts", kind: .hosts,
+                                   defaultValue: hosts.joined(separator: ", "))]
+        }
+        return Routine(name: name ?? suggestedName(for: steps),
+                       summary: steps.count == 1 ? "" : "\(steps.count) steps",
+                       inputs: inputs, steps: lifted)
+    }
+
+    /// A name taken from the work itself, so a captured routine arrives called
+    /// something rather than "Routine 4". `sudo` is dropped — it is a step's
+    /// `become` flag, not part of what the step is for.
+    static func suggestedName(for steps: [FlowStep]) -> String {
+        guard let first = steps.first else { return "Routine" }
+        switch first.kind {
+        case "ansible":
+            return (first.payload as NSString).lastPathComponent
+        case "copy":
+            return "copy " + (first.payload as NSString).lastPathComponent
+        default:
+            var words = first.payload
+                .split(whereSeparator: \.isWhitespace).map(String.init)
+            if words.first == "sudo" { words.removeFirst() }
+            let name = words.prefix(4).joined(separator: " ")
+            return name.isEmpty ? "Routine" : String(name.prefix(48))
+        }
+    }
+}
+
 /// What one launch did. The durable record under the timeline: the timeline
 /// draws what is in flight, this is what you come back to read.
 struct RoutineRun: Codable, Identifiable, Equatable {
@@ -248,6 +317,11 @@ final class RoutineStore: ObservableObject {
         let r = Routine(name: name.isEmpty ? "Routine \(routines.count + 1)" : name)
         routines.append(r); persistRoutines()
         return r
+    }
+
+    /// Add one built elsewhere — capture, rather than the editor's blank.
+    func add(_ routine: Routine) {
+        routines.append(routine); persistRoutines()
     }
 
     func update(_ routine: Routine) {
