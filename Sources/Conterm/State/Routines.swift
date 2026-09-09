@@ -178,6 +178,18 @@ extension Routine {
                        inputs: inputs, steps: lifted)
     }
 
+    /// A choice's options as one line, and back. The editor types them the way
+    /// the launcher's other list input is typed; blanks and duplicates are
+    /// dropped so a trailing comma doesn't become an empty entry in the picker.
+    static func parseOptions(_ text: String) -> [String] {
+        var out: [String] = []
+        for raw in text.split(separator: ",") {
+            let option = raw.trimmingCharacters(in: .whitespaces)
+            if !option.isEmpty, !out.contains(option) { out.append(option) }
+        }
+        return out
+    }
+
     /// A name taken from the work itself, so a captured routine arrives called
     /// something rather than "Routine 4". `sudo` is dropped — it is a step's
     /// `become` flag, not part of what the step is for.

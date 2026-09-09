@@ -104,6 +104,28 @@ struct RoutineCaptureTests {
         #expect(r.name == "Morning check")
     }
 
+    // MARK: - Choice options
+
+    @Test func optionsAreSplitAndTrimmed() {
+        #expect(Routine.parseOptions("staging, production") == ["staging", "production"])
+        #expect(Routine.parseOptions("  a ,b  ") == ["a", "b"])
+    }
+
+    /// A trailing comma while typing must not become an empty row in the
+    /// launcher's picker, and the same option twice is one option.
+    @Test func blanksAndDuplicatesAreDropped() {
+        #expect(Routine.parseOptions("a, ,b,") == ["a", "b"])
+        #expect(Routine.parseOptions("a, b, a") == ["a", "b"])
+        #expect(Routine.parseOptions("") == [])
+        #expect(Routine.parseOptions(" , ") == [])
+    }
+
+    /// Order is what the user typed — a picker that reorders itself as you
+    /// edit it is unusable.
+    @Test func optionsKeepTheirOrder() {
+        #expect(Routine.parseOptions("z, a, m") == ["z", "a", "m"])
+    }
+
     // MARK: - From a planned action
 
     @Test func anActionConvertsToAStep() {

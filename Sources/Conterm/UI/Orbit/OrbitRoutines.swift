@@ -151,15 +151,25 @@ extension OrbitOverlay {
 
                     routineSectionLabel("INPUTS")
                     ForEach(Array(routineBinding.inputs.enumerated()), id: \.element.id) { _, $input in
-                        HStack(spacing: 6) {
-                            TextField("key", text: $input.key)
-                                .textFieldStyle(.roundedBorder).frame(width: 84)
-                            TextField("label", text: $input.label).textFieldStyle(.roundedBorder)
-                            Picker("", selection: $input.kind) {
-                                ForEach(RoutineInput.Kind.allCases, id: \.self) {
-                                    Text($0.label).tag($0)
-                                }
-                            }.labelsHidden().frame(width: 86)
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                TextField("key", text: $input.key)
+                                    .textFieldStyle(.roundedBorder).frame(width: 84)
+                                TextField("label", text: $input.label).textFieldStyle(.roundedBorder)
+                                Picker("", selection: $input.kind) {
+                                    ForEach(RoutineInput.Kind.allCases, id: \.self) {
+                                        Text($0.label).tag($0)
+                                    }
+                                }.labelsHidden().frame(width: 86)
+                            }
+                            // A choice is the one kind whose values live in the
+                            // routine rather than being typed at launch, so it is
+                            // the one kind with something more to say here. Typed
+                            // as a list because that is how the launcher reads it.
+                            if $input.wrappedValue.kind == .choice {
+                                ChoiceOptionsField(options: $input.options)
+                                    .padding(.leading, 90)
+                            }
                         }
                         .font(.system(size: 11, design: .rounded))
                     }
@@ -336,6 +346,11 @@ extension OrbitOverlay {
         for input in r.inputs {
             if input.kind == .hosts, !selectedHosts.isEmpty {
                 values[input.key] = Array(selectedHosts).sorted().joined(separator: ", ")
+            } else if input.kind == .choice,
+                      !input.options.contains(input.defaultValue) {
+                // A Picker whose selection matches no tag renders empty, and an
+                // empty choice would substitute nothing into the payload.
+                values[input.key] = input.options.first ?? ""
             } else {
                 values[input.key] = input.defaultValue
             }
@@ -666,5 +681,29 @@ extension OrbitOverlay {
         routines.add(routine)
         SoundEffects.shared.play(.paletteConfirm)
         withAnimation(Theme.Spring.snappy) { editingRoutine = routine }
+    }
+}
+
+/// The options behind a `.choice` input, typed as one comma-separated line.
+///
+/// Holds the raw text rather than deriving it from the parsed list: a binding
+/// that re-renders `options.joined()` on every keystroke deletes the separator
+/// the moment it is typed, so a second option can never be started.
+struct ChoiceOptionsField: View {
+    @Binding var options: [String]
+    @State private var text = ""
+    @State private var seeded = false
+
+    var body: some View {
+        TextField("options, comma separated", text: $text)
+            .textFieldStyle(.roundedBorder)
+            .onAppear {
+                guard !seeded else { return }
+                text = options.joined(separator: ", ")
+                seeded = true
+            }
+            .onChange(of: text) { _, now in
+                options = Routine.parseOptions(now)
+            }
     }
 }
