@@ -24,11 +24,11 @@ private struct NotesPill: View {
                         showingPopover.toggle()
                         SoundEffects.shared.play(.toggle)
                     }) {
-            HStack(spacing: 5) {
+            HStack(spacing: Theme.ui(5)) {
                 widgetIcon("note.text")
                 if !notes.notes.isEmpty {
                     Text("\(notes.notes.count)")
-                        .font(.system(size: 11, weight: .semibold,
+                        .font(.system(size: Theme.ui(11), weight: .semibold,
                                       design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
                         .monospacedDigit()
@@ -65,7 +65,7 @@ private struct NotesPopover: View {
                 list
             }
         }
-        .frame(width: 300, height: 340)
+        .frame(width: Theme.ui(300), height: Theme.ui(340))
     }
 
     // MARK: List
@@ -74,7 +74,7 @@ private struct NotesPopover: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Notes")
-                    .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                    .font(.system(size: Theme.ui(12.5), weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                 Spacer()
                 Button {
@@ -83,24 +83,24 @@ private struct NotesPopover: View {
                     SoundEffects.shared.play(.click)
                 } label: {
                     Image(systemName: "square.and.pencil")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: Theme.ui(12), weight: .medium))
                         .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 22, height: 22)
+                        .frame(width: Theme.ui(22), height: Theme.ui(22))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("New note")
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
+            .padding(.horizontal, Theme.ui(14))
+            .padding(.vertical, Theme.ui(9))
             Divider().opacity(0.5)
             if notes.notes.isEmpty {
-                VStack(spacing: 6) {
+                VStack(spacing: Theme.ui(6)) {
                     Image(systemName: "note.text")
-                        .font(.system(size: 20, weight: .light))
+                        .font(.system(size: Theme.ui(20), weight: .light))
                         .foregroundStyle(Theme.textSecondary.opacity(0.6))
                     Text("No notes yet")
-                        .font(.system(size: 11.5, design: .rounded))
+                        .font(.system(size: Theme.ui(11.5), design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -111,7 +111,7 @@ private struct NotesPopover: View {
                             row(note)
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, Theme.ui(4))
                 }
             }
         }
@@ -133,21 +133,21 @@ private struct NotesPopover: View {
 
     private func editor(_ id: UUID) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.ui(8)) {
                 Button {
                     editingID = nil
                     SoundEffects.shared.play(.toggle)
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: Theme.ui(11), weight: .semibold))
                         .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 22, height: 22)
+                        .frame(width: Theme.ui(22), height: Theme.ui(22))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Back to list")
                 Text(notes.notes.first(where: { $0.id == id })?.title ?? "Note")
-                    .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                    .font(.system(size: Theme.ui(12.5), weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 Spacer()
@@ -157,22 +157,22 @@ private struct NotesPopover: View {
                     SoundEffects.shared.play(.paneRemove)
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: Theme.ui(11), weight: .medium))
                         .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 22, height: 22)
+                        .frame(width: Theme.ui(22), height: Theme.ui(22))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Delete note")
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, Theme.ui(10))
+            .padding(.vertical, Theme.ui(8))
             Divider().opacity(0.5)
             TextEditor(text: $draft)
-                .font(.system(size: 12.5, design: .rounded))
+                .font(.system(size: Theme.ui(12.5), design: .rounded))
                 .scrollContentBackground(.hidden)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .padding(.horizontal, Theme.ui(8))
+                .padding(.vertical, Theme.ui(6))
                 .focused($editorFocused)
                 .onChange(of: draft) { _, new in
                     notes.update(id, content: new)
@@ -189,20 +189,20 @@ private struct NotesWidgetRow: View {
 
     var body: some View {
         Button(action: open) {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: Theme.ui(8)) {
+                VStack(alignment: .leading, spacing: Theme.ui(1)) {
                     Text(note.title)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(.system(size: Theme.ui(12), weight: .medium, design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
-                    HStack(spacing: 5) {
+                    HStack(spacing: Theme.ui(5)) {
                         Text(Self.relative.localizedString(for: note.modified,
                                                            relativeTo: Date()))
-                            .font(.system(size: 10, design: .rounded))
+                            .font(.system(size: Theme.ui(10), design: .rounded))
                             .foregroundStyle(Theme.textSecondary.opacity(0.8))
                         if !note.preview.isEmpty {
                             Text(note.preview)
-                                .font(.system(size: 10, design: .rounded))
+                                .font(.system(size: Theme.ui(10), design: .rounded))
                                 .foregroundStyle(Theme.textSecondary)
                                 .lineLimit(1)
                         }
@@ -212,17 +212,17 @@ private struct NotesWidgetRow: View {
                 if hovering {
                     Button(action: delete) {
                         Image(systemName: "trash")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(size: Theme.ui(10), weight: .medium))
                             .foregroundStyle(Theme.textSecondary)
-                            .frame(width: 20, height: 20)
+                            .frame(width: Theme.ui(20), height: Theme.ui(20))
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .help("Delete note")
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
+            .padding(.horizontal, Theme.ui(14))
+            .padding(.vertical, Theme.ui(6))
             .contentShape(Rectangle())
             .background(hovering ? Theme.selectionFill : .clear)
         }

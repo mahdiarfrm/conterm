@@ -23,11 +23,11 @@ struct TerraformWidget: View {
                                 showingPopover.toggle()
                                 SoundEffects.shared.play(.toggle)
                             }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: Theme.ui(5)) {
                         TerraformGlyph(color: pillTint, size: 10)
                         if let latest, !latest.isEmpty {
                             Text(pillText(latest))
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .font(.system(size: Theme.ui(11), weight: .semibold, design: .rounded))
                                 .foregroundStyle(Theme.textPrimary)
                                 .monospacedDigit()
                         }
@@ -98,22 +98,22 @@ private struct TerraformPlansPopover: View {
                         clear: nil)
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, Theme.ui(6))
         }
     }
 
     private func row(_ plan: TerraformCenter.Plan,
                      action: @escaping () -> Void,
                      clear: (() -> Void)?) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Theme.ui(8)) {
             Button(action: action) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Theme.ui(2)) {
                     Text(plan.dirLabel)
-                        .font(.system(size: 11.5, weight: .semibold))
+                        .font(.system(size: Theme.ui(11.5), weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
                     Text(plan.isEmpty ? "no changes" : plan.summary)
-                        .font(.system(size: 10, design: .rounded))
+                        .font(.system(size: Theme.ui(10), design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(plan.toDestroy > 0
                                          ? Color.red.opacity(0.9) : Theme.textSecondary)
@@ -125,14 +125,14 @@ private struct TerraformPlansPopover: View {
             if let clear {
                 Button(action: clear) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(.system(size: Theme.ui(8), weight: .bold))
                         .foregroundStyle(Theme.textSecondary)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Theme.ui(14))
+        .padding(.vertical, Theme.ui(6))
         .contentShape(Rectangle())
     }
 }

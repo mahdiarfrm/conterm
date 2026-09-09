@@ -53,18 +53,18 @@ private struct KubePillCore: View {
                                 showingPopover.toggle()
                                 SoundEffects.shared.play(.toggle)
                             }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: Theme.ui(5)) {
                         Image(systemName: "helm")
-                            .font(.system(size: 9.5, weight: .medium))
+                            .font(.system(size: Theme.ui(9.5), weight: .medium))
                             .foregroundStyle(sessionShowing
                                              ? Theme.sshAccent : Theme.textSecondary)
                         if isDanger {
                             Circle()
                                 .fill(Color.red.opacity(0.95))
-                                .frame(width: 5, height: 5)
+                                .frame(width: Theme.ui(5), height: Theme.ui(5))
                         }
                         Text(KubeContextWatch.shortLabel(ctx))
-                            .font(.system(size: 11, weight: .semibold,
+                            .font(.system(size: Theme.ui(11), weight: .semibold,
                                           design: .rounded))
                             .foregroundStyle(isDanger
                                              ? Color.red.opacity(0.95)
@@ -78,7 +78,7 @@ private struct KubePillCore: View {
                         if session == nil, let health = pulse.overall {
                             Circle()
                                 .fill(gemColor(health))
-                                .frame(width: 5, height: 5)
+                                .frame(width: Theme.ui(5), height: Theme.ui(5))
                         }
                     }
                 }
@@ -189,9 +189,9 @@ private struct KubernetesPopover: View {
                 SoundEffects.shared.play(.toggle)
             } label: {
                 Image(systemName: page == .settings ? "chevron.left" : "gearshape")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: Theme.ui(11), weight: .medium))
                     .foregroundStyle(Theme.textSecondary)
-                    .frame(width: 20, height: 20)
+                    .frame(width: Theme.ui(20), height: Theme.ui(20))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -216,13 +216,13 @@ private struct KubernetesPopover: View {
             // max height, leaving the popover with dead space.
             if kube.contexts.count <= 7 {
                 VStack(spacing: 0) { contextRows }
-                    .padding(.vertical, 6)
+                    .padding(.vertical, Theme.ui(6))
             } else {
                 ScrollView {
                     VStack(spacing: 0) { contextRows }
-                        .padding(.vertical, 6)
+                        .padding(.vertical, Theme.ui(6))
                 }
-                .frame(maxHeight: 300)
+                .frame(maxHeight: Theme.ui(300))
             }
             if sessionContext != nil {
                 Divider().opacity(0.45)
@@ -231,63 +231,63 @@ private struct KubernetesPopover: View {
                     state.resetKubeSessionInActivePane()
                     dismiss()
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: Theme.ui(6)) {
                         Image(systemName: "arrow.uturn.backward")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: Theme.ui(10), weight: .semibold))
                         Text("Reset pane to default context")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .font(.system(size: Theme.ui(11), weight: .medium, design: .rounded))
                         Spacer()
                     }
                     .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, Theme.ui(14))
+                    .padding(.vertical, Theme.ui(8))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
             Divider().opacity(0.45)
             Text(footerHint)
-                .font(.system(size: 9.5, design: .rounded))
+                .font(.system(size: Theme.ui(9.5), design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
+                .padding(.horizontal, Theme.ui(14))
+                .padding(.vertical, Theme.ui(8))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var rolloutsSection: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: Theme.ui(7)) {
             Text("ROLLOUTS")
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .font(.system(size: Theme.ui(9), weight: .semibold, design: .rounded))
                 .kerning(1.3)
                 .foregroundStyle(Theme.textSecondary.opacity(0.7))
             ForEach(rollout.rollouts) { r in
-                HStack(spacing: 8) {
+                HStack(spacing: Theme.ui(8)) {
                     RolloutRing(rollout: r)
-                        .frame(width: 11, height: 11)
-                    VStack(alignment: .leading, spacing: 1) {
+                        .frame(width: Theme.ui(11), height: Theme.ui(11))
+                    VStack(alignment: .leading, spacing: Theme.ui(1)) {
                         Text(r.name)
-                            .font(.system(size: 11, weight: .medium,
+                            .font(.system(size: Theme.ui(11), weight: .medium,
                                           design: .monospaced))
                             .foregroundStyle(Theme.textPrimary)
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Text(rolloutDetail(r))
-                            .font(.system(size: 9.5, design: .rounded))
+                            .font(.system(size: Theme.ui(9.5), design: .rounded))
                             .foregroundStyle(rolloutTint(r))
                             .lineLimit(1)
                     }
                     Spacer(minLength: 8)
                     Text("\(r.ready)/\(r.desired)")
-                        .font(.system(size: 10.5, weight: .medium,
+                        .font(.system(size: Theme.ui(10.5), weight: .medium,
                                       design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
                         .monospacedDigit()
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, Theme.ui(14))
+        .padding(.vertical, Theme.ui(9))
     }
 
     private func rolloutDetail(_ r: RolloutWatch.Rollout) -> String {
@@ -354,14 +354,14 @@ private struct KubernetesPopover: View {
     // MARK: Settings page
 
     private var settingsPage: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Theme.ui(12)) {
             Toggle(isOn: $prefs.kubeWatchCluster) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Theme.ui(2)) {
                     Text("Watch cluster")
-                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .font(.system(size: Theme.ui(11.5), weight: .medium, design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
                     Text("Poll pod health every 45 s — pill gem and warning notifications.")
-                        .font(.system(size: 9.5, design: .rounded))
+                        .font(.system(size: Theme.ui(9.5), design: .rounded))
                         .foregroundStyle(Theme.textSecondary.opacity(0.8))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -370,12 +370,12 @@ private struct KubernetesPopover: View {
             .controlSize(.mini)
             .tint(Theme.accent)
             Toggle(isOn: $prefs.kubeRememberContext) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Theme.ui(2)) {
                     Text("Remember switches")
-                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .font(.system(size: Theme.ui(11.5), weight: .medium, design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
                     Text("Write the global kubeconfig instead of exporting into the focused pane.")
-                        .font(.system(size: 9.5, design: .rounded))
+                        .font(.system(size: Theme.ui(9.5), design: .rounded))
                         .foregroundStyle(Theme.textSecondary.opacity(0.8))
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -383,34 +383,34 @@ private struct KubernetesPopover: View {
             .toggleStyle(.switch)
             .controlSize(.mini)
             .tint(Theme.accent)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.ui(4)) {
                 Text("Production patterns")
-                    .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                    .font(.system(size: Theme.ui(10.5), weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
                 TextField("prod", text: $prefs.kubeDangerPatterns)
                     .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: Theme.ui(11), design: .monospaced))
                 Text("Comma-separated. A matching context turns red — pill, list, and the focused pane's glow.")
-                    .font(.system(size: 9.5, design: .rounded))
+                    .font(.system(size: Theme.ui(9.5), design: .rounded))
                     .foregroundStyle(Theme.textSecondary.opacity(0.8))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.ui(4)) {
                 Text("Kubeconfig paths")
-                    .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                    .font(.system(size: Theme.ui(10.5), weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
                 TextField("~/.kube/config", text: $prefs.kubeConfigPaths)
                     .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: Theme.ui(11), design: .monospaced))
                 Text("Colon-separated. Empty uses $KUBECONFIG, then ~/.kube/config.")
-                    .font(.system(size: 9.5, design: .rounded))
+                    .font(.system(size: Theme.ui(9.5), design: .rounded))
                     .foregroundStyle(Theme.textSecondary.opacity(0.8))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
+        .padding(.horizontal, Theme.ui(14))
+        .padding(.top, Theme.ui(10))
+        .padding(.bottom, Theme.ui(12))
     }
 }
 
@@ -429,21 +429,21 @@ private struct ContextRow: View {
         Button {
             if switchable && !isCurrent { action() }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: Theme.ui(8)) {
                 Image(systemName: isCurrent ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: Theme.ui(10), weight: .medium))
                     .foregroundStyle(isCurrent ? Theme.accent
                                      : Theme.textSecondary.opacity(0.5))
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: Theme.ui(1)) {
                     Text(context.name)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(.system(size: Theme.ui(12), weight: .medium, design: .rounded))
                         .foregroundStyle(context.isDanger
                                          ? Color.red.opacity(0.95) : Theme.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     if let ns = context.namespace {
                         Text(ns)
-                            .font(.system(size: 10, design: .rounded))
+                            .font(.system(size: Theme.ui(10), design: .rounded))
                             .foregroundStyle(Theme.textSecondary)
                             .lineLimit(1)
                     }
@@ -453,24 +453,24 @@ private struct ContextRow: View {
                     ProgressView().controlSize(.small)
                 } else if context.isDanger {
                     Text("PROD")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .font(.system(size: Theme.ui(8), weight: .bold, design: .rounded))
                         .foregroundStyle(Color.red.opacity(0.95))
-                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .padding(.horizontal, Theme.ui(5)).padding(.vertical, Theme.ui(1))
                         .background(Capsule().fill(Color.red.opacity(0.14)))
                 }
                 // The matrix button: this row's cluster, briefed.
                 Button(action: showMatrix) {
                     Image(systemName: "square.grid.3x3.middle.filled")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: Theme.ui(10), weight: .medium))
                         .foregroundStyle(hovering ? Theme.accent : Theme.textSecondary)
-                        .frame(width: 20, height: 20)
+                        .frame(width: Theme.ui(20), height: Theme.ui(20))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Cluster Overview for \(context.name)")
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
+            .padding(.horizontal, Theme.ui(14))
+            .padding(.vertical, Theme.ui(7))
             .contentShape(Rectangle())
             .background(hovering && switchable && !isCurrent
                         ? Theme.selectionFill : .clear)
@@ -505,6 +505,6 @@ private struct RolloutRing: View {
                 .rotationEffect(.degrees(-90))
                 .animation(Theme.Spring.soft, value: rollout.fraction)
         }
-        .padding(1)
+        .padding(Theme.ui(1))
     }
 }

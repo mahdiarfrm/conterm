@@ -122,20 +122,20 @@ struct PublicIPWidget: View {
                                 NSPasteboard.general.setString(ip, forType: .string)
                                 SoundEffects.shared.play(.click)
                             }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: Theme.ui(5)) {
                         Image(systemName: model.vpn ? "lock.shield.fill" : "globe")
-                            .font(.system(size: 9.5, weight: .medium))
+                            .font(.system(size: Theme.ui(9.5), weight: .medium))
                             .foregroundStyle(model.vpn
                                              ? Color(red: 0.45, green: 0.85, blue: 0.55)
                                              : Theme.textSecondary)
                         Text(ip)
-                            .font(.system(size: 11, weight: .semibold,
+                            .font(.system(size: Theme.ui(11), weight: .semibold,
                                           design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .monospacedDigit()
                             .lineLimit(1)
                             .truncationMode(.middle)
-                            .frame(maxWidth: 130)
+                            .frame(maxWidth: Theme.ui(130))
                     }
                 }
             }

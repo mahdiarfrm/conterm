@@ -310,7 +310,9 @@ struct WidgetPopoverChrome<Trailing: View, Content: View>: View {
             Divider().opacity(0.45)
             content
         }
-        .frame(width: width)
+        // Scaled here rather than at each call site, so a widget passes the
+        // width it wants and every popover follows the setting.
+        .frame(width: Theme.ui(width))
     }
 }
 

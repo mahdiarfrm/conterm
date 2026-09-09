@@ -174,10 +174,10 @@ struct ContainersWidget: View {
                                 showingPopover.toggle()
                                 SoundEffects.shared.play(.toggle)
                             }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: Theme.ui(5)) {
                         widgetIcon("shippingbox")
                         Text("\(total)")
-                            .font(.system(size: 11, weight: .semibold,
+                            .font(.system(size: Theme.ui(11), weight: .semibold,
                                           design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .monospacedDigit()
@@ -213,28 +213,28 @@ private struct ContainersPopover: View {
                         runtimeSection(group)
                     }
                 }
-                .padding(.top, 4)
-                .padding(.bottom, 8)
+                .padding(.top, Theme.ui(4))
+                .padding(.bottom, Theme.ui(8))
             }
-            .frame(maxHeight: 300)
+            .frame(maxHeight: Theme.ui(300))
         }
     }
 
     @ViewBuilder
     private func runtimeSection(_ group: ContainerRuntimesModel.RuntimeGroup) -> some View {
         Text(group.name.uppercased())
-            .font(.system(size: 9, weight: .semibold, design: .rounded))
+            .font(.system(size: Theme.ui(9), weight: .semibold, design: .rounded))
             .kerning(1.2)
             .foregroundStyle(Theme.textSecondary.opacity(0.7))
-            .padding(.horizontal, 14)
-            .padding(.top, 10)
-            .padding(.bottom, 3)
+            .padding(.horizontal, Theme.ui(14))
+            .padding(.top, Theme.ui(10))
+            .padding(.bottom, Theme.ui(3))
         if group.containers.isEmpty {
             Text("None running")
-                .font(.system(size: 11, design: .rounded))
+                .font(.system(size: Theme.ui(11), design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 4)
+                .padding(.horizontal, Theme.ui(14))
+                .padding(.vertical, Theme.ui(4))
         } else {
             ForEach(group.containers, id: \.name) { c in
                 ContainerRow(container: c, group: group,
@@ -292,13 +292,13 @@ private struct ContainerRow: View {
     @State private var hovering = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
+        HStack(alignment: .center, spacing: Theme.ui(8)) {
             Circle()
                 .fill(Color(red: 0.45, green: 0.85, blue: 0.55))
-                .frame(width: 5, height: 5)
-            VStack(alignment: .leading, spacing: 2) {
+                .frame(width: Theme.ui(5), height: Theme.ui(5))
+            VStack(alignment: .leading, spacing: Theme.ui(2)) {
                 Text(container.name)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .font(.system(size: Theme.ui(12), weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 HStack(spacing: 0) {
@@ -310,12 +310,12 @@ private struct ContainerRow: View {
                             .lineLimit(1)
                     }
                 }
-                .font(.system(size: 10, design: .rounded))
+                .font(.system(size: Theme.ui(10), design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
             }
             Spacer(minLength: 8)
             if hovering {
-                HStack(spacing: 2) {
+                HStack(spacing: Theme.ui(2)) {
                     action("terminal", help: "Shell into \(container.name)",
                            run: shellIn)
                     action("text.alignleft", help: "Tail logs", run: tailLogs)
@@ -325,8 +325,8 @@ private struct ContainerRow: View {
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Theme.ui(14))
+        .padding(.vertical, Theme.ui(6))
         .contentShape(Rectangle())
         .background(hovering ? Theme.selectionFill : .clear)
         .onHover { hovering = $0 }
@@ -336,9 +336,9 @@ private struct ContainerRow: View {
                         run: @escaping () -> Void) -> some View {
         Button(action: run) {
             Image(systemName: symbol)
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: Theme.ui(10), weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
-                .frame(width: 20, height: 20)
+                .frame(width: Theme.ui(20), height: Theme.ui(20))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

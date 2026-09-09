@@ -138,20 +138,20 @@ struct SessionStatsWidget: View {
                                 showingPopover.toggle()
                                 SoundEffects.shared.play(.toggle)
                             }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: Theme.ui(5)) {
                         Image(systemName: "flame")
-                            .font(.system(size: 9.5, weight: .medium))
+                            .font(.system(size: Theme.ui(9.5), weight: .medium))
                             .foregroundStyle(model.snap.streak >= 3
                                              ? Theme.warning : Theme.textSecondary)
                         Text("\(model.snap.streak)d")
-                            .font(.system(size: 11, weight: .semibold,
+                            .font(.system(size: Theme.ui(11), weight: .semibold,
                                           design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .monospacedDigit()
                         widgetChipDivider()
                         widgetIcon("terminal")
                         Text("\(model.snap.today)")
-                            .font(.system(size: 11, weight: .semibold,
+                            .font(.system(size: Theme.ui(11), weight: .semibold,
                                           design: .rounded))
                             .foregroundStyle(Theme.textPrimary)
                             .monospacedDigit()
@@ -180,18 +180,18 @@ private struct SessionStatsPopover: View {
         WidgetPopoverChrome(title: "Terminal activity", width: 250, trailing: {
             widgetPopoverChip("\(snap.streak)d streak")
         }) {
-            VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Theme.ui(10)) {
+                VStack(alignment: .leading, spacing: Theme.ui(4)) {
                     Sparkline(samples: snap.lastTwoWeeks,
                               maxValue: max(1, snap.lastTwoWeeks.max() ?? 1))
-                        .frame(height: 40)
+                        .frame(height: Theme.ui(40))
                         .frame(maxWidth: .infinity)
                         .foregroundStyle(Theme.accent)
                     Text("Last 14 days")
-                        .font(.system(size: 9.5, design: .rounded))
+                        .font(.system(size: Theme.ui(9.5), design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
                 }
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Theme.ui(6)) {
                     row("Today", "\(snap.today) commands")
                     if let top = snap.topCommand {
                         row("Top today", "\(top) ×\(snap.topCount)")
@@ -201,19 +201,19 @@ private struct SessionStatsPopover: View {
                     row("Days tracked", "\(snap.trackedDays)")
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Theme.ui(14))
+            .padding(.vertical, Theme.ui(12))
         }
     }
 
     private func row(_ label: String, _ value: String) -> some View {
         HStack {
             Text(label)
-                .font(.system(size: 11, design: .rounded))
+                .font(.system(size: Theme.ui(11), design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
             Spacer(minLength: 24)
             Text(value)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(.system(size: Theme.ui(11), weight: .semibold, design: .rounded))
                 .foregroundStyle(Theme.textPrimary)
                 .monospacedDigit()
         }

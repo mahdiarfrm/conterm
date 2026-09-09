@@ -121,16 +121,16 @@ struct PingWidget: View {
                         showingPopover.toggle()
                         SoundEffects.shared.play(.toggle)
                     }) {
-            HStack(spacing: 5) {
+            HStack(spacing: Theme.ui(5)) {
                 widgetIcon("dot.radiowaves.left.and.right")
                 if !model.history.isEmpty {
                     Sparkline(samples: model.history.suffix(20).map { $0 },
                               maxValue: sparkMax)
-                        .frame(width: 20, height: 11)
+                        .frame(width: Theme.ui(20), height: Theme.ui(11))
                         .foregroundStyle(Theme.textSecondary)
                 }
                 Text(valueText)
-                    .font(.system(size: 11, weight: .semibold,
+                    .font(.system(size: Theme.ui(11), weight: .semibold,
                                   design: .rounded))
                     .foregroundStyle(tint)
                     .monospacedDigit()
@@ -172,17 +172,17 @@ private struct PingPopover: View {
         WidgetPopoverChrome(title: "Latency", width: 250, trailing: {
             widgetPopoverChip(PingModel.host)
         }) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: Theme.ui(10)) {
                 if model.history.isEmpty {
                     Text(model.failStreak >= 3 ? "Unreachable" : "Measuring…")
-                        .font(.system(size: 11.5, design: .rounded))
+                        .font(.system(size: Theme.ui(11.5), design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, Theme.ui(8))
                 } else {
                     Sparkline(samples: model.history,
                               maxValue: max(50, (model.history.max() ?? 50) * 1.15))
-                        .frame(height: 44)
+                        .frame(height: Theme.ui(44))
                         .frame(maxWidth: .infinity)
                         .foregroundStyle(Theme.accent)
                     HStack(spacing: 0) {
@@ -196,18 +196,18 @@ private struct PingPopover: View {
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Theme.ui(14))
+            .padding(.vertical, Theme.ui(12))
         }
     }
 
     private func stat(_ label: String, _ value: Double?) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: Theme.ui(1)) {
             Text(label)
-                .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                .font(.system(size: Theme.ui(9.5), weight: .medium, design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
             Text(value.map { "\(Int($0.rounded())) ms" } ?? "—")
-                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                .font(.system(size: Theme.ui(11.5), weight: .semibold, design: .rounded))
                 .foregroundStyle(Theme.textPrimary)
                 .monospacedDigit()
         }

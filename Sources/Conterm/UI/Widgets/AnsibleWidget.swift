@@ -25,16 +25,16 @@ struct AnsibleWidget: View {
                                 showingPopover.toggle()
                                 SoundEffects.shared.play(.toggle)
                             }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: Theme.ui(5)) {
                         if let mark = CommandRow.bundledTemplateImage(named: "ansible-mark") {
                             Image(nsImage: mark)
                                 .resizable()
                                 .interpolation(.high)
-                                .frame(width: 10, height: 10)
+                                .frame(width: Theme.ui(10), height: Theme.ui(10))
                                 .foregroundStyle(pillTint)
                         } else {
                             Image(systemName: "circle.grid.3x3")
-                                .font(.system(size: 9.5, weight: .medium))
+                                .font(.system(size: Theme.ui(9.5), weight: .medium))
                                 .foregroundStyle(pillTint)
                         }
                         // With only the persisted last report left, the
@@ -42,7 +42,7 @@ struct AnsibleWidget: View {
                         // no verdict.
                         if !center.runs.isEmpty {
                             Text(pillText)
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .font(.system(size: Theme.ui(11), weight: .semibold, design: .rounded))
                                 .foregroundStyle(Theme.textPrimary)
                                 .monospacedDigit()
                         }
@@ -112,7 +112,7 @@ private struct AnsibleRunsPopover: View {
                     lastReportRow(last)
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, Theme.ui(6))
             if ordered.contains(where: { $0.run.finished }) {
                 Divider().opacity(0.45)
                 Button {
@@ -120,10 +120,10 @@ private struct AnsibleRunsPopover: View {
                     center.clearFinished()
                 } label: {
                     Text("Clear finished runs")
-                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                        .font(.system(size: Theme.ui(10.5), weight: .medium, design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+                        .padding(.horizontal, Theme.ui(14))
+                        .padding(.vertical, Theme.ui(8))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -137,17 +137,17 @@ private struct AnsibleRunsPopover: View {
             state.openAnsibleLastReport()
             dismiss()
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.ui(8)) {
                 Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: Theme.ui(10), weight: .medium))
                     .foregroundStyle(Theme.textSecondary)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Theme.ui(2)) {
                     Text(run.playbook)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(.system(size: Theme.ui(12), weight: .medium, design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
                     Text(run.summary)
-                        .font(.system(size: 10, design: .rounded))
+                        .font(.system(size: Theme.ui(10), design: .rounded))
                         .foregroundStyle(run.failedTotal > 0
                                          ? Color.red.opacity(0.9)
                                          : Theme.textSecondary)
@@ -158,8 +158,8 @@ private struct AnsibleRunsPopover: View {
                     widgetPopoverChip("ran \(Self.relative.localizedString(for: at, relativeTo: Date()))")
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
+            .padding(.horizontal, Theme.ui(14))
+            .padding(.vertical, Theme.ui(7))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -181,18 +181,18 @@ private struct RunRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.ui(8)) {
                 Circle()
                     .fill(gem)
-                    .frame(width: 6, height: 6)
-                VStack(alignment: .leading, spacing: 2) {
+                    .frame(width: Theme.ui(6), height: Theme.ui(6))
+                VStack(alignment: .leading, spacing: Theme.ui(2)) {
                     Text(run.playbook)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(.system(size: Theme.ui(12), weight: .medium, design: .rounded))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
                     Text(run.finished ? run.summary
                          : "running — \(run.currentTask)")
-                        .font(.system(size: 10, design: .rounded))
+                        .font(.system(size: Theme.ui(10), design: .rounded))
                         .foregroundStyle(run.failedTotal > 0
                                          ? Color.red.opacity(0.9) : Theme.textSecondary)
                         .lineLimit(1)
@@ -201,22 +201,22 @@ private struct RunRow: View {
                 if hovering, run.finished {
                     Button(action: clear) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: Theme.ui(9), weight: .semibold))
                             .foregroundStyle(Theme.textSecondary)
-                            .frame(width: 18, height: 18)
+                            .frame(width: Theme.ui(18), height: Theme.ui(18))
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .help("Clear this report")
                 } else {
                     Image(systemName: "arrow.up.right")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: Theme.ui(9), weight: .semibold))
                         .foregroundStyle(Theme.textSecondary
                             .opacity(hovering ? 1 : 0))
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
+            .padding(.horizontal, Theme.ui(14))
+            .padding(.vertical, Theme.ui(7))
             .contentShape(Rectangle())
             .background(hovering ? Theme.selectionFill : .clear)
         }
