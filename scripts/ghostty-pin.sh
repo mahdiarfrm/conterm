@@ -27,9 +27,21 @@ GHOSTTY_KIT_MIRROR="https://github.com/mahdiarfrm/conterm/releases/download/v3.2
 # Embedded `<semver>-<branch>-+<commit>` marker in the macOS slice's
 # static library (name varies across fork builds: libghostty.a,
 # libghostty-internal.a, …).
+# The macOS slice directory is named for what it contains:
+# `macos-arm64_x86_64` for a universal build, `macos-arm64` for a native
+# one. Both helpers below find it rather than assuming either.
+macos_slice() {
+    local dir
+    for dir in "$1"/macos-arm64_x86_64 "$1"/macos-arm64; do
+        [[ -d "$dir" ]] && { echo "$dir"; return 0; }
+    done
+    return 1
+}
+
 kit_version() {
-    local lib
-    lib=$(ls "$1"/macos-arm64_x86_64/lib*.a 2>/dev/null | head -1)
+    local lib slice
+    slice=$(macos_slice "$1") || return 0
+    lib=$(ls "$slice"/lib*.a 2>/dev/null | head -1)
     [[ -n "$lib" ]] || return 0
     strings -a "$lib" 2>/dev/null \
         | grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+-.*\+[0-9a-f]{7,}$' || true
@@ -39,7 +51,8 @@ kit_version() {
 # newer fork builds ship the macOS slice as `ghostty-internal.a`. Rename
 # it and keep the xcframework manifest in sync.
 normalize_lib_prefix() {
-    local slice="$1/macos-arm64_x86_64"
+    local slice
+    slice=$(macos_slice "$1") || return 0
     [[ -f "$slice/ghostty-internal.a" ]] || return 0
     mv "$slice/ghostty-internal.a" "$slice/libghostty-internal.a"
     python3 - "$1/Info.plist" <<'PY'
