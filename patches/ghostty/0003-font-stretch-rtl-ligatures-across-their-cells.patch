@@ -1,0 +1,248 @@
+Conterm-local, on top of 0002.
+
+An RTL ligature such as lam-alef is one glyph for letters that occupy
+two cells. CoreText attributes the glyph to its first letter, so the
+cell of the letter it absorbed stays empty and reads as a space inside
+the word (سلا م for سلام).
+
+The CoreText shaper now moves such a glyph to the leftmost of its cells
+and marks how many it spans; the CoreText face widens the glyph so its
+advance fills them. Only cells no other glyph is drawn in are claimed.
+
+diff --git a/src/font/SharedGrid.zig b/src/font/SharedGrid.zig
+index 5fd729b..2cae11e 100644
+--- a/src/font/SharedGrid.zig
++++ b/src/font/SharedGrid.zig
+@@ -373,7 +373,7 @@ const GlyphKey = struct {
+             thicken: bool,
+             thicken_strength: u8,
+             constraint_width: u2,
+-            _padding: u3 = 0,
++            stretch_cells: u3,
+         },
+ 
+         inline fn from(key: GlyphKey) Packed {
+@@ -385,6 +385,7 @@ const GlyphKey = struct {
+                     .thicken = key.opts.thicken,
+                     .thicken_strength = key.opts.thicken_strength,
+                     .constraint_width = key.opts.constraint_width,
++                    .stretch_cells = key.opts.stretch_cells,
+                 },
+             };
+         }
+diff --git a/src/font/face.zig b/src/font/face.zig
+index d77253a..8c8573a 100644
+--- a/src/font/face.zig
++++ b/src/font/face.zig
+@@ -125,6 +125,13 @@ pub const RenderOptions = struct {
+     /// there's whitespace to the right of the cell then it can be 2.
+     constraint_width: u2 = 1,
+ 
++    /// Stretch the glyph horizontally so its advance spans this many
++    /// cells, starting at the left edge of the first. Zero leaves the
++    /// width alone. See `font.shape.Cell.stretch_cells`.
++    ///
++    /// CoreText only.
++    stretch_cells: u3 = 0,
++
+     /// Thicken the glyph. This draws the glyph with a thicker stroke width.
+     /// This is purely an aesthetic setting.
+     ///
+diff --git a/src/font/face/coretext.zig b/src/font/face/coretext.zig
+index 1d13338..7ad580a 100644
+--- a/src/font/face/coretext.zig
++++ b/src/font/face/coretext.zig
+@@ -360,14 +360,29 @@ pub const Face = struct {
+         var width = glyph_size.width;
+         var height = glyph_size.height;
+ 
++        // A glyph standing for letters in several cells is widened so its
++        // advance spans them, from the left edge of the first. The bearing
++        // scales with it, so the glyph keeps its own side spacing.
++        const stretched = opts.stretch_cells > 1;
++        if (stretched) {
++            var advances: [1]macos.graphics.Size = undefined;
++            _ = self.font.getAdvancesForGlyphs(.horizontal, &glyphs, &advances);
++            if (advances[0].width > 0) {
++                const scale = @as(f64, @floatFromInt(opts.stretch_cells)) *
++                    cell_width / advances[0].width;
++                x *= scale;
++                width *= scale;
++            }
++        }
++
+         // We center all glyphs within the pixel-rounded and adjusted
+         // cell width if it's larger than the face width, so that they
+         // aren't weirdly off to the left.
+         //
+-        // We don't do this if the glyph has a stretch constraint,
+-        // since in that case the position was already calculated with the
+-        // new cell width in mind.
+-        if (constraint.size != .stretch) {
++        // We don't do this if the glyph has a stretch constraint or is
++        // stretched across cells, since in that case the position was
++        // already calculated with the new cell width in mind.
++        if (constraint.size != .stretch and !stretched) {
+             // We add half the difference to re-center.
+             const dx = (cell_width - metrics.face_width) / 2;
+             x += dx;
+diff --git a/src/font/shape.zig b/src/font/shape.zig
+index bc19c1f..d11415a 100644
+--- a/src/font/shape.zig
++++ b/src/font/shape.zig
+@@ -55,6 +55,13 @@ pub const Cell = struct {
+     /// valid for a given GroupCache and FontIndex that was used to create
+     /// the runs.
+     glyph_index: u32,
++
++    /// Number of cells this glyph is stretched across horizontally,
++    /// starting at `x`. Zero draws the glyph at its natural width. Set for
++    /// an RTL glyph that stands for letters in several cells, such as the
++    /// Arabic lam-alef ligature, whose other cells would otherwise read as
++    /// a space inside the word. Only the CoreText shaper sets it.
++    stretch_cells: u3 = 0,
+ };
+ 
+ /// Options for shapers.
+diff --git a/src/font/shaper/coretext.zig b/src/font/shaper/coretext.zig
+index 27ed762..ff0a622 100644
+--- a/src/font/shaper/coretext.zig
++++ b/src/font/shaper/coretext.zig
+@@ -56,6 +56,10 @@ pub const Shaper = struct {
+     /// cell offset. This lets out-of-order combining marks re-anchor to the
+     /// correct base cluster.
+     cluster_anchor_x: std.ArrayListUnmanaged(f64),
++    /// The string index CoreText reports for each glyph in `cell_buf`, in
++    /// output order. RTL runs use it to find glyphs that stand for letters
++    /// in more than one cell.
++    cell_string_index: std.ArrayListUnmanaged(usize),
+ 
+     /// Cached attributes dict for creating CTTypesetter objects.
+     /// The values in this never change so we can avoid overhead
+@@ -233,6 +237,7 @@ pub const Shaper = struct {
+             .alloc = alloc,
+             .cell_buf = .{},
+             .cluster_anchor_x = .{},
++            .cell_string_index = .{},
+             .run_state = run_state,
+             .features = features,
+             .features_no_default = features_no_default,
+@@ -249,6 +254,7 @@ pub const Shaper = struct {
+     pub fn deinit(self: *Shaper) void {
+         self.cell_buf.deinit(self.alloc);
+         self.cluster_anchor_x.deinit(self.alloc);
++        self.cell_string_index.deinit(self.alloc);
+         self.run_state.deinit(self.alloc);
+         self.features.release();
+         self.features_no_default.release();
+@@ -425,6 +431,8 @@ pub const Shaper = struct {
+         // instead of maybe allocating.
+         self.cell_buf.clearRetainingCapacity();
+         try self.cell_buf.ensureTotalCapacity(self.alloc, line.getGlyphCount());
++        self.cell_string_index.clearRetainingCapacity();
++        try self.cell_string_index.ensureTotalCapacity(self.alloc, line.getGlyphCount());
+ 
+         // CoreText, despite our insistence with an enforced embedding level,
+         // may sometimes output runs that are non-monotonic. In order to fix
+@@ -616,6 +624,7 @@ pub const Shaper = struct {
+                     .y_offset = @intFromFloat(@round(position.y)),
+                     .glyph_index = glyph,
+                 });
++                self.cell_string_index.appendAssumeCapacity(index);
+ 
+                 // Add our advances to keep track of our run offsets.
+                 // Advances apply to the NEXT cell.
+@@ -627,6 +636,9 @@ pub const Shaper = struct {
+             }
+         }
+ 
++        // Before sorting: this pairs cells with `cell_string_index` by position.
++        if (run.rtl) try self.stretchLigatures(alloc, run.cells);
++
+         // CoreText may return RTL or otherwise non-monotonic glyph runs. The
+         // renderer expects cells sorted by increasing terminal x, so normalize
+         // the order after all per-glyph offsets have been computed.
+@@ -647,6 +659,71 @@ pub const Shaper = struct {
+         return self.cell_buf.items;
+     }
+ 
++    /// Stretches each glyph of an RTL run that stands for letters in more
++    /// than one cell, such as the lam-alef ligature, across those cells.
++    /// CoreText attributes such a glyph to its first letter only, so the
++    /// cells of the letters it absorbed would be left empty and read as a
++    /// space inside the word. Expects `cell_buf` still in output order,
++    /// parallel to `cell_string_index`.
++    fn stretchLigatures(
++        self: *Shaper,
++        alloc: Allocator,
++        run_cells: u16,
++    ) !void {
++        const codepoints = self.run_state.codepoints.items;
++        const cells = self.cell_buf.items;
++        const starts = self.cell_string_index.items;
++        assert(cells.len == starts.len);
++
++        // A glyph's letters run from its own string index up to the next
++        // glyph's, in logical order.
++        const sorted = try alloc.dupe(usize, starts);
++        std.mem.sort(usize, sorted, {}, std.sort.asc(usize));
++
++        var occupied = try std.DynamicBitSetUnmanaged.initEmpty(alloc, run_cells);
++        for (cells) |cell| {
++            if (cell.x < run_cells) occupied.set(cell.x);
++        }
++
++        for (cells, starts) |*cell, start| {
++            // First glyph start past this one.
++            var lo: usize = 0;
++            var hi: usize = sorted.len;
++            while (lo < hi) {
++                const mid = lo + (hi - lo) / 2;
++                if (sorted[mid] <= start) lo = mid + 1 else hi = mid;
++            }
++
++            // Letters drawn with more than one glyph are left as placed.
++            if (lo >= 2 and sorted[lo - 2] == start) continue;
++
++            const end = if (lo < sorted.len) sorted[lo] else codepoints.len;
++
++            var min_cluster: u32 = std.math.maxInt(u32);
++            var max_cluster: u32 = 0;
++            for (codepoints[start..end]) |entry| {
++                // Padding that keeps indices aligned with the UTF-16 string.
++                if (entry.codepoint == 0) continue;
++                min_cluster = @min(min_cluster, entry.cluster);
++                max_cluster = @max(max_cluster, entry.cluster);
++            }
++            if (min_cluster >= max_cluster or max_cluster >= run_cells) continue;
++
++            const span = max_cluster - min_cluster + 1;
++            if (span > std.math.maxInt(u3)) continue;
++
++            // Only claim cells that no other glyph is drawn in.
++            const free = for (@as(usize, min_cluster)..@as(usize, max_cluster) + 1) |c| {
++                if (c != cell.x and occupied.isSet(c)) break false;
++            } else true;
++            if (!free) continue;
++
++            cell.x = @intCast(min_cluster);
++            cell.x_offset = 0;
++            cell.stretch_cells = @intCast(span);
++        }
++    }
++
+     /// Get an attr dict for a font from a specific index.
+     /// These items are cached, do not retain or release them.
+     fn getFont(
+diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
+index 0f4a294..7702539 100644
+--- a/src/renderer/generic.zig
++++ b/src/renderer/generic.zig
+@@ -3195,6 +3195,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+                         x,
+                         cols,
+                     ),
++                    .stretch_cells = shaper_cell.stretch_cells,
+                 },
+             );
+ 
