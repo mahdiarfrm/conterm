@@ -28,6 +28,9 @@ final class NearbyBeacon: NSObject {
     static let serviceType = "_conterm._tcp"
 
     private var service: NetService?
+    /// Set once Bonjour has taken the service. A TXT record set before
+    /// that is rejected and the service never appears.
+    private var published = false
     private var refresh: Timer?
     private var lastReachable: Bool?
 
@@ -43,6 +46,7 @@ final class NearbyBeacon: NSObject {
                                  name: name, port: 22)
         service.delegate = self
         self.service = service
+        published = false
         // Publish first, then describe. Setting the TXT record on a service
         // that has not been published yet is rejected outright — DNSService
         // error 10, bad parameter — and the service never appears at all.
@@ -62,10 +66,14 @@ final class NearbyBeacon: NSObject {
         refresh = nil
         service?.stop()
         service = nil
+        published = false
     }
 
+    /// Re-describe now, for a change that should not wait for the timer.
+    func describeNow() { describe() }
+
     fileprivate func describe() {
-        guard let service else { return }
+        guard let service, published else { return }
         let reachable = Self.sshIsListening()
         let record: [String: Data] = [
             "user": Data(NSUserName().utf8),
@@ -79,13 +87,15 @@ final class NearbyBeacon: NSObject {
             "ssh": Data((reachable ? "on" : "off").utf8),
             "version": Data((Bundle.main.infoDictionary?["CFBundleShortVersionString"]
                              as? String ?? "0").utf8),
+            // Where a phone can pair. Absent until the listener is up.
+            "pair": Data((PairingService.shared.port.map { String($0) } ?? "").utf8),
         ]
         service.setTXTRecord(NetService.data(fromTXTRecord: record))
         lastReachable = reachable
     }
 
     /// `scutil --get LocalHostName`, without the shell.
-    private static func localHostName() -> String? {
+    static func localHostName() -> String? {
         guard let store = SCDynamicStoreCreate(nil, "conterm" as CFString, nil, nil),
               let name = SCDynamicStoreCopyLocalHostName(store) as String?
         else { return nil }
@@ -98,7 +108,7 @@ final class NearbyBeacon: NSObject {
     /// -getremotelogin` needs admin rights, and the launchd job can be loaded
     /// while the port is firewalled. A TCP handshake to localhost is the
     /// question the phone actually cares about.
-    private static func sshIsListening() -> Bool {
+    static func sshIsListening() -> Bool {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { return false }
         defer { close(fd) }
@@ -123,7 +133,10 @@ final class NearbyBeacon: NSObject {
 extension NearbyBeacon: NetServiceDelegate {
     nonisolated func netServiceDidPublish(_ sender: NetService) {
         NSLog("conterm: nearby beacon published as \(sender.name) on \(sender.port)")
-        Task { @MainActor in describe() }
+        Task { @MainActor in
+            published = true
+            describe()
+        }
     }
 
     nonisolated func netService(_ sender: NetService,

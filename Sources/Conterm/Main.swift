@@ -937,9 +937,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         RemoteStatePublisher.start()
         RemoteControl.start()
         NearbyBeacon.shared.start()
+        PairingService.shared.start()
     }
 
     static func stopCompanion() {
+        PairingService.shared.stop()
         NearbyBeacon.shared.stop()
         RemoteControl.stop()
         // Removes the published snapshot rather than leaving one frozen at
