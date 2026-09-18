@@ -130,7 +130,7 @@ struct AgentPill: View {
         let templated = status.tool.markIsTemplate
         // Cached decode: `mark` re-evaluates every frame while the sweep
         // animates, so reading the PNG here uncached hit the disk per frame.
-        if let asset = status.tool.markAsset,
+        if let asset = status.tool.pillMarkAsset,
            let img = MarkImage.load(asset, template: templated) {
             Image(nsImage: img)
                 .resizable().interpolation(.high)
