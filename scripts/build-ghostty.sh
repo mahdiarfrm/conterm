@@ -101,9 +101,15 @@ EOF
     export PATH="$SHIM:$PATH"
 fi
 
-echo "==> zig build (ReleaseFast, universal xcframework) — this takes a while"
+# `universal` is what ships: it carries both macOS architectures, and the
+# iOS slices along with them. That is three compilations of a large Zig
+# project under ReleaseFast, which needs more memory than an 8 GB machine
+# has. `native` builds the host architecture alone — enough to run and
+# look at a patched libghostty locally, never enough to release.
+XCF_TARGET="${GHOSTTY_XCF_TARGET:-universal}"
+echo "==> zig build (ReleaseFast, ${XCF_TARGET} xcframework) — this takes a while"
 (cd "$WORK" && zig build -Doptimize=ReleaseFast -Demit-xcframework=true \
-    -Dxcframework-target=universal -Demit-macos-app=false -Demit-themes=true)
+    -Dxcframework-target="$XCF_TARGET" -Demit-macos-app=false -Demit-themes=true)
 
 normalize_lib_prefix "$OUT"
 # Prefix match: the hash suffix's width varies with git's abbreviation,

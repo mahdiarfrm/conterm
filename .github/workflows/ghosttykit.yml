@@ -1,0 +1,52 @@
+name: GhosttyKit
+
+# Builds GhosttyKit.xcframework at the pin with patches/ghostty/* applied
+# (scripts/build-ghostty.sh) on a runner with the memory a universal build
+# needs. The kit is a workflow artifact, not a release: a patched kit is
+# something to run before it becomes the pin.
+#
+#   gh run download <run-id> -n GhosttyKit -D <dir>
+#   tar xzf <dir>/GhosttyKit.xcframework.tar.gz
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'patches/ghostty/**'
+      - 'scripts/build-ghostty.sh'
+      - 'scripts/ghostty-pin.sh'
+      - '.github/workflows/ghosttykit.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build GhosttyKit
+    # The fork's own builder. Zig 0.15 cannot link against the macOS 26
+    # SDK, so the job stays on an image whose Xcode carries the 15 SDK.
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
+          xcrun --show-sdk-path
+
+      - name: Build xcframework
+        run: bash scripts/build-ghostty.sh
+
+      - name: Compress
+        run: tar czf GhosttyKit.xcframework.tar.gz -C .build-ghostty/macos GhosttyKit.xcframework
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GhosttyKit
+          path: GhosttyKit.xcframework.tar.gz
+          retention-days: 30
+          # Already gzipped.
+          compression-level: 0
