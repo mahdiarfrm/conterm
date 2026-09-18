@@ -361,7 +361,7 @@ struct AppView: View {
         OverlayPanelBackground(cornerRadius: 40)
         // plusLighter only ever brightens — effectively invisible on the
         // light material, which needs no lift.
-        .overlay(
+        .overlay {
             LinearGradient(
                 stops: [
                     .init(color: .white.opacity(0.08), location: 0),
@@ -370,7 +370,7 @@ struct AppView: View {
                 ],
                 startPoint: .topLeading, endPoint: .bottom)
             .blendMode(.plusLighter)
-        )
+        }
         .overlay(
             LinearGradient(
                 colors: [.clear,
@@ -381,22 +381,22 @@ struct AppView: View {
         // — cyan where the light enters, violet in the shade — so the
         // panel reads as glass holding light, not a neutral slab. Static
         // gradients render once; no per-frame cost.
-        .overlay(
+        .overlay {
             RadialGradient(
                 colors: [Color(red: 0.55, green: 0.85, blue: 1.0)
                             .opacity(prefs.lightGlass ? 0.08 : 0.17), .clear],
                 center: UnitPoint(x: 0.12, y: 0.04),
                 startRadius: 0, endRadius: 340)
             .blendMode(.plusLighter)
-        )
-        .overlay(
+        }
+        .overlay {
             RadialGradient(
                 colors: [Color(red: 0.72, green: 0.58, blue: 1.0)
                             .opacity(prefs.lightGlass ? 0.06 : 0.13), .clear],
                 center: UnitPoint(x: 0.92, y: 0.96),
                 startRadius: 0, endRadius: 400)
             .blendMode(.plusLighter)
-        )
+        }
         .clipShape(RoundedRectangle(cornerRadius: 40, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 40, style: .continuous)

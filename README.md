@@ -229,6 +229,20 @@ Treat it as beta.
   lists it instead of asking you to type a hostname. The advertisement
   carries the username to prefill and whether Remote Login is actually
   accepting connections, so a host that would refuse never gets offered.
+- **Pairing** — the phone makes an SSH key and sends the public half over
+  the local network; Conterm shows a six-digit code computed from that key,
+  the phone shows the same one, and Allow here puts the key in
+  `~/.ssh/authorized_keys`. The reply carries this Mac's host key
+  fingerprints so the phone trusts the right host on its first connection.
+  No password is typed anywhere. If Remote Login is off, the key is still
+  installed and System Settings opens on the switch.
+- **A pane on the phone** — the phone can attach to any pane. Conterm
+  mirrors that pane's screen to a file while the attach is renewed: its
+  text always, and when the phone asks, its pixels too, captured from the
+  window twice a second (Screen Recording permission). The phone's keys
+  and typed text arrive as real key events, so a TUI sees a real Return
+  and a real Escape. The mirror lapses three minutes after the phone
+  stops renewing it.
 - Off until you ask for it, in *Settings → Integrations*. Nothing is
   published while it's off.
 

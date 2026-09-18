@@ -222,6 +222,11 @@ enum AgentTool: String, Equatable {
         case .generic:  return nil
         }
     }
+    /// Mark for the floating status pill. Claude shows the Claude Code
+    /// mascot there; every other surface keeps `markAsset`.
+    var pillMarkAsset: String? {
+        self == .claude ? "claude-code-mark" : markAsset
+    }
     /// Whether the bundled mark is a single-colour silhouette that
     /// should be tinted (template), or designed artwork to show as-is.
     /// Claude's mark is a one-colour shape → tint it. OpenCode's is a

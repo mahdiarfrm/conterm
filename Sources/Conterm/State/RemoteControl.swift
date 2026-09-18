@@ -70,6 +70,7 @@ enum RemoteControl {
         directorySource = nil
         sweeper?.invalidate()
         sweeper = nil
+        PaneMirror.stopAll()
     }
 
     private static func drain(executing: Bool) {
@@ -183,6 +184,29 @@ enum RemoteControl {
             _ = target?.state.addTab()
             target?.window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+
+        // The phone looking at one pane: its screen mirrored to a file
+        // while the attach is renewed, keys and typed text going back.
+        case .attach:
+            guard let found = locate(command.paneID) else { return }
+            PaneMirror.attach(found.pane, picture: command.picture ?? false)
+
+        case .detach:
+            guard let paneID = command.paneID, let uuid = UUID(uuidString: paneID) else { return }
+            PaneMirror.detach(uuid)
+
+        case .type:
+            guard let text = command.text, !text.isEmpty,
+                  let found = locate(command.paneID),
+                  let controller = found.pane.controller else { return }
+            controller.typeText(text)
+            if command.submit == true { controller.sendReturn() }
+
+        case .key:
+            guard let key = command.key,
+                  let found = locate(command.paneID),
+                  let controller = found.pane.controller else { return }
+            controller.sendNamedKey(key)
         }
     }
 
@@ -229,6 +253,12 @@ enum RemoteControl {
         var text: String?
         var submit: Bool?
         var windowIndex: Int?
+        /// A key by name, for `.key`: return, escape, tab, backspace, up,
+        /// down, left, right, ctrl-c, ctrl-d, ctrl-z, ctrl-l, ctrl-u,
+        /// ctrl-a, ctrl-e, ctrl-r.
+        var key: String?
+        /// For `.attach`: the pixels too, not only the text.
+        var picture: Bool?
         /// When the phone sent it. Absent from commands written by a phone
         /// older than this field, which are accepted: refusing them would
         /// break a paired phone on the Mac's upgrade, and the startup drain
@@ -241,6 +271,10 @@ enum RemoteControl {
             case sendText
             case interrupt
             case newTab
+            case attach
+            case detach
+            case type
+            case key
         }
     }
 }
