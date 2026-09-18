@@ -5,7 +5,7 @@ two cells. CoreText attributes the glyph to its first letter, so the
 cell of the letter it absorbed stays empty and reads as a space inside
 the word (سلا م for سلام).
 
-The CoreText shaper now moves such a glyph to the leftmost of its cells
+The CoreText shaper moves such a glyph to the leftmost of its cells
 and marks how many it spans; the CoreText face widens the glyph so its
 advance fills them. Only cells no other glyph is drawn in are claimed.
 
