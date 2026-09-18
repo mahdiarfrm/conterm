@@ -274,6 +274,10 @@ Treat it as beta.
 - **A pane that needs you says so** — its border pulses amber while its agent
   waits on input, and so does its tab's dot, so a background tab that has
   stopped is visible from whichever one you are in.
+- **Right-to-left text** — Farsi, Arabic and Hebrew render with joined
+  letters, reading right to left inside an otherwise left-to-right line, so
+  a TUI's layout stays put. A ligature such as لا spans the cells of the
+  letters it joins.
 - **SSH-host detection** in the pane chrome, and synthesized UI sound effects.
 
 ## Install
@@ -416,16 +420,21 @@ never trade windows even without the variable.
 
 `setup.sh` fetches the prebuilt GhosttyKit at the pinned commit. Official
 releases instead ship a GhosttyKit built from source with the local patches
-in `patches/ghostty/` (currently a renderer-teardown fix,
-[reported upstream](https://github.com/ghostty-org/ghostty/discussions/13242)).
-To build that kit yourself:
+in `patches/ghostty/`: a renderer-teardown fix
+([reported upstream](https://github.com/ghostty-org/ghostty/discussions/13242)),
+right-to-left shaping ([ghostty#11079](https://github.com/ghostty-org/ghostty/pull/11079),
+unmerged), and RTL ligatures stretched across their cells. To build that kit
+yourself:
 
 ```bash
 bash scripts/build-ghostty.sh install   # clone pin, apply patches, zig build, install
 ```
 
 The script fetches the pinned zig toolchain on its own if needed; the pin
-constants live in `scripts/ghostty-pin.sh`.
+constants live in `scripts/ghostty-pin.sh`. The universal build needs more
+memory than an 8 GB Mac has; the *GhosttyKit* workflow runs the same script
+on a GitHub runner whenever the patches or build scripts change, and uploads
+the kit as an artifact.
 
 ## How it fits together
 
