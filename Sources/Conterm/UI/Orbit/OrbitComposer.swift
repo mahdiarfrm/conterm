@@ -126,36 +126,32 @@ extension OrbitOverlay {
     /// Every finished action, newest first — the persisted flight recorder,
     /// beyond the deck's recent time window. Click a row to open its output.
     @ViewBuilder
-    var historyPanel: some View {
+    var dropHistoryPanel: some View {
         if showHistory {
             let items = scheduler.actions.filter { $0.isTerminal }
                 .sorted { ($0.finishedAt ?? $0.createdAt) > ($1.finishedAt ?? $1.createdAt) }
             HStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 7) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.accent)
-                        Text("History").font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundStyle(Theme.textPrimary)
+                    HStack(spacing: 8) {
+                        DropEyebrow("History")
+                        if !items.isEmpty {
+                            Text("\(items.count)").font(Drop.mono(9.5, .medium))
+                                .foregroundStyle(Theme.textSecondary.opacity(0.7))
+                        }
                         Spacer()
                         if !items.isEmpty {
-                            Button { scheduler.clearFinished() } label: {
-                                Text("Clear").font(.system(size: 10.5, weight: .medium, design: .rounded))
-                                    .foregroundStyle(Theme.textSecondary)
-                            }.buttonStyle(.plain)
+                            Button("Clear") { scheduler.clearFinished() }
+                                .buttonStyle(.drop)
                         }
-                        Button { withAnimation(Theme.Spring.snappy) { showHistory = false } } label: {
-                            Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(Theme.textSecondary)
-                                .frame(width: 22, height: 22).background(Circle().fill(Theme.selectionFill))
-                        }.buttonStyle(.plain)
+                        DropIconButton(symbol: "xmark", help: "Close") {
+                            withAnimation(Theme.Spring.snappy) { showHistory = false }
+                        }
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 12)
-                    Divider().opacity(0.3)
+                    .padding(.horizontal, OrbitPanel.inset).padding(.top, 18).padding(.bottom, 10)
                     if items.isEmpty {
-                        Text("No finished tasks yet.")
-                            .font(.system(size: 11.5, design: .rounded)).foregroundStyle(Theme.textSecondary)
-                            .frame(maxWidth: .infinity).padding(.vertical, 40)
+                        DropStatement(symbol: "clock.arrow.circlepath", title: "Nothing yet",
+                                      message: "Finished tasks are kept here.",
+                                      tint: Theme.textSecondary)
                     } else {
                         ScrollView {
                             LazyVStack(spacing: 0) {
@@ -163,24 +159,23 @@ extension OrbitOverlay {
                                     Button { withAnimation(Theme.Spring.snappy) { modal = .output(a.id) } } label: {
                                         historyRow(a)
                                     }.buttonStyle(.plain)
-                                    Divider().opacity(0.16).padding(.leading, 42)
                                 }
                             }
+                            .padding(.bottom, 14)
                         }
+                        .scrollIndicators(.never)
                     }
                 }
-                .frame(width: 330)
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.ultraThinMaterial))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.strokeStrong, lineWidth: 1))
-                .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
-                .transition(.move(edge: .leading).combined(with: .opacity))
+                .frame(width: 350)
+                .orbitPanel(fadesEdges: !items.isEmpty)
+                .transition(.opacity)
                 Spacer()
             }
             .padding(.leading, 16).padding(.top, 58).padding(.bottom, deckClearance + 4)
         }
     }
 
-    func historyRow(_ a: OrbitScheduler.Action) -> some View {
+    func dropHistoryRow(_ a: OrbitScheduler.Action) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: a.kind == .ansible ? "play.fill"
                             : a.kind == .copy ? "doc.on.doc" : "chevron.right.circle.fill")
@@ -188,22 +183,22 @@ extension OrbitOverlay {
                 .frame(width: 22, height: 22).background(Circle().fill(actionColor(a.status).opacity(0.14)))
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(a.label).font(.system(size: 12, weight: .semibold, design: .rounded))
+                    Text(a.label).font(Drop.display(12))
                         .foregroundStyle(Theme.textPrimary).lineLimit(1)
                     Spacer(minLength: 4)
                     if let f = a.finishedAt {
-                        Text(relTime(f)).font(.system(size: 10, design: .rounded))
+                        Text(relTime(f)).font(Drop.mono(9.5))
                             .foregroundStyle(Theme.textSecondary)
                     }
                 }
-                Text(a.targets.joined(separator: ", ")).font(.system(size: 10.5, design: .rounded))
+                Text(a.targets.joined(separator: ", ")).font(Drop.display(10.5, .regular))
                     .foregroundStyle(Theme.textSecondary).lineLimit(1)
                 if let note = a.resultNote {
-                    Text(note).font(.system(size: 10, design: .monospaced)).foregroundStyle(actionColor(a.status))
+                    Text(note).font(Drop.mono(10)).foregroundStyle(actionColor(a.status))
                 }
             }
         }
-        .padding(.horizontal, 14).padding(.vertical, 9).contentShape(Rectangle())
+        .padding(.horizontal, OrbitPanel.inset).padding(.vertical, 9).contentShape(Rectangle())
     }
 
     func relTime(_ d: Date) -> String {

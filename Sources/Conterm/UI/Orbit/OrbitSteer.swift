@@ -10,7 +10,7 @@ extension OrbitOverlay {
     /// container from `docker ps`. A guest answers for itself: handing the click
     /// to its host answers a question nobody asked.
     @ViewBuilder
-    var guestPanel: some View {
+    var dropGuestPanel: some View {
         if let g = inspector.guestOnHost {
             let probe = probes["host:\(g.host)"]
             let container: HostInfo.Container? = {
@@ -24,15 +24,14 @@ extension OrbitOverlay {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
                         Image(systemName: container == nil ? "macwindow.on.rectangle" : "shippingbox.fill")
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.accent)
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.textSecondary)
                         Text(g.name)
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .font(Drop.display(13.5))
                             .foregroundStyle(Theme.textPrimary).lineLimit(1)
                         Spacer()
-                        Button { withAnimation(Theme.Spring.snappy) { inspector = .none } } label: {
-                            Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(Theme.textSecondary)
-                        }.buttonStyle(.plain)
+                        DropIconButton(symbol: "xmark", help: "Close") {
+                            withAnimation(Theme.Spring.snappy) { inspector = .none }
+                        }
                     }
                     VStack(alignment: .leading, spacing: 5) {
                         guestRow("host", Self.hostShort(g.host))
@@ -100,19 +99,14 @@ extension OrbitOverlay {
                         withAnimation(Theme.Spring.snappy) { inspector = .none }
                         toggleHostSelection(g.host)
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 11).padding(.vertical, 6)
-                    .background(Capsule().fill(chromeFill(prefs, selected: true)))
+                    .buttonStyle(.drop)
                 }
-                .padding(14)
-                .frame(width: 280, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.ultraThinMaterial))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Theme.strokeStrong, lineWidth: 1))
+                .padding(.horizontal, OrbitPanel.inset).padding(.top, 18)
+                .padding(.bottom, OrbitPanel.inset)
+                .frame(width: 300, alignment: .leading)
+                .orbitPanel(cornerRadius: 24, bevel: 12)
                 .padding(.trailing, 18).padding(.top, 60)
-                .transition(.opacity.combined(with: .move(edge: .trailing)))
+                .transition(.opacity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
@@ -215,7 +209,7 @@ extension OrbitOverlay {
     /// Send input to a running agent, or interrupt it — writing straight to its
     /// tty via the pane's controller. No leaving Orbit.
     @ViewBuilder
-    var steerPanel: some View {
+    var dropSteerPanel: some View {
         if let paneID = inspector.agentPaneID, let pane = pane(withID: paneID) {
             let dir = friendlyDirLabel(for: pane.cwd)
             HStack {
@@ -225,9 +219,9 @@ extension OrbitOverlay {
                     // reads its state at a glance.
                     HStack(spacing: 9) {
                         Image(systemName: "sparkles").font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(Theme.textSecondary)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(dir).font(.system(size: 13, weight: .bold, design: .rounded))
+                            Text(dir).font(Drop.display(13.5))
                                 .foregroundStyle(Theme.textPrimary).lineLimit(1)
                             // Which tab it is, so the session you are steering
                             // here is one you can also find in the tab bar —
@@ -239,11 +233,9 @@ extension OrbitOverlay {
                         }
                         Spacer()
                         steerStatusPill(pane.agent.phase)
-                        Button { withAnimation(Theme.Spring.snappy) { inspector = .none } } label: {
-                            Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(Theme.textSecondary).frame(width: 22, height: 22)
-                                .background(Circle().fill(Theme.selectionFill))
-                        }.buttonStyle(.plain)
+                        DropIconButton(symbol: "xmark", help: "Close") {
+                            withAnimation(Theme.Spring.snappy) { inspector = .none }
+                        }
                     }
 
                     // Talk to it.
@@ -256,11 +248,10 @@ extension OrbitOverlay {
                                 .onSubmit { sendToAgent(pane) }
                             Button { sendToAgent(pane) } label: {
                                 Image(systemName: "arrow.up.circle.fill").font(.system(size: 18))
-                                    .foregroundStyle(steerInput.isEmpty ? Theme.textSecondary : Theme.accent)
+                                    .foregroundStyle(steerInput.isEmpty ? Theme.textSecondary : Theme.textPrimary)
                             }.buttonStyle(.plain).disabled(steerInput.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 7)
-                        .background(RoundedRectangle(cornerRadius: 11).fill(Theme.selectionFill))
+                        .orbitFieldBed(cornerRadius: 16)
                     }
 
                     // One-key replies to Claude's prompts.
@@ -281,44 +272,39 @@ extension OrbitOverlay {
                     steerFeedSection(for: pane)
                     followUpSection(for: pane)
                 }
-                .padding(15)
-                .frame(width: 320)
-                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.ultraThinMaterial))
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.strokeStrong, lineWidth: 1))
-                .shadow(color: .black.opacity(0.4), radius: 24, y: 10)
+                .padding(.horizontal, OrbitPanel.inset).padding(.top, 20)
+                .padding(.bottom, OrbitPanel.inset)
+                .frame(width: 340)
+                .orbitPanel()
                 .padding(.trailing, 18).padding(.top, 60)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
+                .transition(.opacity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
     }
 
-    func steerSectionLabel(_ text: String) -> some View {
-        Text(text).font(.system(size: 9.5, weight: .semibold, design: .rounded))
-            .foregroundStyle(Theme.textSecondary).textCase(.uppercase).tracking(0.5)
+    func dropSteerSectionLabel(_ text: String) -> some View {
+        DropEyebrow(text)
     }
 
     /// Coloured state pill in the steer header.
-    func steerStatusPill(_ phase: AgentStatus.Phase) -> some View {
+    func dropSteerStatusPill(_ phase: AgentStatus.Phase) -> some View {
         let (label, color): (String, Color) = {
             switch phase {
             case .working:     return ("working", Theme.accent)
-            case .attention:   return ("needs you", Theme.warning)
-            case .ready:       return ("ready", Color(red: 0.35, green: 0.82, blue: 0.45))
+            case .attention:   return ("needs you", Drop.warn)
+            case .ready:       return ("ready", Drop.good)
             case .interrupted: return ("stopped", Theme.textSecondary)
             case .idle:        return ("idle", Theme.textSecondary)
             }
         }()
-        return Text(label).font(.system(size: 9.5, weight: .semibold, design: .rounded))
-            .foregroundStyle(color)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(Capsule().fill(color.opacity(0.16)))
+        return DropChip(text: label, tint: color)
     }
 
     /// Live feed of what the session just did — its pane is hidden in Orbit, so
     /// this is how you see the result of a steer without leaving the map.
     @ViewBuilder
-    func steerFeedSection(for pane: Pane) -> some View {
+    func dropSteerFeedSection(for pane: Pane) -> some View {
         let feed = steerFeed(for: pane)
         if !feed.isEmpty {
             VStack(alignment: .leading, spacing: 5) {
@@ -327,7 +313,7 @@ extension OrbitOverlay {
                     HStack(spacing: 6) {
                         Image(systemName: item.isSubagent ? "person.2.fill" : "chevron.right")
                             .font(.system(size: 8.5, weight: .bold))
-                            .foregroundStyle(item.isSubagent ? Color(red: 0.62, green: 0.52, blue: 0.96) : Theme.accent)
+                            .foregroundStyle(item.isSubagent ? Drop.tones[1] : Theme.textSecondary)
                             .frame(width: 12)
                         Text(item.label).font(.system(size: 10.5, design: .monospaced))
                             .foregroundStyle(Theme.textPrimary).lineLimit(1)

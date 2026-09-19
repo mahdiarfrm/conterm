@@ -18,8 +18,10 @@ final class OrbitSearchBus: ObservableObject {
     @Published var runTick = 0
 }
 
-/// The map's search field: a bar and a result list, in the two detached glass
-/// bubbles the app's command palette already uses.
+/// The map's search field: a bar and a result list on two detached surfaces —
+/// drops in the ⌘K palette's proportions in Liquid Drop, the palette's glass
+/// bubbles in Classic (`UI/Classic/Orbit/ClassicOrbitSearchPanel.swift`).
+/// State and matching are shared; `OrbitPanelStyles.swift` picks the chrome.
 ///
 /// Its own `View` rather than a slice of `OrbitOverlay.body`, for the same
 /// reason the bus exists — typing here must not cost a redraw of the graph.
@@ -32,31 +34,32 @@ struct OrbitSearchPanel: View {
     let onDismiss: () -> Void
 
     @EnvironmentObject var prefs: Preferences
-    @ObservedObject private var bus = OrbitSearchBus.shared
+    @ObservedObject var bus = OrbitSearchBus.shared
 
-    @State private var query = ""
-    @State private var index = 0
-    @State private var results: [OrbitOverlay.SearchItem] = []
-    @FocusState private var fieldFocused: Bool
-    var body: some View {
+    @State var query = ""
+    @State var index = 0
+    @State var results: [OrbitOverlay.SearchItem] = []
+    @FocusState var fieldFocused: Bool
+    var dropBody: some View {
         ZStack(alignment: .top) {
-            Color.black.opacity(0.28).ignoresSafeArea()
+            Color.black.opacity(OrbitPanel.modalDim).ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture { onDismiss() }
-            VStack(spacing: 10) {
-                bar.modifier(PaletteBubble(cornerRadius: 27, darken: 0.14))
+            VStack(spacing: 12) {
+                bar.orbitPanel(cornerRadius: 32, bevel: 12, dim: OrbitPanel.modalDim)
                 if !results.isEmpty {
-                    list.modifier(PaletteBubble(cornerRadius: 26))
+                    list.orbitPanel(cornerRadius: 28, bevel: 16, dim: OrbitPanel.modalDim,
+                                    fadesEdges: true)
                 } else if !query.isEmpty {
                     Text("Nothing matches “\(query)”.")
-                        .font(.system(size: 11, design: .rounded))
+                        .font(Drop.display(12, .regular))
                         .foregroundStyle(Theme.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(20)
-                        .modifier(PaletteBubble(cornerRadius: 26))
+                        .padding(.horizontal, 26).padding(.vertical, 22)
+                        .orbitPanel(cornerRadius: 28, bevel: 16, dim: OrbitPanel.modalDim)
                 }
             }
-            .frame(maxWidth: 560)
+            .frame(maxWidth: 580)
             .padding(.top, 84)
         }
         .onAppear {
@@ -78,7 +81,7 @@ struct OrbitSearchPanel: View {
 
     // MARK: - Matching
 
-    private func rank() {
+    func rank() {
         let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { results = corpus; index = 0; return }
         var ranked: [(OrbitOverlay.SearchItem, Int)] = []
@@ -98,13 +101,13 @@ struct OrbitSearchPanel: View {
         index = 0
     }
 
-    private func move(by delta: Int) {
+    func move(by delta: Int) {
         guard !results.isEmpty, delta != 0 else { return }
         let n = results.count
         index = ((index + delta) % n + n) % n
     }
 
-    private func commitFocused() {
+    func commitFocused() {
         guard let hit = results.indices.contains(index) ? results[index] : results.first
         else { return }
         onCommit(hit)
@@ -112,34 +115,33 @@ struct OrbitSearchPanel: View {
 
     // MARK: - Chrome
 
-    private var bar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(Theme.textSecondary)
-                .font(.system(size: 15, weight: .medium))
+    var dropBar: some View {
+        HStack(spacing: 12) {
             NeonCaretField(text: $query,
                            placeholder: "Find a host, session, cluster or routine",
-                           fontSize: 16, lightBackground: prefs.lightGlass)
+                           fontSize: 17, lightBackground: prefs.lightGlass)
                 .frame(height: 24)
                 .focused($fieldFocused)
             Spacer()
             if !results.isEmpty {
                 Text("\(results.count)")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .font(Drop.mono(10, .medium))
                     .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Capsule().fill(Theme.stroke))
             }
             Text("esc")
-                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .font(Drop.mono(10, .medium))
                 .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 6).padding(.vertical, 2)
+                .padding(.horizontal, 7).padding(.vertical, 3)
                 .background(Capsule().fill(Theme.stroke))
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(Theme.textSecondary)
+                .font(.system(size: 15, weight: .regular))
         }
-        .padding(.horizontal, 18).padding(.vertical, 16)
+        .padding(.leading, 28).padding(.trailing, 22)
+        .frame(height: 64)
     }
 
-    private var list: some View {
+    var dropList: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -154,8 +156,9 @@ struct OrbitSearchPanel: View {
                             .onTapGesture { onCommit(hit) }
                     }
                 }
-                .padding(8)
+                .padding(10)
             }
+            .scrollIndicators(.never)
             .frame(maxHeight: 380)
             // Unanimated: held down, the arrow repeats faster than an animation
             // can finish, and the queued ones fight each other into a crawl.
@@ -163,32 +166,33 @@ struct OrbitSearchPanel: View {
         }
     }
 
-    private func row(_ hit: OrbitOverlay.SearchItem, active: Bool) -> some View {
-        HStack(spacing: 11) {
+    func dropRow(_ hit: OrbitOverlay.SearchItem, active: Bool) -> some View {
+        HStack(spacing: 6) {
             Image(systemName: hit.glyph)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(active ? Theme.accent : Theme.textSecondary)
-                .frame(width: 18)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(active ? Theme.textPrimary : Theme.textSecondary)
+                .frame(width: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text(hit.label)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .font(Drop.display(13.5, .regular))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 if let s = hit.subtitle, !s.isEmpty, s != hit.label {
                     Text(s)
-                        .font(.system(size: 10.5, design: .rounded))
+                        .font(Drop.display(10.5, .regular))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1).truncationMode(.middle)
                 }
             }
             Spacer(minLength: 8)
             Text(hit.kind.uppercased())
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .tracking(0.7)
-                .foregroundStyle(Theme.textSecondary.opacity(0.65))
+                .font(Drop.mono(8.5, .medium))
+                .kerning(1.2)
+                .foregroundStyle(Theme.textSecondary.opacity(0.7))
         }
-        .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .padding(.leading, 4).padding(.trailing, 14)
+        .frame(minHeight: 40)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
             .fill(active ? Theme.selectionFill : .clear))
         .contentShape(Rectangle())
     }

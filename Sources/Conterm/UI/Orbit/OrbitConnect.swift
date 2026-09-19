@@ -290,40 +290,40 @@ extension OrbitOverlay {
     /// this is where you see the whole set, find where each one is used, and
     /// close the ones you're done with.
     @ViewBuilder
-    var sessionsPanel: some View {
+    var dropSessionsPanel: some View {
         if showSessions {
             let rows = allSessions()
             HStack {
                 Spacer()
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .firstTextBaseline, spacing: 9) {
-                        Text("Sessions").font(OrbitFont.face(17)).tracking(-0.4)
+                    HStack(alignment: .center, spacing: 9) {
+                        Text("Sessions").font(Drop.title(15))
                             .foregroundStyle(Theme.textPrimary)
-                        Text("\(rows.count)").font(OrbitFont.face(11))
+                        Text("\(rows.count)").font(Drop.mono(10, .medium))
                             .foregroundStyle(Theme.textSecondary.opacity(0.7))
                         Spacer()
-                        Button { withAnimation(Theme.Spring.snappy) { showSessions = false } } label: {
-                            Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(Theme.textSecondary)
-                                .frame(width: 24, height: 22).contentShape(Rectangle())
-                        }.buttonStyle(.plain)
+                        DropIconButton(symbol: "xmark", help: "Close") {
+                            withAnimation(Theme.Spring.snappy) { showSessions = false }
+                        }
                     }
-                    .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 10)
+                    .padding(.horizontal, OrbitPanel.inset).padding(.top, 20).padding(.bottom, 10)
 
                     if rows.isEmpty {
                         Text("No sessions open")
-                            .font(.system(size: 11.5, design: .rounded))
+                            .font(Drop.display(11.5, .regular))
                             .foregroundStyle(Theme.textSecondary)
-                            .padding(.horizontal, 16).padding(.bottom, 16)
+                            .padding(.horizontal, OrbitPanel.inset).padding(.bottom, 16)
                     }
                     ScrollView {
                         VStack(spacing: 0) {
                             ForEach(rows, id: \.pane.id) { row in sessionRow(row) }
                         }
+                        .padding(.bottom, 16)
                     }
+                    .scrollIndicators(.never)
                     Spacer(minLength: 0)
                 }
-                .frame(width: 340)
+                .frame(width: 356)
                 .frame(maxHeight: .infinity)
                 // Its own frame, so scrolling the list scrolls the list rather
                 // than panning the map underneath it.
@@ -332,13 +332,10 @@ extension OrbitOverlay {
                         .onAppear { sessionsFrame = g.frame(in: .global) }
                         .onChange(of: g.frame(in: .global)) { _, f in sessionsFrame = f }
                 })
-                .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(.ultraThinMaterial))
-                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(Theme.strokeStrong, lineWidth: 1))
-                .shadow(color: .black.opacity(0.45), radius: 26, y: 12)
+                .orbitPanel(fadesEdges: true)
                 .padding(.trailing, 18).padding(.top, 58)
                 .padding(.bottom, deckClearance)
-                .transition(.opacity.combined(with: .move(edge: .trailing)))
+                .transition(.opacity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
@@ -411,27 +408,27 @@ extension OrbitOverlay {
         }
     }
 
-    func sessionRow(_ row: SessionRow) -> some View {
+    func dropSessionRow(_ row: SessionRow) -> some View {
         let live = row.pane.agent.phase != .idle
         return HStack(spacing: 10) {
             Circle()
-                .fill(live ? (row.pane.agent.phase == .attention ? Theme.warning : Theme.accent)
+                .fill(live ? (row.pane.agent.phase == .attention ? Drop.warn : Drop.good)
                            : Theme.textSecondary.opacity(0.35))
                 .frame(width: 6, height: 6)
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.tag).font(OrbitFont.face(8.5)).tracking(0.5)
+                Text(row.tag).font(Drop.mono(8.5, .medium)).kerning(1.2)
                     .foregroundStyle(Theme.textSecondary.opacity(0.7))
                 Text(friendlyDirLabel(for: row.pane.cwd))
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(Drop.display(12))
                     .foregroundStyle(Theme.textPrimary).lineLimit(1)
                 Text(row.where_)
-                    .font(.system(size: 10, design: .rounded))
+                    .font(Drop.display(10, .regular))
                     .foregroundStyle(Theme.textSecondary.opacity(0.8)).lineLimit(1)
             }
             Spacer(minLength: 6)
             Button { openInWindow(row.pane) } label: {
                 Image(systemName: "macwindow").font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(Theme.textSecondary)
                     .frame(width: 26, height: 24).contentShape(Rectangle())
             }
             .buttonStyle(.plain).help("Open its terminal in a window")
@@ -445,7 +442,7 @@ extension OrbitOverlay {
             }
             .buttonStyle(.plain).help("Close this session")
         }
-        .padding(.horizontal, 16).padding(.vertical, 9)
+        .padding(.horizontal, OrbitPanel.inset).padding(.vertical, 9)
         .contentShape(Rectangle())
         .onTapGesture {
             if let n = model.nodes.first(where: { $0.id == "pane:\(row.pane.id.uuidString)" }) {

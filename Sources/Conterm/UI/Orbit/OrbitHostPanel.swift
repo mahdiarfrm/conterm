@@ -4,7 +4,8 @@ import SwiftUI
 
 /// Inline host inspector — metric tiles, storage meters, containers, rename —
 /// shown inside Orbit so a host can be examined and named without leaving the
-/// cockpit.
+/// cockpit. Sits on Orbit's panel surface (`orbitPanel`), in the Drop kit's
+/// type and wells.
 struct InlineHostPanel: View {
     let target: String
     @ObservedObject var probe: HostProbeModel
@@ -17,53 +18,40 @@ struct InlineHostPanel: View {
     @State private var nameField = ""
     @FocusState private var nameFocused: Bool
 
-    let green = Color(red: 0.32, green: 0.72, blue: 0.46)
-    let red = Color(red: 0.92, green: 0.30, blue: 0.30)
+    let green = Drop.good
     var displayName: String { HostNameStore.name(for: target) ?? target }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView { content.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 14) }
+            ScrollView {
+                content
+                    .padding(.horizontal, OrbitPanel.inset).padding(.top, 4).padding(.bottom, 14)
+            }
+            .scrollIndicators(.never)
             footer
         }
-        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(.ultraThinMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous)
-            .strokeBorder(Theme.strokeStrong, lineWidth: 1))
-        .shadow(color: .black.opacity(0.4), radius: 26, y: 12)
+        .orbitPanel()
         .onAppear { nameField = HostNameStore.name(for: target) ?? "" }
     }
 
     var header: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(displayName).font(.system(size: 15, weight: .bold, design: .rounded))
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayName).font(Drop.title(15))
                     .foregroundStyle(Theme.textPrimary).lineLimit(1)
-                Text(target).font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                Text(target).font(Drop.mono(10.5, .medium))
                     .foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
             Spacer(minLength: 6)
-            Button { probe.refresh() } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(probe.refreshing ? Theme.accent : Theme.textSecondary)
-            }
-            .buttonStyle(.plain)
-            .help("Re-read this host")
+            DropIconButton(symbol: "arrow.clockwise", help: "Re-read this host",
+                           spinning: probe.refreshing) { probe.refresh() }
             if let onRemove {
-                Button(action: onRemove) {
-                    Image(systemName: "trash").font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.textSecondary).frame(width: 27, height: 27)
-                        .background(Circle().fill(Theme.selectionFill))
-                }.buttonStyle(.plain).help("Remove from this space")
+                DropIconButton(symbol: "trash", help: "Remove from this space", action: onRemove)
             }
-            Button(action: onClose) {
-                Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.textSecondary).frame(width: 27, height: 27)
-                    .background(Circle().fill(Theme.selectionFill))
-            }.buttonStyle(.plain)
+            DropIconButton(symbol: "xmark", help: "Close", action: onClose)
         }
-        .padding(.horizontal, 17).padding(.top, 16).padding(.bottom, 12)
+        .padding(.horizontal, OrbitPanel.inset).padding(.top, 20).padding(.bottom, 12)
     }
 
     @ViewBuilder private var content: some View {
@@ -71,13 +59,14 @@ struct InlineHostPanel: View {
         case .loading:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("probing \(target)…").font(.system(size: 12, design: .rounded)).foregroundStyle(Theme.textSecondary)
+                Text("probing \(target)…").font(Drop.display(12, .regular)).foregroundStyle(Theme.textSecondary)
             }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 20)
         case .failed(let why):
             VStack(alignment: .leading, spacing: 10) {
                 nameEditor
                 badge("exclamationmark.triangle.fill", "Unreachable", tint: Theme.warning)
-                Text(why).font(.system(size: 10.5, design: .rounded)).foregroundStyle(Theme.textSecondary)
+                Text(why).font(Drop.mono(10.5)).foregroundStyle(Theme.textSecondary)
+                    .textSelection(.enabled)
             }
         case .loaded(let info):
             loaded(info)
@@ -110,10 +99,10 @@ struct InlineHostPanel: View {
         HStack(spacing: 7) {
             Image(systemName: icon).font(.system(size: 10))
                 .foregroundStyle(Theme.textSecondary).frame(width: 13)
-            Text(value).font(.system(size: 11, weight: .medium, design: .rounded))
+            Text(value).font(Drop.display(11, .medium))
                 .foregroundStyle(tint).lineLimit(1).truncationMode(.middle)
             if let note {
-                Text(note).font(.system(size: 9.5, design: .rounded))
+                Text(note).font(Drop.display(9.5, .regular))
                     .foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
             Spacer(minLength: 0)
@@ -135,10 +124,10 @@ struct InlineHostPanel: View {
                         }
                     }
                     .foregroundStyle(Theme.textSecondary)
-                    Text(os).font(.system(size: 11.5, weight: .medium, design: .rounded))
+                    Text(os).font(Drop.display(11.5, .medium))
                         .foregroundStyle(Theme.textPrimary).lineLimit(1)
                     if let arch = info.arch {
-                        Text(arch).font(.system(size: 9.5, design: .monospaced)).foregroundStyle(Theme.textSecondary)
+                        Text(arch).font(Drop.mono(9.5)).foregroundStyle(Theme.textSecondary)
                     }
                     Spacer()
                 }
@@ -165,7 +154,7 @@ struct InlineHostPanel: View {
                 ForEach(info.disks.prefix(4), id: \.mount) { diskBar($0) }
             }
             if info.kubelet {
-                badge("cube.transparent", "kubelet" + (info.kubeNodes.map { " · \($0) nodes" } ?? ""), tint: Theme.accent)
+                badge("cube.transparent", "kubelet" + (info.kubeNodes.map { " · \($0) nodes" } ?? ""), tint: Drop.tones[4])
             }
             if let f = info.failedUnits, f > 0 {
                 badge("exclamationmark.triangle.fill", "\(f) failed unit\(f == 1 ? "" : "s")", tint: Theme.warning)
@@ -175,116 +164,103 @@ struct InlineHostPanel: View {
                 section("Containers  ·  \(up)/\(c.count) up")
                 VStack(spacing: 6) { ForEach(c.prefix(16), id: \.name) { containerRow($0) } }
             } else if !info.kubelet {
-                Text("No containers running").font(.system(size: 11.5, design: .rounded))
+                Text("No containers running").font(Drop.display(11.5, .regular))
                     .foregroundStyle(Theme.textSecondary)
             }
         }
     }
 
     var nameEditor: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 7) {
             Image(systemName: "pencil").font(.system(size: 10)).foregroundStyle(Theme.textSecondary)
             TextField("Name this host", text: $nameField)
-                .textFieldStyle(.plain).font(.system(size: 12, design: .rounded))
+                .textFieldStyle(.plain).font(Drop.display(12, .regular))
                 .focused($nameFocused).onSubmit(saveName)
             Button(action: saveName) {
-                Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.accent)
+                Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.textPrimary)
             }.buttonStyle(.plain)
             Button(action: fetchName) {
                 Image(systemName: "arrow.down.doc").font(.system(size: 10.5, weight: .semibold)).foregroundStyle(Theme.textSecondary)
             }.buttonStyle(.plain).help("Fetch the hostname from the server")
         }
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.selectionFill))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.stroke, lineWidth: 1))
+        .orbitFieldBed()
     }
 
     /// The same verb the action bar carries, worded the same way.
     var footer: some View {
         Button(action: onConnect) {
-            Text("Connect")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.accent)
-                .frame(maxWidth: .infinity).padding(.vertical, 12)
-                .background(Capsule(style: .continuous).fill(chromeFill(prefs, selected: true)))
-                .overlay(Capsule(style: .continuous).strokeBorder(Theme.strokeStrong, lineWidth: 1))
+            Text("Connect").frame(maxWidth: .infinity).padding(.vertical, 3)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.drop)
         .help("Open a terminal window on this host")
-        .padding(14)
+        .padding(.horizontal, OrbitPanel.inset)
+        .padding(.top, 10)
+        .padding(.bottom, OrbitPanel.inset)
     }
 
     // MARK: pieces
 
+    func tileLabel(_ label: String) -> some View {
+        Text(label).font(Drop.mono(8.5, .medium)).kerning(1.2)
+            .foregroundStyle(Theme.textSecondary.opacity(0.8))
+    }
+
     func tile(_ label: String, _ value: String, sub: String?, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.system(size: 8.5, weight: .heavy, design: .rounded)).tracking(0.6)
-                .foregroundStyle(Theme.textSecondary)
-            Text(value).font(.system(size: 16, weight: .bold, design: .rounded))
+        VStack(alignment: .leading, spacing: 3) {
+            tileLabel(label)
+            Text(value).font(Drop.display(17, .light)).monospacedDigit()
                 .foregroundStyle(tint).lineLimit(1).minimumScaleFactor(0.6)
-            if let sub { Text(sub).font(.system(size: 9.5, design: .rounded)).foregroundStyle(Theme.textSecondary).lineLimit(1) }
+            if let sub { Text(sub).font(Drop.mono(9)).foregroundStyle(Theme.textSecondary).lineLimit(1) }
         }
         .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-        .padding(.horizontal, 11).padding(.vertical, 9)
+        .padding(.horizontal, 12).padding(.vertical, 10)
         .background(tileBed)
     }
 
     func meter(_ label: String, _ value: String, pct: Double) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.system(size: 8.5, weight: .heavy, design: .rounded)).tracking(0.6)
-                .foregroundStyle(Theme.textSecondary)
-            Text(value).font(.system(size: 13, weight: .bold, design: .rounded))
+            tileLabel(label)
+            Text(value).font(Drop.display(13, .medium)).monospacedDigit()
                 .foregroundStyle(Theme.textPrimary).lineLimit(1).minimumScaleFactor(0.7)
-            bar(pct, tint: usageColor(pct))
+            DropTube(fraction: pct, tint: gaugeTint(pct), height: 4)
         }
         .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-        .padding(.horizontal, 11).padding(.vertical, 9)
+        .padding(.horizontal, 12).padding(.vertical, 10)
         .background(tileBed)
     }
 
     var tileBed: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.selectionFill)
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.stroke, lineWidth: 1))
+        RoundedRectangle(cornerRadius: Drop.wellRadius, style: .continuous)
+            .fill(Theme.selectionFill.opacity(0.55))
+            .overlay(RoundedRectangle(cornerRadius: Drop.wellRadius, style: .continuous)
+                .strokeBorder(Theme.stroke, lineWidth: 0.5))
     }
 
-    func bar(_ pct: Double, tint: Color) -> some View {
-        GeometryReader { g in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Theme.selectionFill)
-                Capsule().fill(LinearGradient(colors: [tint.opacity(0.75), tint],
-                                              startPoint: .leading, endPoint: .trailing))
-                    .frame(width: max(3, g.size.width * min(max(pct, 0), 1)))
-            }
-        }.frame(height: 4)
+    /// Nil while comfortable, so the gauge stays neutral ink.
+    func gaugeTint(_ p: Double) -> Color? {
+        p < 0.7 ? nil : (p < 0.9 ? Drop.warn : Drop.bad)
     }
 
     func diskBar(_ d: HostInfo.Disk) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text(d.mount).font(.system(size: 11, weight: .medium, design: .rounded))
+                Text(d.mount).font(Drop.mono(11, .medium))
                     .foregroundStyle(Theme.textPrimary).lineLimit(1)
                 Spacer()
                 Text("\(Int(d.pct * 100))% · \(fmtGB(d.totalKB / 1024))")
-                    .font(.system(size: 10, design: .rounded)).foregroundStyle(Theme.textSecondary)
+                    .font(Drop.mono(9.5)).foregroundStyle(Theme.textSecondary)
             }
-            bar(d.pct, tint: usageColor(d.pct))
+            DropTube(fraction: d.pct, tint: gaugeTint(d.pct), height: 4)
         }
     }
 
     func section(_ t: String) -> some View {
-        Text(t).font(.system(size: 10, weight: .bold, design: .rounded)).tracking(0.4)
-            .foregroundStyle(Theme.textSecondary).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 3)
+        DropEyebrow(t).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 5)
     }
 
     func badge(_ icon: String, _ text: String, tint: Color) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon).font(.system(size: 10.5)).foregroundStyle(tint)
-            Text(text).font(.system(size: 11.5, weight: .medium, design: .rounded)).foregroundStyle(Theme.textPrimary)
-            Spacer()
-        }
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(tint.opacity(0.12)))
-        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(tint.opacity(0.25), lineWidth: 1))
+        DropChip(text: text, symbol: icon, tint: tint)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     func containerRow(_ c: HostInfo.Container) -> some View {
@@ -292,18 +268,15 @@ struct InlineHostPanel: View {
         return HStack(spacing: 8) {
             Circle().fill(up ? green : Theme.textSecondary.opacity(0.6)).frame(width: 6, height: 6)
                 .shadow(color: up ? green.opacity(0.6) : .clear, radius: 3)
-            Text(c.name).font(.system(size: 11.5, design: .rounded))
+            Text(c.name).font(Drop.mono(11))
                 .foregroundStyle(Theme.textPrimary).lineLimit(1)
             Spacer(minLength: 6)
         }
     }
 
-    func usageColor(_ p: Double) -> Color {
-        p < 0.7 ? green : (p < 0.9 ? Theme.warning : red)
-    }
     func loadColor(_ load: Double, _ cores: Int?) -> Color {
         let r = load / Double(max(cores ?? 1, 1))
-        return r < 0.7 ? green : (r < 1 ? Theme.warning : red)
+        return r < 0.7 ? Theme.textPrimary : (r < 1 ? Drop.warn : Drop.bad)
     }
 
     func saveName() {

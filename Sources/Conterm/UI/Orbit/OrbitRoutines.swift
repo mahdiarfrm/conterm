@@ -13,58 +13,49 @@ extension OrbitOverlay {
     /// thing you own, so it has one place rather than living inside whichever
     /// board you happened to be on.
     @ViewBuilder
-    var routinesPanel: some View {
+    var dropRoutinesPanel: some View {
         if showRoutines {
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 7) {
+                HStack(spacing: 8) {
                     if editingRoutine != nil || routineHistory != nil {
-                        Button {
+                        DropIconButton(symbol: "chevron.left", help: "Back") {
                             if let r = editingRoutine { routines.update(r) }
                             withAnimation(Theme.Spring.snappy) {
                                 editingRoutine = nil; routineHistory = nil
                             }
-                        } label: {
-                            Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(Theme.textSecondary)
-                        }.buttonStyle(.plain)
+                        }
                     }
-                    Image(systemName: "list.bullet.rectangle")
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.accent)
-                    Text(editingRoutine?.name ?? (routineHistory != nil ? "History" : "Routines"))
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary).lineLimit(1)
+                    VStack(alignment: .leading, spacing: 4) {
+                        DropEyebrow(routineHistory != nil ? "History" : "Routines")
+                        if let name = editingRoutine?.name {
+                            Text(name).font(Drop.display(13.5))
+                                .foregroundStyle(Theme.textPrimary).lineLimit(1)
+                        }
+                    }
                     Spacer()
-                    Button {
+                    DropIconButton(symbol: "xmark", help: "Close") {
                         if let r = editingRoutine { routines.update(r) }
                         withAnimation(Theme.Spring.snappy) {
                             showRoutines = false; editingRoutine = nil; routineHistory = nil
                         }
-                    } label: {
-                        Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Theme.textSecondary).frame(width: 22, height: 22)
-                            .background(Circle().fill(Theme.selectionFill))
-                    }.buttonStyle(.plain)
+                    }
                 }
-                .padding(.horizontal, 12).padding(.vertical, 11)
-                Divider().opacity(0.3)
+                .padding(.horizontal, OrbitPanel.inset).padding(.top, 18).padding(.bottom, 10)
                 if editingRoutine != nil { routineEditor }
                 else if let id = routineHistory { routineHistoryList(id) }
                 else { routineList }
             }
-            .frame(width: 340)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.ultraThinMaterial))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Theme.strokeStrong, lineWidth: 1))
-            .shadow(color: .black.opacity(0.35), radius: 20, y: 8)
+            .frame(width: 364)
             .frame(maxHeight: 520)
+            .orbitPanel()
             // Clear of the planning rail a saved space puts on this edge.
             .padding(.leading, spaces.current != nil ? 76 : 16).padding(.top, 58)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .transition(.move(edge: .leading).combined(with: .opacity))
+            .transition(.opacity)
         }
     }
 
-    var routineList: some View {
+    var dropRoutineList: some View {
         VStack(spacing: 0) {
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -72,28 +63,29 @@ extension OrbitOverlay {
                         Text("A routine is work you do more than once — adding a key to a "
                              + "set of servers, deploying, going to maintenance mode. Write "
                              + "the steps once, then run it with the details filled in.")
-                            .font(.system(size: 11, design: .rounded))
+                            .font(Drop.display(11.5, .regular))
                             .foregroundStyle(Theme.textSecondary)
+                            .lineSpacing(2)
                             .fixedSize(horizontal: false, vertical: true)
-                            .padding(14)
+                            .padding(.horizontal, OrbitPanel.inset).padding(.vertical, 10)
                     }
                     ForEach(routines.routines) { r in
                         routineRow(r)
-                        Divider().opacity(0.14)
                     }
                 }
             }
-            Divider().opacity(0.3)
+            .scrollIndicators(.never)
             Button { editingRoutine = routines.create() } label: {
                 Label("New routine", systemImage: "plus")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.accent)
-                    .frame(maxWidth: .infinity).padding(.vertical, 10)
-            }.buttonStyle(.plain)
+                    .frame(maxWidth: .infinity).padding(.vertical, 3)
+            }
+            .buttonStyle(.drop)
+            .padding(.horizontal, OrbitPanel.inset)
+            .padding(.top, 8).padding(.bottom, OrbitPanel.inset)
         }
     }
 
-    func routineRow(_ r: Routine) -> some View {
+    func dropRoutineRow(_ r: Routine) -> some View {
         let history = routines.runs(of: r.id)
         let last = history.first
         return HStack(spacing: 8) {
@@ -105,16 +97,16 @@ extension OrbitOverlay {
                     if !r.inputs.isEmpty { Text("· \(r.inputs.count) input\(r.inputs.count == 1 ? "" : "s")") }
                     if let last {
                         Text("· \(relTime(last.startedAt))")
-                            .foregroundStyle(last.failed ? failRed : Theme.textSecondary)
+                            .foregroundStyle(last.failed ? Drop.bad : Theme.textSecondary)
                     }
                 }
-                .font(.system(size: 10, design: .rounded)).foregroundStyle(Theme.textSecondary)
+                .font(Drop.mono(9.5)).foregroundStyle(Theme.textSecondary)
                 .lineLimit(1)
             }
             Spacer(minLength: 4)
             Button { beginLaunch(r) } label: {
                 Image(systemName: "play.fill").font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Theme.accent).frame(width: 24, height: 24)
+                    .foregroundStyle(Theme.textPrimary).frame(width: 24, height: 24)
                     .background(Circle().fill(Theme.selectionFill))
             }.buttonStyle(.plain).help("Run it")
             if !history.isEmpty {
@@ -132,30 +124,30 @@ extension OrbitOverlay {
                     .foregroundStyle(Theme.textSecondary).frame(width: 22, height: 24)
             }.buttonStyle(.plain)
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
+        .padding(.horizontal, OrbitPanel.inset).padding(.vertical, 8)
     }
 
     /// Steps, then the holes they leave. Showing the referenced keys beside the
     /// inputs is what stops a routine failing at launch on a `{{branch}}` nobody
     /// ever declared.
-    var routineEditor: some View {
+    var dropRoutineEditor: some View {
         let declared = Set(routineBinding.wrappedValue.inputs.map(\.key))
         let referenced = routineBinding.wrappedValue.referencedKeys
         return VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     TextField("Name", text: routineBinding.name)
-                        .textFieldStyle(.roundedBorder).font(.system(size: 12, design: .rounded))
+                        .textFieldStyle(.plain).orbitFieldBed(cornerRadius: 10, compact: true).font(.system(size: 12, design: .rounded))
                     TextField("What it does", text: routineBinding.summary)
-                        .textFieldStyle(.roundedBorder).font(.system(size: 11, design: .rounded))
+                        .textFieldStyle(.plain).orbitFieldBed(cornerRadius: 10, compact: true).font(.system(size: 11, design: .rounded))
 
                     routineSectionLabel("INPUTS")
                     ForEach(Array(routineBinding.inputs.enumerated()), id: \.element.id) { _, $input in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 6) {
                                 TextField("key", text: $input.key)
-                                    .textFieldStyle(.roundedBorder).frame(width: 84)
-                                TextField("label", text: $input.label).textFieldStyle(.roundedBorder)
+                                    .textFieldStyle(.plain).orbitFieldBed(cornerRadius: 10, compact: true).frame(width: 84)
+                                TextField("label", text: $input.label).textFieldStyle(.plain).orbitFieldBed(cornerRadius: 10, compact: true)
                                 Picker("", selection: $input.kind) {
                                     ForEach(RoutineInput.Kind.allCases, id: \.self) {
                                         Text($0.label).tag($0)
@@ -220,9 +212,10 @@ extension OrbitOverlay {
                             .frame(maxWidth: .infinity).padding(.vertical, 7)
                             .background(Capsule().fill(Theme.selectionFill))
                     }.buttonStyle(.plain)
-                }.padding(12)
+                }
+                .padding(.horizontal, OrbitPanel.inset).padding(.vertical, 8)
             }
-            Divider().opacity(0.3)
+            .scrollIndicators(.never)
             Button {
                 if let r = editingRoutine {
                     routines.update(r)
@@ -231,12 +224,12 @@ extension OrbitOverlay {
                 }
             } label: {
                 Label("Save and run", systemImage: "play.fill")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.accent)
-                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .frame(maxWidth: .infinity).padding(.vertical, 3)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.drop)
             .disabled(routineBinding.wrappedValue.steps.isEmpty)
+            .padding(.horizontal, OrbitPanel.inset)
+            .padding(.top, 8).padding(.bottom, OrbitPanel.inset)
         }
     }
 
@@ -282,14 +275,14 @@ extension OrbitOverlay {
         }
     }
 
-    func routineHistoryList(_ id: UUID) -> some View {
+    func dropRoutineHistoryList(_ id: UUID) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(routines.runs(of: id)) { run in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
                             Circle()
-                                .fill(run.failed ? failRed : (run.isFinished ? okGreen : Theme.accent))
+                                .fill(run.failed ? Drop.bad : (run.isFinished ? Drop.good : Theme.textSecondary))
                                 .frame(width: 7, height: 7)
                             Text(relTime(run.startedAt))
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -303,8 +296,8 @@ extension OrbitOverlay {
                             HStack(alignment: .top, spacing: 6) {
                                 Text(s.outcome == "failed" ? "✕" : (s.outcome == nil ? "·" : "✓"))
                                     .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(s.outcome == "failed" ? failRed
-                                                     : (s.outcome == nil ? Theme.textSecondary : okGreen))
+                                    .foregroundStyle(s.outcome == "failed" ? Drop.bad
+                                                     : (s.outcome == nil ? Theme.textSecondary : Drop.good))
                                     .frame(width: 10)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(s.label).font(.system(size: 10.5, design: .monospaced))
@@ -326,17 +319,16 @@ extension OrbitOverlay {
                                 .foregroundStyle(Theme.textSecondary.opacity(0.8)).lineLimit(2)
                         }
                     }
-                    .padding(.horizontal, 12).padding(.vertical, 9)
-                    Divider().opacity(0.14)
+                    .padding(.horizontal, OrbitPanel.inset).padding(.vertical, 9)
                 }
             }
         }
     }
 
-    func routineSectionLabel(_ text: String) -> some View {
-        Text(text).font(OrbitFont.face(8)).tracking(0.6)
-            .foregroundStyle(Theme.textSecondary)
+    func dropRoutineSectionLabel(_ text: String) -> some View {
+        DropEyebrow(text)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
     }
 
     /// Fill in the holes, choose when, run. The host input starts from whatever
@@ -367,10 +359,10 @@ extension OrbitOverlay {
     }
 
     @ViewBuilder
-    var routineLauncher: some View {
+    var dropRoutineLauncher: some View {
         if let r = launchingRoutine {
             VStack(alignment: .leading, spacing: 11) {
-                Text(r.name).font(.system(size: 13, weight: .bold, design: .rounded))
+                Text(r.name).font(Drop.display(13.5))
                     .foregroundStyle(Theme.textPrimary)
                 if !r.summary.isEmpty {
                     Text(r.summary).font(.system(size: 11, design: .rounded))
@@ -389,10 +381,10 @@ extension OrbitOverlay {
                                 ForEach(input.options, id: \.self) { Text($0).tag($0) }
                             }.labelsHidden()
                         case .secret:
-                            SecureField(input.key, text: bound).textFieldStyle(.roundedBorder)
+                            SecureField(input.key, text: bound).textFieldStyle(.plain).orbitFieldBed(cornerRadius: 10, compact: true)
                         default:
                             TextField(input.kind == .hosts ? "host, host…" : input.key, text: bound)
-                                .textFieldStyle(.roundedBorder)
+                                .textFieldStyle(.plain).orbitFieldBed(cornerRadius: 10, compact: true)
                         }
                     }
                     .font(.system(size: 11.5, design: .rounded))
@@ -404,11 +396,13 @@ extension OrbitOverlay {
                 }
                 HStack {
                     Button("Cancel") { launchingRoutine = nil }
+                        .buttonStyle(.drop)
                     Spacer()
                     Button(launchLater ? "Schedule" : "Run") {
                         launchRoutine(r, values: launchValues, at: launchLater ? launchAt : nil)
                         launchingRoutine = nil
                     }
+                    .buttonStyle(.drop)
                     .keyboardShortcut(.defaultAction)
                 }
             }
@@ -478,7 +472,7 @@ extension OrbitOverlay {
     /// sequence carries on if it fails. Removal is a closure rather than a
     /// reach into the editor's own state, so the editor that owns the step is
     /// the one that drops it.
-    func stepEditor(_ step: Binding<FlowStep>, index: Int,
+    func dropStepEditor(_ step: Binding<FlowStep>, index: Int,
                     remove: @escaping (UUID) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -497,12 +491,12 @@ extension OrbitOverlay {
             TextField(step.wrappedValue.kind == "run" ? "command"
                         : step.wrappedValue.kind == "copy" ? "local file path" : "playbook.yml",
                       text: step.payload)
-                .textFieldStyle(.roundedBorder).font(.system(size: 11.5, design: .monospaced))
+                .textFieldStyle(.plain).orbitFieldBed(cornerRadius: 10, compact: true).font(.system(size: 11.5, design: .monospaced))
             TextField("hosts (comma-separated)", text: Binding(
                 get: { step.wrappedValue.targets.joined(separator: ", ") },
                 set: { step.wrappedValue.targets = $0.split(separator: ",")
                         .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }))
-                .textFieldStyle(.roundedBorder).font(.system(size: 11, design: .rounded))
+                .textFieldStyle(.plain).orbitFieldBed(cornerRadius: 10, compact: true).font(.system(size: 11, design: .rounded))
             Toggle(isOn: step.continueOnFailure) {
                 Text("Continue if this fails").font(.system(size: 10.5, design: .rounded))
             }.toggleStyle(.checkbox).controlSize(.mini)
@@ -580,7 +574,7 @@ extension OrbitOverlay {
         }
     }
 
-    var hostPicker: some View {
+    var dropHostPicker: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
@@ -590,8 +584,8 @@ extension OrbitOverlay {
                     Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.textSecondary)
                 }.buttonStyle(.plain)
             }
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            Divider().opacity(0.3)
+            .orbitFieldBed()
+            .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 8)
             ScrollView {
                 VStack(spacing: 0) {
                     ForEach(availableMembers.prefix(40)) { a in
@@ -608,28 +602,29 @@ extension OrbitOverlay {
                                     }
                                 }
                                 Spacer()
-                                Image(systemName: "plus").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.accent)
+                                Image(systemName: "plus").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.textSecondary)
                             }
-                            .padding(.horizontal, 12).padding(.vertical, 8).contentShape(Rectangle())
+                            .padding(.horizontal, OrbitPanel.inset).padding(.vertical, 8).contentShape(Rectangle())
                         }.buttonStyle(.plain)
                     }
                     if availableMembers.isEmpty {
                         Text("Nothing to add").font(.system(size: 11.5, design: .rounded))
-                            .foregroundStyle(Theme.textSecondary).padding(14)
+                            .foregroundStyle(Theme.textSecondary)
+                            .padding(.horizontal, OrbitPanel.inset).padding(.vertical, 14)
                     }
                 }
+                .padding(.bottom, 14)
             }
+            .scrollIndicators(.never)
             .frame(maxHeight: 260)
         }
-        .frame(width: 280)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.ultraThinMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.strokeStrong, lineWidth: 1))
+        .frame(width: 300)
+        .orbitPanel(cornerRadius: 24, bevel: 12)
         .background(GeometryReader { proxy in
             Color.clear
                 .onAppear { pickerFrame = proxy.frame(in: .global) }
                 .onChange(of: proxy.frame(in: .global)) { _, f in pickerFrame = f }
         })
-        .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
         .frame(maxHeight: 340)
     }
 
@@ -693,10 +688,10 @@ struct ChoiceOptionsField: View {
     @Binding var options: [String]
     @State private var text = ""
     @State private var seeded = false
+    @EnvironmentObject private var prefs: Preferences
 
     var body: some View {
-        TextField("options, comma separated", text: $text)
-            .textFieldStyle(.roundedBorder)
+        field
             .onAppear {
                 guard !seeded else { return }
                 text = options.joined(separator: ", ")
@@ -705,5 +700,17 @@ struct ChoiceOptionsField: View {
             .onChange(of: text) { _, now in
                 options = Routine.parseOptions(now)
             }
+    }
+
+    /// The field in the current interface style: a recessed bed in Liquid
+    /// Drop, the system's bordered field in Classic.
+    @ViewBuilder private var field: some View {
+        if prefs.liquidDrop {
+            TextField("options, comma separated", text: $text)
+                .textFieldStyle(.plain).orbitFieldBed(cornerRadius: 10, compact: true)
+        } else {
+            TextField("options, comma separated", text: $text)
+                .textFieldStyle(.roundedBorder)
+        }
     }
 }

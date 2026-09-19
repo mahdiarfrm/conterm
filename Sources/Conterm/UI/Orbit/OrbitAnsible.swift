@@ -5,57 +5,52 @@ import SwiftUI
 /// The Ansible runner and its live sidebar.
 extension OrbitOverlay {
 
-    var okGreen: Color { Color(red: 0.32, green: 0.72, blue: 0.46) }
-    var failRed: Color { Color(red: 0.92, green: 0.30, blue: 0.30) }
+    /// Orbit's status pair, shared with every other drop surface.
+    var dropOkGreen: Color { Drop.good }
+    var dropFailRed: Color { Drop.bad }
 
     @ViewBuilder
-    var ansibleSidebar: some View {
+    var dropAnsibleSidebar: some View {
         if inspector.isAnsible {
             HStack {
                 Spacer()
                 VStack(spacing: 0) {
                     ansibleHeader
-                    Divider().opacity(0.3)
                     if let id = ansibleRunPaneID {
                         if let run = ansible.runs[id] { ansibleProgress(run) } else { ansibleLaunching }
                     } else {
                         ansibleSetup
                     }
                 }
-                .frame(width: 326)
-                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
-                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Theme.strokeStrong, lineWidth: 1))
-                .shadow(color: .black.opacity(0.5), radius: 26, y: 12)
+                .frame(width: 340)
+                .orbitPanel()
                 .padding(.trailing, 18).padding(.top, 58).padding(.bottom, 26)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
+                .transition(.opacity)
             }
         }
     }
 
-    var ansibleHeader: some View {
+    var dropAnsibleHeader: some View {
         HStack(spacing: 9) {
-            AnsibleMark(color: Theme.accent, size: 16)
-            Text("Ansible").font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(Theme.textPrimary)
+            AnsibleMark(color: Theme.textPrimary, size: 15)
+            Text("Ansible").font(Drop.title(15)).foregroundStyle(Theme.textPrimary)
             Spacer()
-            Button { withAnimation(Theme.Spring.snappy) { inspector = .none } } label: {
-                Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Theme.textSecondary).frame(width: 27, height: 27)
-                    .background(Circle().fill(Theme.selectionFill))
-            }.buttonStyle(.plain)
+            DropIconButton(symbol: "xmark", help: "Close") {
+                withAnimation(Theme.Spring.snappy) { inspector = .none }
+            }
         }
-        .padding(.horizontal, 16).padding(.top, 15).padding(.bottom, 12)
+        .padding(.horizontal, OrbitPanel.inset).padding(.top, 20).padding(.bottom, 10)
     }
 
-    func ansSection(_ t: String) -> some View {
-        Text(t.uppercased()).font(.system(size: 9, weight: .heavy, design: .rounded)).tracking(0.6)
-            .foregroundStyle(Theme.textSecondary).frame(maxWidth: .infinity, alignment: .leading)
+    func dropAnsSection(_ t: String) -> some View {
+        DropEyebrow(t).frame(maxWidth: .infinity, alignment: .leading)
     }
 
     var canRunAnsible: Bool {
         !selectedHosts.isEmpty && !ansiblePlaybook.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    var ansibleSetup: some View {
+    var dropAnsibleSetup: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 13) {
                 ansSection("Targets · \(selectedHosts.count)")
@@ -71,41 +66,32 @@ extension OrbitOverlay {
                 ansSection("Playbook")
                 HStack(spacing: 7) {
                     TextField("path/to/playbook.yml", text: $ansiblePlaybook)
-                        .textFieldStyle(.plain).font(.system(size: 12, design: .monospaced))
-                        .padding(.horizontal, 9).padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 9).fill(Theme.selectionFill))
-                        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.stroke, lineWidth: 1))
-                    Button(action: pickPlaybook) {
-                        Image(systemName: "folder").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.accent)
-                            .frame(width: 32, height: 32).background(RoundedRectangle(cornerRadius: 9).fill(Theme.selectionFill))
-                    }.buttonStyle(.plain)
+                        .textFieldStyle(.plain).font(Drop.mono(12))
+                        .orbitFieldBed()
+                    DropIconButton(symbol: "folder", help: "Choose a playbook", action: pickPlaybook)
                 }
                 ansSection("Options")
                 VStack(alignment: .leading, spacing: 8) {
                     Toggle("Become (sudo)", isOn: $ansibleBecome)
                     Toggle("Check mode (dry run)", isOn: $ansibleCheck)
-                }.toggleStyle(.checkbox).font(.system(size: 12, design: .rounded)).foregroundStyle(Theme.textPrimary)
+                }.toggleStyle(.drop).font(Drop.display(12, .regular)).foregroundStyle(Theme.textPrimary)
                 Button(action: runAnsible) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.fill").font(.system(size: 11, weight: .bold))
-                        Text("Run playbook").font(.system(size: 13, weight: .semibold, design: .rounded))
-                    }
-                    .foregroundStyle(Theme.accent).frame(maxWidth: .infinity).padding(.vertical, 11)
-                    .background(Capsule().fill(chromeFill(prefs, selected: true)))
-                    .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 1))
-                }.buttonStyle(.plain).opacity(canRunAnsible ? 1 : 0.5).disabled(!canRunAnsible)
+                    Label("Run playbook", systemImage: "play.fill")
+                        .frame(maxWidth: .infinity).padding(.vertical, 3)
+                }.buttonStyle(.drop).disabled(!canRunAnsible)
                 if selectedHosts.isEmpty {
                     Text("⌘-tap hosts on the map to target them.")
                         .font(.system(size: 10.5, design: .rounded)).foregroundStyle(Theme.textSecondary)
                 }
-            }.padding(16)
+            }
+            .padding(.horizontal, OrbitPanel.inset).padding(.top, 6).padding(.bottom, OrbitPanel.inset)
         }
     }
 
     /// Nothing has come back from the callback plugin yet. It reports elapsed
     /// time, because "Launching playbook…" forever is indistinguishable from a
     /// host that will never answer — the usual cause of a long silence here.
-    var ansibleLaunching: some View {
+    var dropAnsibleLaunching: some View {
         let started = ansibleRunPaneID.flatMap { id in
             scheduler.actions.first { $0.paneID == id }?.startedAt
         }
@@ -124,9 +110,7 @@ extension OrbitOverlay {
                     if let a = runningAnsibleAction { engine.cancel(a.id) }
                     withAnimation(Theme.Spring.snappy) { ansibleRunPaneID = nil }
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.accent)
+                .buttonStyle(.drop)
             }
         }.frame(maxWidth: .infinity).padding(.vertical, 36)
     }
@@ -146,7 +130,7 @@ extension OrbitOverlay {
         return ansibleProgressBody(run, done: done, live: live)
     }
 
-    func ansibleProgressBody(_ run: AnsibleCenter.Run,
+    func dropAnsibleProgressBody(_ run: AnsibleCenter.Run,
                                      done: Bool, live: Bool) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 13) {
@@ -164,14 +148,9 @@ extension OrbitOverlay {
                         .foregroundStyle(Theme.textSecondary)
                 }
                 if done {
-                    GeometryReader { g in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Theme.selectionFill)
-                            Capsule().fill(run.failedTotal > 0 ? failRed : okGreen).frame(width: g.size.width)
-                        }
-                    }.frame(height: 5)
+                    Capsule().fill(run.failedTotal > 0 ? failRed : okGreen).frame(height: 5)
                 } else {
-                    ProgressView().progressViewStyle(.linear).tint(Theme.accent)
+                    ProgressView().progressViewStyle(.linear).tint(Theme.textPrimary)
                 }
                 if !done, !run.currentTask.isEmpty {
                     HStack(spacing: 6) {
@@ -180,7 +159,7 @@ extension OrbitOverlay {
                     }
                 }
                 Text("\(run.okTotal) ok · \(run.changedTotal) changed · \(run.failedTotal) failed")
-                    .font(.system(size: 11, weight: .medium, design: .rounded)).foregroundStyle(Theme.textPrimary)
+                    .font(Drop.mono(10.5, .medium)).foregroundStyle(Theme.textPrimary)
                 ansSection("Hosts")
                 VStack(spacing: 6) { ForEach(run.hostOrder, id: \.self) { h in hostRunRow(run.hosts[h], name: h) } }
                 if !run.tasks.isEmpty {
@@ -196,26 +175,18 @@ extension OrbitOverlay {
                         engine.cancel(live.id)
                         withAnimation(Theme.Spring.snappy) { ansibleRunPaneID = nil }
                     } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "stop.fill").font(.system(size: 10, weight: .bold))
-                            Text("Stop this run")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        }
-                        .foregroundStyle(failRed)
-                        .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .background(Capsule().fill(chromeFill(prefs)))
-                        .overlay(Capsule().strokeBorder(failRed.opacity(0.45), lineWidth: 1))
+                        Label("Stop this run", systemImage: "stop.fill")
+                            .foregroundStyle(failRed)
+                            .frame(maxWidth: .infinity).padding(.vertical, 3)
                     }
-                    .buttonStyle(.plain).padding(.top, 4)
+                    .buttonStyle(.drop).padding(.top, 4)
                     .help("Terminate ansible-playbook for this run")
                 }
                 Button { ansibleRunPaneID = nil } label: {
-                    Text("New run").font(.system(size: 12, weight: .semibold, design: .rounded)).foregroundStyle(Theme.accent)
-                        .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .background(Capsule().fill(chromeFill(prefs, selected: true)))
-                        .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 1))
-                }.buttonStyle(.plain).padding(.top, 4)
-            }.padding(16)
+                    Text("New run").frame(maxWidth: .infinity).padding(.vertical, 3)
+                }.buttonStyle(.drop).padding(.top, 4)
+            }
+            .padding(.horizontal, OrbitPanel.inset).padding(.top, 6).padding(.bottom, OrbitPanel.inset)
         }
     }
 
@@ -274,17 +245,25 @@ extension OrbitOverlay {
             let target = String(hostID.dropFirst("host:".count))
             HStack {
                 Spacer()
-                InlineHostPanel(
-                    target: target, probe: probe,
-                    onConnect: { openFloating(target: target) },
-                    onChanged: { OrbitModel.shared.rebuild(); sim.wake() },
-                    onClose: { withAnimation(Theme.Spring.snappy) { inspector = .none } },
-                    onRemove: (spaces.current?.members.contains(hostID) ?? false) ? {
-                        spaces.removeMember(hostID)
-                        selectedHosts.remove(target)
-                        withAnimation(Theme.Spring.snappy) { inspector = .none }
-                        sim.wake()
-                    } : nil)
+                let onConnect = { openFloating(target: target) }
+                let onChanged = { OrbitModel.shared.rebuild(); sim.wake() }
+                let onClose = { withAnimation(Theme.Spring.snappy) { inspector = .none } }
+                let onRemove: (() -> Void)? = (spaces.current?.members.contains(hostID) ?? false) ? {
+                    spaces.removeMember(hostID)
+                    selectedHosts.remove(target)
+                    withAnimation(Theme.Spring.snappy) { inspector = .none }
+                    sim.wake()
+                } : nil
+                Group {
+                    if prefs.liquidDrop {
+                        InlineHostPanel(target: target, probe: probe, onConnect: onConnect,
+                                        onChanged: onChanged, onClose: onClose, onRemove: onRemove)
+                    } else {
+                        ClassicInlineHostPanel(target: target, probe: probe, onConnect: onConnect,
+                                               onChanged: onChanged, onClose: onClose,
+                                               onRemove: onRemove)
+                    }
+                }
                     .frame(width: 300)
                     .padding(.trailing, 18).padding(.top, 58).padding(.bottom, 26)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
