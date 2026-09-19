@@ -214,10 +214,10 @@ private struct RealLiquidGlass: View {
 
 // MARK: - Frosted Liquid Glass panel (live overlay glass)
 
-/// Real macOS 26 Liquid Glass surface for overlay panels — a frosted,
-/// refractive `.regular` `NSGlassEffectView` with a tint so the panel reads
-/// as a distinct glass card. Used only when `Glass panels` is on; it
-/// re-lenses the terminal behind the open panel every frame, so it's opt-in.
+/// Real macOS 26 Liquid Glass for small pane chrome — a frosted,
+/// refractive `.regular` `NSGlassEffectView` with a tint so the capsule
+/// reads as a distinct piece of glass. It re-lenses the terminal behind it
+/// every frame, so it is kept to small surfaces.
 struct PaneLiquidGlass: NSViewRepresentable {
     let cornerRadius: CGFloat
     /// 0 = clear, 1 = heaviest frost the tint applies.
@@ -330,7 +330,16 @@ extension View {
 private struct GlassPillModifier: ViewModifier {
     @EnvironmentObject private var prefs: Preferences
 
+    @ViewBuilder
     func body(content: Content) -> some View {
+        if prefs.liquidDrop {
+            content.background(ChromeLens(shape: Capsule(style: .continuous)))
+        } else {
+            classic(content)
+        }
+    }
+
+    private func classic(_ content: Content) -> some View {
         content
             .background(Capsule(style: .continuous).fill(chromeFill(prefs)))
             .overlay(
@@ -342,6 +351,32 @@ private struct GlassPillModifier: ViewModifier {
                     .blendMode(.plusLighter)
                     .allowsHitTesting(false)
             )
+    }
+}
+
+/// A chrome control's bed in the current interface style: the kit's lens in
+/// Liquid Drop, the flat chrome fill with its wet top edge in Classic.
+/// `selected` is the picked segment of a switcher, or a lit control.
+struct ChromeLens<S: InsettableShape>: View {
+    @EnvironmentObject private var prefs: Preferences
+    let shape: S
+    var selected = false
+
+    var body: some View {
+        if prefs.liquidDrop {
+            DropLens(shape: shape, lit: selected, light: prefs.lightGlass,
+                     bed: prefs.lightGlass ? 0 : 0.14)
+        } else {
+            shape.fill(chromeFill(prefs, selected: selected))
+                .overlay(
+                    shape.strokeBorder(
+                        LinearGradient(colors: chromeEdge(prefs),
+                                       startPoint: .top, endPoint: .bottom),
+                        lineWidth: 0.5)
+                    .blendMode(.plusLighter)
+                )
+                .allowsHitTesting(false)
+        }
     }
 }
 

@@ -193,9 +193,13 @@ enum Theme {
     static func ui(_ size: CGFloat) -> CGFloat {
         (size * uiScale * 2).rounded() / 2
     }
+    /// Pane tile corner radius when the user hasn't chosen one: a step
+    /// tighter than the window's, so the tile reads as set into the frame.
+    static let defaultPaneCorner: CGFloat = 14
+
     private static func loadPaneCorner() -> CGFloat {
         guard let v = InstanceState.defaults.object(forKey: "conterm.paneCornerRadius") as? Double
-        else { return windowCorner }
+        else { return defaultPaneCorner }
         return CGFloat(min(max(v, 0), 24))
     }
     // Capsule-adjacent on a ~28 pt tab pill. Scales with the chrome: a pill at
