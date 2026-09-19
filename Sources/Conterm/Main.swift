@@ -74,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // under test opens looking like the Conterm it was launched beside.
         InstanceState.seedIfNeeded()
         prefs = Preferences()
+        LiquidDropPipeline.prewarm()
         if InstanceState.isolated {
             clog("conterm: isolated instance — state under \(InstanceState.home)")
         } else if !InstanceState.ownsSession {
@@ -149,6 +150,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         runLaunchScaleIn()
 
         NSApp.activate(ignoringOtherApps: true)
+
+        // CONTERM_OPEN_ON_LAUNCH opens one surface shortly after launch and
+        // leaves it open — `settings`, `briefing` or `palette` — so its cost
+        // at rest can be measured from outside without driving the UI.
+        if let surface = ProcessInfo.processInfo.environment["CONTERM_OPEN_ON_LAUNCH"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+                guard let state = self?.state else { return }
+                switch surface.lowercased() {
+                case "settings": state.openSettings()
+                case "briefing": state.openBriefing()
+                case "palette":  state.paletteOpen = true
+                default: break
+                }
+            }
+        }
 
         // CONTERM_PREVIEW_UPDATE forces the toolbar update pill on (no
         // network, no real release) so the indicator can be eyeballed
@@ -299,7 +315,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// app icon, name, version, copyright line. Name attribution lives
     /// in the copyright string only — no separate credits block.
     @objc func showAboutPanel(_ sender: Any?) {
-        AboutPanel.shared.show()
+        // In the interface style current when it opens.
+        if prefs?.liquidDrop ?? true {
+            AboutPanel.shared.show()
+        } else {
+            ClassicAboutPanel.shared.show()
+        }
     }
 
     @objc func newWindow(_ sender: Any?)         { openNewWindow() }
@@ -411,6 +432,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // During the last-window-close race `state` (windows.first?.state)
             // is nil; a dispatched key event would otherwise crash on the IUO.
             guard self.state != nil else { return event }
+
+            // The close/quit prompt owns the keyboard while it is up: Esc
+            // cancels, Return confirms, and nothing else reaches the
+            // terminal it is about to end. ⌘-chords still pass.
+            if let asking = self.windows.first(where: { $0.state.closePrompt != nil }) {
+                switch event.keyCode {
+                case 53:      asking.state.answerClosePrompt(confirmed: false); return nil
+                case 36, 76:  asking.state.answerClosePrompt(confirmed: true);  return nil
+                default:
+                    if !event.modifierFlags.contains(.command) { return nil }
+                }
+            }
 
             // Esc: bump the palette's tick so it can unwind one level
             // (note-edit → notes-list → commands → closed). Settings
@@ -816,42 +849,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .flatMap { $0.paneTree.root.leaves() }
             .filter { $0.agent.phase != .idle }
 
-        let alert = NSAlert()
-        alert.messageText = "Close this window?"
+        let message: String
         if let agent = agents.first {
-            alert.informativeText = agents.count == 1
+            message = agents.count == 1
                 ? "\(agent.agent.tool.displayName) is running here and will be ended."
                 : "\(agents.count) running agents in this window will be ended."
         } else {
-            alert.informativeText = paneCount > 1
+            message = paneCount > 1
                 ? "Its \(paneCount) panes and any running commands will be closed."
                 : "Any running commands in this window will be ended."
         }
-        alert.alertStyle = .warning
-        // Same save affordance as the quit dialog, so a session is never lost
-        // silently — every close offers to keep it for next launch.
-        let save = NSButton(checkboxWithTitle: "Restore tabs & panes on next launch",
-                            target: nil, action: nil)
-        save.state = (prefs?.rememberWindowState == true) ? .on : .off
-        alert.accessoryView = save
-        alert.addButton(withTitle: "Close")    // .alertFirstButtonReturn
-        alert.addButton(withTitle: "Cancel")   // .alertSecondButtonReturn
-        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+        let restoreDefault = prefs?.rememberWindowState == true
 
-        // Persist this close's choice. willClose would otherwise re-save the
-        // remaining windows; suppress it once so the choice (incl. "don't
-        // save") stands. Closing the last window includes itself so its
-        // tabs/panes/scrollback survive; closing one of several saves the
-        // siblings that remain.
+        // Classic asks with the system alert; so does a window that can't
+        // show the in-window prompt.
+        guard prefs?.liquidDrop == true, sender.isVisible, !sender.isMiniaturized else {
+            guard let restore = Self.runCloseAlert(title: "Close this window?", message: message,
+                                                   confirm: "Close", restore: restoreDefault)
+            else { return false }
+            persistCloseChoice(closing: sender, restore: restore)
+            return true
+        }
+
+        // Asked in the window itself; the close is re-issued on a yes.
+        // `close()` does not come back through `windowShouldClose`.
+        guard wc.state.closePrompt == nil else { return false }
+        wc.state.askBeforeClosing(.window, message: message, restore: restoreDefault) {
+            [weak self, weak sender] confirmed, restore in
+            guard confirmed, let self, let sender else { return }
+            self.persistCloseChoice(closing: sender, restore: restore)
+            // Let the prompt's drop collapse before the window goes.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { sender.close() }
+        }
+        return false
+    }
+
+    /// Persist a window close's session choice. willClose would otherwise
+    /// re-save the remaining windows; suppress it once so the choice (incl.
+    /// "don't save") stands. Closing the last window includes itself so its
+    /// tabs/panes/scrollback survive; closing one of several saves the
+    /// siblings that remain.
+    private func persistCloseChoice(closing sender: NSWindow, restore: Bool) {
         let isLast = windows.count == 1
-        if save.state == .on {
+        if restore {
             let toSave = isLast ? windows : windows.filter { $0.window !== sender }
             SessionStore.save(windows: toSave)
         } else if isLast {
             SessionStore.clear()
         }
         suppressAutoSaveOnce = true
-        return true
+    }
+
+    /// The system-alert form of the close/quit question, for when no window
+    /// can host the in-window prompt. Returns the restore choice, or nil on
+    /// cancel.
+    private static func runCloseAlert(title: String, message: String,
+                                      confirm: String, restore: Bool) -> Bool? {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        let save = NSButton(checkboxWithTitle: "Restore tabs & panes on next launch",
+                            target: nil, action: nil)
+        save.state = restore ? .on : .off
+        alert.accessoryView = save
+        alert.addButton(withTitle: confirm)    // .alertFirstButtonReturn
+        alert.addButton(withTitle: "Cancel")   // .alertSecondButtonReturn
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        return save.state == .on
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -888,6 +953,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             sessionDecisionMade = true
             return .terminateNow
         }
+        if quitConfirmed { return .terminateNow }
 
         // No confirmation → preserve the prior behaviour (save iff the
         // remember-state preference is on) and quit immediately.
@@ -899,32 +965,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return .terminateNow
         }
 
-        let alert = NSAlert()
-        alert.messageText = "Quit Conterm?"
-        alert.informativeText =
-            "Running commands in your tabs will be ended."
-        alert.alertStyle = .warning
-        // Accessory checkbox: save the session for next launch. Defaults
-        // to the user's standing remember-state preference.
-        let save = NSButton(checkboxWithTitle: "Restore tabs & panes on next launch",
-                            target: nil, action: nil)
-        save.state = (prefs?.rememberWindowState == true) ? .on : .off
-        alert.accessoryView = save
-        alert.addButton(withTitle: "Quit")     // .alertFirstButtonReturn
-        alert.addButton(withTitle: "Cancel")   // .alertSecondButtonReturn
+        let message = "Running commands in your tabs will be ended."
+        let restoreDefault = prefs?.rememberWindowState == true
 
-        let response = alert.runModal()
-        guard response == .alertFirstButtonReturn else {
-            return .terminateCancel
+        // The in-window prompt answers later, so this quit is cancelled and
+        // re-issued on a yes. A quit the system is waiting on — log out,
+        // restart, shut down carry a reason on the quit event — can't be
+        // cancelled without aborting that, and a quit with no window on
+        // screen has nowhere to ask: both get the system alert, as does
+        // the Classic interface style.
+        let systemQuit = NSAppleEventManager.shared().currentAppleEvent?
+            .attributeDescriptor(forKeyword: AEKeyword(0x7768_793F /* 'why?' */)) != nil
+        let host = windows.first { $0.window === NSApp.keyWindow }
+            ?? windows.first { $0.window.isVisible && !$0.window.isMiniaturized }
+        guard prefs?.liquidDrop == true, !systemQuit, let host,
+              host.window.isVisible, !host.window.isMiniaturized else {
+            guard let restore = Self.runCloseAlert(title: "Quit Conterm?", message: message,
+                                                   confirm: "Quit", restore: restoreDefault)
+            else { return .terminateCancel }
+            persistQuitChoice(restore: restore)
+            return .terminateNow
         }
-        if save.state == .on {
+
+        if host.state.closePrompt == nil {
+            host.window.makeKeyAndOrderFront(nil)
+            host.state.askBeforeClosing(.quit, message: message, restore: restoreDefault) {
+                [weak self] confirmed, restore in
+                guard confirmed, let self else { return }
+                self.persistQuitChoice(restore: restore)
+                self.quitConfirmed = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { NSApp.terminate(nil) }
+            }
+        }
+        return .terminateCancel
+    }
+
+    /// Set once the in-window quit prompt was answered yes; the re-issued
+    /// terminate passes straight through.
+    private var quitConfirmed = false
+
+    private func persistQuitChoice(restore: Bool) {
+        if restore {
             SessionStore.save(windows: windows)
         } else {
             // Fresh next launch — drop any saved snapshot.
             SessionStore.clear()
         }
         sessionDecisionMade = true
-        return .terminateNow
     }
 
     /// Publish what this Mac is doing for Conterm on iOS to read over SSH,

@@ -882,6 +882,44 @@ final class AppState: ObservableObject {
         return nil
     }
 
+    // MARK: Close / quit prompt
+
+    /// The confirmation shown before a window closes or the app quits.
+    struct ClosePrompt: Equatable, Identifiable {
+        enum Kind { case window, quit }
+        let id = UUID()
+        let kind: Kind
+        /// What closing will end, in a sentence.
+        let message: String
+    }
+
+    @Published var closePrompt: ClosePrompt?
+    /// The prompt's "restore next launch" switch; seeded from the standing
+    /// preference when the prompt opens.
+    @Published var closePromptRestore = false
+    /// Receives the answer: confirmed, and whether to keep the session.
+    private var closePromptAnswer: ((Bool, Bool) -> Void)?
+
+    func askBeforeClosing(_ kind: ClosePrompt.Kind, message: String, restore: Bool,
+                          answer: @escaping (_ confirmed: Bool, _ restore: Bool) -> Void) {
+        closePromptRestore = restore
+        closePromptAnswer = answer
+        closePrompt = ClosePrompt(kind: kind, message: message)
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    func answerClosePrompt(confirmed: Bool) {
+        guard closePrompt != nil else { return }
+        let answer = closePromptAnswer
+        closePromptAnswer = nil
+        closePrompt = nil
+        if !confirmed {
+            focusActiveSurface()
+            SoundEffects.shared.play(.paletteClose)
+        }
+        answer?(confirmed, closePromptRestore)
+    }
+
     /// "While you were away" card. One window shows it — the app delegate
     /// picks the key one — so a return doesn't stack the same summary on
     /// every open window.

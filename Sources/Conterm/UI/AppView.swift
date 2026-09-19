@@ -11,6 +11,8 @@ struct AppView: View {
     /// Vertical auto-hide: is the floating sidebar currently slid in?
     /// Driven purely by left-edge / panel hover, never persisted.
     @State private var sidebarRevealed = false
+    @State private var sidebarDropMounted = false
+    @StateObject private var reduceTransparency = ReduceTransparencyObserver()
 
     /// Pending left-edge reveal; cancelled when the cursor leaves the
     /// trigger strip before the dwell elapses.
@@ -57,6 +59,7 @@ struct AppView: View {
             terraformOverlay.id("overlay.terraform").zIndex(13)
             agentToolsOverlay.id("overlay.agentTools").zIndex(13)
             briefingOverlay.id("overlay.briefing").zIndex(15)
+            closePromptOverlay.id("overlay.closePrompt").zIndex(25)
             clusterOverviewOverlay.id("overlay.cluster").zIndex(13)
             agentCenterOverlay.id("overlay.agentCenter").zIndex(14)
             renameOverlay.id("overlay.rename").zIndex(12)
@@ -85,8 +88,8 @@ struct AppView: View {
         .onChange(of: state.orbitOpen) { _, open in if !open { state.focusActiveSurface() } }
         // Always start collapsed when auto-hide turns on / orientation
         // leaves vertical, so it can't get stuck open.
-        .onChange(of: prefs.autoHideSidebar)  { _, _ in sidebarRevealed = false }
-        .onChange(of: prefs.tabOrientation)   { _, _ in sidebarRevealed = false }
+        .onChange(of: prefs.autoHideSidebar)  { _, _ in sidebarRevealed = false; sidebarDropMounted = false }
+        .onChange(of: prefs.tabOrientation)   { _, _ in sidebarRevealed = false; sidebarDropMounted = false }
         .onChange(of: state.launchOverlayVisible) { _, vis in if !vis { state.focusActiveSurface() } }
     }
 
@@ -271,8 +274,21 @@ struct AppView: View {
 
     // MARK: - Floating vertical sidebar (auto-hide)
 
-    private func revealSidebar()  { withAnimation(Theme.Spring.soft) { sidebarRevealed = true } }
-    private func hideSidebar()    { withAnimation(Theme.Spring.soft) { sidebarRevealed = false } }
+    private func revealSidebar() {
+        sidebarDropMounted = true
+        // The drop mounts closed and opens on the next pass, so it has a
+        // collapsed state to grow from.
+        DispatchQueue.main.async {
+            withAnimation(Theme.Spring.soft) { sidebarRevealed = true }
+        }
+    }
+
+    private func hideSidebar() {
+        withAnimation(Theme.Spring.soft) { sidebarRevealed = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            if !sidebarRevealed { sidebarDropMounted = false }
+        }
+    }
 
     /// Off-layout sidebar that slides in over the terminal when the
     /// cursor hits the left edge. Only exists in vertical + auto-hide.
@@ -315,27 +331,25 @@ struct AppView: View {
                 }
 
                 // The panel itself: the real vertical TabBar on a
-                // floating glass card. The bar carries its own margins
-                // (they are the base surface's visible frame), so the
-                // card hugs it; +8 covers the trailing resize handle.
+                // `LiquidDrop` that swells out of the edge pill and
+                // collapses back into it. The bar carries its own
+                // margins, so the drop hugs it; +8 covers the trailing
+                // resize handle. Only the rows fade and slide — the
+                // surface's motion is the drop's own.
                 TabBar(orientation: .vertical, revealed: sidebarRevealed,
                        floatingPanel: true)
                     .frame(width: prefs.sidebarWidth + 8)
                     .frame(maxHeight: .infinity)
-                    .background(floatingSidebarCard)
-                    // Keep the inner plate's drop shadow from bleeding
-                    // past the card's corners; the window shadow is cast
-                    // by the clipped composite.
-                    .clipShape(RoundedRectangle(cornerRadius: 40, style: .continuous))
-                    .shadow(color: .black.opacity(0.5), radius: 28, x: 8, y: 0)
+                    .modifier(FloatingSidebarSurface(
+                        liquidDrop: prefs.liquidDrop, revealed: sidebarRevealed,
+                        hiddenOffset: -(prefs.sidebarWidth + 40),
+                        drop: floatingSidebarCard, classic: classicFloatingSidebarCard))
                     // The card starts below the lights pill (pill bottom
                     // ≈ 40pt) so the pill is unambiguously the window's,
                     // never straddling the card's corner curve.
                     .padding(.top, 46)
                     .padding(.bottom, 8)
                     .padding(.leading, 6)
-                    .offset(x: sidebarRevealed ? 0 : -(prefs.sidebarWidth + 40))
-                    .opacity(sidebarRevealed ? 1 : 0)
                     .onHover { hovering in
                         if hovering { revealSidebar() } else { hideSidebar() }
                     }
@@ -351,13 +365,50 @@ struct AppView: View {
         }
     }
 
-    /// The sliding panel's material: a sheet of glass lit from the
+    /// The sliding panel's surface. The drop refracts the panes it covers;
+    /// collapsed, it is the thin pill on the window's left edge, so opening
+    /// reads as that pill swelling into the panel. Without Metal it falls
+    /// back to the flat overlay bed, faded with the rows.
+    @ViewBuilder
+    private var floatingSidebarCard: some View {
+        if LiquidDrop.isAvailable {
+            // Mounted only from reveal until the collapse has played: a
+            // hidden panel keeps no Metal layer in the window. The margin is
+            // trimmed on the top and leading edges so the layer never
+            // reaches under the traffic lights, whose own glass samples
+            // what lies beneath them.
+            if sidebarDropMounted {
+                let insets = EdgeInsets(top: 4, leading: 6,
+                                        bottom: 8, trailing: LiquidDropView.bleed)
+                LiquidDrop(open: sidebarRevealed, cornerRadius: 40,
+                           light: prefs.lightGlass, flat: reduceTransparency.reduced,
+                           bevel: 18,
+                           collapseAnchor: CGPoint(x: 0, y: 0.5),
+                           collapsedHalfSize: CGSize(width: 3, height: 24),
+                           dispersion: 0.6, bleedInsets: insets,
+                           sceneDim: 0)
+                    .padding(.top, -insets.top)
+                    .padding(.leading, -insets.leading)
+                    .padding(.bottom, -insets.bottom)
+                    .padding(.trailing, -insets.trailing)
+            }
+        } else {
+            OverlayPanelBackground(cornerRadius: 40)
+                .clipShape(RoundedRectangle(cornerRadius: 40, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 40, style: .continuous)
+                    .strokeBorder(Theme.strokeStrong, lineWidth: 1))
+                .shadow(color: .black.opacity(0.5), radius: 28, x: 8, y: 0)
+                .opacity(sidebarRevealed ? 1 : 0)
+        }
+    }
+
+    /// Classic interface style. The sliding panel's material: a sheet of glass lit from the
     /// top-leading corner it emerges from. A sheen falls diagonally away
     /// from that corner, the base sinks into shade toward the bottom
     /// (where the pinned console docks), and the rim highlight follows
     /// the same light — brightest around the lit corner, gone before the
     /// trailing edge. Without the ramps the card reads as a flat slab.
-    private var floatingSidebarCard: some View {
+    private var classicFloatingSidebarCard: some View {
         OverlayPanelBackground(cornerRadius: 40)
         // plusLighter only ever brightens — effectively invisible on the
         // light material, which needs no lift.
@@ -450,12 +501,16 @@ struct AppView: View {
     }
 
 
-    /// Palette: bouncy spring on the way in, snappier ease-out on the
-    /// way out. Asymmetric transitions let us keep the playful entrance
-    /// while the close feels quick and clean (slow close = sluggish).
+    /// Command palette. Liquid Drop: `PalettePresenter` owns its mount, dim
+    /// and the open/close sequencing of its drops. Classic: a bouncy spring
+    /// on the way in and a snappier ease-out on the way out — the entrance
+    /// stays playful while the close feels quick (a slow close reads as
+    /// sluggish).
     @ViewBuilder
     private var paletteOverlay: some View {
-        if state.paletteOpen {
+        if prefs.liquidDrop {
+            PalettePresenter()
+        } else if state.paletteOpen {
             ZStack {
                 Color.black.opacity(0.28)
                     .ignoresSafeArea()
@@ -467,9 +522,8 @@ struct AppView: View {
                 VStack {
                     CommandPalette()
                         .padding(.top, 70)
-                        // Open: subtle spring scale-in. Close: the
-                        // mirror image — a gentle shrink-and-fade back
-                        // toward the top, so dismissal reads as the
+                        // Close mirrors the open: a gentle shrink-and-fade
+                        // back toward the top, so dismissal reads as the
                         // palette receding rather than vanishing.
                         .transition(.asymmetric(
                             insertion: .scale(scale: 0.97, anchor: .top)
@@ -487,16 +541,23 @@ struct AppView: View {
         }
     }
 
+    /// Find bar. No scrim in either style: the match highlights live in the
+    /// terminal's own renderer, so the bar floats top-trailing while the
+    /// pane stays fully visible and interactive underneath.
     @ViewBuilder
     private var searchOverlay: some View {
-        // No backdrop: the match highlights live in the terminal's own
-        // renderer, so the find bar floats top-trailing while the pane
-        // stays fully visible and interactive underneath.
-        if state.searchOpen {
+        if prefs.liquidDrop {
+            DropPanelPresenter(item: state.searchOpen ? true : nil,
+                               alignment: .topTrailing,
+                               insets: EdgeInsets(top: 52, leading: 0, bottom: 0, trailing: 14),
+                               onDismiss: { state.closeSearch() }) { _ in
+                SearchOverlay()
+            }
+        } else if state.searchOpen {
             VStack {
                 HStack {
                     Spacer()
-                    SearchOverlay()
+                    ClassicSearchOverlay()
                         .padding(.top, 52)
                         .padding(.trailing, 14)
                         .transition(.asymmetric(
@@ -513,60 +574,134 @@ struct AppView: View {
         }
     }
 
-    /// Host Overview: shared briefing presentation (condense-from-blur,
-    /// glass at rest — see `BriefingPresenter`). `.id(target)` gives
-    /// each target its own probe lifecycle.
+    // The briefing cards exist in both interface styles. Liquid Drop
+    // presents through `BriefingPresenter` (a drop that morphs open);
+    // Classic through `ClassicBriefingPresenter` (condense-from-blur, glass
+    // at rest), whose card builder also receives the `glassLive` flag.
+
+    /// Host Overview. `.id(target)` gives each target its own probe
+    /// lifecycle.
+    @ViewBuilder
     private var hostOverviewOverlay: some View {
-        BriefingPresenter(item: state.hostOverview,
-                          onDismiss: { state.closeHostOverview() }) { request, glass in
-            HostOverviewOverlay(target: request.target, glassLive: glass)
-                .id(request.target)
+        if prefs.liquidDrop {
+            BriefingPresenter(item: state.hostOverview,
+                              onDismiss: { state.closeHostOverview() }) { request in
+                HostOverviewOverlay(target: request.target)
+                    .id(request.target)
+            }
+        } else {
+            ClassicBriefingPresenter(item: state.hostOverview,
+                                     onDismiss: { state.closeHostOverview() }) { request, glass in
+                ClassicHostOverviewOverlay(target: request.target, glassLive: glass)
+                    .id(request.target)
+            }
         }
     }
 
+    @ViewBuilder
     private var clusterOverviewOverlay: some View {
-        BriefingPresenter(item: state.clusterOverviewOpen ? true : nil,
-                          onDismiss: { state.closeClusterOverview() }) { _, glass in
-            ClusterOverviewOverlay(glassLive: glass)
+        if prefs.liquidDrop {
+            BriefingPresenter(item: state.clusterOverviewOpen ? true : nil,
+                              onDismiss: { state.closeClusterOverview() }) { _ in
+                ClusterOverviewOverlay()
+            }
+        } else {
+            ClassicBriefingPresenter(item: state.clusterOverviewOpen ? true : nil,
+                                     onDismiss: { state.closeClusterOverview() }) { _, glass in
+                ClassicClusterOverviewOverlay(glassLive: glass)
+            }
         }
     }
 
+    @ViewBuilder
     private var ansibleCockpitOverlay: some View {
-        BriefingPresenter(item: state.ansibleCockpit,
-                          onDismiss: { state.closeAnsibleCockpit() }) { target, glass in
-            AnsibleCockpitOverlay(target: target, glassLive: glass)
+        if prefs.liquidDrop {
+            BriefingPresenter(item: state.ansibleCockpit,
+                              onDismiss: { state.closeAnsibleCockpit() }) { target in
+                AnsibleCockpitOverlay(target: target)
+            }
+        } else {
+            ClassicBriefingPresenter(item: state.ansibleCockpit,
+                                     onDismiss: { state.closeAnsibleCockpit() }) { target, glass in
+                ClassicAnsibleCockpitOverlay(target: target, glassLive: glass)
+            }
         }
     }
 
+    @ViewBuilder
     private var worktreeOverlay: some View {
-        BriefingPresenter(item: state.worktreeReview,
-                          onDismiss: { state.closeWorktreeReview() }) { root, glass in
-            WorktreeOverlay(root: root, glassLive: glass)
-                .environmentObject(state)
+        if prefs.liquidDrop {
+            BriefingPresenter(item: state.worktreeReview,
+                              onDismiss: { state.closeWorktreeReview() }) { root in
+                WorktreeOverlay(root: root)
+                    .environmentObject(state)
+            }
+        } else {
+            ClassicBriefingPresenter(item: state.worktreeReview,
+                                     onDismiss: { state.closeWorktreeReview() }) { root, glass in
+                ClassicWorktreeOverlay(root: root, glassLive: glass)
+                    .environmentObject(state)
+            }
         }
     }
 
+    @ViewBuilder
     private var terraformOverlay: some View {
-        BriefingPresenter(item: state.terraformCockpit,
-                          onDismiss: { state.closeTerraformCockpit() }) { target, glass in
-            TerraformCockpitOverlay(target: target, glassLive: glass)
-                .environmentObject(state)
+        if prefs.liquidDrop {
+            BriefingPresenter(item: state.terraformCockpit,
+                              onDismiss: { state.closeTerraformCockpit() }) { target in
+                TerraformCockpitOverlay(target: target)
+                    .environmentObject(state)
+            }
+        } else {
+            ClassicBriefingPresenter(item: state.terraformCockpit,
+                                     onDismiss: { state.closeTerraformCockpit() }) { target, glass in
+                ClassicTerraformCockpitOverlay(target: target, glassLive: glass)
+                    .environmentObject(state)
+            }
         }
     }
 
+    @ViewBuilder
     private var agentToolsOverlay: some View {
-        BriefingPresenter(item: state.agentTools,
-                          onDismiss: { state.closeAgentTools() }) { target, glass in
-            AgentToolOverlay(target: target, glassLive: glass)
+        if prefs.liquidDrop {
+            BriefingPresenter(item: state.agentTools,
+                              onDismiss: { state.closeAgentTools() }) { target in
+                AgentToolOverlay(target: target)
+                    .environmentObject(state)
+            }
+        } else {
+            ClassicBriefingPresenter(item: state.agentTools,
+                                     onDismiss: { state.closeAgentTools() }) { target, glass in
+                ClassicAgentToolOverlay(target: target, glassLive: glass)
+                    .environmentObject(state)
+            }
+        }
+    }
+
+    private var closePromptOverlay: some View {
+        BriefingPresenter(item: state.closePrompt, alignment: .center,
+                          insets: EdgeInsets(top: 0, leading: 0, bottom: 60, trailing: 0),
+                          onDismiss: { state.answerClosePrompt(confirmed: false) }) { prompt in
+            ClosePromptOverlay(prompt: prompt)
                 .environmentObject(state)
         }
     }
 
+    @ViewBuilder
     private var briefingOverlay: some View {
-        BriefingPresenter(item: state.briefingOpen ? true : nil,
-                          onDismiss: { state.closeBriefing() }) { _, glass in
-            BriefingOverlay(glassLive: glass)
-                .environmentObject(state)
+        if prefs.liquidDrop {
+            BriefingPresenter(item: state.briefingOpen ? true : nil,
+                              onDismiss: { state.closeBriefing() }) { _ in
+                BriefingOverlay()
+                    .environmentObject(state)
+            }
+        } else {
+            ClassicBriefingPresenter(item: state.briefingOpen ? true : nil,
+                                     onDismiss: { state.closeBriefing() }) { _, glass in
+                ClassicBriefingOverlay(glassLive: glass)
+                    .environmentObject(state)
+            }
         }
     }
 
@@ -578,15 +713,27 @@ struct AppView: View {
     /// restraint as search, not the palette).
     @ViewBuilder
     private var notificationsOverlay: some View {
-        if state.notificationsOpen {
-            let bottomLeft = prefs.tabOrientation != .horizontal
+        let bottomLeft = prefs.tabOrientation != .horizontal
+        if prefs.liquidDrop {
+            DropPanelPresenter(
+                item: state.notificationsOpen ? true : nil,
+                alignment: bottomLeft ? .bottomLeading : .topTrailing,
+                insets: bottomLeft
+                    ? EdgeInsets(top: 0, leading: 16, bottom: 52, trailing: 0)
+                    : EdgeInsets(top: 52, leading: 0, bottom: 0, trailing: 16),
+                dim: NotificationsOverlay.dim,
+                onDismiss: { withAnimation(Theme.Spring.snappy) { state.notificationsOpen = false } }
+            ) { _ in
+                NotificationsOverlay()
+            }
+        } else if state.notificationsOpen {
             let corner: Alignment = bottomLeft ? .bottomLeading : .topTrailing
             ZStack(alignment: corner) {
                 Color.black.opacity(0.14)
                     .ignoresSafeArea()
                     .onTapGesture { withAnimation(Theme.Spring.snappy) { state.notificationsOpen = false } }
                     .transition(.opacity.animation(.easeOut(duration: 0.16)))
-                NotificationsOverlay()
+                ClassicNotificationsOverlay()
                     .padding(bottomLeft ? .bottom : .top, 52)
                     .padding(bottomLeft ? .leading : .trailing, 16)
                     .transition(.asymmetric(
@@ -604,17 +751,24 @@ struct AppView: View {
         }
     }
 
-    /// Agent command center — a panel docked to the right rail, over a
-    /// dismiss scrim.
+    /// Agent command center, docked to the right rail: a briefing card in
+    /// Liquid Drop, a flat panel over a dismiss scrim in Classic.
     @ViewBuilder
     private var agentCenterOverlay: some View {
-        if state.agentCenterOpen {
+        if prefs.liquidDrop {
+            BriefingPresenter(item: state.agentCenterOpen ? true : nil,
+                              alignment: .topTrailing,
+                              insets: EdgeInsets(top: 52, leading: 0, bottom: 24, trailing: 16),
+                              onDismiss: { state.toggleAgentCenter() }) { _ in
+                AgentCenterView()
+            }
+        } else if state.agentCenterOpen {
             ZStack(alignment: .topTrailing) {
                 Color.black.opacity(0.14)
                     .ignoresSafeArea()
                     .onTapGesture { state.toggleAgentCenter() }
                     .transition(.opacity.animation(.easeOut(duration: 0.16)))
-                AgentCenterView()
+                ClassicAgentCenterView()
                     .padding(.top, 52)
                     .padding(.trailing, 16)
                     .transition(.asymmetric(
@@ -630,14 +784,20 @@ struct AppView: View {
 
     @ViewBuilder
     private var fleetRunOverlay: some View {
-        if state.fleetRunOpen {
+        if prefs.liquidDrop {
+            BriefingPresenter(item: state.fleetRunOpen ? true : nil,
+                              insets: EdgeInsets(top: 70, leading: 0, bottom: 24, trailing: 0),
+                              onDismiss: { state.closeFleetRun() }) { _ in
+                FleetRunOverlay()
+            }
+        } else if state.fleetRunOpen {
             ZStack {
                 Color.black.opacity(0.28)
                     .ignoresSafeArea()
                     .onTapGesture { state.closeFleetRun() }
                     .transition(.opacity.animation(.easeOut(duration: 0.18)))
                 VStack {
-                    FleetRunOverlay()
+                    ClassicFleetRunOverlay()
                         .padding(.top, 90)
                         .transition(.asymmetric(
                             insertion: .scale(scale: 0.96, anchor: .top)
@@ -654,66 +814,88 @@ struct AppView: View {
         }
     }
 
+    /// Liquid Drop: keyed by tab id (the presenter needs an `Equatable`
+    /// item); the panel outlives `renameTarget` by the length of its
+    /// collapse, so the tab is looked up rather than captured.
     @ViewBuilder
     private var renameOverlay: some View {
-        if let tab = state.renameTarget {
-            ZStack {
-                Color.black.opacity(0.28)
-                    .ignoresSafeArea()
-                    .onTapGesture { state.cancelRename() }
-                    .transition(.opacity.animation(.easeOut(duration: 0.18)))
-                VStack {
+        if prefs.liquidDrop {
+            DropPanelPresenter(item: state.renameTarget?.id,
+                               insets: EdgeInsets(top: 90, leading: 0, bottom: 0, trailing: 0),
+                               dim: RenameOverlay.dim,
+                               onDismiss: { state.cancelRename() }) { id in
+                if let tab = state.tabs.first(where: { $0.id == id }) {
                     RenameOverlay(tab: tab)
-                        .padding(.top, 90)
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.96, anchor: .top)
-                                .combined(with: .opacity)
-                                .animation(.spring(response: 0.4,
-                                                    dampingFraction: 0.78)),
-                            removal: .opacity
-                                .animation(.easeOut(duration: 0.15))
-                        ))
-                    Spacer()
+                        .id(id)
                 }
-                .frame(maxWidth: .infinity)
+            }
+        } else if let tab = state.renameTarget {
+            classicRenameScrim(onDismiss: { state.cancelRename() }) {
+                ClassicRenameOverlay(tab: tab)
             }
         }
     }
 
     @ViewBuilder
     private var groupRenameOverlay: some View {
-        if let gid = state.renameGroupID {
-            ZStack {
-                Color.black.opacity(0.28)
-                    .ignoresSafeArea()
-                    .onTapGesture { state.cancelRenameGroup() }
-                    .transition(.opacity.animation(.easeOut(duration: 0.18)))
-                VStack {
-                    GroupRenameOverlay(groupID: gid)
-                        .padding(.top, 90)
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.96, anchor: .top)
-                                .combined(with: .opacity)
-                                .animation(.spring(response: 0.4,
-                                                    dampingFraction: 0.78)),
-                            removal: .opacity
-                                .animation(.easeOut(duration: 0.15))
-                        ))
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
+        if prefs.liquidDrop {
+            DropPanelPresenter(item: state.renameGroupID,
+                               insets: EdgeInsets(top: 90, leading: 0, bottom: 0, trailing: 0),
+                               dim: GroupRenameOverlay.dim,
+                               onDismiss: { state.cancelRenameGroup() }) { gid in
+                GroupRenameOverlay(groupID: gid)
+                    .id(gid)
+            }
+        } else if let gid = state.renameGroupID {
+            classicRenameScrim(onDismiss: { state.cancelRenameGroup() }) {
+                ClassicGroupRenameOverlay(groupID: gid)
             }
         }
     }
 
-    @ViewBuilder
+    /// Classic mount shared by the two rename panels: a dismiss scrim and
+    /// the panel springing in from the top.
+    private func classicRenameScrim<Panel: View>(onDismiss: @escaping () -> Void,
+                                                 @ViewBuilder panel: () -> Panel) -> some View {
+        ZStack {
+            Color.black.opacity(0.28)
+                .ignoresSafeArea()
+                .onTapGesture(perform: onDismiss)
+                .transition(.opacity.animation(.easeOut(duration: 0.18)))
+            VStack {
+                panel()
+                    .padding(.top, 90)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.96, anchor: .top)
+                            .combined(with: .opacity)
+                            .animation(.spring(response: 0.4,
+                                                dampingFraction: 0.78)),
+                        removal: .opacity
+                            .animation(.easeOut(duration: 0.15))
+                    ))
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// Settings in the chosen interface style. The Liquid Drop presenter
+    /// stays mounted in both styles and is simply given nothing to show in
+    /// Classic: it opens on a *change* of its item, so switching style with
+    /// Settings open has to reach it as one — a presenter mounted with its
+    /// item already set would never open.
     private var settingsOverlay: some View {
-        if state.settingsOpen {
+        ZStack {
+        BriefingPresenter(item: state.settingsOpen && prefs.liquidDrop ? true : nil,
+                          onDismiss: { state.toggleSettings() }) { _ in
+            SettingsPanel()
+        }
+        if state.settingsOpen, !prefs.liquidDrop {
             ZStack {
-                // Dim/blur the world behind the panel so eyes go to the panel.
+                // Dim the world behind the panel so eyes go to the panel.
                 Color.black.opacity(0.35)
                     .onTapGesture { state.toggleSettings() }
-                SettingsPanel()
+                ClassicSettingsPanel()
                     .padding(.top, 70)
                     // Same receding close as the palette: shrink-and-
                     // fade toward where it came from.
@@ -730,26 +912,67 @@ struct AppView: View {
             }
             .transition(.opacity.animation(.easeInOut(duration: 0.14)))
         }
+        }
     }
 
     /// Intro overlay; visible only on launch when enabled.
     @ViewBuilder
     private var launchOverlay: some View {
         if state.launchOverlayVisible {
-            LaunchOverlay(playSound: prefs.launchSoundEnabled) {
+            LaunchOverlayHost(liquidDrop: prefs.liquidDrop,
+                              playSound: prefs.launchSoundEnabled) {
                 state.dismissLaunchOverlay()
             }
             .transition(.opacity)
         }
     }
 
+    /// First-run wizard in the current interface style. Its Look step
+    /// changes the style live, which swaps the wizard here; the run carries
+    /// across in `SetupWizardDraft`.
     @ViewBuilder
     private var setupWizardOverlay: some View {
         if state.setupWizardVisible {
-            WelcomeWizard {
-                state.setupWizardVisible = false
+            Group {
+                if prefs.liquidDrop {
+                    WelcomeWizard { state.setupWizardVisible = false }
+                } else {
+                    ClassicWelcomeWizard { state.setupWizardVisible = false }
+                }
             }
             .transition(.opacity)
+        }
+    }
+}
+
+/// The slide-out sidebar's surface and reveal, per interface style. Liquid
+/// Drop: the rows fade and nudge in while the `LiquidDrop` behind them does
+/// its own morph. Classic: the whole card — rows, material and shadow —
+/// slides in from beyond the window edge.
+private struct FloatingSidebarSurface<Drop: View, Classic: View>: ViewModifier {
+    let liquidDrop: Bool
+    let revealed: Bool
+    let hiddenOffset: CGFloat
+    let drop: Drop
+    let classic: Classic
+
+    func body(content: Content) -> some View {
+        if liquidDrop {
+            content
+                .clipShape(RoundedRectangle(cornerRadius: 40, style: .continuous))
+                .opacity(revealed ? 1 : 0)
+                .offset(x: revealed ? 0 : -28)
+                .background(drop)
+        } else {
+            content
+                .background(classic)
+                // Keep the inner plate's drop shadow from bleeding past the
+                // card's corners; the window shadow is cast by the clipped
+                // composite.
+                .clipShape(RoundedRectangle(cornerRadius: 40, style: .continuous))
+                .shadow(color: .black.opacity(0.5), radius: 28, x: 8, y: 0)
+                .offset(x: revealed ? 0 : hiddenOffset)
+                .opacity(revealed ? 1 : 0)
         }
     }
 }

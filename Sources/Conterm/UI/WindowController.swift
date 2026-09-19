@@ -60,6 +60,7 @@ final class WindowController {
             defer: false
         )
         win.contentView = host
+        FrameHitchMonitor.shared.start(in: host)
         win.title = "Conterm"
         // This window's lifetime is ARC-owned: WindowController holds the only
         // strong ref, kept alive by AppDelegate.windows until the willClose
