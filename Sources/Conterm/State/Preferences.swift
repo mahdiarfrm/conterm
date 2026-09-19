@@ -117,11 +117,27 @@ final class Preferences: ObservableObject {
     @Published var glassMode: GlassMode {
         didSet { ud.set(glassMode.rawValue, forKey: K.glassMode) }
     }
-    /// Use real Liquid Glass (macOS 26 `NSGlassEffectView`) for the modal
-    /// overlay panels — Command Palette, Search, Settings, Notifications,
-    /// Rename, the floating sidebar card. OFF (default) paints them as solid
-    /// cards: cheaper, since these panels cover the streaming terminal — the
-    /// one place live glass re-lenses every frame.
+    /// The look of everything that floats over the terminal — cards,
+    /// Settings, the palette, panels, pane pills, the tab bar's selection.
+    /// - `liquidDrop`: Metal-rendered glass that refracts the panes behind
+    ///   it (`LiquidDropView`) with the `Drop` kit's content language.
+    ///   Measured against Classic with panels open over streaming panes,
+    ///   the two cost the same within noise.
+    /// - `classic`: the flat cards and system materials that preceded it
+    ///   (`UI/Classic/`).
+    /// Both are complete; call sites branch on `liquidDrop`.
+    enum InterfaceStyle: String, CaseIterable {
+        case liquidDrop, classic
+    }
+    @Published var interfaceStyle: InterfaceStyle {
+        didSet { ud.set(interfaceStyle.rawValue, forKey: K.interfaceStyle) }
+    }
+    var liquidDrop: Bool { interfaceStyle == .liquidDrop }
+
+    /// Classic only: use real Liquid Glass (macOS 26 `NSGlassEffectView`)
+    /// for the modal overlay panels. OFF (default) paints them as solid
+    /// cards: cheaper, since these panels cover the streaming terminal —
+    /// the one place live glass re-lenses every frame.
     @Published var liquidGlassPanels: Bool {
         didSet { ud.set(liquidGlassPanels, forKey: K.liquidGlassPanels) }
     }
@@ -490,6 +506,7 @@ final class Preferences: ObservableObject {
         static let themeFromConfig  = "conterm.themeFromConfig"
         static let solidGlass        = "conterm.solidGlass"   // pre-glassMode migration source
         static let glassMode         = "conterm.glassMode"
+        static let interfaceStyle    = "conterm.interfaceStyle"
         static let liquidGlassPanels = "conterm.liquidGlassPanels"
         // Stored under the pre-rename name so an existing opt-in carries
         // over; the setting narrowed to the arrow bindings once
@@ -595,7 +612,7 @@ final class Preferences: ObservableObject {
         self.showLayoutSwitcher     = ud.object(forKey: K.showLayoutSwitcher) as? Bool ?? true
         self.blinkOnAttention       = ud.object(forKey: K.blinkOnAttention) as? Bool ?? true
         self.agentToolBubbles       = ud.object(forKey: K.agentToolBubbles) as? Bool ?? true
-        self.paneCornerRadius       = ud.object(forKey: K.paneCornerRadius) as? Double ?? 20
+        self.paneCornerRadius       = ud.object(forKey: K.paneCornerRadius) as? Double ?? Double(Theme.defaultPaneCorner)
         self.uiScale                = ud.object(forKey: K.uiScale) as? Double ?? 1
         self.launchCommandDelay     = ud.object(forKey: K.launchCommandDelay) as? Double ?? Self.launchCommandDelayDefault
         self.commandAlerts          = ud.object(forKey: K.commandAlerts) as? Bool ?? true
@@ -645,6 +662,8 @@ final class Preferences: ObservableObject {
         self.glassMode              = GlassMode(rawValue: ud.string(forKey: K.glassMode) ?? "")
             ?? (ud.object(forKey: K.solidGlass) as? Bool).map { $0 ? GlassMode.solid : .glass }
             ?? .blur
+        self.interfaceStyle         = InterfaceStyle(rawValue: ud.string(forKey: K.interfaceStyle) ?? "")
+            ?? .liquidDrop
         self.liquidGlassPanels      = ud.object(forKey: K.liquidGlassPanels) as? Bool ?? false
         self.remoteArrowKeys        = ud.object(forKey: K.remoteArrowKeys) as? Bool ?? false
         self.actionAccent           = ActionAccent(
