@@ -257,6 +257,13 @@ Treat it as beta.
 
 ### Appearance
 
+- **Liquid Drop interface** — panels open as a drop of glass: the rim bends
+  the live terminal behind it with a soft colour fringe, the body frosts it,
+  and content rolls in once the drop has settled. Settings, the command
+  palette, the briefing pages, Orbit's side panels, the agents sidebar and
+  the close prompt share it; the selected tab is a drop that flows from tab
+  to tab. **Classic**, the flat-card interface, stays one click away
+  (*Settings → Appearance → Interface*, or the setup wizard).
 - **Liquid Glass chrome** *(macOS 26)* — refractive glass behind every surface
   with a Clear↔Frosted slider and light/dark tint, plus an opaque Solid mode
   when you want it. On macOS 14–15 the app runs fully with plain (non-glass)
