@@ -52,6 +52,25 @@ struct AgentToolGlyph: View {
     }
 }
 
+/// Material shared by the chrome that floats over a pane — the agent pill,
+/// its tool bubbles, the History capsule. Flat and opaque on purpose: these
+/// stay up for as long as an agent runs, over a terminal that is streaming,
+/// so a sampled material would re-render with every frame of output. The
+/// bed and ink are pinned, not adaptive — the chips sit on the terminal in
+/// both appearances.
+enum PanePill {
+    static let bed = Color(red: 0.05, green: 0.055, blue: 0.07)
+    static let ink = Color(white: 0.96)
+
+    /// Light caught on the rim: strongest where the key light lands
+    /// (top-leading), nearly gone at the far corner. Neutral, like the
+    /// kit's `Drop.sheen`, but pinned light to match the bed.
+    static var edge: LinearGradient {
+        LinearGradient(colors: [Color.white.opacity(0.34), Color.white.opacity(0.05)],
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+}
+
 /// One kind of call in flight as a bubble: the mark, monochrome on the
 /// pill's dark bed, ringed in the kind's colour — the mark says what, the
 /// ring says whose. While the call runs the ring is the same
@@ -72,11 +91,9 @@ struct AgentToolBubble: View {
     @State private var hovering = false
 
     private var color: Color { run.kind.color }
-    private static let failColor = Color(red: 1.0, green: 0.42, blue: 0.42)
-    private static let bed = Color(red: 0.05, green: 0.055, blue: 0.07)
-    /// Pinned light like the pill's label: the bubble floats over the dark
-    /// terminal in both appearances.
-    private static let ink = Color(white: 0.96)
+    private static let failColor = Drop.bad
+    private static let bed = PanePill.bed
+    private static let ink = PanePill.ink
 
     private var sweeps: Bool {
         run.isRunning && activeState == .key && !reduceMotion && !systemLite
@@ -91,7 +108,7 @@ struct AgentToolBubble: View {
         Button(action: action) {
             ZStack {
                 Circle().fill(Self.bed)
-                Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                Circle().strokeBorder(PanePill.edge, lineWidth: 0.75)
                 AgentToolGlyph(kind: run.kind,
                                color: Self.ink.opacity(run.isRunning || hovering ? 1 : 0.75),
                                size: size * 0.52)
@@ -109,8 +126,7 @@ struct AgentToolBubble: View {
             .overlay(alignment: .bottomTrailing) {
                 if count > 1 {
                     Text("\(count)")
-                        .font(.system(size: size * 0.26, weight: .bold, design: .rounded))
-                        .monospacedDigit()
+                        .font(Drop.mono(size * 0.26, .bold))
                         .foregroundStyle(Self.ink)
                         .padding(.horizontal, size * 0.12)
                         .frame(height: size * 0.38)
@@ -148,42 +164,44 @@ struct AgentToolBubble: View {
     }
 }
 
-/// The pane's record of finished calls, as one glass capsule at its
-/// top-left: a count and the way in to the panel. No mark of its own — a
-/// session runs many kinds of thing, and one logo would misname the rest.
-/// Real Liquid Glass on macOS 26; the system thin material before that.
+/// The pane's record of finished calls, as one capsule leading the agent
+/// pill's cluster: a count and the way in to the panel. No mark of its own —
+/// a session runs many kinds of thing, and one logo would misname the rest.
+/// Same flat bed as the pill and the bubbles, so the row reads as one set.
+/// A call that finishes merges into the pill on the far side of the row;
+/// the count rolling over, with one small swell, is where it lands.
 struct AgentToolHistoryButton: View {
     let count: Int
+    /// Matched to the agent pill it sits beside.
+    var height: CGFloat = 26
     var action: () -> Void
-    @EnvironmentObject var prefs: Preferences
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
-
-    private static let height: CGFloat = 26
-
-    private var ink: Color {
-        prefs.lightGlass ? Color.black.opacity(0.82) : Color.white.opacity(0.92)
-    }
+    @State private var swell = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Image(systemName: "clock.arrow.circlepath")
                     .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(ink)
+                    .foregroundStyle(PanePill.ink.opacity(hovering ? 1 : 0.7))
                 Text("History")
-                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                    .foregroundStyle(ink)
+                    .font(Drop.display(12, .semibold))
+                    .foregroundStyle(PanePill.ink.opacity(hovering ? 1 : 0.85))
                 Text("\(count)")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(ink.opacity(0.85))
-                    .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(Capsule().fill(ink.opacity(0.14)))
+                    .font(Drop.mono(10, .medium))
+                    .foregroundStyle(PanePill.ink.opacity(0.85))
+                    .contentTransition(.numericText(value: Double(count)))
+                    .padding(.horizontal, 6).padding(.vertical, 1.5)
+                    .background(Capsule().fill(PanePill.ink.opacity(0.12)))
+                    .scaleEffect(swell ? 1.18 : 1)
             }
-            .padding(.leading, 10).padding(.trailing, 7)
-            .frame(height: Self.height)
-            .background(glass)
-            .glassPill()
+            .padding(.leading, 12).padding(.trailing, 8)
+            .frame(height: height)
+            .background(Capsule(style: .continuous).fill(PanePill.bed))
+            .overlay(Capsule(style: .continuous)
+                .strokeBorder(PanePill.edge, lineWidth: 0.75)
+                .allowsHitTesting(false))
             .shadow(color: .black.opacity(hovering ? 0.35 : 0.22),
                     radius: hovering ? 8 : 4, y: 1)
             .contentShape(Capsule())
@@ -191,19 +209,174 @@ struct AgentToolHistoryButton: View {
         .buttonStyle(.plain)
         .scaleEffect(hovering ? 1.04 : 1.0)
         .animation(Theme.Spring.snappy, value: hovering)
+        .animation(Theme.Spring.snappy, value: count)
         .onHover { hovering = $0 }
+        .onChange(of: count) { old, new in
+            guard new > old, !reduceMotion else { return }
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.6)) { swell = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { swell = false }
+            }
+        }
         .help("What the agent did in this pane")
     }
+}
 
-    @ViewBuilder
-    private var glass: some View {
-        if #available(macOS 26, *) {
-            PaneLiquidGlass(cornerRadius: Self.height / 2, frostiness: 0.35,
-                            light: prefs.lightGlass)
-                .clipShape(Capsule(style: .continuous))
-        } else {
-            Capsule(style: .continuous).fill(.ultraThinMaterial)
+// MARK: - Budding and merging
+
+/// The liquid between the agent pill and a chip leaving or rejoining it.
+///
+/// The cluster is a centred row, so when a chip is inserted the pill does
+/// not stand still: it starts overlapping the chip's place and slides off
+/// it by half the chip's width plus the gap. Drawn in the chip's own frame,
+/// that is the pill's end cap — a circle of the row's height — travelling
+/// from inside the chip to its rest position beyond the gap. The shape is
+/// the chip's bed growing out from that side plus the neck surface tension
+/// holds between the two, which thins to a filament and lets go before the
+/// chip comes to rest. Removal runs the same thing backwards.
+///
+/// `progress` rides the row's own spring, so the cap drawn here stays glued
+/// to the real pill through the overshoot. At rest the path is empty.
+struct GooBridge: Shape {
+    /// 0 joined with the pill, 1 free.
+    var progress: CGFloat
+    /// The side of this chip the pill is on.
+    let pillEdge: HorizontalEdge
+    let gap: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    /// How much of its size the chip has at `progress`; the chip's content
+    /// scales by the same figure so bed and content stay one object.
+    static func growth(_ progress: CGFloat) -> CGFloat {
+        0.3 + 0.7 * min(max(progress, 0), 1)
+    }
+
+    func path(in rect: CGRect) -> Path {
+        guard progress < 0.995, rect.height > 0 else { return Path() }
+        let r = rect.height / 2
+        let grow = Self.growth(progress)
+        let leading = pillEdge == .leading
+
+        // The pill's end cap, displaced by what remains of the row's shift.
+        let shift = (rect.width + gap) / 2 * (1 - progress)
+        let capX = leading ? rect.minX - gap - r + shift
+                           : rect.maxX + gap + r - shift
+        let cap = CGPoint(x: capX, y: rect.midY)
+
+        // The chip's bed, grown out from the side facing the pill.
+        let rb = r * grow
+        let bodyWidth = rect.width * grow
+        let body = CGRect(x: leading ? rect.minX : rect.maxX - bodyWidth,
+                          y: rect.midY - rb, width: bodyWidth, height: rb * 2)
+        let near = CGPoint(x: leading ? rect.minX + rb : rect.maxX - rb, y: rect.midY)
+
+        var path = Path(roundedRect: body, cornerRadius: rb, style: .continuous)
+
+        // The neck loses its spread over the back half of the travel.
+        let t = min(max((progress - 0.62) / 0.36, 0), 1)
+        let spread = 0.66 * (1 - t * t * (3 - 2 * t))
+        if spread > 0.01,
+           let neck = Self.neck(from: cap, radius: r, to: near, radius: rb, spread: spread) {
+            // A true union: the neck and the bed overlap, and subpaths wound
+            // in opposite directions would cancel where they do.
+            path = path.union(neck)
         }
+
+        // The pill draws its own cap, ring and glow; only what lies outside
+        // it belongs to this shape.
+        let capCircle = Path(ellipseIn: CGRect(x: cap.x - r, y: cap.y - r,
+                                               width: r * 2, height: r * 2))
+        return path.subtracting(capCircle)
+    }
+
+    /// Connector between two circles: tangent points spread around each by
+    /// `spread`, joined by curves whose handles pull toward the far circle.
+    /// Nil when the circles are too far apart to hold a neck or one lies
+    /// inside the other.
+    private static func neck(from c1: CGPoint, radius r1: CGFloat,
+                             to c2: CGPoint, radius r2: CGFloat,
+                             spread v: CGFloat) -> Path? {
+        let d = hypot(c2.x - c1.x, c2.y - c1.y)
+        guard r1 > 0, r2 > 0, d > abs(r1 - r2), d < r1 + r2 * 2.6 else { return nil }
+
+        var u1: CGFloat = 0, u2: CGFloat = 0
+        if d < r1 + r2 {
+            u1 = acos(min(max((r1 * r1 + d * d - r2 * r2) / (2 * r1 * d), -1), 1))
+            u2 = acos(min(max((r2 * r2 + d * d - r1 * r1) / (2 * r2 * d), -1), 1))
+        }
+        let between = atan2(c2.y - c1.y, c2.x - c1.x)
+        let maxSpread = acos(min(max((r1 - r2) / d, -1), 1))
+
+        let a1 = between + u1 + (maxSpread - u1) * v
+        let a2 = between - u1 - (maxSpread - u1) * v
+        let a3 = between + .pi - u2 - (.pi - u2 - maxSpread) * v
+        let a4 = between - .pi + u2 + (.pi - u2 - maxSpread) * v
+
+        func point(_ c: CGPoint, _ angle: CGFloat, _ radius: CGFloat) -> CGPoint {
+            CGPoint(x: c.x + radius * cos(angle), y: c.y + radius * sin(angle))
+        }
+        let p1 = point(c1, a1, r1), p2 = point(c1, a2, r1)
+        let p3 = point(c2, a3, r2), p4 = point(c2, a4, r2)
+
+        let reach = min(v * 3.0, hypot(p1.x - p3.x, p1.y - p3.y) / (r1 + r2))
+            * min(1, d * 2 / (r1 + r2))
+        let h1 = point(p1, a1 - .pi / 2, r1 * reach)
+        let h2 = point(p2, a2 + .pi / 2, r1 * reach)
+        let h3 = point(p3, a3 + .pi / 2, r2 * reach)
+        let h4 = point(p4, a4 - .pi / 2, r2 * reach)
+
+        var path = Path()
+        path.move(to: p1)
+        path.addCurve(to: p3, control1: h1, control2: h3)
+        path.addLine(to: p4)
+        path.addCurve(to: p2, control1: h4, control2: h2)
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// A chip's state partway between joined with the pill and free: its
+/// content grown from the pill's side and faded up, on the `GooBridge` bed.
+/// Driven as a transition, so it animates only while a chip arrives or
+/// leaves; the identity state draws the content untouched over an empty
+/// shape.
+private struct GooBud: ViewModifier, @preconcurrency Animatable {
+    var progress: CGFloat
+    let pillEdge: HorizontalEdge
+    let gap: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let p = min(max(progress, 0), 1)
+        // The bed leads and the content follows, so what buds off the pill
+        // is dark liquid first and a labelled chip second.
+        let ink = min(max((p - 0.2) / 0.45, 0), 1)
+        content
+            .scaleEffect(GooBridge.growth(progress),
+                         anchor: pillEdge == .leading ? .leading : .trailing)
+            .opacity(ink)
+            .background {
+                GooBridge(progress: progress, pillEdge: pillEdge, gap: gap)
+                    .fill(PanePill.bed)
+                    .allowsHitTesting(false)
+            }
+    }
+}
+
+extension AnyTransition {
+    /// Buds off the agent pill on insertion, merges back into it on removal
+    /// (see `GooBridge`). `pillEdge` is the side of the view the pill is on.
+    static func gooBud(pillEdge: HorizontalEdge, gap: CGFloat) -> AnyTransition {
+        .modifier(active: GooBud(progress: 0, pillEdge: pillEdge, gap: gap),
+                  identity: GooBud(progress: 1, pillEdge: pillEdge, gap: gap))
     }
 }
 

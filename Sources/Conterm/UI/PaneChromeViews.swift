@@ -334,8 +334,7 @@ struct CommandBadge: View {
 
     private var tint: Color {
         if unknownExit { return Color.white.opacity(0.6) }
-        return result.failed ? Color(red: 1.0, green: 0.42, blue: 0.42)
-                             : Color(red: 0.45, green: 0.86, blue: 0.55)
+        return result.failed ? Drop.bad : Drop.good
     }
     private var icon: String {
         if unknownExit { return "clock" }
@@ -352,12 +351,12 @@ struct CommandBadge: View {
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(tint)
             Text(label)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .font(Drop.mono(10.5, .medium))
                 .foregroundStyle(Color.white.opacity(0.9))
                 .lineLimit(1)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 5.5)
         .background(
             ZStack {
                 Capsule(style: .continuous).fill(Theme.paneTitleBar)
@@ -366,9 +365,14 @@ struct CommandBadge: View {
                     .blendMode(.plusLighter)
             }
         )
+        // Rim lit from the top-leading corner in the result's colour, like
+        // the rest of the pane's chips; the far corner lets go of it.
         .overlay(
             Capsule(style: .continuous)
-                .strokeBorder(tint.opacity(0.45), lineWidth: 0.6)
+                .strokeBorder(
+                    LinearGradient(colors: [tint.opacity(0.70), tint.opacity(0.12)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+                    lineWidth: 0.75)
         )
     }
 }

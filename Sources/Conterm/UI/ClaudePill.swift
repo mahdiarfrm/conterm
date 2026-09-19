@@ -2,11 +2,11 @@ import AppKit
 import SwiftUI
 
 /// Floating status pill for an AI coding agent (Claude Code / opencode)
-/// running in a pane. Liquid-glass capsule: the agent's monochrome mark
-/// on the LEFT, then the status text. It stays visible the whole time
-/// the agent is running — calm while *ready*, an orange neon light
-/// sweeping the capsule edge while *thinking*, steady amber when it
-/// *needs you*. Vanishes only when the session ends.
+/// running in a pane. A flat capsule on the shared `PanePill` bed: the
+/// agent's monochrome mark on the LEFT, then the status text. It stays
+/// visible the whole time the agent is running — calm while *ready*, an
+/// orange neon light sweeping the capsule edge while *thinking*, steady
+/// amber when it *needs you*. Vanishes only when the session ends.
 ///
 /// The sweeping glow only animates while the agent is *working*, so it
 /// costs nothing while merely ready/attention.
@@ -43,11 +43,11 @@ struct AgentPill: View {
         HStack(spacing: 9) {
             mark
             Text(status.label)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .font(Drop.display(13, .semibold))
                 // Pinned light, not adaptive: the pill keeps its dark bed in
                 // both appearances (it floats over the dark terminal), so the
                 // label must stay light or it vanishes in light mode.
-                .foregroundStyle(Color(white: 0.96))
+                .foregroundStyle(PanePill.ink)
                 .lineLimit(1)
                 .fixedSize()
                 // Crossfade the words instead of a hard swap, so
@@ -95,14 +95,14 @@ struct AgentPill: View {
     }
 
     /// Flat near-black capsule bed — opaque so the streaming terminal
-    /// behind costs nothing, with a hairline rim for definition when the
-    /// animated ring is quiet.
+    /// behind costs nothing, with the shared edge light for definition when
+    /// the animated ring is quiet.
     private var flatPillBackground: some View {
         Capsule(style: .continuous)
-            .fill(Color(red: 0.05, green: 0.055, blue: 0.07))
+            .fill(PanePill.bed)
             .overlay(
                 Capsule(style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                    .strokeBorder(PanePill.edge, lineWidth: 0.75)
             )
     }
 
@@ -112,8 +112,7 @@ struct AgentPill: View {
     /// state still pulses so a needs-you is still noticeable.
     @ViewBuilder
     private var liteRing: some View {
-        let color: Color = (working || attention) ? glowColor
-                                                  : Color.white.opacity(0.16)
+        let color: Color = (working || attention) ? glowColor : Color.clear
         let opacity: Double = attention ? (pulse ? 0.85 : 0.40)
                                         : (working ? 0.75 : 1.0)
         Capsule(style: .continuous)
@@ -126,7 +125,7 @@ struct AgentPill: View {
     @ViewBuilder
     private var mark: some View {
         // Pinned light for the same reason as the label — see `body`.
-        let tint = (working || attention) ? glowColor : Color.white.opacity(0.6)
+        let tint = (working || attention) ? glowColor : PanePill.ink.opacity(0.6)
         let templated = status.tool.markIsTemplate
         // Cached decode: `mark` re-evaluates every frame while the sweep
         // animates, so reading the PNG here uncached hit the disk per frame.
@@ -182,10 +181,8 @@ struct AgentPill: View {
                         radius: pulse ? 10 : 4)
                 .allowsHitTesting(false)
         } else {
-            // ready: a soft, static rim so it still reads as "alive".
-            Capsule(style: .continuous)
-                .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.75)
-                .allowsHitTesting(false)
+            // ready: the bed's own edge light is the rim; nothing to add.
+            EmptyView()
         }
     }
 

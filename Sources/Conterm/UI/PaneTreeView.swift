@@ -970,6 +970,53 @@ struct PaneChrome: View {
     /// pressure) so a hot machine sheds the pulse.
     @State private var systemLite = false
 
+    /// How a chip joins and leaves the pill's row. Budding off the pill is
+    /// Liquid Drop's; Classic, Reduce Motion and a machine under power or
+    /// thermal pressure get a plain scale-and-fade.
+    private func chipTransition(pillEdge: HorizontalEdge) -> AnyTransition {
+        if !prefs.liquidDrop {
+            return .asymmetric(insertion: .scale(scale: 0.1).combined(with: .opacity),
+                               removal: .scale(scale: 0.3).combined(with: .opacity))
+        }
+        if reduceMotion || systemLite {
+            return .scale(scale: 0.3).combined(with: .opacity)
+        }
+        return .gooBud(pillEdge: pillEdge, gap: Self.bubbleGap)
+    }
+
+    // The chips in the current interface style. The Classic forms are in
+    // `UI/Classic/ClassicPanePills.swift`.
+
+    @ViewBuilder private func historyChip() -> some View {
+        if prefs.liquidDrop {
+            AgentToolHistoryButton(count: finishedTools.count,
+                                   height: pillHeight) { openTools(nil) }
+        } else {
+            ClassicAgentToolHistoryButton(count: finishedTools.count,
+                                          height: pillHeight) { openTools(nil) }
+        }
+    }
+
+    @ViewBuilder private func agentPill() -> some View {
+        if prefs.liquidDrop {
+            AgentPill(status: pane.agent)
+        } else {
+            ClassicAgentPill(status: pane.agent)
+        }
+    }
+
+    @ViewBuilder private func toolBubble(_ item: LiveToolBubbles.Item) -> some View {
+        if prefs.liquidDrop {
+            AgentToolBubble(run: item.run, count: item.count, size: pillHeight) {
+                openTools(item.run)
+            }
+        } else {
+            ClassicAgentToolBubble(run: item.run, count: item.count, size: pillHeight) {
+                openTools(item.run)
+            }
+        }
+    }
+
     /// The attention rim animates only when it can actually be seen and the
     /// machine isn't asking for less motion; otherwise it holds steady lit.
     private var pulsesOnAttention: Bool {
@@ -1059,7 +1106,13 @@ struct PaneChrome: View {
                     }
                 }
                 if let badge = commandBadge {
-                    CommandBadge(result: badge)
+                    Group {
+                        if prefs.liquidDrop {
+                            CommandBadge(result: badge)
+                        } else {
+                            ClassicCommandBadge(result: badge)
+                        }
+                    }
                         .padding(.bottom, 10).padding(.trailing, 12)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 }
@@ -1077,17 +1130,26 @@ struct PaneChrome: View {
             .allowsHitTesting(false)
 
             // Agent status pill — the on-pane "thinking" indicator. Interactive:
-            // click it to open Orbit focused on this session. Calls in flight
-            // hang off its right as bubbles, and the whole cluster stays
-            // centred: each bubble that pops in nudges the pill left, each
-            // that leaves lets it back. Keyed on the set of kinds, so a
-            // count or transcript write doesn't re-trigger the spring.
+            // click it to open Orbit focused on this session. The pill sits
+            // between what is done and what is running: finished calls fold
+            // into the History capsule on its left, calls in flight hang off
+            // its right as bubbles, and the whole cluster stays centred —
+            // the pane's top-leading corner belongs to the window's floating
+            // traffic-light pill in the sidebar layouts. Keyed on the set of
+            // kinds, so a count or transcript write doesn't re-trigger the
+            // spring. Chips bud off the pill and merge back into it (see
+            // `GooBridge`); the row's spring drives that too, so the liquid
+            // stays attached to the pill as it slides.
             if pane.agent.phase != .idle {
                 HStack(spacing: Self.bubbleGap) {
+                    if !finishedTools.isEmpty {
+                        historyChip()
+                            .transition(chipTransition(pillEdge: .trailing))
+                    }
                     Button {
                         owningState?.openOrbit(focusSession: pane.id)
                     } label: {
-                        AgentPill(status: pane.agent)
+                        agentPill()
                     }
                     .buttonStyle(.plain)
                     .help("Open this session in Orbit")
@@ -1095,12 +1157,8 @@ struct PaneChrome: View {
                         Color.clear.preference(key: PillHeightKey.self, value: g.size.height)
                     })
                     ForEach(liveBubbles.items) { item in
-                        AgentToolBubble(run: item.run, count: item.count, size: pillHeight) {
-                            openTools(item.run)
-                        }
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.1).combined(with: .opacity),
-                            removal: .scale(scale: 0.3).combined(with: .opacity)))
+                        toolBubble(item)
+                            .transition(chipTransition(pillEdge: .leading))
                     }
                 }
                 .onPreferenceChange(PillHeightKey.self) { h in
@@ -1109,26 +1167,25 @@ struct PaneChrome: View {
                 .padding(.top, 10)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .animation(Theme.Spring.bouncy, value: liveBubbles.items.map(\.id))
-            }
-
-            // Finished tool calls fold into one capsule: the count, and the
-            // way in to the panel.
-            if pane.agent.phase != .idle, !finishedTools.isEmpty {
-                AgentToolHistoryButton(count: finishedTools.count) { openTools(nil) }
-                    .transition(.scale(scale: 0.8).combined(with: .opacity))
-                    .padding(.top, 15).padding(.leading, 12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .animation(Theme.Spring.bouncy, value: finishedTools.isEmpty)
             }
 
             // Ansible run badge — interactive, opens the cockpit;
             // retires a minute after the run ends.
             if let run = ansible.runs[pane.id], !run.badgeDismissed {
-                AnsiblePill(run: run) {
+                let openCockpit = {
                     (NSApp.delegate as? AppDelegate)?.windows.first { wc in
                         wc.state.tabs.contains { t in
                             t.paneTree.root.leaves().contains { $0.id == pane.id }
                         }
                     }?.state.openAnsibleCockpit(paneID: pane.id)
+                }
+                Group {
+                    if prefs.liquidDrop {
+                        AnsiblePill(run: run) { openCockpit() }
+                    } else {
+                        ClassicAnsiblePill(run: run) { openCockpit() }
+                    }
                 }
                 .padding(.bottom, 10).padding(.leading, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity,
