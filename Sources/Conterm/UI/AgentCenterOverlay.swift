@@ -2,26 +2,6 @@ import AppKit
 import CoreImage
 import SwiftUI
 
-// MARK: - Cheap panel background
-
-/// A readable, battery-cheap panel bed: a near-opaque dark card with a
-/// subtle top sheen — NO live `NSGlassEffectView`, so it never re-samples
-/// the backdrop and the roster text stays legible over the window glass.
-struct AgentPanelBackground: View {
-    var cornerRadius: CGFloat = 16
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        ZStack {
-            // Adaptive opaque bed: near-black on dark, near-white on light
-            // glass. High-contrast for the neon accents in either mode.
-            shape.fill(Theme.panelBed)
-            shape.fill(LinearGradient(colors: [Color.white.opacity(0.05), .clear],
-                                      startPoint: .top, endPoint: .center))
-            shape.strokeBorder(Theme.strokeStrong, lineWidth: 1)
-        }
-    }
-}
-
 /// Decoded brand-mark images, cached by (asset, template). A view body can
 /// re-evaluate every animation frame — the in-pane pill's mark does while an
 /// agent works — so loading the PNG inline re-reads and re-decodes it from
@@ -69,19 +49,23 @@ struct AgentBrandMark: View {
 
 // MARK: - Overlay (right rail)
 
-/// The agent command center overlay — the live roster docked to the right
-/// rail. The chrome observes nothing, so the 2-second token refresh
-/// re-renders only the row list.
+/// The agent command center overlay — the live roster as a `Drop` card
+/// docked to the right rail: masthead, a tally of who is doing what, then
+/// the agent cards. Only the masthead's context line, the tally and the row
+/// list observe the roster, so the 2-second token refresh re-renders those
+/// and leaves the card's surface alone.
 struct AgentCenterView: View {
+    /// The roster cards keep the width they have always had; the card grows
+    /// by the kit's inset on each side.
+    static var width: CGFloat { Theme.ui(444) + Drop.inset * 2 }
+
     var body: some View {
-        VStack(spacing: 0) {
-            AgentCenterHeader()
-            AgentRosterList()
+        BriefingCard(width: Self.width) {
+            VStack(spacing: 0) {
+                AgentCenterHeader()
+                AgentRosterList()
+            }
         }
-        .background(AgentPanelBackground(cornerRadius: 16))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.4), radius: 20, x: 0, y: 9)
-        .frame(width: Theme.ui(460))
         .onAppear { AgentCenter.shared.beginObserving() }
         .onDisappear { AgentCenter.shared.endObserving() }
     }
@@ -90,37 +74,111 @@ struct AgentCenterView: View {
 // MARK: - Header
 
 private struct AgentCenterHeader: View {
+    @EnvironmentObject var state: AppState
     @ObservedObject private var center = AgentCenter.shared
+    @ObservedObject private var background = BackgroundAgents.shared
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: Theme.ui(10)) {
-                AgentBanner(count: center.entries.count) {
-                    Image(systemName: "rectangle.stack.fill")
-                        .font(.system(size: Theme.ui(13), weight: .semibold))
-                        .foregroundStyle(Theme.accent)
-                }
-                Spacer(minLength: 8)
-                Text("esc")
-                    .font(.system(size: Theme.ui(10), weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, Theme.ui(6)).padding(.vertical, Theme.ui(2))
-                    .background(Capsule().fill(Theme.stroke))
-            }
-            .padding(.horizontal, Theme.ui(14))
-            .padding(.top, Theme.ui(11)).padding(.bottom, Theme.ui(10))
-
-            Rectangle()
-                .fill(Theme.stroke)
-                .frame(height: 1)
+        DropHeader(eyebrow: "Command center", title: "Agents",
+                   gem: gem, gemHelp: summary,
+                   onClose: { state.toggleAgentCenter() }) {
+            DropContext(summary)
         }
+    }
+
+    /// Amber while anyone is waiting on the user, green while anyone is
+    /// running, unlit otherwise.
+    private var gem: Color? {
+        if center.entries.contains(where: { $0.phase == .attention }) { return Drop.warn }
+        if center.entries.contains(where: { $0.phase == .working }) { return Drop.good }
+        return center.entries.isEmpty ? nil : Theme.textSecondary.opacity(0.6)
+    }
+
+    private var summary: String {
+        let live = center.entries.count
+        let bg = background.sessions.count
+        if live == 0 && bg == 0 { return "Nothing running." }
+        var parts: [String] = []
+        if live > 0 { parts.append("\(live) in pane\(live == 1 ? "" : "s")") }
+        if bg > 0 { parts.append("\(bg) in the background") }
+        return parts.joined(separator: "  ·  ")
     }
 }
 
-/// The "Agents" title lockup — restrained: the glyph, the title, and a
-/// quiet count chip. No gradient tile or neon; it should read like a clean
-/// macOS panel header, matching Conterm's glass chrome.
-private struct AgentBanner<Icon: View>: View {
+// MARK: - Live roster
+
+private struct AgentRosterList: View {
+    @EnvironmentObject var state: AppState
+    @ObservedObject private var center = AgentCenter.shared
+    @ObservedObject private var background = BackgroundAgents.shared
+
+    var body: some View {
+        // Headless background sessions keep the roster alive — a
+        // `claude --bg` run with no pane agents is the case that
+        // matters most.
+        if center.entries.isEmpty && background.sessions.isEmpty {
+            EmptyAgents()
+        } else {
+            DropBody(maxHeight: Theme.ui(520)) {
+                if !center.entries.isEmpty { tally }
+                GroupedRoster(entries: center.entries, onDrop: true) { entry in
+                    state.agentCenterOpen = false
+                    AgentCenter.shared.jump(to: entry)
+                }
+            }
+        }
+    }
+
+    /// Who is doing what, as figures: the phases that have anyone in them.
+    private var tally: some View {
+        let phases: [(AgentStatus.Phase, String)] = [
+            (.attention, "Need you"), (.working, "Working"),
+            (.ready, "Ready"), (.interrupted, "Stopped"),
+        ]
+        return HStack(alignment: .top, spacing: 34) {
+            ForEach(phases, id: \.1) { phase, label in
+                let n = center.entries.filter { $0.phase == phase }.count
+                if n > 0 {
+                    VStack(alignment: .leading, spacing: 2) {
+                        DropFigure(value: Double(n), color: agentVisual(phase).color)
+                        Text(label.uppercased())
+                            .font(Drop.mono(8.5, .medium))
+                            .kerning(1.6)
+                            .foregroundStyle(Theme.textSecondary.opacity(0.8))
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .rollUp(delay: 0.08, blurs: false)
+    }
+}
+
+/// The kit's quiet statement, with the agent mark where its symbol goes.
+private struct EmptyAgents: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            AgentBrandMark(color: Theme.textSecondary, size: 30)
+                .rollUp(delay: 0.10)
+            Text("No agents running")
+                .font(Drop.display(17, .medium))
+                .foregroundStyle(Theme.textPrimary)
+                .rollUp(delay: 0.16)
+            Text("Start Claude Code, Codex or opencode in a pane.")
+                .font(Drop.display(12, .regular))
+                .foregroundStyle(Theme.textSecondary)
+                .rollUp(delay: 0.22)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, Drop.inset)
+        .padding(.top, 30)
+        .padding(.bottom, 60)
+    }
+}
+
+/// The "Agents" title lockup for the agents sidebar and the Classic command
+/// center — restrained: the glyph, the title, and a quiet count chip.
+struct AgentBanner<Icon: View>: View {
     var count: Int
     @ViewBuilder var icon: () -> Icon
 
@@ -142,47 +200,6 @@ private struct AgentBanner<Icon: View>: View {
     }
 }
 
-// MARK: - Live roster
-
-private struct AgentRosterList: View {
-    @EnvironmentObject var state: AppState
-    @ObservedObject private var center = AgentCenter.shared
-    @ObservedObject private var background = BackgroundAgents.shared
-
-    var body: some View {
-        // Headless background sessions keep the roster alive — a
-        // `claude --bg` run with no pane agents is the case that
-        // matters most.
-        if center.entries.isEmpty && background.sessions.isEmpty {
-            EmptyAgents()
-        } else {
-            ScrollView {
-                GroupedRoster(entries: center.entries) { entry in
-                    state.agentCenterOpen = false
-                    AgentCenter.shared.jump(to: entry)
-                }
-                .padding(Theme.ui(8))
-            }
-            .frame(maxHeight: Theme.ui(460))
-        }
-    }
-}
-
-private struct EmptyAgents: View {
-    var body: some View {
-        VStack(spacing: Theme.ui(8)) {
-            AgentBrandMark(color: Theme.textSecondary, size: Theme.ui(26))
-            Text("No agents running")
-                .font(.system(size: Theme.ui(11), design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-            Text("Start Claude Code, Codex or opencode in a pane")
-                .font(.system(size: Theme.ui(10), design: .rounded))
-                .foregroundStyle(Theme.textSecondary.opacity(0.7))
-        }
-        .frame(maxWidth: .infinity, minHeight: Theme.ui(130))
-    }
-}
-
 // MARK: - Agents layout sidebar
 
 /// Full-height agent roster for the `agents` layout mode. Rather than one
@@ -192,6 +209,10 @@ private struct EmptyAgents: View {
 struct AgentSidebar: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Preferences
+
+    /// How far Liquid Drop's sidebar cards darken their glass: enough for
+    /// body text over the window's backdrop, short of the opaque Classic bed.
+    static let lensBed = 0.34
     @ObservedObject private var center = AgentCenter.shared
     @ObservedObject private var background = BackgroundAgents.shared
 
@@ -210,12 +231,18 @@ struct AgentSidebar: View {
                 AddAgentMenu()
             }
             .padding(.leading, Theme.ui(15)).padding(.trailing, Theme.ui(9)).padding(.vertical, Theme.ui(9))
-            .background(
-                Capsule(style: .continuous).fill(Theme.panelBed)
-                    .overlay(Capsule(style: .continuous)
-                        .strokeBorder(Theme.strokeStrong, lineWidth: 1))
-            )
+            .background {
+                if prefs.liquidDrop {
+                    DropLens(shape: Capsule(style: .continuous),
+                             light: prefs.lightGlass, bed: Self.lensBed)
+                } else {
+                    Capsule(style: .continuous).fill(Theme.panelBed)
+                        .overlay(Capsule(style: .continuous)
+                            .strokeBorder(Theme.strokeStrong, lineWidth: 1))
+                }
+            }
             .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
+            .modifier(SidebarArrival(index: 0))
 
             // Floating cards.
             if center.entries.isEmpty && background.sessions.isEmpty {
@@ -230,6 +257,7 @@ struct AgentSidebar: View {
                 SidebarNotificationBell()
                 Spacer(minLength: 0)
             }
+            .modifier(SidebarArrival(index: 2, edge: .bottom))
         }
         .padding(.leading, Theme.ui(12))
         .padding(.trailing, Theme.ui(8))
@@ -249,16 +277,29 @@ private struct SidebarRoster: View {
     @ObservedObject var tree: PaneTree
     let entries: [AgentCenterEntry]
 
+    private static let glowRoom: CGFloat = 20
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             GroupedRoster(entries: entries, floating: true,
                           currentPaneID: tree.activePaneID) { entry in
                 AgentCenter.shared.jump(to: entry)
             }
-            // Room so the cards' drop shadows aren't clipped by the
-            // scroll bounds.
-            .padding(.horizontal, Theme.ui(4)).padding(.vertical, Theme.ui(8))
+            // The scroll view clips, and a clipped shadow or focus glow shows
+            // as a straight edge beside the card. The content is inset by
+            // more than either reaches, and the scroll view is widened by the
+            // same amount so the cards keep their width.
+            .padding(.horizontal, Self.glowRoom + Theme.ui(4))
+            .padding(.vertical, Self.glowRoom)
         }
+        .padding(.horizontal, -Self.glowRoom)
+        // Cards dissolve at the top and bottom instead of meeting a hard line.
+        .mask(LinearGradient(stops: [.init(color: .clear, location: 0),
+                                     .init(color: .black, location: 0.025),
+                                     .init(color: .black, location: 0.975),
+                                     .init(color: .clear, location: 1)],
+                             startPoint: .top, endPoint: .bottom))
+        .padding(.vertical, -Theme.ui(6))
         .frame(maxHeight: .infinity)
     }
 }
@@ -415,14 +456,7 @@ private struct SidebarNotificationBell: View {
             .padding(.horizontal, Theme.ui(12))
             // Level with LayoutModeSwitcher (24pt segments + 3pt bed).
             .frame(height: Theme.ui(30))
-            .background(Capsule().fill(chromeFill(prefs)))
-            .overlay(
-                Capsule().strokeBorder(
-                    LinearGradient(colors: chromeEdge(prefs),
-                                   startPoint: .top, endPoint: .bottom),
-                    lineWidth: 0.5)
-                .blendMode(.plusLighter)
-            )
+            .background(ChromeLens(shape: Capsule()))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -506,14 +540,18 @@ struct LayoutModeSwitcher: View {
         // The same flat glass-lens bed the other toolbar pills wear, so it
         // reads cleanly on dark AND light glass (a hardcoded black/white
         // wash washed out in light mode).
-        .background(Capsule().fill(chromeFill(prefs)))
-        .overlay(
-            Capsule().strokeBorder(
-                LinearGradient(colors: chromeEdge(prefs),
-                               startPoint: .top, endPoint: .bottom),
-                lineWidth: 0.5)
-            .blendMode(.plusLighter)
-        )
+        .background(ChromeLens(shape: Capsule()))
+    }
+
+    /// The picked segment: a brighter lens in Classic, a small lit drop in
+    /// Liquid Drop.
+    @ViewBuilder
+    private func segmentBed(_ on: Bool) -> some View {
+        if on, prefs.liquidDrop {
+            DropLens(shape: Capsule(), lit: true, light: prefs.lightGlass)
+        } else {
+            Capsule().fill(on ? chromeFill(prefs, selected: true) : Color.clear)
+        }
     }
 
     /// Orbit is a mode of its own, so while it is up no tab layout is the
@@ -535,7 +573,7 @@ struct LayoutModeSwitcher: View {
             // point size than the padded SF symbols to read at the same weight.
             OrbitMark(color: on ? Theme.accent : Theme.textSecondary, size: Theme.ui(14))
                 .frame(width: Theme.ui(34), height: Theme.ui(24))
-                .background(Capsule().fill(on ? chromeFill(prefs, selected: true) : Color.clear))
+                .background(segmentBed(on))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -556,8 +594,7 @@ struct LayoutModeSwitcher: View {
                 // Selected segment lifts on a brighter lens (adaptive) so it
                 // reads as picked without an accent blob that goes muddy in
                 // light mode.
-                .background(Capsule().fill(on ? chromeFill(prefs, selected: true)
-                                              : Color.clear))
+                .background(segmentBed(on))
                 // Whole segment frame is the tap target: a clear-filled
                 // capsule doesn't hit-test, so the bed between glyphs needs
                 // an explicit content shape.
@@ -572,7 +609,7 @@ struct LayoutModeSwitcher: View {
 
 /// Entries grouped by worktree/branch. Headers appear only when more than
 /// one group is present (a single repo reads as a flat list).
-private struct GroupedRoster: View {
+struct GroupedRoster: View {
     let entries: [AgentCenterEntry]
     /// Floating: each card is solid + shadowed so it reads on the bare glass
     /// of the agents sidebar (vs the rail, where cards sit on a panel bed).
@@ -580,22 +617,31 @@ private struct GroupedRoster: View {
     /// Active pane of the window showing this roster; the matching card
     /// carries the focus halo. nil (the rail) draws no halo.
     var currentPaneID: UUID? = nil
+    /// On the command center's drop: group labels take the kit's eyebrow
+    /// and the cards arrive in order.
+    var onDrop: Bool = false
     var onJump: (AgentCenterEntry) -> Void
     @ObservedObject private var background = BackgroundAgents.shared
+    @EnvironmentObject private var prefs: Preferences
 
     var body: some View {
         let groups = groupedByWorktree(entries)
-        VStack(spacing: Theme.ui(floating ? 9 : 7)) {
+        let sidebarDrop = floating && prefs.liquidDrop
+        VStack(spacing: sidebarDrop ? 14 : Theme.ui(floating ? 9 : (onDrop ? 10 : 7))) {
             ForEach(groups, id: \.key) { group in
                 if groups.count > 1 {
-                    AgentGroupHeader(key: group.key, count: group.items.count)
+                    AgentGroupHeader(key: group.key, count: group.items.count,
+                                     onDrop: onDrop || sidebarDrop)
                 }
                 ForEach(group.items) { entry in
+                    let number = (entries.firstIndex { $0.id == entry.id } ?? 0) + 1
                     AgentRowView(entry: entry,
-                                 number: (entries.firstIndex { $0.id == entry.id } ?? 0) + 1,
+                                 number: number,
                                  total: entries.count,
                                  floating: floating,
                                  current: entry.id == currentPaneID) { onJump(entry) }
+                        .modifier(RosterArrival(index: number - 1, onDrop: onDrop, sidebar: floating))
+                        .transition(rowTransition)
                 }
             }
             // Sessions running outside any pane (`claude --bg`); a
@@ -605,9 +651,70 @@ private struct GroupedRoster: View {
                 !entries.contains { $0.transcriptPath?.contains(s.id) == true }
             }
             if !headless.isEmpty {
-                BackgroundSessionsBand(sessions: headless, floating: floating)
+                BackgroundSessionsBand(sessions: headless, floating: floating, onDrop: onDrop)
+                    .modifier(RosterArrival(index: entries.count, onDrop: onDrop, sidebar: floating))
+                    .transition(rowTransition)
             }
         }
+        // Liquid Drop's sidebar: an agent starting or ending buds its card
+        // in or draws it out, and the rest of the column closes up on a
+        // spring instead of jumping.
+        .animation(floating && prefs.liquidDrop ? Theme.Spring.soft : nil,
+                   value: entries.map(\.id))
+        .animation(floating && prefs.liquidDrop ? Theme.Spring.soft : nil,
+                   value: background.sessions.map(\.id))
+    }
+
+    private var rowTransition: AnyTransition {
+        guard floating, prefs.liquidDrop else { return .identity }
+        return .asymmetric(
+            insertion: .scale(scale: 0.90, anchor: .top).combined(with: .opacity),
+            removal: .scale(scale: 0.94).combined(with: .opacity))
+    }
+}
+
+
+/// Staggered arrival for the roster's cards: the command center's roll up
+/// with its drop, the agents sidebar's settle in with `SidebarArrival`.
+private struct RosterArrival: ViewModifier {
+    let index: Int
+    let onDrop: Bool
+    let sidebar: Bool
+
+    func body(content: Content) -> some View {
+        if onDrop {
+            content.rollUp(delay: 0.14 + Double(min(index, 10)) * 0.045, blurs: false)
+        } else if sidebar {
+            content.modifier(SidebarArrival(index: index + 1))
+        } else {
+            content
+        }
+    }
+}
+
+/// Liquid Drop's entrance for a piece of the agents sidebar: it settles in
+/// from `edge`, each piece a beat after the one before. One-shot on
+/// appearance — opacity, offset and scale only, nothing left running.
+/// Classic, and Reduce Motion, place the piece directly.
+struct SidebarArrival: ViewModifier {
+    @EnvironmentObject private var prefs: Preferences
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let index: Int
+    var edge: VerticalEdge = .top
+
+    @State private var arrived = false
+
+    func body(content: Content) -> some View {
+        let animated = prefs.liquidDrop && !reduceMotion
+        content
+            .opacity(arrived || !animated ? 1 : 0)
+            .offset(y: arrived || !animated ? 0 : (edge == .top ? -14 : 14))
+            .scaleEffect(arrived || !animated ? 1 : 0.96, anchor: edge == .top ? .top : .bottom)
+            .onAppear {
+                guard !arrived else { return }
+                withAnimation(.spring(response: 0.46, dampingFraction: 0.78)
+                    .delay(0.04 + Double(min(index, 8)) * 0.055)) { arrived = true }
+            }
     }
 }
 
@@ -616,27 +723,39 @@ private struct GroupedRoster: View {
 /// session's cwd; stopping runs `claude stop <id>` — the session's
 /// process ends but its conversation stays resumable.
 private struct BackgroundSessionsBand: View {
+    @EnvironmentObject private var prefs: Preferences
     let sessions: [BackgroundAgents.Session]
     var floating: Bool = false
+    var onDrop: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.ui(6)) {
-            Text(sessions.count == 1 ? "1 BACKGROUND SESSION"
-                                     : "\(sessions.count) BACKGROUND SESSIONS")
-                .font(.system(size: Theme.ui(9), weight: .bold))
-                .tracking(0.5)
-                .foregroundStyle(Theme.textSecondary.opacity(0.8))
+        let sidebarDrop = floating && prefs.liquidDrop
+        VStack(alignment: .leading, spacing: sidebarDrop ? 12 : Theme.ui(onDrop ? 9 : 6)) {
+            if onDrop || sidebarDrop {
+                DropEyebrow(sessions.count == 1 ? "1 background session"
+                                                : "\(sessions.count) background sessions")
+            } else {
+                Text(sessions.count == 1 ? "1 BACKGROUND SESSION"
+                                         : "\(sessions.count) BACKGROUND SESSIONS")
+                    .font(.system(size: Theme.ui(9), weight: .bold))
+                    .tracking(0.5)
+                    .foregroundStyle(Theme.textSecondary.opacity(0.8))
+            }
             ForEach(sessions) { session in row(session) }
         }
-        .padding(.horizontal, Theme.ui(14))
-        .padding(.vertical, Theme.ui(11))
-        .background(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(floating ? AnyShapeStyle(Theme.panelBed)
-                               : AnyShapeStyle(Theme.selectionFill.opacity(0.45)))
-                .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .strokeBorder(Theme.stroke, lineWidth: 0.75))
-        )
+        .padding(.horizontal, sidebarDrop ? 18 : Theme.ui(14))
+        .padding(.vertical, sidebarDrop ? 16 : Theme.ui(11))
+        .background {
+            let shape = RoundedRectangle(cornerRadius: sidebarDrop ? 22 : 13, style: .continuous)
+            if sidebarDrop {
+                DropLens(shape: shape, light: prefs.lightGlass, bed: AgentSidebar.lensBed)
+            } else {
+                shape
+                    .fill(floating ? AnyShapeStyle(Theme.panelBed)
+                                   : AnyShapeStyle(Theme.selectionFill.opacity(0.45)))
+                    .overlay(shape.strokeBorder(Theme.stroke, lineWidth: 0.75))
+            }
+        }
         .shadow(color: floating ? .black.opacity(0.28) : .clear,
                 radius: floating ? 9 : 0, y: floating ? 4 : 0)
     }
@@ -700,7 +819,25 @@ private struct BackgroundSessionsBand: View {
 private struct AgentGroupHeader: View {
     let key: String
     let count: Int
+    var onDrop: Bool = false
+
     var body: some View {
+        if onDrop {
+            HStack(spacing: 8) {
+                DropEyebrow(key)
+                Text("\(count)")
+                    .font(Drop.mono(9.5, .medium))
+                    .foregroundStyle(Theme.textSecondary.opacity(0.7))
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+        } else {
+            plain
+        }
+    }
+
+    private var plain: some View {
         HStack(spacing: Theme.ui(6)) {
             Image(systemName: "arrow.triangle.branch")
                 .font(.system(size: Theme.ui(9), weight: .bold))
@@ -720,6 +857,7 @@ private struct AgentGroupHeader: View {
 // MARK: - Row
 
 private struct AgentRowView: View {
+    @EnvironmentObject private var prefs: Preferences
     let entry: AgentCenterEntry
     /// 1-based position in the roster + the roster size, for the number
     /// badge that tells same-named agents apart (shown only when > 1).
@@ -733,6 +871,7 @@ private struct AgentRowView: View {
     var onJump: () -> Void
 
     @State private var reply = ""
+    @State private var hovering = false
     @FocusState private var replyFocused: Bool
     @ObservedObject private var worktree = WorktreeWatch.shared
 
@@ -746,6 +885,11 @@ private struct AgentRowView: View {
     }
 
     var body: some View {
+        if lifts { dropCard } else { card }
+    }
+
+    /// The command center's row and Classic's sidebar card.
+    private var card: some View {
         VStack(alignment: .leading, spacing: Theme.ui(11)) {
             header
             // The hero: what the agent is working on (its own session's
@@ -789,6 +933,171 @@ private struct AgentRowView: View {
         .animation(Theme.Spring.snappy, value: current)
     }
 
+    /// Liquid Drop's agents sidebar draws the card from the `Drop` kit.
+    private var lifts: Bool { floating && prefs.liquidDrop }
+
+    // MARK: Liquid Drop sidebar card
+
+    /// One agent as a lens on the sidebar's glass, set in the kit's type
+    /// with room around each part: who and where, its state, what it is
+    /// doing, what that has cost, what it changed — then, under a hairline,
+    /// the reply line. The focused pane's card is the lit lens; an agent
+    /// waiting on the user tints its glass and carries the accent edge.
+    private var dropCard: some View {
+        let shape = RoundedRectangle(cornerRadius: Self.dropCorner, style: .continuous)
+        let waiting = entry.phase == .attention
+        return VStack(alignment: .leading, spacing: 0) {
+            dropHeader
+            dropStatus.padding(.top, 13)
+            if let task = entry.usage?.task, !task.isEmpty {
+                Text(task)
+                    .font(Drop.display(13, .regular))
+                    .lineSpacing(3)
+                    .foregroundStyle(Theme.textPrimary.opacity(0.90))
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
+            }
+            dropFigures.padding(.top, 15)
+            changesRow.padding(.top, 13)
+            subAgentChildren.padding(.top, 13)
+            shellFeed.padding(.top, 13)
+            Rectangle().fill(Theme.stroke).frame(height: 0.5).padding(.top, 15)
+            dropReplyRow.padding(.top, 9)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 18)
+        .padding(.top, 17)
+        .padding(.bottom, 11)
+        .background(DropLens(shape: shape, lit: current, light: prefs.lightGlass,
+                             tint: waiting ? v.color : nil,
+                             bed: AgentSidebar.lensBed, gathers: false))
+        .overlay(alignment: .leading) {
+            if waiting {
+                Capsule().fill(v.color)
+                    .frame(width: 2.5)
+                    .padding(.vertical, Self.dropCorner)
+                    .shadow(color: v.color.opacity(0.6), radius: 4)
+            }
+        }
+        .shadow(color: .black.opacity(0.24), radius: 9, y: 4)
+        .shadow(color: current ? Theme.highlight.opacity(0.22) : .clear, radius: current ? 7 : 0)
+        .animation(Theme.Spring.snappy, value: current)
+        .animation(Theme.Spring.snappy, value: entry.phase)
+        .scaleEffect(hovering ? 1.012 : 1)
+        .offset(y: hovering ? -1 : 0)
+        .onHover { hovering = $0 }
+        .animation(Theme.Spring.snappy, value: hovering)
+    }
+
+    private static let dropCorner: CGFloat = 22
+
+    // [mark+#] name / where · model ........................ jump
+    private var dropHeader: some View {
+        HStack(alignment: .center, spacing: 11) {
+            AgentMark(tool: entry.tool, size: 22)
+                .overlay(alignment: .bottomTrailing) {
+                    if total > 1 { numberBadge.offset(x: 4, y: 3) }
+                }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.tool.displayName)
+                    .font(Drop.title(15))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                if let line = dropContextLine {
+                    Text(line)
+                        .font(Drop.mono(10))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            Spacer(minLength: 6)
+            jumpButton
+        }
+    }
+
+    private var dropContextLine: String? {
+        let parts = [context, shortModel(entry.usage?.model)].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
+    }
+
+    /// State on its own line: the gem re-blooms whenever the phase changes.
+    private var dropStatus: some View {
+        HStack(spacing: 8) {
+            DropGem(color: v.color).id(entry.phase)
+            Text(v.label.uppercased())
+                .font(Drop.mono(9, .medium))
+                .kerning(1.8)
+                .foregroundStyle(v.color)
+                .contentTransition(.opacity)
+            Spacer(minLength: 6)
+            if entry.usage?.lastActivity != nil {
+                TimelineView(.periodic(from: Date(), by: 30)) { _ in
+                    Text(recencyString)
+                        .font(Drop.mono(9.5))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+        }
+    }
+
+    /// Spend as small figures over tracked labels, a column each.
+    @ViewBuilder
+    private var dropFigures: some View {
+        if let u = entry.usage, u.totalTokens > 0 {
+            HStack(alignment: .top, spacing: 0) {
+                dropFigure(money(u.estCost), "cost")
+                dropFigure(compactTokens(u.totalTokens), "tokens")
+                if let rate = burnRate(u) { dropFigure(rate, "per hour") }
+            }
+        }
+    }
+
+    private func dropFigure(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value)
+                .font(Drop.display(13.5, .medium))
+                .monospacedDigit()
+                .foregroundStyle(Theme.textPrimary.opacity(0.92))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(label.uppercased())
+                .font(Drop.mono(8, .medium))
+                .kerning(1.4)
+                .foregroundStyle(Theme.textSecondary.opacity(0.75))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The reply line sits bare on the card under its hairline.
+    private var dropReplyRow: some View {
+        HStack(spacing: 7) {
+            TextField("Reply…", text: $reply)
+                .textFieldStyle(.plain)
+                .font(Drop.display(12.5, .regular))
+                .foregroundStyle(Theme.textPrimary)
+                .focused($replyFocused)
+                .onSubmit(send)
+                .padding(.vertical, 6)
+            if reply.isEmpty {
+                if entry.tool == .claude { searchButton }
+                phaseActions
+            } else {
+                Button(action: send) {
+                    Text("Send")
+                        .font(Drop.display(11.5, .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Capsule().fill(AgentColor.working))
+                }
+                .buttonStyle(.plain)
+                .transition(.liquidSwap)
+            }
+        }
+        .animation(Theme.Spring.snappy, value: reply.isEmpty)
+    }
+
     /// Two concentric strokes matching the pane tile's focus rim: a wide
     /// soft band under a bright hairline. Each stroke's corner radius sheds
     /// its inset — a rounded rect held at full radius on an inset frame
@@ -808,7 +1117,11 @@ private struct AgentRowView: View {
     @ViewBuilder
     private var cardBackground: some View {
         let shape = RoundedRectangle(cornerRadius: 13, style: .continuous)
-        if floating {
+        if floating, prefs.liquidDrop {
+            // A darkened lens; the focused card is the lit one.
+            DropLens(shape: shape, lit: current, light: prefs.lightGlass,
+                     bed: AgentSidebar.lensBed, gathers: false)
+        } else if floating {
             // Solid card so the text reads on the window glass behind it.
             shape.fill(Theme.panelBed)
                 .overlay(shape.strokeBorder(Theme.strokeStrong, lineWidth: 0.75))
@@ -948,16 +1261,17 @@ private struct AgentRowView: View {
 
     private func metricsLine(_ u: AgentUsage) -> String {
         var parts = [money(u.estCost), compactTokens(u.totalTokens) + " tok"]
-        // Burn rate once a session is old enough for the division to
-        // mean something (young sessions read as absurd $/h spikes).
-        if let start = u.firstActivity, u.estCost > 0 {
-            let hours = Date().timeIntervalSince(start) / 3600
-            if hours > 0.25 {
-                parts.append(money(u.estCost / hours) + "/h")
-            }
-        }
+        if let rate = burnRate(u) { parts.append(rate + "/h") }
         if let m = shortModel(u.model) { parts.append(m) }
         return parts.joined(separator: "  ·  ")
+    }
+
+    /// Spend per hour, once a session is old enough for the division to
+    /// mean something (young sessions read as absurd spikes).
+    private func burnRate(_ u: AgentUsage) -> String? {
+        guard let start = u.firstActivity, u.estCost > 0 else { return nil }
+        let hours = Date().timeIntervalSince(start) / 3600
+        return hours > 0.25 ? money(u.estCost / hours) : nil
     }
 
     /// Live sub-agents (Task tool) this session spawned, as quiet child rows
