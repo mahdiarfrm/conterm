@@ -1,12 +1,11 @@
 import AppKit
 import SwiftUI
 
-/// A tab rendered as a *stacked-glass card* — three visible layers:
-///   1. a dark vibrancy base so the pill carves itself out of the chrome
-///   2. an ultra-thin material slab in the middle (the "glass")
-///   3. a top inner highlight stroke (the "wet" light catching the edge)
-/// Selected tabs gain an accent fill behind the glass, lifted by a soft
-/// outer glow. Number badge is a keycap-shaped chip on the right.
+/// A tab on whatever surface carries it. Selection is not drawn here —
+/// TabBar owns a single travelling selection that glides between pills.
+/// Liquid Drop: resting tabs are a faint wash and the selection is one
+/// small glass drop. Classic: a flat translucent lens with a wet top edge
+/// under a tinted glow. Number badge is a keycap-shaped chip on the right.
 struct TabPill: View {
     @ObservedObject var tab: Tab
     var index: Int
@@ -248,18 +247,25 @@ struct TabPill: View {
         ))
     }
 
-    // MARK: - Background (three visible layers)
+    // MARK: - Background
 
-    /// Horizontal: a flat tinted lens on the window glass sheet. Vertical:
-    /// the v2.0.0 frosted-glass card — a faint dark base for contrast on
-    /// bright desktops, then `.ultraThinMaterial` that lifts in on hover /
-    /// selection so the pill reads as translucent glass, not an opaque slab.
-    /// Either way the travelling accent glow (TabBar) and `pillTrim` supply
-    /// the selection cue on top.
+    /// Liquid Drop: a resting wash only; the selection is TabBar's drop.
+    /// Classic horizontal: a flat tinted lens on the window glass sheet.
+    /// Classic vertical: bare rows, with an opaque bed, top sheen and border
+    /// on the selected card. In Classic the travelling accent glow (TabBar)
+    /// and `pillTrim` supply the selection cue on top.
     @ViewBuilder
     private var pillBackground: some View {
         let corner = Theme.pillCorner
-        if compact {
+        if prefs.liquidDrop {
+            // Resting tabs are nearly bare on their surface: a faint wash
+            // marks the target (none in the sidebar's list), hover lifts it.
+            // The selected tab draws nothing here — its body is the
+            // travelling drop TabBar lays under it.
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .fill(Theme.selectionFill)
+                .opacity(isSelected ? 0 : (hovering ? 1 : (isSessionCard ? 0 : 0.45)))
+        } else if compact {
             // Slim row, but each tab still reads as a bounded box: a faint
             // resting bed + hairline edge so the boundary never vanishes —
             // even mid-switch when the travelling selection glow has slid
@@ -472,6 +478,10 @@ struct TabPill: View {
             .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
             .lineLimit(1)
             .truncationMode(.tail)
+            // Under Liquid Drop's selection the title sits a touch larger,
+            // as through a lens.
+            .scaleEffect(prefs.liquidDrop && isSelected ? 1.04 : 1, anchor: .leading)
+            .animation(Theme.Spring.snappy, value: isSelected)
     }
 
     /// Keycap-style ⌘N chip. Shown when selected/hovered, within the
@@ -485,8 +495,12 @@ struct TabPill: View {
                 .padding(.horizontal, Theme.ui(5)).padding(.vertical, Theme.ui(2))
                 .background(
                     ZStack {
-                        Capsule().fill(chromeFill(prefs))
-                        Capsule().stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                        if prefs.liquidDrop {
+                            Capsule().fill(Theme.selectionFill)
+                        } else {
+                            Capsule().fill(chromeFill(prefs))
+                            Capsule().stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                        }
                     }
                 )
                 .opacity(hovering || isSelected ? 1 : 0.0)

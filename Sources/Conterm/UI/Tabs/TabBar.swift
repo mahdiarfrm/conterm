@@ -17,6 +17,7 @@ struct TabBar: View {
     /// "selected" cue — so it's a single moving object, not each pill
     /// independently flipping a static highlight.
     @Namespace private var selectionNS
+    @ObservedObject private var dropReadiness = LiquidDropReadiness.shared
     /// Namespace for the macOS 26 fused-toolbar union — stats widget,
     /// notification bell, search, ⌘K (and AutoHide toggle in vertical
     /// mode) share this id so `GlassEffectContainer` + `glassEffectUnion`
@@ -191,6 +192,7 @@ struct TabBar: View {
                     horizontalGroupTray(group, widths: widths)
                 }
             }
+            .backgroundPreferenceValue(TabSelectionFrameKey.self) { dropSelection($0) }
             .animation(Theme.Spring.soft, value: state.selectedID)
             .animation(Theme.Spring.soft, value: state.tabs.map(\.id))
             .animation(Theme.Spring.soft, value: state.tabs.map(\.groupID))
@@ -324,6 +326,7 @@ struct TabBar: View {
                             .modifier(RevealCascade(revealed: revealed,
                                                     row: ungrouped.count + tabGroups.groups.count))
                     }
+                    .backgroundPreferenceValue(TabSelectionFrameKey.self) { dropSelection($0) }
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
                 .animation(Theme.Spring.soft, value: state.selectedID)
@@ -366,7 +369,11 @@ struct TabBar: View {
                 // plate's 34pt corner down to ~the tab cards' 18pt.
                 .padding(.horizontal, Theme.ui(14))
                 .padding(.vertical, Theme.ui(14))
-                .background(sidebarPlate)
+                // Docked, the rows land on a raised plate over the window's
+                // glass. Floating in Liquid Drop, the panel is a `LiquidDrop`
+                // and the rows sit directly on it — a plate would wall off
+                // the refraction. Classic floats the plate on its card.
+                .background { if !(floatingPanel && prefs.liquidDrop) { sidebarPlate } }
             }
             .animation(Theme.Spring.snappy, value: prefs.enabledWidgets)
             // The base card's margin around the plate — the visible frame.
@@ -383,11 +390,45 @@ struct TabBar: View {
         .frame(maxHeight: .infinity)
     }
 
-    /// The raised inner surface. A clear step lighter than the base card
+    /// The surface the docked sidebar's rows sit on.
+    @ViewBuilder
+    private var sidebarPlate: some View {
+        if prefs.liquidDrop { dropPlate } else { classicPlate }
+    }
+
+    /// Liquid Drop's docked panel: the same Metal drop as the sliding one,
+    /// as a sheet — no panes lie under a docked sidebar, so there is
+    /// nothing to refract; the body lets the window's glass through and
+    /// the bevel carries the optics on light alone. Static once open. The
+    /// margin is trimmed so the layer stays clear of the traffic lights
+    /// and of the pane beside it. Until the pipeline is built — and
+    /// without Metal — the kit's lens stands in.
+    @ViewBuilder
+    private var dropPlate: some View {
+        if dropReadiness.ready {
+            let insets = EdgeInsets(top: 6, leading: 12, bottom: 12, trailing: 12)
+            LiquidDrop(open: true, cornerRadius: 34, light: prefs.lightGlass,
+                       flat: NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
+                       sheet: true, bevel: 18, calm: true, dispersion: 0.6,
+                       bleedInsets: insets, sceneDim: 0)
+                .padding(.top, -insets.top)
+                .padding(.leading, -insets.leading)
+                .padding(.bottom, -insets.bottom)
+                .padding(.trailing, -insets.trailing)
+        } else {
+            DropLens(shape: RoundedRectangle(cornerRadius: 34, style: .continuous),
+                     light: prefs.lightGlass, bed: prefs.lightGlass ? 0.30 : 0.26)
+                .shadow(color: .black.opacity(prefs.lightGlass ? 0.14 : 0.36),
+                        radius: 16, x: 0, y: 6)
+                .onAppear { dropReadiness.request() }
+        }
+    }
+
+    /// Classic's raised inner surface. A clear step lighter than the base card
     /// and nearly opaque, so it casts a real shadow into the gap between
     /// the two layers; its own top sheen and a hairline rim make it read
     /// as material catching light, not a flat inset rectangle.
-    private var sidebarPlate: some View {
+    private var classicPlate: some View {
         let corner: CGFloat = 34
         let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
         let rim = prefs.lightGlass
@@ -506,11 +547,24 @@ struct TabBar: View {
             .padding(Theme.ui(3))
             .background(
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .fill(color.opacity(0.12))
+                    .fill(prefs.liquidDrop
+                          ? LinearGradient(colors: [color.opacity(0.16), color.opacity(0.07)],
+                                           startPoint: .top, endPoint: .bottom)
+                          : LinearGradient(colors: [color.opacity(0.12), color.opacity(0.12)],
+                                           startPoint: .top, endPoint: .bottom))
             )
+            // Liquid Drop: a rim lit from the top-leading corner, like the
+            // drop's — the group colour where the light lands, gone by the
+            // far corner. Classic: an even stroke.
             .overlay(
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
-                    .strokeBorder(color.opacity(0.35), lineWidth: 1)
+                    .strokeBorder(
+                        prefs.liquidDrop
+                            ? LinearGradient(colors: [color.opacity(0.50), color.opacity(0.08)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing)
+                            : LinearGradient(colors: [color.opacity(0.35), color.opacity(0.35)],
+                                             startPoint: .top, endPoint: .bottom),
+                        lineWidth: 1)
             )
             .contextMenu {
                 Button("Rename / Color…") { state.beginRenameGroup(group.id) }
@@ -559,7 +613,11 @@ struct TabBar: View {
                 ForEach(groupTabs) { tab in
                     HStack(spacing: Theme.ui(8)) {
                         RoundedRectangle(cornerRadius: 1, style: .continuous)
-                            .fill(color.opacity(0.4))
+                            .fill(LinearGradient(
+                                colors: prefs.liquidDrop
+                                    ? [color.opacity(0.55), color.opacity(0.12)]
+                                    : [color.opacity(0.4), color.opacity(0.4)],
+                                startPoint: .top, endPoint: .bottom))
                             .frame(width: Theme.ui(2))
                             .padding(.vertical, Theme.ui(3))
                         pillCell(for: tab, inGroupFolder: true, draggable: true)
@@ -626,7 +684,23 @@ struct TabBar: View {
         // minimum — re-expanding the toolbar would then grow the whole
         // window instead of compressing the pills.
         .frame(idealWidth: width, maxWidth: width)
-        .background { selectionGlow(selected, compact: compact) }
+        // Classic's glow travels by matchedGeometry; Liquid Drop's drop is
+        // drawn once by the strip, under the pill reported here.
+        .background { if !prefs.liquidDrop { selectionGlow(selected, compact: compact) } }
+        .anchorPreference(key: TabSelectionFrameKey.self, value: .bounds) {
+            selected && prefs.liquidDrop ? $0 : nil
+        }
+    }
+
+    /// Liquid Drop's selection, laid under a strip of pills.
+    private func dropSelection(_ anchor: Anchor<CGRect>?) -> some View {
+        GeometryReader { geo in
+            if let anchor {
+                TabDropSelection(target: geo[anchor], tint: selectionColor,
+                                 light: prefs.lightGlass,
+                                 sidebar: orientation == .vertical)
+            }
+        }
     }
 
     /// The travelling glow. Only the selected pill renders it; because
@@ -871,6 +945,9 @@ private struct ActionBarGlass: ViewModifier {
         } else {
             // Flat capsule — a solid bed, or a tinted lens on the window
             // glass sheet (see LiquidGlass `chromeFill`). Never its own glass.
+            if prefs.liquidDrop, !solid {
+                content.background(ChromeLens(shape: Capsule(style: .continuous)))
+            } else {
             content
                 .background(Capsule(style: .continuous)
                     .fill(solid ? Theme.tabBed : chromeFill(prefs)))
@@ -883,6 +960,7 @@ private struct ActionBarGlass: ViewModifier {
                         .blendMode(.plusLighter)
                         .allowsHitTesting(false)
                 )
+            }
         }
     }
 }

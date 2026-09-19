@@ -35,7 +35,7 @@ struct SystemStatsWidget: View {
         let cpu = prefs.statsShowCPU
         let mem = prefs.statsShowMemory
         let net = prefs.statsShowNetwork
-        HStack(spacing: compact ? 6 : 8) {
+        HStack(spacing: compact ? 5 : 8) {
             if cpu {
                 metricChip(symbol: "cpu", value: stats.cpuPercent,
                            history: stats.cpuHistory)
@@ -75,7 +75,7 @@ struct SystemStatsWidget: View {
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(Theme.textSecondary)
             Sparkline(samples: history)
-                .frame(width: compact ? 16 : 20, height: 11)
+                .frame(width: compact ? 14 : 20, height: 11)
                 .foregroundStyle(Theme.textSecondary)
             Text(String(format: "%.0f%%", min(99, max(0, value))))
                 .font(.system(size: 11, weight: .semibold,
@@ -86,7 +86,7 @@ struct SystemStatsWidget: View {
                 // change the pill's size, or every sample relayouts the
                 // whole tab-bar HStack (a real idle-CPU cost seen in
                 // the sample).
-                .frame(width: 30, alignment: .trailing)
+                .frame(width: compact ? 26 : 30, alignment: .trailing)
         }
     }
 
@@ -108,7 +108,7 @@ struct SystemStatsWidget: View {
                                       design: .rounded))
                         .monospacedDigit()
                 }
-                .frame(width: 44, alignment: .trailing)
+                .frame(width: compact ? 38 : 44, alignment: .trailing)
                 HStack(spacing: 2) {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 6.5, weight: .bold))
@@ -117,7 +117,7 @@ struct SystemStatsWidget: View {
                                       design: .rounded))
                         .monospacedDigit()
                 }
-                .frame(width: 44, alignment: .trailing)
+                .frame(width: compact ? 38 : 44, alignment: .trailing)
             }
             .foregroundStyle(Theme.textPrimary)
         }

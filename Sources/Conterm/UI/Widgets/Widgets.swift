@@ -138,7 +138,10 @@ private struct WidgetFlow: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews,
                       cache: inout ()) -> CGSize {
         let lines = self.lines(subviews, width: proposal.width ?? .infinity)
-        let width = lines.map(\.width).max() ?? 0
+        // Never wider than proposed: a widget too wide for the column
+        // overhangs its own line instead of widening the whole sidebar
+        // stack, which would shift every row off-centre.
+        let width = min(lines.map(\.width).max() ?? 0, proposal.width ?? .infinity)
         let height = lines.map(\.height).reduce(0, +)
             + spacing * CGFloat(max(lines.count - 1, 0))
         return CGSize(width: width, height: height)
