@@ -7,6 +7,15 @@ import SwiftUI
 ///
 /// Arrow keys + Enter + Esc throughout. Esc unwinds one level
 /// (edit → list → commands → closed).
+///
+/// This type owns the palette's state and logic once; its look comes in
+/// two interface styles, picked by `prefs.liquidDrop`:
+///  - Liquid Drop — Spotlight's proportions (`PaletteMetrics`): a capsule
+///    field and, a gap below it, a results panel that hugs its rows. Each
+///    is its own `LiquidDrop` (`PaletteSurface`); `PalettePresenter`
+///    sequences them.
+///  - Classic — two `PaletteBubble` panels and the Classic rows
+///    (`UI/Classic/ClassicCommandPalette*.swift`).
 struct CommandPalette: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Preferences
@@ -41,35 +50,47 @@ struct CommandPalette: View {
     @State var cachedSettingsItems: [SettingsItem] = []
 
     @EnvironmentObject var tabGroups: TabGroupStore
+    /// Shared by every row so the selection glides (see `paletteRow`).
+    @Namespace var selection
+    @Environment(\.liquidRevealed) var surfaceReady
 
     var body: some View {
-        // Two detached glass bubbles: a thick input bar on top and
-        // the results panel below, separated by a gap rather than an
-        // in-panel divider. At rest, a strip of learned suggestion
-        // bubbles floats between them.
-        VStack(spacing: 10) {
+        // Two separate surfaces: the field on top and the results panel a
+        // gap below. At rest, a strip of learned suggestions floats between
+        // them.
+        let liquid = prefs.liquidDrop
+        VStack(spacing: liquid ? PaletteMetrics.gap : 10) {
             topBar
             if state.paletteMode == .commands && query.isEmpty {
                 suggestionStrip
-                    .padding(.vertical, 2)
+                    .padding(.vertical, liquid ? 0 : 2)
                     .transition(.opacity)
             }
             contentPanel
         }
-        .frame(maxWidth: 600)
+        .frame(minWidth: liquid ? PaletteMetrics.width : nil,
+               maxWidth: liquid ? PaletteMetrics.width : 600)
+        .environment(\.paletteSelection, selection)
         .onAppear {
             query = ""; state.paletteFocusedIndex = 0
             appeared = false
             // Focus the field on the next runloop turn — claiming it
             // synchronously races the field's mount and loses, leaving
             // the bar deaf until clicked. The delayed retry covers the
-            // slower first present of the panel.
+            // slower first present of the panel. The field is live from
+            // here on; only its pixels wait for the drop.
             DispatchQueue.main.async {
-                appeared = true
                 queryFocused = true
+                // Classic panels are there from the first frame, so the
+                // rows cascade at once.
+                if !prefs.liquidDrop { appeared = true }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 queryFocused = true
+            }
+            // On a drop, rows cascade once the panel under them has formed.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                appeared = true
             }
             if state.paletteMode == .sshHosts { refreshSSHRowsIfNeeded() }
             // Commands mode searches across hosts + cwd files too.
@@ -80,7 +101,12 @@ struct CommandPalette: View {
             // Mode change resets query + focus.
             query = ""
             state.paletteFocusedIndex = 0
-            DispatchQueue.main.async { queryFocused = true }
+            // Liquid Drop replays the row cascade on a mode change.
+            if prefs.liquidDrop { appeared = false }
+            DispatchQueue.main.async {
+                queryFocused = true
+                appeared = true
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 queryFocused = true
             }
@@ -153,8 +179,15 @@ struct CommandPalette: View {
         case .noteEdit:
             EmptyView()
         case .groups:
-            groupsHeader
-                .modifier(PaletteBubble(cornerRadius: 27, darken: 0.14))
+            if prefs.liquidDrop {
+                PaletteSurface(cornerRadius: PaletteMetrics.fieldHeight / 2, bevel: 12,
+                               formDelay: 0.08) {
+                    groupsHeader
+                }
+            } else {
+                classicGroupsHeader
+                    .modifier(PaletteBubble(cornerRadius: 27, darken: 0.14))
+            }
         case .commands:
             barBubble("Search commands, files, hosts, history… or math", "magnifyingglass")
         case .notesList:
@@ -172,38 +205,58 @@ struct CommandPalette: View {
         }
     }
 
+    @ViewBuilder
     func barBubble(_ placeholder: String, _ icon: String) -> some View {
-        searchBar(placeholder: placeholder, icon: icon)
-            .modifier(PaletteBubble(cornerRadius: 27, darken: 0.14))
+        if prefs.liquidDrop {
+            PaletteSurface(cornerRadius: PaletteMetrics.fieldHeight / 2, bevel: 12,
+                           formDelay: 0.08) {
+                searchBar(placeholder: placeholder, icon: icon)
+            }
+        } else {
+            classicSearchBar(placeholder: placeholder, icon: icon)
+                .modifier(PaletteBubble(cornerRadius: 27, darken: 0.14))
+        }
     }
 
     /// Results bubble. In commands mode an unmatched query collapses
     /// it entirely, leaving the bar floating alone.
     @ViewBuilder var contentPanel: some View {
         if !(state.paletteMode == .commands && filteredCommands.isEmpty) {
-            VStack(spacing: 0) {
-                switch state.paletteMode {
-                case .commands:
-                    commandsView
-                case .notesList:
-                    notesListView
-                case .noteEdit(let id):
-                    noteEditView(id: id)
-                case .sessions:
-                    sessionsView
-                case .agents:
-                    agentsView
-                case .shellHistory:
-                    shellHistoryView
-                case .sshHosts:
-                    sshHostsView
-                case .clipboard:
-                    clipboardView
-                case .groups:
-                    groupsView
+            if prefs.liquidDrop {
+                PaletteSurface(cornerRadius: PaletteMetrics.panelRadius, bevel: 18,
+                               fadesEdges: true) {
+                    modeContent
                 }
+            } else {
+                modeContent
+                    .modifier(PaletteBubble(cornerRadius: 26))
             }
-            .modifier(PaletteBubble(cornerRadius: 26))
+        }
+    }
+
+    /// The current mode's list or editor, without its surface.
+    var modeContent: some View {
+        VStack(spacing: 0) {
+            switch state.paletteMode {
+            case .commands:
+                commandsView
+            case .notesList:
+                notesListView
+            case .noteEdit(let id):
+                noteEditView(id: id)
+            case .sessions:
+                sessionsView
+            case .agents:
+                agentsView
+            case .shellHistory:
+                shellHistoryView
+            case .sshHosts:
+                sshHostsView
+            case .clipboard:
+                clipboardView
+            case .groups:
+                groupsView
+            }
         }
     }
 
@@ -268,51 +321,132 @@ struct CommandPalette: View {
     // MARK: - Building blocks
 
     func searchBar(placeholder: String, icon: String) -> some View {
-        HStack(spacing: 10) {
-            if icon == RobotGlyph.iconName {
-                RobotGlyph(color: Theme.textSecondary, size: 17)
-            } else {
-                Image(systemName: icon)
-                    .foregroundStyle(Theme.textSecondary)
-                    .font(.system(size: 15, weight: .medium))
-            }
-            NeonCaretField(text: $query, placeholder: placeholder, fontSize: 16,
+        // Spotlight's order: the text leads from the inset, the mode's glyph
+        // sits in the trailing slot.
+        HStack(spacing: 12) {
+            NeonCaretField(text: $query, placeholder: placeholder,
+                           fontSize: PaletteMetrics.fieldTextSize,
                            lightBackground: prefs.lightGlass)
-                .frame(height: 24)
-            Spacer()
-            switch state.paletteMode {
-            case .commands:
-                keyHint("esc")
-            case .notesList:
-                HStack(spacing: 4) {
-                    keyHint("⌘⌫ delete")
-                    keyHint("esc")
+                .frame(height: 26)
+            Spacer(minLength: 0)
+            modeKeyHints
+            Group {
+                if icon == RobotGlyph.iconName {
+                    RobotGlyph(color: Theme.textSecondary, size: 18)
+                } else {
+                    Image(systemName: icon)
+                        .foregroundStyle(Theme.textSecondary)
+                        .font(.system(size: 16, weight: .regular))
                 }
-            case .noteEdit:
-                EmptyView()
-            case .sessions:
-                keyHint("esc")
-            case .agents:
-                keyHint("esc")
-            case .shellHistory:
-                keyHint("esc")
-            case .sshHosts:
-                keyHint("esc")
-            case .clipboard:
-                keyHint("esc")
-            case .groups:
+            }
+            .frame(width: 28)
+        }
+        .padding(.leading, PaletteMetrics.fieldInset)
+        .padding(.trailing, 22)
+        .frame(height: PaletteMetrics.fieldHeight)
+    }
+
+    /// The key hints the current mode shows at the bar's trailing edge.
+    @ViewBuilder var modeKeyHints: some View {
+        switch state.paletteMode {
+        case .notesList:
+            HStack(spacing: 4) {
+                keyHint("⌘⌫ delete")
                 keyHint("esc")
             }
+        case .noteEdit:
+            EmptyView()
+        case .commands, .sessions, .agents, .shellHistory, .sshHosts, .clipboard, .groups:
+            keyHint("esc")
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
     }
 
     func keyHint(_ s: String) -> some View {
-        Text(s)
-            .font(.system(size: 10, weight: .medium, design: .rounded))
+        let liquid = prefs.liquidDrop
+        return Text(s)
+            .font(liquid ? Drop.mono(10.5, .medium)
+                         : .system(size: 10, weight: .medium, design: .rounded))
             .foregroundStyle(Theme.textSecondary)
-            .padding(.horizontal, 6).padding(.vertical, 2)
+            .padding(.horizontal, liquid ? 8 : 6).padding(.vertical, liquid ? 3 : 2)
             .background(Capsule().fill(Theme.stroke))
+    }
+
+    // MARK: - Style-dependent metrics
+
+    /// Inset of a mode's list inside its panel.
+    var panelPadding: CGFloat { prefs.liquidDrop ? PaletteMetrics.panelPadding : 8 }
+    /// Height a mode's list may reach before it scrolls.
+    var listMaxHeight: CGFloat { prefs.liquidDrop ? PaletteMetrics.listMaxHeight : 360 }
+}
+
+// MARK: - Presenter
+
+/// Mounts the palette over a dim and sequences its drops the way
+/// `BriefingPresenter` does for cards: mount closed for a frame, open, let
+/// the content through once the drops have formed; on dismissal hide the
+/// content, let the drops collapse, unmount. The field is mounted — and
+/// first responder — from the first frame, so keys typed while the drop is
+/// still forming land in the query.
+struct PalettePresenter: View {
+    @EnvironmentObject private var state: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var mounted = false
+    @State private var open = false
+    @State private var revealed = false
+    /// Bumped on every open/close so a deferred step can't act on a later one.
+    @State private var generation = 0
+    /// Identity of the mounted palette. A reopen during the collapse gets a
+    /// fresh palette (query reset, focus reclaimed) instead of the dying one.
+    @State private var session = 0
+
+    var body: some View {
+        Group {
+            if mounted {
+                ZStack {
+                    Color.black.opacity(PaletteMetrics.sceneDim)
+                        .ignoresSafeArea()
+                        .onTapGesture { state.togglePalette() }
+                        .opacity(open ? 1 : 0)
+                        .animation(.easeOut(duration: 0.2), value: open)
+                    VStack {
+                        CommandPalette()
+                            .id(session)
+                            .environment(\.liquidDropOpen, open)
+                            .environment(\.liquidRevealed, revealed)
+                            .padding(.top, 96)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .onAppear { if state.paletteOpen { present() } }
+        .onChange(of: state.paletteOpen) { _, isOpen in
+            if isOpen { present() } else { dismiss() }
+        }
+    }
+
+    private func present() {
+        generation += 1
+        let gen = generation
+        session += 1
+        mounted = true
+        revealed = false
+        DispatchQueue.main.async {
+            if gen == generation { open = true }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.04 : 0.10)) {
+            if gen == generation { revealed = true }
+        }
+    }
+
+    private func dismiss() {
+        generation += 1
+        let gen = generation
+        revealed = false
+        open = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+            if gen == generation { mounted = false }
+        }
     }
 }

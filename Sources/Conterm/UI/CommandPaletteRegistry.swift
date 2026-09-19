@@ -44,9 +44,9 @@ extension CommandPalette {
                         }
                     }
                 }
-                .padding(8)
+                .padding(panelPadding)
             }
-            .frame(maxHeight: 360)
+            .frame(maxHeight: listMaxHeight)
             .onChange(of: state.paletteFocusedIndex) { _, i in
                 withAnimation(.easeOut(duration: 0.12)) {
                     proxy.scrollTo("cmd-\(i)", anchor: .center)
@@ -317,75 +317,48 @@ extension CommandPalette {
         }
     }
 
-    /// One glass tray of the five learned picks, sitting between the
-    /// search bar and the results panel. The caption is a left-hand
-    /// cell rather than a header row, so the tray stays exactly one
-    /// segment tall. ←/→ walk the segments; ↓ drops into the list.
+    /// The learned picks on their own drop, between the search bar and the
+    /// results panel: a caption over a wrapping row of chips. ←/→ walk the
+    /// chips; ↓ drops into the list.
     @ViewBuilder var suggestionStrip: some View {
+        if prefs.liquidDrop { liquidSuggestionStrip } else { classicSuggestionStrip }
+    }
+
+    @ViewBuilder private var liquidSuggestionStrip: some View {
         let rows = suggestionRows()
         if !rows.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                // Header pinned top-left: the sparkles glyph and a label
-                // whose letters roll up out of a blur, clock-digit style.
-                // Each element reveals itself, so there's no container-wide
-                // animation fighting the per-circle ones.
-                HStack(spacing: 6) {
-                    RollUpReveal(delay: 0.04) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(
-                                LinearGradient(colors: [Theme.highlight, Theme.accentOnDark],
-                                               startPoint: .top, endPoint: .bottom))
-                            .shadow(color: Theme.accentOnDark.opacity(0.5), radius: 4)
-                    }
-                    // Fixed-light over the bare terminal (no panel bed). A
-                    // legibility shadow keeps it readable over a bright
-                    // terminal too, where plain white would wash out.
-                    RollUpText(
-                        "Suggestions",
-                        font: .system(size: 11, weight: .semibold, design: .rounded),
-                        color: Color.white.opacity(0.7),
-                        startDelay: 0.10)
-                    .shadow(color: .black.opacity(0.55), radius: 2.5)
-                }
-                .padding(.leading, 6)
-
-                // Each pick is its own glass circle in an equal-width cell,
-                // so the row spreads evenly across the palette; each rolls
-                // up out of a blur, staggered down the row.
-                HStack(spacing: 6) {
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { i, cmd in
-                        CircleSuggestion(
-                            command: cmd,
-                            index: i,
-                            isFocused: state.paletteTrayFocused
-                                && state.paletteTrayIndex == i
-                        ) {
-                            runCommand(cmd)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .onHover { hovering in
-                            if hovering && state.paletteHoverArmed {
-                                state.paletteTrayFocused = true
-                                state.paletteTrayIndex = i
+            PaletteSurface(cornerRadius: 28, bevel: 16, formDelay: 0.12) {
+                VStack(alignment: .leading, spacing: 12) {
+                    DropEyebrow("Suggestions")
+                        .rollUp(delay: 0.04, blurs: false)
+                    // Learned picks as chips with their full titles, wrapping
+                    // onto as many lines as they need. The tray's keyboard
+                    // focus walks them in reading order.
+                    DropFlow(spacing: 7) {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { i, cmd in
+                            CircleSuggestion(
+                                command: cmd,
+                                index: i,
+                                isFocused: state.paletteTrayFocused
+                                    && state.paletteTrayIndex == i
+                            ) {
+                                runCommand(cmd)
+                            }
+                            .onHover { hovering in
+                                if hovering && state.paletteHoverArmed {
+                                    state.paletteTrayFocused = true
+                                    state.paletteTrayIndex = i
+                                }
                             }
                         }
                     }
                 }
+                .padding(.horizontal, 24)
+                .padding(.top, 18)
+                .padding(.bottom, 20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            // Soft dark scrim under the fixed-light header + labels so they
-            // stay legible over a bright terminal, where the shadow alone
-            // wasn't enough. Feathered by its own shadow → a glow-bed, not a
-            // hard box; invisible over a dark terminal.
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.black.opacity(0.34))
-                    .shadow(color: .black.opacity(0.3), radius: 12)
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
         }
     }
 

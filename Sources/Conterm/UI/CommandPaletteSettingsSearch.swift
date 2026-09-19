@@ -76,8 +76,11 @@ extension CommandPalette {
             })
         }
 
-        return [
+        var items: [SettingsItem] = [
             // Appearance
+            toggle("interfaceStyle", "Liquid Drop interface",
+                   "design style classic glass look refract", .appearance, "drop.halffull",
+                   prefs.liquidDrop) { prefs.interfaceStyle = $0 ? .liquidDrop : .classic },
             open("theme", "Theme", "colors palette swatch dark light scheme",
                  .appearance, "paintpalette.fill"),
             toggle("themeFromConfig", "Use theme from terminal config",
@@ -86,9 +89,6 @@ extension CommandPalette {
             toggle("lightGlass", "Light glass", "appearance white tint mode bright",
                    .appearance, "sun.max", prefs.lightGlass) { prefs.lightGlass = $0 },
             windowMode(),
-            toggle("liquidGlassPanels", "Liquid glass panels",
-                   "frosted overlay command palette settings", .appearance, "drop.fill",
-                   prefs.liquidGlassPanels) { prefs.liquidGlassPanels = $0 },
             open("glassiness", "Glass frost", "blur frost transparency clear",
                  .appearance, "drop"),
             open("backgroundBlur", "Background blur", "desktop blur radius wallpaper",
@@ -171,5 +171,16 @@ extension CommandPalette {
             open("about", "About Conterm", "version license credits libghostty",
                  .about, "info.circle"),
         ]
+        // Glass panels is a Classic-only setting: Liquid Drop panels are
+        // always glass.
+        if !prefs.liquidDrop,
+           let after = items.firstIndex(where: { $0.title == "Window mode" }) {
+            items.insert(toggle("liquidGlassPanels", "Liquid glass panels",
+                                "frosted overlay command palette settings", .appearance,
+                                "drop.fill",
+                                prefs.liquidGlassPanels) { prefs.liquidGlassPanels = $0 },
+                         at: after + 1)
+        }
+        return items
     }
 }

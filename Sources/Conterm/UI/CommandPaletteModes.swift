@@ -143,9 +143,9 @@ extension CommandPalette {
                             .padding(20)
                     }
                 }
-                .padding(8)
+                .padding(panelPadding)
             }
-            .frame(maxHeight: 360)
+            .frame(maxHeight: listMaxHeight)
             .onChange(of: state.paletteFocusedIndex) { _, i in
                 withAnimation(.easeOut(duration: 0.12)) {
                     proxy.scrollTo("ses-\(i)", anchor: .center)
@@ -236,9 +236,9 @@ extension CommandPalette {
                             }
                         }
                     }
-                    .padding(8)
+                    .padding(panelPadding)
                 }
-                .frame(maxHeight: 360)
+                .frame(maxHeight: listMaxHeight)
                 .onChange(of: state.paletteFocusedIndex) { _, i in
                     withAnimation(.easeOut(duration: 0.12)) {
                         proxy.scrollTo("agent-\(i)", anchor: .center)
@@ -259,12 +259,12 @@ extension CommandPalette {
     // MARK: - Groups mode (manage tab groups)
 
     var groupsHeader: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 14) {
             Image(systemName: "square.stack.3d.up")
-                .foregroundStyle(Theme.accent)
-                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Drop.sheen)
+                .font(.system(size: 16, weight: .regular))
             Text("Tab Groups")
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(Drop.display(24, .regular))
                 .foregroundStyle(Theme.textPrimary)
             Spacer()
             Button {
@@ -282,8 +282,8 @@ extension CommandPalette {
             .buttonStyle(.plain)
             keyHint("esc")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 15)
+        .padding(.horizontal, PaletteMetrics.fieldInset)
+        .frame(height: PaletteMetrics.fieldHeight)
     }
 
     @ViewBuilder var groupsView: some View {
@@ -316,9 +316,9 @@ extension CommandPalette {
                     }
                 }
             }
-            .padding(8)
+            .padding(panelPadding)
         }
-        .frame(maxHeight: 360)
+        .frame(maxHeight: listMaxHeight)
     }
 
     /// Tabs (across all windows) assigned to a group, in window/tab order.
@@ -495,9 +495,9 @@ extension CommandPalette {
                             .padding(20)
                     }
                 }
-                .padding(8)
+                .padding(panelPadding)
             }
-            .frame(maxHeight: 360)
+            .frame(maxHeight: listMaxHeight)
             .onChange(of: state.paletteFocusedIndex) { _, i in
                 withAnimation(.easeOut(duration: 0.12)) {
                     proxy.scrollTo("hist-\(i)", anchor: .center)
@@ -506,25 +506,29 @@ extension CommandPalette {
         }
     }
 
+    @ViewBuilder
     func historyRow(entry: HistoryEntry, isFocused: Bool) -> some View {
-        HStack(spacing: 10) {
+        if prefs.liquidDrop {
+            liquidHistoryRow(entry: entry, isFocused: isFocused)
+        } else {
+            classicHistoryRow(entry: entry, isFocused: isFocused)
+        }
+    }
+
+    private func liquidHistoryRow(entry: HistoryEntry, isFocused: Bool) -> some View {
+        HStack(spacing: 8) {
             Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(isFocused ? Theme.accent : Theme.textSecondary)
-                .frame(width: 18)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(isFocused ? Theme.textPrimary : Theme.textSecondary)
+                .frame(width: PaletteMetrics.iconColumn)
             Text(entry.command)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(Drop.mono(13.5))
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isFocused ? Theme.selectionFill : .clear)
-        )
+        .paletteRow(isFocused: isFocused)
     }
 
     func runFocusedHistoryEntry() {
@@ -593,9 +597,9 @@ extension CommandPalette {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(8)
+                .padding(panelPadding)
             }
-            .frame(maxHeight: 360)
+            .frame(maxHeight: listMaxHeight)
             .onChange(of: state.paletteFocusedIndex) { _, i in
                 withAnimation(.easeOut(duration: 0.12)) {
                     proxy.scrollTo("clip-\(i)", anchor: .center)
@@ -604,15 +608,25 @@ extension CommandPalette {
         }
     }
 
+    @ViewBuilder
     func clipboardRow(entry: ClipboardHistory.Entry,
                       isFocused: Bool) -> some View {
-        HStack(spacing: 10) {
+        if prefs.liquidDrop {
+            liquidClipboardRow(entry: entry, isFocused: isFocused)
+        } else {
+            classicClipboardRow(entry: entry, isFocused: isFocused)
+        }
+    }
+
+    private func liquidClipboardRow(entry: ClipboardHistory.Entry,
+                                    isFocused: Bool) -> some View {
+        HStack(spacing: 8) {
             Image(systemName: "doc.on.clipboard")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(isFocused ? Theme.accent : Theme.textSecondary)
-                .frame(width: 18)
+                .font(.system(size: PaletteMetrics.iconSize, weight: .regular))
+                .foregroundStyle(isFocused ? Theme.textPrimary : Theme.textSecondary)
+                .frame(width: PaletteMetrics.iconColumn)
             Text(entry.preview)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(Drop.mono(13.5))
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -629,15 +643,10 @@ extension CommandPalette {
                 .font(.system(size: 10, design: .rounded))
                 .foregroundStyle(Theme.textSecondary.opacity(0.75))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isFocused ? Theme.selectionFill : .clear)
-        )
+        .paletteRow(isFocused: isFocused)
     }
 
-    private static let clipRelative: RelativeDateTimeFormatter = {
+    static let clipRelative: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .abbreviated
         return f
@@ -764,9 +773,9 @@ extension CommandPalette {
                         }
                     }
                 }
-                .padding(8)
+                .padding(panelPadding)
             }
-            .frame(maxHeight: 360)
+            .frame(maxHeight: listMaxHeight)
             .onChange(of: state.paletteFocusedIndex) { _, i in
                 withAnimation(.easeOut(duration: 0.12)) {
                     proxy.scrollTo("ssh-\(i)", anchor: .center)
@@ -782,15 +791,24 @@ extension CommandPalette {
             .padding(.bottom, 4)
     }
 
+    @ViewBuilder
     func sshHostRow(row: SSHRow, isFocused: Bool) -> some View {
-        HStack(spacing: 10) {
+        if prefs.liquidDrop {
+            liquidSSHHostRow(row: row, isFocused: isFocused)
+        } else {
+            classicSSHHostRow(row: row, isFocused: isFocused)
+        }
+    }
+
+    private func liquidSSHHostRow(row: SSHRow, isFocused: Bool) -> some View {
+        HStack(spacing: 8) {
             Image(systemName: row.isRecent ? "clock" : "network")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(isFocused ? Theme.accent : Theme.textSecondary)
-                .frame(width: 22)
+                .font(.system(size: PaletteMetrics.iconSize, weight: .regular))
+                .foregroundStyle(isFocused ? Theme.textPrimary : Theme.textSecondary)
+                .frame(width: PaletteMetrics.iconColumn)
             VStack(alignment: .leading, spacing: 1) {
                 Text(row.host.alias)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .font(Drop.display(PaletteMetrics.titleSize, .regular))
                     .foregroundStyle(Theme.textPrimary)
                 if let h = row.host.hostname, h != row.host.alias {
                     Text(h)
@@ -801,13 +819,7 @@ extension CommandPalette {
             }
             Spacer()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(isFocused ? Theme.selectionFill : .clear)
-        )
-        .contentShape(Rectangle())
+        .paletteRow(isFocused: isFocused)
     }
 
     func connectFocusedSSHHost() {
@@ -914,9 +926,9 @@ extension CommandPalette {
                             .padding(16)
                     }
                 }
-                .padding(8)
+                .padding(panelPadding)
             }
-            .frame(maxHeight: 360)
+            .frame(maxHeight: listMaxHeight)
             .onChange(of: state.paletteFocusedIndex) { _, i in
                 withAnimation(.easeOut(duration: 0.12)) {
                     proxy.scrollTo("note-\(i)", anchor: .center)

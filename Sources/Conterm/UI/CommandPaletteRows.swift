@@ -24,113 +24,156 @@ struct PaletteSectionCaption: View {
     }
 }
 
-/// Shared chrome for the palette's floating glass bubbles: panel
-/// background, clip, border, liquid-glass top-edge highlight, drop
-/// shadow. `darken` lays an extra wash over the glass so the input
-/// bar reads heavier than the results panel.
-struct PaletteBubble: ViewModifier {
+// MARK: - Palette surfaces
+
+/// Spotlight's proportions: a 600 pt column, a tall capsule field, and a
+/// results panel of 48 pt rows with the icon in its own column.
+enum PaletteMetrics {
+    static let width: CGFloat = 580
+    /// Spotlight's field is tall for its type: the text floats in a deep
+    /// capsule rather than filling it.
+    static let fieldHeight: CGFloat = 74
+    static let fieldInset: CGFloat = 30
+    static let fieldTextSize: CGFloat = 19
+    static let gap: CGFloat = 12
+    static let panelRadius: CGFloat = 30
+    static let panelPadding: CGFloat = 10
+    static let rowHeight: CGFloat = 42
+    static let rowRadius: CGFloat = 14
+    static let iconColumn: CGFloat = 38
+    static let iconSize: CGFloat = 15.5
+    static let titleSize: CGFloat = 14
+    static let listMaxHeight: CGFloat = 398
+    /// The dim `PalettePresenter` lays over the scene.
+    static let sceneDim: Double = 0.28
+}
+
+/// One of the palette's floating drops: a calm `DropSurface` under the
+/// palette's own scene dim.
+struct PaletteSurface<Content: View>: View {
     let cornerRadius: CGFloat
-    var darken: Double = 0
-    @EnvironmentObject private var prefs: Preferences
-    @Environment(\.colorScheme) private var scheme
+    let bevel: CGFloat
+    var formDelay: Double = 0.16
+    var fadesEdges = false
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        DropSurface(cornerRadius: cornerRadius, bevel: bevel,
+                    sceneDim: Float(PaletteMetrics.sceneDim),
+                    formDelay: formDelay, fadesEdges: fadesEdges) { content }
+    }
+}
+
+private struct PaletteSelectionKey: EnvironmentKey {
+    static let defaultValue: Namespace.ID? = nil
+}
+
+extension EnvironmentValues {
+    /// Namespace the palette's rows share, so the selection is one shape
+    /// that glides between them.
+    var paletteSelection: Namespace.ID? {
+        get { self[PaletteSelectionKey.self] }
+        set { self[PaletteSelectionKey.self] = newValue }
+    }
+}
+
+/// Row chrome: Spotlight's row height and the shared gliding selection.
+private struct PaletteRowChrome: ViewModifier {
+    let isFocused: Bool
+    @Environment(\.paletteSelection) private var selection
 
     func body(content: Content) -> some View {
-        // "Light" tracks the light-glass tint (the app's actual light mode),
-        // falling back to the system scheme.
-        let light = prefs.lightGlass || scheme == .light
-        // No darkening in light mode, only a whisper in dark, so the input
-        // bar and results panel read as one cohesive surface — separated by
-        // the gap + border, not a tone shift.
-        let wash = light ? 0 : darken * 0.3
-        return content
-            .background(
-                ZStack {
-                    // `Glass panels` on → real frosted Liquid Glass. Off
-                    // (default) → a solid black panel: an opaque sheet that
-                    // doesn't sample the terminal behind it. `darken` sinks
-                    // the input bar a touch below the results either way.
-                    if prefs.liquidGlassPanels, #available(macOS 26, *) {
-                        PaneLiquidGlass(cornerRadius: cornerRadius,
-                                        frostiness: 0.85,
-                                        light: prefs.lightGlass)
+        content
+            .padding(.leading, 6)
+            .padding(.trailing, 16)
+            .frame(minHeight: PaletteMetrics.rowHeight)
+            .background {
+                if isFocused {
+                    let shape = RoundedRectangle(cornerRadius: PaletteMetrics.rowRadius,
+                                                 style: .continuous)
+                    let fill = shape.fill(Theme.selectionFill)
+                    if let selection {
+                        fill.matchedGeometryEffect(id: "palette.selection", in: selection)
                     } else {
-                        Theme.panelBed
+                        fill
                     }
-                    if wash > 0 { Color.black.opacity(wash) }
                 }
-            )
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(Theme.strokeStrong,
-                                  lineWidth: light ? 1.25 : 1)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.32), .clear],
-                            startPoint: .top, endPoint: .center
-                        ),
-                        lineWidth: 1
-                    )
-                    .blendMode(.plusLighter)
-                    .allowsHitTesting(false)
-            )
-            .shadow(color: .black.opacity(0.45), radius: 30, x: 0, y: 12)
+            }
+            .contentShape(Rectangle())
+            .animation(Theme.Spring.snappy, value: isFocused)
+    }
+}
+
+extension View {
+    func paletteRow(isFocused: Bool) -> some View {
+        modifier(PaletteRowChrome(isFocused: isFocused))
+    }
+}
+
+/// Trailing shortcut hint, set plain like Spotlight's ⌘1.
+struct PaletteKeyHint: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(Drop.mono(11))
+            .foregroundStyle(Theme.textSecondary.opacity(0.8))
+            .fixedSize()
     }
 }
 
 // MARK: - Suggestion circle
 
-/// One pick in the suggestion strip, rendered as a standalone glass
-/// circle with its label beneath. On appear it rolls up out of a blur
-/// (clock-digit style), staggered by `index` across the row; focus keeps
-/// a steady accent halo.
+/// One pick in the suggestion strip: a capsule carrying the command's
+/// glyph and its whole title, so nothing is abbreviated to fit a fixed
+/// cell. Chips surface in order on first appearance; focus is a brighter
+/// fill, nothing more.
 struct CircleSuggestion: View {
     let command: Command
     let index: Int
     let isFocused: Bool
     let action: () -> Void
+    @State private var hovering = false
 
+    @EnvironmentObject private var prefs: Preferences
+
+    /// The interface style picks the row: this one on a Liquid Drop, its
+    /// Classic counterpart otherwise.
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 7) {
-                ZStack {
-                    // Opaque bed: a flat disc that neither samples the
-                    // backdrop nor needs a shadow.
-                    Circle().fill(Theme.chipBed)
-                    if isFocused { Circle().fill(Theme.accentSoft) }
-                    Circle()
-                        .strokeBorder(isFocused ? Theme.accent.opacity(0.5)
-                                                : Theme.strokeStrong,
-                                      lineWidth: 1)
-                    icon
-                }
-                .frame(width: 48, height: 48)
-                // Glow only on the focused circle, so the strip carries one
-                // shadow filter, not seven.
-                .shadow(color: isFocused ? Theme.accentOnDark.opacity(0.5) : .clear,
-                        radius: isFocused ? 11 : 0)
+        if prefs.liquidDrop {
+            liquidBody
+        } else {
+            ClassicCircleSuggestion(command: command, index: index, isFocused: isFocused, action: action)
+        }
+    }
 
-                // Fixed-light over the bare terminal (the label sits below
-                // the disc, off any panel bed). A legibility shadow keeps it
-                // readable over a bright terminal as well as a dark one.
+    @ViewBuilder private var liquidBody: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                icon
+                    .frame(width: 16, height: 16)
                 Text(command.title)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.white.opacity(isFocused ? 0.98 : 0.72))
+                    .font(Drop.display(12, .medium))
+                    .foregroundStyle(isFocused ? Theme.textPrimary : Theme.textSecondary)
                     .lineLimit(1)
-                    .truncationMode(.tail)
-                    .shadow(color: .black.opacity(0.6), radius: 2.5)
-                    .frame(maxWidth: 72)
+                    .fixedSize()
             }
-            .contentShape(Rectangle())
+            .padding(.leading, 11)
+            .padding(.trailing, 14)
+            .frame(height: 32)
+            .background(Capsule(style: .continuous)
+                .fill(isFocused ? Theme.strokeStrong
+                                : Theme.selectionFill.opacity(hovering ? 1 : 0.6)))
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .focusable(false)
+        .onHover { hovering = $0 }
         .help(command.subtitle ?? command.title)
         .animation(Theme.Spring.snappy, value: isFocused)
-        .rollUp(delay: 0.05 + Double(index) * 0.06)
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .rollUp(delay: 0.05 + Double(index) * 0.04, blurs: false)
     }
 
     @ViewBuilder
@@ -141,15 +184,15 @@ struct CircleSuggestion: View {
             Image(nsImage: templated)
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 21, height: 21)
+                .frame(width: 14, height: 14)
                 .foregroundStyle(tint)
         } else if command.icon == RobotGlyph.iconName {
-            RobotGlyph(color: tint, size: 22)
+            RobotGlyph(color: tint, size: 15)
         } else if command.icon == TerraformMark.iconName {
-            TerraformGlyph(color: tint, size: 19)
+            TerraformGlyph(color: tint, size: 13)
         } else {
             Image(systemName: command.icon)
-                .font(.system(size: 18, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(tint)
         }
     }
@@ -163,30 +206,40 @@ struct CircleSuggestion: View {
 /// inserted.
 struct RollUpReveal<Content: View>: View {
     let delay: Double
+    /// An animated blur is an offscreen pass per view per frame. One title
+    /// can afford it; a list of rows or a word's worth of letters arriving
+    /// together cannot, and drops frames.
+    var blurs = true
     @ViewBuilder var content: Content
 
     @State private var shown = false
     @State private var ran = false
+    /// On a `LiquidDrop` card the reveal holds until the drop can carry
+    /// content; everywhere else this is always true.
+    @Environment(\.liquidRevealed) private var surfaceReady
 
     var body: some View {
         content
-            .blur(radius: shown ? 0 : 5)
+            .blur(radius: shown || !blurs ? 0 : 5)
             .opacity(shown ? 1 : 0)
             .offset(y: shown ? 0 : 9)
-            .onAppear {
-                guard !ran else { return }
-                ran = true
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.68).delay(delay)) {
-                    shown = true
-                }
-            }
+            .onAppear(perform: run)
+            .onChange(of: surfaceReady) { _, _ in run() }
+    }
+
+    private func run() {
+        guard surfaceReady, !ran else { return }
+        ran = true
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.68).delay(delay)) {
+            shown = true
+        }
     }
 }
 
 extension View {
     /// Reveal this view with the clock-digit roll-up. See `RollUpReveal`.
-    func rollUp(delay: Double) -> some View {
-        RollUpReveal(delay: delay) { self }
+    func rollUp(delay: Double, blurs: Bool = true) -> some View {
+        RollUpReveal(delay: delay, blurs: blurs) { self }
     }
 }
 
@@ -198,14 +251,18 @@ struct RollUpText: View {
     let color: Color
     var startDelay: Double = 0.0
     var step: Double = 0.045
+    /// Letters come out of a blur. Off by default: a word's worth of
+    /// animated blurs at once costs frames; Classic's short captions keep it.
+    var blurs = false
 
     init(_ text: String, font: Font, color: Color,
-         startDelay: Double = 0.0, step: Double = 0.045) {
+         startDelay: Double = 0.0, step: Double = 0.045, blurs: Bool = false) {
         self.text = text
         self.font = font
         self.color = color
         self.startDelay = startDelay
         self.step = step
+        self.blurs = blurs
     }
 
     var body: some View {
@@ -215,7 +272,7 @@ struct RollUpText: View {
                     .font(font)
                     .foregroundStyle(color)
                     .fixedSize()
-                    .rollUp(delay: startDelay + Double(i) * step)
+                    .rollUp(delay: startDelay + Double(i) * step, blurs: blurs)
             }
         }
     }
@@ -256,54 +313,41 @@ struct CommandRow: View {
     let command: Command
     let index: Int
     let isFocused: Bool
-    @State private var entered = false
 
+    @EnvironmentObject private var prefs: Preferences
+
+    /// The interface style picks the row: this one on a Liquid Drop, its
+    /// Classic counterpart otherwise.
     var body: some View {
-        HStack(spacing: 10) {
+        if prefs.liquidDrop {
+            liquidBody
+        } else {
+            ClassicCommandRow(command: command, index: index, isFocused: isFocused)
+        }
+    }
+
+    @ViewBuilder private var liquidBody: some View {
+        HStack(spacing: 8) {
             commandIcon
-                .frame(width: 22)
-                .scaleEffect(isFocused ? 1.1 : 1.0)
+                .frame(width: PaletteMetrics.iconColumn)
+                .scaleEffect(isFocused ? 1.08 : 1.0)
             VStack(alignment: .leading, spacing: 1) {
                 titleText
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if let sub = command.subtitle, !sub.isEmpty {
                     Text(sub)
-                        .font(.system(size: 11, design: .rounded))
+                        .font(Drop.display(11.5, .regular))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
                 }
             }
             Spacer()
             if !command.shortcut.isEmpty {
-                Text(command.shortcut)
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Capsule().fill(Theme.stroke))
+                PaletteKeyHint(command.shortcut)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(isFocused ? Theme.accentSoft : .clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(isFocused ? Theme.strokeStrong : .clear,
-                              lineWidth: 0.5)
-        )
-        .contentShape(Rectangle())
-        .animation(Theme.Spring.snappy, value: isFocused)
-        .opacity(entered ? 1 : 0)
-        .offset(y: entered ? 0 : -8)
-        .task {
-            // Cap the stagger so a row revealed far down a lazy list (high
-            // index) still fades in promptly instead of after seconds.
-            try? await Task.sleep(nanoseconds: UInt64(min(index, 14)) * 16_000_000)
-            withAnimation(Theme.Spring.soft) { entered = true }
-        }
+        .paletteRow(isFocused: isFocused)
     }
 
     /// The calculator row reads as "your input → result": equation
@@ -317,7 +361,7 @@ struct CommandRow: View {
                            answer: String(command.title[r.upperBound...])))
         } else {
             Text(command.title)
-                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .font(Drop.display(PaletteMetrics.titleSize, .regular))
                 .foregroundStyle(Theme.textPrimary)
         }
     }
@@ -341,19 +385,20 @@ struct CommandRow: View {
             Image(nsImage: templated)
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 16, height: 16)
-                .foregroundStyle(isFocused ? Theme.accent : Theme.textSecondary)
+                .frame(width: 17, height: 17)
+                .foregroundStyle(isFocused ? Theme.textPrimary : Theme.textSecondary)
         } else if command.icon == RobotGlyph.iconName {
-            RobotGlyph(color: isFocused ? Theme.accent : Theme.textSecondary,
-                       size: 16)
+            RobotGlyph(color: isFocused ? Theme.textPrimary : Theme.textSecondary,
+                       size: 17)
         } else if command.icon == TerraformMark.iconName {
-            TerraformGlyph(color: isFocused ? Theme.accent : Theme.textSecondary,
-                           size: 14)
+            TerraformGlyph(color: isFocused ? Theme.textPrimary : Theme.textSecondary,
+                           size: 15)
         } else {
             // Always-safe fallback: the SF Symbol. We reach here when
             // the asset can't be loaded — which must NEVER crash.
             Image(systemName: command.icon)
-                .foregroundStyle(isFocused ? Theme.accent : Theme.textSecondary)
+                .font(.system(size: PaletteMetrics.iconSize, weight: .regular))
+                .foregroundStyle(isFocused ? Theme.textPrimary : Theme.textSecondary)
         }
     }
 
@@ -397,30 +442,32 @@ struct CommandRow: View {
 struct NewNoteRow: View {
     let isFocused: Bool
 
+    @EnvironmentObject private var prefs: Preferences
+
+    /// The interface style picks the row: this one on a Liquid Drop, its
+    /// Classic counterpart otherwise.
     var body: some View {
-        HStack(spacing: 10) {
+        if prefs.liquidDrop {
+            liquidBody
+        } else {
+            ClassicNewNoteRow(isFocused: isFocused)
+        }
+    }
+
+    @ViewBuilder private var liquidBody: some View {
+        HStack(spacing: 8) {
             Image(systemName: "square.and.pencil")
-                .frame(width: 22)
-                .foregroundStyle(isFocused ? Theme.accent : Theme.textSecondary)
-                .scaleEffect(isFocused ? 1.1 : 1.0)
+                .font(.system(size: PaletteMetrics.iconSize, weight: .regular))
+                .frame(width: PaletteMetrics.iconColumn)
+                .foregroundStyle(isFocused ? Theme.textPrimary : Theme.textSecondary)
+                .scaleEffect(isFocused ? 1.08 : 1.0)
             Text("New note")
-                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .font(Drop.display(PaletteMetrics.titleSize, .regular))
                 .foregroundStyle(Theme.textPrimary)
             Spacer()
-            Text("⏎")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(Capsule().fill(Theme.stroke))
+            PaletteKeyHint("⏎")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(isFocused ? Theme.accentSoft : .clear)
-        )
-        .contentShape(Rectangle())
-        .animation(Theme.Spring.snappy, value: isFocused)
+        .paletteRow(isFocused: isFocused)
     }
 }
 
@@ -428,42 +475,42 @@ struct NoteRow: View {
     let note: Note
     let isFocused: Bool
 
+    @EnvironmentObject private var prefs: Preferences
+
+    /// The interface style picks the row: this one on a Liquid Drop, its
+    /// Classic counterpart otherwise.
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        if prefs.liquidDrop {
+            liquidBody
+        } else {
+            ClassicNoteRow(note: note, isFocused: isFocused)
+        }
+    }
+
+    @ViewBuilder private var liquidBody: some View {
+        HStack(alignment: .center, spacing: 8) {
             Image(systemName: "doc.text")
-                .frame(width: 22)
-                .foregroundStyle(isFocused ? Theme.accent : Theme.textSecondary)
-                .padding(.top, 1)
+                .font(.system(size: PaletteMetrics.iconSize, weight: .regular))
+                .frame(width: PaletteMetrics.iconColumn)
+                .foregroundStyle(isFocused ? Theme.textPrimary : Theme.textSecondary)
             VStack(alignment: .leading, spacing: 2) {
                 Text(note.title)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .font(Drop.display(PaletteMetrics.titleSize, .regular))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 if !note.preview.isEmpty {
                     Text(note.preview)
-                        .font(.system(size: 11, design: .rounded))
+                        .font(Drop.display(11.5, .regular))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
                 }
             }
             Spacer()
             Text(formatDate(note.modified))
-                .font(.system(size: 10, weight: .regular, design: .rounded))
+                .font(Drop.mono(10.5))
                 .foregroundStyle(Theme.textSecondary)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(isFocused ? Theme.accentSoft : .clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(isFocused ? Theme.strokeStrong : .clear,
-                              lineWidth: 0.5)
-        )
-        .contentShape(Rectangle())
-        .animation(Theme.Spring.snappy, value: isFocused)
+        .paletteRow(isFocused: isFocused)
     }
 
     private static let shortDateFormatter: DateFormatter = {
@@ -499,7 +546,22 @@ struct GroupManageRow: View {
     @State private var name: String = ""
     @FocusState private var nameFocused: Bool
 
+    @EnvironmentObject private var prefs: Preferences
+
+    /// The interface style picks the row: this one on a Liquid Drop, its
+    /// Classic counterpart otherwise.
     var body: some View {
+        if prefs.liquidDrop {
+            liquidBody
+        } else {
+            ClassicGroupManageRow(group: group, tabs: tabs, isFirst: isFirst, isLast: isLast,
+                                  onRecolor: onRecolor, onRename: onRename,
+                                  onMoveUp: onMoveUp, onMoveDown: onMoveDown,
+                                  onDelete: onDelete, onRemoveTab: onRemoveTab)
+        }
+    }
+
+    @ViewBuilder private var liquidBody: some View {
         let color = TabGroup.color(forKey: group.colorKey)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
@@ -570,14 +632,14 @@ struct GroupManageRow: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(hovering ? Color.white.opacity(0.06) : Color.white.opacity(0.02))
+            RoundedRectangle(cornerRadius: PaletteMetrics.rowRadius, style: .continuous)
+                .fill(Theme.selectionFill.opacity(hovering ? 1 : 0.45))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: PaletteMetrics.rowRadius, style: .continuous)
                 .strokeBorder(color.opacity(0.35), lineWidth: 0.5)
         )
         .onHover { hovering = $0 }
@@ -617,7 +679,19 @@ struct SessionRowView: View {
     let groupColor: Color?
     let isFocused: Bool
 
+    @EnvironmentObject private var prefs: Preferences
+
+    /// The interface style picks the row: this one on a Liquid Drop, its
+    /// Classic counterpart otherwise.
     var body: some View {
+        if prefs.liquidDrop {
+            liquidBody
+        } else {
+            ClassicSessionRowView(row: row, groupColor: groupColor, isFocused: isFocused)
+        }
+    }
+
+    @ViewBuilder private var liquidBody: some View {
         HStack(alignment: .center, spacing: 10) {
             // Group color bar at the leading edge. Width 2pt; full
             // height of the row. When nil, take the same space with
@@ -631,9 +705,9 @@ struct SessionRowView: View {
             ZStack {
                 Circle()
                     .fill(iconBg)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 32, height: 32)
                 Image(systemName: leadingIcon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(iconFg)
             }
             .scaleEffect(isFocused ? 1.06 : 1.0)
@@ -643,7 +717,7 @@ struct SessionRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(row.tabLabel)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .font(Drop.display(15, .medium))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
                     if row.isCurrent {
@@ -690,19 +764,7 @@ struct SessionRowView: View {
                      : "⌥\(row.paneIndex)")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(isFocused ? Theme.accentSoft : .clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(isFocused ? Theme.strokeStrong : .clear,
-                              lineWidth: 0.5)
-        )
-        .contentShape(Rectangle())
-        .animation(Theme.Spring.snappy, value: isFocused)
+        .paletteRow(isFocused: isFocused)
     }
 
     private var leadingIcon: String {
@@ -722,9 +784,9 @@ struct SessionRowView: View {
     @ViewBuilder
     private func chip(_ s: String) -> some View {
         Text(s)
-            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .font(Drop.mono(9.5, .medium))
             .foregroundStyle(Theme.textSecondary)
-            .padding(.horizontal, 5).padding(.vertical, 2)
+            .padding(.horizontal, 6).padding(.vertical, 2.5)
             .background(Capsule().fill(Theme.stroke))
     }
 }
@@ -739,7 +801,19 @@ struct PaletteAgentRow: View {
     let row: CommandPalette.SessionRow
     let isFocused: Bool
 
+    @EnvironmentObject private var prefs: Preferences
+
+    /// The interface style picks the row: this one on a Liquid Drop, its
+    /// Classic counterpart otherwise.
     var body: some View {
+        if prefs.liquidDrop {
+            liquidBody
+        } else {
+            ClassicPaletteAgentRow(pane: pane, row: row, isFocused: isFocused)
+        }
+    }
+
+    @ViewBuilder private var liquidBody: some View {
         let status = pane.agent
         let accent = status.tool.glowColor
         HStack(alignment: .center, spacing: 10) {
@@ -748,9 +822,9 @@ struct PaletteAgentRow: View {
             ZStack {
                 Circle()
                     .fill(accent.opacity(isFocused ? 0.26 : 0.14))
-                    .frame(width: 28, height: 28)
+                    .frame(width: 32, height: 32)
                 Image(systemName: status.tool.fallbackSymbol)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(accent)
             }
             .scaleEffect(isFocused ? 1.06 : 1.0)
@@ -759,7 +833,7 @@ struct PaletteAgentRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(status.label)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(Drop.display(15, .medium))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 HStack(spacing: 4) {
@@ -789,19 +863,7 @@ struct PaletteAgentRow: View {
                      : "⌥\(row.paneIndex)")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(isFocused ? Theme.accentSoft : .clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(isFocused ? Theme.strokeStrong : .clear,
-                              lineWidth: 0.5)
-        )
-        .contentShape(Rectangle())
-        .animation(Theme.Spring.snappy, value: isFocused)
+        .paletteRow(isFocused: isFocused)
     }
 
     @ViewBuilder
@@ -839,9 +901,9 @@ struct PaletteAgentRow: View {
     @ViewBuilder
     private func chip(_ s: String) -> some View {
         Text(s)
-            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .font(Drop.mono(9.5, .medium))
             .foregroundStyle(Theme.textSecondary)
-            .padding(.horizontal, 5).padding(.vertical, 2)
+            .padding(.horizontal, 6).padding(.vertical, 2.5)
             .background(Capsule().fill(Theme.stroke))
     }
 }
