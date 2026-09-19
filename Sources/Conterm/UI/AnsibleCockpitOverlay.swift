@@ -1,15 +1,15 @@
 import SwiftUI
 
-/// Live cockpit for a pane's Ansible playbook run: header with the
-/// playbook, play, and current task; one row per host with count chips
-/// and a status glyph; a failure feed with messages; recap line once
-/// stats land. Rendered from AnsibleCenter's tail of the callback
-/// feed — the pane's own console output stays untouched.
+/// Live cockpit for a pane's Ansible playbook run, built from the `Drop`
+/// kit: a masthead with the playbook, play and current task; the run's
+/// tally as large figures; the hosts × tasks matrix; then recent tasks,
+/// the changes the play made, and a failure feed with messages. Rendered
+/// from AnsibleCenter's tail of the callback feed — the pane's own console
+/// output stays untouched.
 struct AnsibleCockpitOverlay: View {
     @EnvironmentObject var state: AppState
     @ObservedObject private var center = AnsibleCenter.shared
     let target: AppState.AnsibleCockpitTarget
-    let glassLive: Bool
 
     private var run: AnsibleCenter.Run? {
         switch target {
@@ -19,17 +19,19 @@ struct AnsibleCockpitOverlay: View {
     }
 
     var body: some View {
-        BriefingCard(glassLive: glassLive, width: 620) {
+        BriefingCard(width: 690) {
             VStack(spacing: 0) {
                 if let run {
                     header(run)
-                    Divider().opacity(0.4)
                     content(run)
                 } else {
-                    Text("No playbook run to show yet.")
-                        .font(.system(size: 11.5, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .padding(40)
+                    DropHeader(eyebrow: "Ansible", title: "No run yet",
+                               onClose: { state.closeAnsibleCockpit() }) {
+                        DropContext("Playbook runs in a pane report here.")
+                    }
+                    DropStatement(symbol: "play.circle",
+                                  title: "No playbook run to show yet",
+                                  message: "Start ansible-playbook in any pane and its hosts and tasks fill in live.")
                 }
             }
         }
@@ -38,55 +40,23 @@ struct AnsibleCockpitOverlay: View {
     // MARK: Header
 
     private func header(_ run: AnsibleCenter.Run) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 9) {
-                    Circle()
-                        .fill(gemColor(run))
-                        .frame(width: 9, height: 9)
-                        .shadow(color: gemColor(run).opacity(0.8), radius: 5)
-                    Text(run.playbook)
-                        .font(.system(size: 21, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                Text(headerLine(run))
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(1)
-            }
-            Spacer()
-            Text(run.summary)
-                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(run.failedTotal > 0
-                                 ? Color.red.opacity(0.95) : Theme.textSecondary)
-                .monospacedDigit()
+        DropHeader(eyebrow: run.finished ? "Ansible · report" : "Ansible · running",
+                   title: run.playbook, gem: gemColor(run),
+                   gemHelp: run.summary,
+                   onClose: { state.closeAnsibleCockpit() }) {
+            DropContext(headerLine(run))
+        } controls: {
             if run.finished, let at = run.finishedAt {
-                // Staleness pill: an old matrix should read as old.
-                Text("ran \(Self.relative.localizedString(for: at, relativeTo: Date()))")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Capsule().fill(Theme.stroke))
+                // Staleness chip: an old matrix should read as old.
+                DropChip(text: "ran \(Self.relative.localizedString(for: at, relativeTo: Date()))",
+                         symbol: "clock")
             }
-            Button { state.closeAnsibleCockpit() } label: {
-                Text("esc")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Capsule().fill(Theme.stroke))
-            }
-            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
     }
 
     private func gemColor(_ run: AnsibleCenter.Run) -> Color {
-        if run.failedTotal > 0 { return Color.red.opacity(0.95) }
-        if run.finished { return Color(red: 0.45, green: 0.85, blue: 0.55) }
+        if run.failedTotal > 0 { return Drop.bad }
+        if run.finished { return Drop.good }
         return Theme.accent
     }
 
@@ -105,53 +75,14 @@ struct AnsibleCockpitOverlay: View {
 
     // MARK: Content
 
-    @State private var contentHeight: CGFloat = 0
-
-    private struct ContentHeightKey: PreferenceKey {
-        static let defaultValue: CGFloat = 0
-        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-            value = max(value, nextValue())
-        }
-    }
-
     private func content(_ run: AnsibleCenter.Run) -> some View {
-        // The card hugs its content — a ScrollView greedily takes its
-        // whole max height, leaving a small run floating in dead space.
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                matrixBand(run).rollUp(delay: 0.05)
-                if !run.tasks.isEmpty {
-                    hairline
-                    tasksBand(run).rollUp(delay: 0.11)
-                }
-                if !run.changes.isEmpty {
-                    hairline
-                    changesBand(run).rollUp(delay: 0.17)
-                }
-                if !run.failures.isEmpty {
-                    hairline
-                    failuresBand(run).rollUp(delay: 0.23)
-                }
-            }
-            .padding(.bottom, 6)
-            .background(GeometryReader { geo in
-                Color.clear.preference(key: ContentHeightKey.self,
-                                       value: geo.size.height)
-            })
+        DropBody(maxHeight: 560) {
+            tallyBand(run)
+            matrixBand(run)
+            if !run.tasks.isEmpty { tasksBand(run) }
+            if !run.changes.isEmpty { changesBand(run) }
+            if !run.failures.isEmpty { failuresBand(run) }
         }
-        .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
-        .frame(height: min(max(contentHeight, 60), 520))
-    }
-
-    private var hairline: some View {
-        Rectangle().fill(Theme.stroke).frame(height: 0.5)
-    }
-
-    private func microLabel(_ s: String) -> some View {
-        Text(s)
-            .font(.system(size: 9, weight: .semibold, design: .rounded))
-            .kerning(1.3)
-            .foregroundStyle(Theme.textSecondary.opacity(0.7))
     }
 
     private func fmtDuration(_ s: Double) -> String {
@@ -165,81 +96,117 @@ struct AnsibleCockpitOverlay: View {
         return f
     }()
 
+    // MARK: Tally
+
+    /// The run in five numbers. A zero reads quiet; a count takes its
+    /// result's color.
+    private func tallyBand(_ run: AnsibleCenter.Run) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            tally("ok", run.okTotal, tint: Drop.good)
+            tally("changed", run.changedTotal, tint: Drop.warn)
+            tally("failed", run.failedTotal, tint: Drop.bad)
+            tally("hosts", run.hostOrder.count, tint: nil)
+            tally("tasks", run.tasksSeen, tint: nil)
+        }
+        .rollUp(delay: 0.06)
+    }
+
+    private func tally(_ label: String, _ value: Int, tint: Color?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            DropFigure(value: Double(value), font: Drop.display(36, .light),
+                       color: value > 0 ? (tint ?? Theme.textPrimary)
+                                        : Theme.textSecondary.opacity(0.55))
+            Text(label.uppercased())
+                .font(Drop.mono(8.5, .medium))
+                .kerning(1.6)
+                .foregroundStyle(Theme.textSecondary.opacity(0.75))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     // MARK: Matrix
 
+    private static let cellSize: CGFloat = 12
+    private static let rowHeight: CGFloat = 16
+    private static let rowGap: CGFloat = 7
+
     /// The signature: hosts as rows, tasks as result cells — the whole
-    /// play at a glance. Host names and their count chips stay fixed;
-    /// the cell field scrolls horizontally for long plays.
+    /// play at a glance. Host names and their counts stay fixed; the cell
+    /// field scrolls horizontally for long plays.
     private func matrixBand(_ run: AnsibleCenter.Run) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            microLabel("HOSTS × TASKS")
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 5) {
-                    ForEach(run.hostOrder, id: \.self) { name in
-                        Text(name)
-                            .font(.system(size: 11, weight: .medium,
-                                          design: .monospaced))
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .frame(width: 150, height: 13, alignment: .leading)
-                    }
-                }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 5) {
+        DropSection(label: "Hosts × tasks", order: 1) {
+            DropWell(padding: 16) {
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(alignment: .leading, spacing: Self.rowGap) {
                         ForEach(run.hostOrder, id: \.self) { name in
-                            HStack(spacing: 3) {
-                                ForEach(run.tasks) { task in
-                                    cell(task.results[name],
-                                         current: !run.finished
-                                            && task.id == run.tasks.count - 1,
-                                         task: task.name)
-                                }
-                            }
-                            .frame(height: 13)
+                            Text(name)
+                                .font(Drop.mono(11.5, .medium))
+                                .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(width: 150, height: Self.rowHeight, alignment: .leading)
                         }
                     }
-                }
-                VStack(alignment: .trailing, spacing: 5) {
-                    ForEach(run.hostOrder, id: \.self) { name in
-                        if let host = run.hosts[name] {
-                            Text(shortCounts(host))
-                                .font(.system(size: 9.5, design: .rounded))
-                                .foregroundStyle(host.failed + host.unreachable > 0
-                                                 ? Color.red.opacity(0.95)
-                                                 : Theme.textSecondary)
-                                .monospacedDigit()
-                                .lineLimit(1)
-                                .frame(height: 13)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: Self.rowGap) {
+                            ForEach(run.hostOrder, id: \.self) { name in
+                                HStack(spacing: 4) {
+                                    ForEach(run.tasks) { task in
+                                        cell(task.results[name],
+                                             current: !run.finished
+                                                && task.id == run.tasks.count - 1,
+                                             task: task.name)
+                                    }
+                                }
+                                .frame(height: Self.rowHeight)
+                            }
+                        }
+                    }
+                    VStack(alignment: .trailing, spacing: Self.rowGap) {
+                        ForEach(run.hostOrder, id: \.self) { name in
+                            if let host = run.hosts[name] {
+                                Text(shortCounts(host))
+                                    .font(Drop.mono(10))
+                                    .foregroundStyle(host.failed + host.unreachable > 0
+                                                     ? Drop.bad : Theme.textSecondary)
+                                    .lineLimit(1)
+                                    .frame(height: Self.rowHeight)
+                            }
                         }
                     }
                 }
             }
             legend
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 
     private func cell(_ kind: AnsibleCenter.CellKind?, current: Bool,
                       task: String) -> some View {
-        RoundedRectangle(cornerRadius: 2, style: .continuous)
+        RoundedRectangle(cornerRadius: 4, style: .continuous)
             .fill(cellColor(kind))
-            .frame(width: 9, height: 9)
+            .frame(width: Self.cellSize, height: Self.cellSize)
             .overlay(
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .strokeBorder(current ? Theme.accent : .clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(current ? AnyShapeStyle(Drop.sheen)
+                                          : AnyShapeStyle(Color.clear),
+                                  lineWidth: 1.25)
             )
+            .shadow(color: glows(kind) ? cellColor(kind).opacity(0.55) : .clear, radius: 3)
             .help("\(task) — \(cellName(kind))")
+    }
+
+    /// Only the results worth the eye carry light.
+    private func glows(_ kind: AnsibleCenter.CellKind?) -> Bool {
+        kind == .changed || kind == .failed || kind == .unreachable
     }
 
     private func cellColor(_ kind: AnsibleCenter.CellKind?) -> Color {
         switch kind {
-        case .ok:          return Color(red: 0.30, green: 0.62, blue: 0.40)
-        case .changed:     return Color(red: 0.93, green: 0.68, blue: 0.25)
-        case .failed:      return Color.red.opacity(0.92)
-        case .unreachable: return Color(red: 0.75, green: 0.20, blue: 0.30)
-        case .skipped:     return Theme.textSecondary.opacity(0.35)
+        case .ok:          return Drop.good.opacity(0.62)
+        case .changed:     return Drop.warn
+        case .failed:      return Drop.bad
+        case .unreachable: return Color(red: 0.80, green: 0.24, blue: 0.40)
+        case .skipped:     return Theme.textSecondary.opacity(0.30)
         case nil:          return Theme.stroke
         }
     }
@@ -256,21 +223,23 @@ struct AnsibleCockpitOverlay: View {
     }
 
     private var legend: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 16) {
             legendDot(.ok, "ok")
             legendDot(.changed, "changed")
             legendDot(.failed, "failed")
+            legendDot(.unreachable, "unreachable")
             legendDot(.skipped, "skipped")
             Spacer()
         }
+        .padding(.leading, 2)
     }
 
     private func legendDot(_ kind: AnsibleCenter.CellKind, _ label: String) -> some View {
-        HStack(spacing: 4) {
-            RoundedRectangle(cornerRadius: 1.5).fill(cellColor(kind))
-                .frame(width: 7, height: 7)
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 2.5, style: .continuous).fill(cellColor(kind))
+                .frame(width: 8, height: 8)
             Text(label)
-                .font(.system(size: 9, design: .rounded))
+                .font(Drop.mono(9))
                 .foregroundStyle(Theme.textSecondary.opacity(0.8))
         }
     }
@@ -287,23 +256,25 @@ struct AnsibleCockpitOverlay: View {
     private func tasksBand(_ run: AnsibleCenter.Run) -> some View {
         let now = run.lastTs ?? Date().timeIntervalSince1970
         let slowest = run.tasks.max { $0.duration(now: now) < $1.duration(now: now) }
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                microLabel("TASKS · \(run.tasks.count)")
-                Spacer()
-                if let slow = slowest, slow.duration(now: now) > 1 {
-                    Text("slowest: \(slow.name) · \(fmtDuration(slow.duration(now: now)))")
-                        .font(.system(size: 9.5, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary.opacity(0.8))
+        return DropSection(label: "Tasks", count: run.tasks.count, order: 2) {
+            if let slow = slowest, slow.duration(now: now) > 1 {
+                HStack(spacing: 8) {
+                    DropChip(text: "slowest · \(fmtDuration(slow.duration(now: now)))",
+                             symbol: "tortoise.fill", tint: Drop.tones[1])
+                    Text(slow.name)
+                        .font(Drop.display(11, .regular))
+                        .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
-            ForEach(run.tasks.suffix(8).reversed()) { task in
-                taskRow(task, run: run, now: now)
+            DropWell {
+                ForEach(Array(run.tasks.suffix(8).reversed().enumerated()),
+                        id: \.element.id) { i, task in
+                    DropRow(index: i) { taskRow(task, run: run, now: now) }
+                }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 
     private func taskRow(_ task: AnsibleCenter.TaskEntry,
@@ -316,35 +287,31 @@ struct AnsibleCockpitOverlay: View {
         return HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: live ? "arrowtriangle.right.fill"
                   : failed > 0 ? "xmark" : "checkmark")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(live ? Theme.accent
-                                 : failed > 0 ? Color.red.opacity(0.95)
-                                 : Theme.textSecondary)
-                .frame(width: 12)
+                .font(.system(size: 8.5, weight: .bold))
+                .foregroundStyle(live ? AnyShapeStyle(Drop.sheen)
+                                 : failed > 0 ? AnyShapeStyle(Drop.bad)
+                                 : AnyShapeStyle(Theme.textSecondary.opacity(0.7)))
+                .frame(width: 14)
             Text(task.name)
-                .font(.system(size: 11, weight: live ? .semibold : .regular,
-                              design: .rounded))
+                .font(Drop.display(12, live ? .semibold : .regular))
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 8)
             if changed > 0 {
                 Text("\(changed)Δ")
-                    .font(.system(size: 9.5, design: .rounded))
-                    .foregroundStyle(cellColor(.changed))
-                    .monospacedDigit()
+                    .font(Drop.mono(10, .medium))
+                    .foregroundStyle(Drop.warn)
             }
             if failed > 0 {
                 Text("\(failed)✗")
-                    .font(.system(size: 9.5, design: .rounded))
-                    .foregroundStyle(Color.red.opacity(0.95))
-                    .monospacedDigit()
+                    .font(Drop.mono(10, .medium))
+                    .foregroundStyle(Drop.bad)
             }
             Text(fmtDuration(task.duration(now: now)))
-                .font(.system(size: 9.5, design: .rounded))
+                .font(Drop.mono(10))
                 .foregroundStyle(Theme.textSecondary)
-                .monospacedDigit()
-                .frame(width: 44, alignment: .trailing)
+                .frame(width: 48, alignment: .trailing)
         }
     }
 
@@ -352,60 +319,74 @@ struct AnsibleCockpitOverlay: View {
 
     private func changesBand(_ run: AnsibleCenter.Run) -> some View {
         let changes = run.changes
-        return VStack(alignment: .leading, spacing: 6) {
-            microLabel("CHANGED · \(changes.count)")
-            ForEach(Array(changes.prefix(8).enumerated()), id: \.offset) { _, c in
-                HStack(spacing: 6) {
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(cellColor(.changed))
-                        .frame(width: 7, height: 7)
-                    Text(c.host)
-                        .font(.system(size: 10.5, weight: .medium,
-                                      design: .monospaced))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text(c.task)
-                        .font(.system(size: 10.5, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1)
+        return DropSection(label: "Changed", tint: Drop.warn, count: changes.count, order: 3) {
+            DropWell {
+                ForEach(Array(changes.prefix(8).enumerated()), id: \.offset) { i, c in
+                    DropRow(index: i) {
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Text(c.host)
+                                .font(Drop.mono(11.5, .medium))
+                                .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(width: 170, alignment: .leading)
+                            Text(c.task)
+                                .font(Drop.display(11.5, .regular))
+                                .foregroundStyle(Theme.textSecondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+                if changes.count > 8 {
+                    Text("+\(changes.count - 8) more")
+                        .font(Drop.display(10.5, .regular))
+                        .foregroundStyle(Theme.textSecondary.opacity(0.75))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
                 }
             }
-            if changes.count > 8 {
-                Text("+\(changes.count - 8) more")
-                    .font(.system(size: 9.5, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary.opacity(0.75))
-            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 
+    // MARK: Failures
+
     private func failuresBand(_ run: AnsibleCenter.Run) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            microLabel("FAILURES · \(run.failures.count)")
-            ForEach(run.failures.suffix(12)) { f in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Circle().fill(Color.red.opacity(0.9))
-                            .frame(width: 4, height: 4)
-                        Text("\(f.host) — \(f.task)\(f.unreachable ? " (unreachable)" : "")")
-                            .font(.system(size: 11, weight: .medium,
-                                          design: .monospaced))
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(1)
-                    }
-                    if !f.msg.isEmpty {
-                        Text(f.msg)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundStyle(Theme.textSecondary)
-                            .lineLimit(2)
-                            .textSelection(.enabled)
-                            .padding(.leading, 10)
+        DropSection(label: "Failures", tint: Drop.bad, count: run.failures.count, order: 4) {
+            DropWell {
+                ForEach(Array(run.failures.suffix(12).enumerated()),
+                        id: \.element.id) { i, f in
+                    DropRow(index: i) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(f.host)
+                                    .font(Drop.mono(11.5, .medium))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .lineLimit(1)
+                                Text(f.task)
+                                    .font(Drop.display(11.5, .regular))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                Spacer(minLength: 8)
+                                if f.unreachable {
+                                    DropChip(text: "unreachable", tint: Drop.bad)
+                                }
+                            }
+                            if !f.msg.isEmpty {
+                                Text(f.msg)
+                                    .font(Drop.mono(10.5))
+                                    .foregroundStyle(Drop.bad.opacity(0.85))
+                                    .lineSpacing(2)
+                                    .lineLimit(3)
+                                    .textSelection(.enabled)
+                            }
+                        }
                     }
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 }
 
@@ -417,8 +398,8 @@ struct AnsiblePill: View {
     var onTap: () -> Void
 
     private var stateTint: Color {
-        if run.failedTotal > 0 { return Color.red.opacity(0.95) }
-        if run.finished { return Color(red: 0.45, green: 0.85, blue: 0.55) }
+        if run.failedTotal > 0 { return Drop.bad }
+        if run.finished { return Drop.good }
         return Theme.accent
     }
 
@@ -439,15 +420,19 @@ struct AnsiblePill: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(stateTint)
                 }
-                Text("\(run.playbook) · \(run.summary)")
-                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                Text(run.playbook)
+                    .font(Drop.display(10.5, .semibold))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
+                Text(run.summary)
+                    .font(Drop.mono(9.5, .medium))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4.5)
             .background(Capsule().fill(Theme.chipBed))
-            .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 0.5))
+            .overlay(Capsule().strokeBorder(Drop.sheen, lineWidth: 0.75))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)

@@ -3,22 +3,27 @@ import SwiftUI
 /// What the agent in a pane has done, as a record rather than scrollback:
 /// every call with what it was about, how long it took, how it ended, and
 /// its output when opened. Calls in flight sit on top and keep counting;
-/// the rest are newest first. Monochrome throughout — the marks carry the
-/// meaning, and a red verdict is the one colour that earns its place.
+/// the rest are newest first.
+///
+/// Built from the `Drop` kit: a masthead naming the working directory, a
+/// row of kind filters, then the calls in one well. Colour is reserved for
+/// state — a call in flight and a failed one; a clean finish stays quiet.
 struct AgentToolOverlay: View {
     @EnvironmentObject var state: AppState
     let target: AppState.AgentToolsTarget
-    let glassLive: Bool
 
     var body: some View {
-        BriefingCard(glassLive: glassLive, width: 660) {
+        BriefingCard(width: 720) {
             if let pane = state.pane(id: target.paneID) {
                 AgentToolPanel(pane: pane, focus: target.runID)
             } else {
-                Text("That pane is gone.")
-                    .font(.system(size: 11.5, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(40)
+                VStack(spacing: 0) {
+                    DropHeader(eyebrow: "History", title: "Pane closed",
+                               onClose: { state.closeAgentTools() }) {
+                        DropContext("Its record went with it.")
+                    }
+                    DropStatement(symbol: "rectangle.slash", title: "That pane is gone")
+                }
             }
         }
     }
@@ -35,8 +40,6 @@ private struct AgentToolPanel: View {
     /// Runs opened to their output. The one clicked to get here starts open.
     @State private var expanded: Set<String> = []
     @State private var hovered: String?
-
-    private static let failColor = Color(red: 1.0, green: 0.42, blue: 0.42)
 
     private var runs: [AgentToolRun] {
         pane.toolRuns
@@ -58,8 +61,7 @@ private struct AgentToolPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if kinds.count > 1 { filters }
-            Divider().opacity(0.4)
+            if kinds.count > 1 { filters.rollUp(delay: 0.12) }
             content
         }
         .onAppear {
@@ -77,26 +79,22 @@ private struct AgentToolPanel: View {
 
     private var header: some View {
         let running = pane.toolRuns.filter(\.isRunning).count
-        return HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 9) {
-                    if let asset = pane.agent.tool.markAsset,
-                       let img = MarkImage.load(asset, template: pane.agent.tool.markIsTemplate) {
-                        Image(nsImage: img)
-                            .resizable().interpolation(.high).aspectRatio(contentMode: .fit)
-                            .frame(width: 16, height: 16)
-                            .foregroundStyle(Theme.textPrimary)
-                    }
-                    Text("History")
-                        .font(.system(size: 21, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
+        return DropHeader(eyebrow: "History",
+                          title: friendlyDirLabel(for: pane.cwd),
+                          gem: running > 0 ? Drop.good : nil,
+                          gemHelp: running == 1 ? "1 call running" : "\(running) calls running",
+                          onClose: { state.closeAgentTools() }) {
+            HStack(spacing: 7) {
+                if let asset = pane.agent.tool.markAsset,
+                   let img = MarkImage.load(asset, template: pane.agent.tool.markIsTemplate) {
+                    Image(nsImage: img)
+                        .resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                        .frame(width: 13, height: 13)
+                        .foregroundStyle(Theme.textSecondary)
                 }
-                Text(subtitle(running: running))
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(1)
+                DropContext(subtitle(running: running))
             }
-            Spacer()
+        } controls: {
             if terraform.plans[pane.id] != nil {
                 link("Terraform plan", .terraform) {
                     state.closeAgentTools()
@@ -109,22 +107,11 @@ private struct AgentToolPanel: View {
                     state.openAnsibleCockpit(paneID: pane.id)
                 }
             }
-            Button { state.closeAgentTools() } label: {
-                Text("esc")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Capsule().fill(Theme.stroke))
-            }
-            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
     }
 
     private func subtitle(running: Int) -> String {
-        var parts = [friendlyDirLabel(for: pane.cwd)]
+        var parts: [String] = []
         if let host = pane.remoteHost { parts.append(host) }
         let n = pane.toolRuns.count
         parts.append(n == 1 ? "1 call" : "\(n) calls")
@@ -134,94 +121,56 @@ private struct AgentToolPanel: View {
 
     private func link(_ title: String, _ kind: AgentToolKind,
                       action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                AgentToolGlyph(kind: kind, color: Theme.textPrimary, size: 11)
-                Text(title)
-                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
-            }
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(Capsule().fill(Theme.chipBed))
-            .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 0.6))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
+        HistoryLink(title: title, kind: kind, action: action)
     }
 
     // MARK: Filters
 
     private var filters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 chip("All", nil, pane.toolRuns.count)
                 ForEach(kinds, id: \.kind) { entry in
                     chip(entry.kind.displayName, entry.kind, entry.count)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 12)
+            .padding(.horizontal, Drop.inset)
+            // Room for the selected chip's stroke inside the scroll clip.
+            .padding(.vertical, 2)
         }
+        .padding(.bottom, 18)
     }
 
     private func chip(_ title: String, _ kind: AgentToolKind?, _ count: Int) -> some View {
-        let on = filter == kind
-        return Button {
+        DropFilterChip(title: title, count: count, selected: filter == kind) {
             withAnimation(Theme.Spring.snappy) { filter = kind }
             SoundEffects.shared.play(.toggle)
-        } label: {
-            HStack(spacing: 5) {
-                if let kind {
-                    AgentToolGlyph(kind: kind,
-                                   color: on ? Theme.textPrimary : Theme.textSecondary,
-                                   size: 11)
-                }
-                Text(title)
-                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                    .foregroundStyle(on ? Theme.textPrimary : Theme.textSecondary)
-                Text("\(count)")
-                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.textSecondary)
-            }
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(Capsule().fill(on ? Theme.selectionFill : Theme.chipBed))
-            .overlay(Capsule().strokeBorder(on ? Theme.strokeStrong : Theme.stroke,
-                                            lineWidth: 0.6))
-            .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: Rows
 
-    @ViewBuilder
     private var content: some View {
-        if runs.isEmpty {
-            Text("Nothing yet. Calls appear here as Claude works: shell, files, search, the web, sub-agents, and the tools it reaches for.")
-                .font(.system(size: 11.5, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-                .padding(.vertical, 30)
-                .frame(maxWidth: .infinity)
-        } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(runs) { run in
-                        row(run)
+        Group {
+            if runs.isEmpty {
+                DropStatement(symbol: "clock.arrow.circlepath",
+                              title: "Nothing yet",
+                              message: "Calls appear here as Claude works: shell, files, search, the web, sub-agents, and the tools it reaches for.")
+            } else {
+                DropBody(maxHeight: 540) {
+                    DropWell {
+                        ForEach(Array(runs.enumerated()), id: \.element.id) { i, run in
+                            row(run, index: i)
+                        }
                     }
                 }
-                .padding(.vertical, 6)
             }
-            .frame(height: listHeight)
         }
-    }
-
-    private var listHeight: CGFloat {
-        let rows = CGFloat(runs.count) * 60
-        let open = CGFloat(expanded.intersection(runs.map(\.id)).count) * 200
-        return min(rows + open + 12, 540)
+        // A filter is a different list, not an edit of this one: the rows
+        // leave together and the new set surfaces in order.
+        .id(filter)
+        .transition(.liquidSwap)
+        .animation(.spring(response: 0.5, dampingFraction: 0.82), value: filter)
     }
 
     private func toggle(_ run: AgentToolRun) {
@@ -231,10 +180,10 @@ private struct AgentToolPanel: View {
         SoundEffects.shared.play(.toggle)
     }
 
-    private func row(_ run: AgentToolRun) -> some View {
+    private func row(_ run: AgentToolRun, index: Int) -> some View {
         let isOpen = expanded.contains(run.id)
         let isHover = hovered == run.id
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 10) {
             Button { toggle(run) } label: {
                 HStack(alignment: .top, spacing: 14) {
                     AgentToolGlyph(kind: run.kind,
@@ -242,14 +191,14 @@ private struct AgentToolPanel: View {
                                    size: 20)
                         .frame(width: 24, height: 24)
                         .padding(.top, 1)
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 5) {
                         HStack(spacing: 8) {
                             Text(run.kind.displayName)
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                .font(Drop.display(13))
                                 .foregroundStyle(Theme.textPrimary)
                             Text(Self.relative.localizedString(for: run.startedAt, relativeTo: Date()))
-                                .font(.system(size: 10.5, design: .rounded))
-                                .foregroundStyle(Theme.textSecondary)
+                                .font(Drop.mono(9.5))
+                                .foregroundStyle(Theme.textSecondary.opacity(0.8))
                             Spacer(minLength: 4)
                             verdict(run)
                             Image(systemName: "chevron.right")
@@ -258,7 +207,7 @@ private struct AgentToolPanel: View {
                                 .rotationEffect(.degrees(isOpen ? 90 : 0))
                         }
                         Text(run.command ?? run.kind.displayName)
-                            .font(.system(size: 11.5, design: .monospaced))
+                            .font(Drop.mono(11.5))
                             .foregroundStyle(Theme.textPrimary.opacity(0.72))
                             .lineLimit(isOpen ? 6 : 2)
                             .truncationMode(.tail)
@@ -268,16 +217,19 @@ private struct AgentToolPanel: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            if isOpen { outputBox(run) }
+            if isOpen { outputBox(run).transition(.liquidSwap) }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isOpen || isHover ? Theme.selectionFill : Color.clear)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Theme.selectionFill.opacity(isOpen || isHover ? 1 : 0))
         )
-        .padding(.horizontal, 8)
+        .offset(x: isHover && !isOpen ? 3 : 0)
         .onHover { hovered = $0 ? run.id : (hovered == run.id ? nil : hovered) }
+        .animation(.spring(response: 0.28, dampingFraction: 0.78), value: isHover)
+        .rollUp(delay: 0.12 + Double(min(index, 12)) * 0.035)
     }
 
     /// Elapsed while running, duration and outcome once done.
@@ -287,25 +239,27 @@ private struct AgentToolPanel: View {
             TimelineView(.periodic(from: .now, by: 1)) { tl in
                 HStack(spacing: 5) {
                     Circle()
-                        .fill(Theme.textPrimary)
+                        .fill(Drop.good)
                         .frame(width: 5, height: 5)
                         .opacity(Int(tl.date.timeIntervalSinceReferenceDate) % 2 == 0 ? 1 : 0.35)
                     Text(Self.duration(tl.date.timeIntervalSince(run.startedAt)))
-                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Theme.textPrimary)
+                        .font(Drop.mono(10, .medium))
+                        .foregroundStyle(Drop.good)
                 }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Drop.good.opacity(0.13)))
+                .overlay(Capsule().strokeBorder(Drop.good.opacity(0.22), lineWidth: 0.5))
             }
         } else {
-            HStack(spacing: 5) {
+            HStack(spacing: 7) {
                 if let d = run.duration {
                     Text(Self.duration(d))
-                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                        .font(Drop.mono(10, .medium))
                         .foregroundStyle(Theme.textSecondary)
                 }
                 if run.failed {
-                    Text("failed")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Self.failColor)
+                    DropChip(text: "failed", symbol: "xmark", tint: Drop.bad)
                 } else {
                     Image(systemName: "checkmark")
                         .font(.system(size: 9, weight: .bold))
@@ -329,16 +283,19 @@ private struct AgentToolPanel: View {
         }
         return ScrollView {
             Text(text)
-                .font(.system(size: 10.5, design: .monospaced))
+                .font(Drop.mono(10.5))
+                .lineSpacing(2)
                 .foregroundStyle(dim ? Theme.textSecondary : Theme.textPrimary.opacity(0.88))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
+                .padding(12)
         }
         .frame(maxHeight: 190)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.recessedWash))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Theme.stroke, lineWidth: 0.5))
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.recessedWash))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(run.failed ? AnyShapeStyle(Drop.bad.opacity(0.35))
+                                             : AnyShapeStyle(Theme.stroke),
+                                  lineWidth: 0.5))
         .padding(.leading, 38)
     }
 
@@ -355,4 +312,35 @@ private struct AgentToolPanel: View {
         f.unitsStyle = .abbreviated
         return f
     }()
+}
+
+/// Jump from the record to the cockpit a call belongs to. Carries the tool's
+/// own glyph, which an SF Symbol button can't.
+private struct HistoryLink: View {
+    let title: String
+    let kind: AgentToolKind
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                AgentToolGlyph(kind: kind, color: Theme.textPrimary, size: 11)
+                Text(title)
+                    .font(Drop.display(11, .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 28)
+            .background(Capsule().fill(hovering ? Theme.strokeStrong : Theme.selectionFill))
+            .overlay(Capsule().strokeBorder(
+                hovering ? AnyShapeStyle(Drop.sheen) : AnyShapeStyle(Theme.stroke),
+                lineWidth: hovering ? 1 : 0.5))
+            .scaleEffect(hovering ? 1.03 : 1)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.spring(response: 0.3, dampingFraction: 0.72), value: hovering)
+    }
 }

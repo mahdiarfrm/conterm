@@ -11,16 +11,33 @@ import SwiftUI
 /// keeps its conversation out of scrollback entirely, so this is the only
 /// scope that can see it; results open inline, or hand off to Claude
 /// Code's own transcript search.
+///
+/// The bar is a `DropSurface` in the palette's calm register, presented
+/// without a scrim: the match highlights live in the terminal's own
+/// renderer, so the pane under the bar stays visible and interactive.
 struct SearchOverlay: View {
     @EnvironmentObject var state: AppState
+    /// The bar's last laid-out size. Closing clears `searchPane` at once,
+    /// and the drop sizes itself to its content — a placeholder of this size
+    /// gives it something to collapse from instead of vanishing.
+    @State private var lastSize: CGSize = .zero
 
     var body: some View {
-        // ActivePaneReader supplies the LIVE focus so the bar can close
-        // on a pane switch — observing AppState alone misses intra-tab
-        // focus changes entirely.
-        ActivePaneReader { active in
-            if let pane = state.searchPane {
-                SearchBar(pane: pane, activePaneID: active?.id)
+        DropSurface(cornerRadius: 24, bevel: 8, sceneDim: 0, formDelay: 0.06) {
+            // ActivePaneReader supplies the LIVE focus so the bar can close
+            // on a pane switch — observing AppState alone misses intra-tab
+            // focus changes entirely.
+            ActivePaneReader { active in
+                if let pane = state.searchPane {
+                    SearchBar(pane: pane, activePaneID: active?.id)
+                        .background(GeometryReader { geo in
+                            Color.clear.onChange(of: geo.size, initial: true) { _, size in
+                                lastSize = size
+                            }
+                        })
+                } else {
+                    Color.clear.frame(width: lastSize.width, height: lastSize.height)
+                }
             }
         }
     }
@@ -48,18 +65,10 @@ private struct SearchBar: View {
         VStack(alignment: .leading, spacing: 0) {
             bar
             if scope == .conversation, !state.searchQuery.isEmpty {
-                Divider().opacity(0.4)
                 conversationResults
             }
         }
-        .background(OverlayPanelBackground(cornerRadius: 12))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Theme.strokeStrong, lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.40), radius: 18, x: 0, y: 8)
-        .frame(width: scope == .conversation ? 480 : 400)
+        .frame(width: scope == .conversation ? 500 : 420)
         .onAppear {
             // Defer + re-assert: a synchronous @FocusState set in
             // onAppear is unreliable — the field may not be mounted and
@@ -92,7 +101,7 @@ private struct SearchBar: View {
             if transcriptAvailable { scopePicker }
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(Theme.textSecondary)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11.5, weight: .medium))
             TextField(scope == .terminal ? "Find in scrollback"
                                          : "Find in conversation",
                       text: Binding(
@@ -101,7 +110,7 @@ private struct SearchBar: View {
                       ))
             .textFieldStyle(.plain)
             .focused($queryFocused)
-            .font(.system(size: 13, design: .rounded))
+            .font(Drop.display(13, .regular))
             .foregroundStyle(Theme.textPrimary)
             .onSubmit { submit() }
             .background(ArrowKeyCatcher(
@@ -122,15 +131,17 @@ private struct SearchBar: View {
 
             Button { state.closeSearch() } label: {
                 Text("esc")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .font(Drop.mono(9.5, .medium))
                     .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Capsule().fill(Theme.stroke))
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Capsule().fill(Theme.selectionFill))
             }
             .buttonStyle(.plain)
+            .help("Close (esc)")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        // Clears the drop's 8pt bevel on every side.
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
     }
 
     private var scopePicker: some View {
@@ -139,7 +150,7 @@ private struct SearchBar: View {
             scopeChip("Claude", .conversation)
         }
         .padding(2)
-        .background(Capsule().fill(Theme.recessedWash))
+        .background(Capsule().fill(Theme.selectionFill.opacity(0.6)))
     }
 
     private func scopeChip(_ label: String, _ value: AppState.SearchScope) -> some View {
@@ -149,11 +160,11 @@ private struct SearchBar: View {
             SoundEffects.shared.play(.toggle)
         } label: {
             Text(label)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(Drop.display(10, .semibold))
                 .foregroundStyle(scope == value ? Theme.textPrimary : Theme.textSecondary)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(
-                    Capsule().fill(scope == value ? Theme.selectionFill : .clear)
+                    Capsule().fill(scope == value ? Theme.strokeStrong : .clear)
                 )
         }
         .buttonStyle(.plain)
@@ -163,10 +174,10 @@ private struct SearchBar: View {
     private var countBadge: some View {
         if !state.searchQuery.isEmpty {
             Text(countText)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(Drop.mono(9.5, .medium))
                 .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(Capsule().fill(Theme.stroke))
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(Capsule().fill(Theme.selectionFill))
                 .monospacedDigit()
         }
     }
@@ -280,10 +291,12 @@ private struct SearchBar: View {
         if transcript.hits.isEmpty {
             Text(transcript.searching ? "Searching…"
                  : "Nothing in this conversation matches “\(state.searchQuery)”.")
-                .font(.system(size: 11, design: .rounded))
+                .font(Drop.display(11, .regular))
                 .foregroundStyle(Theme.textSecondary)
                 .frame(maxWidth: .infinity)
-                .padding(16)
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+                .padding(.bottom, 22)
         } else {
             ScrollViewReader { proxy in
                 ScrollView {
@@ -301,8 +314,11 @@ private struct SearchBar: View {
                             .id(hit.id)
                         }
                     }
-                    .padding(8)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 2)
+                    .padding(.bottom, canRevealInClaude ? 6 : 18)
                 }
+                .scrollIndicators(.never)
                 .frame(maxHeight: 340)
                 .onChange(of: effectiveHit) { _, new in
                     if let n = new {
@@ -312,10 +328,7 @@ private struct SearchBar: View {
                     }
                 }
             }
-            if canRevealInClaude {
-                Divider().opacity(0.4)
-                revealFooter
-            }
+            if canRevealInClaude { revealFooter }
         }
     }
 
@@ -332,15 +345,16 @@ private struct SearchBar: View {
                 Image(systemName: "arrow.right.circle")
                     .font(.system(size: 10.5, weight: .semibold))
                 Text("Search inside Claude Code")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .font(Drop.display(11, .medium))
                 Spacer()
                 Text("^O /")
-                    .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                    .font(Drop.mono(9.5, .medium))
                     .foregroundStyle(Theme.textSecondary)
             }
-            .foregroundStyle(Theme.accent)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 18)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -389,14 +403,14 @@ private struct TranscriptHitRow: View {
                                      ? Theme.textSecondary : Theme.accent)
                     .frame(width: 14)
                 highlighted(hit.snippet, query: query)
-                    .font(.system(size: 11.5, design: .rounded))
+                    .font(Drop.display(11.5, .regular))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 6)
                 if let d = hit.message.date {
                     Text(Self.relative.localizedString(for: d, relativeTo: Date()))
-                        .font(.system(size: 9.5, design: .rounded))
+                        .font(Drop.mono(9.5))
                         .foregroundStyle(Theme.textSecondary.opacity(0.8))
                 }
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -407,7 +421,7 @@ private struct TranscriptHitRow: View {
             if isExpanded {
                 ScrollView {
                     highlighted(hit.message.text, query: query)
-                        .font(.system(size: 11.5, design: .monospaced))
+                        .font(Drop.mono(11))
                         .foregroundStyle(Theme.textPrimary)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -415,22 +429,17 @@ private struct TranscriptHitRow: View {
                 .frame(maxHeight: 180)
                 .padding(8)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Theme.recessedWash)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Theme.selectionFill.opacity(0.55))
                 )
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isSelected ? Theme.accentSoft
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? Theme.strokeStrong
                       : hovering ? Theme.selectionFill : .clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(isSelected ? Color.white.opacity(0.18) : .clear,
-                              lineWidth: 0.5)
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)

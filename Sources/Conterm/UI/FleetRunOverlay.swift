@@ -2,7 +2,9 @@ import SwiftUI
 
 /// Fleet run: pick hosts, type one command, get a tab with a pane per
 /// host running it over ssh. Hosts come from recent ssh targets and
-/// ~/.ssh/config; selection order decides pane order.
+/// ~/.ssh/config; selection order decides pane order, and each picked row
+/// wears its position. A `Drop` card: masthead, the command capsule, the
+/// host wells, and a footer that counts the selection beside the action.
 struct FleetRunOverlay: View {
     @EnvironmentObject var state: AppState
 
@@ -20,175 +22,149 @@ struct FleetRunOverlay: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().opacity(0.4)
-            commandField
-            Divider().opacity(0.4)
-            hostList
-            Divider().opacity(0.4)
-            footer
+        BriefingCard(width: 580) {
+            VStack(spacing: 0) {
+                DropHeader(eyebrow: "Fleet", title: "Fleet run",
+                           onClose: { state.closeFleetRun() }) {
+                    DropContext("One command across many hosts — a pane per host.")
+                }
+                commandField
+                hostList
+                footer
+            }
         }
-        .background(OverlayPanelBackground(cornerRadius: 16))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Theme.strokeStrong, lineWidth: 1)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(
-                    LinearGradient(colors: [Color.white.opacity(0.28), .clear],
-                                   startPoint: .top, endPoint: .center),
-                    lineWidth: 1)
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
-        )
-        .shadow(color: .black.opacity(0.45), radius: 22, x: 0, y: 10)
-        .frame(width: 440)
         .onAppear {
             rows = Self.loadRows()
+            // The field mounts with the card, under the forming drop, so
+            // typing lands in it from the first keystroke.
             commandFocused = true
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "antenna.radiowaves.left.and.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.accent)
-            Text("Fleet run")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
-            Spacer()
-            Button { state.closeFleetRun() } label: {
-                Text("esc")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Capsule().fill(Theme.stroke))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
     private var commandField: some View {
-        TextField("Command — leave empty to just connect",
-                  text: $command)
-            .textFieldStyle(.plain)
-            .font(.system(size: 12, design: .monospaced))
-            .foregroundStyle(Theme.textPrimary)
-            .focused($commandFocused)
-            .onSubmit { runIfReady() }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+        HStack(spacing: 10) {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Theme.textSecondary.opacity(0.8))
+            TextField("Command — leave empty to just connect", text: $command)
+                .textFieldStyle(.plain)
+                .font(Drop.mono(12.5))
+                .foregroundStyle(Theme.textPrimary)
+                .focused($commandFocused)
+                .onSubmit { runIfReady() }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .background(Capsule().fill(Theme.selectionFill))
+        .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 0.75))
+        .padding(.horizontal, Drop.inset)
+        .padding(.bottom, 22)
+        .rollUp(delay: 0.12)
     }
 
+    @ViewBuilder
     private var hostList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                let recents = rows.filter(\.isRecent)
-                let others = rows.filter { !$0.isRecent }
+        if rows.isEmpty {
+            DropStatement(symbol: "antenna.radiowaves.left.and.right",
+                          title: "No ssh targets yet",
+                          message: "Connect to a host once, or add entries to ~/.ssh/config.")
+        } else {
+            let recents = rows.filter(\.isRecent)
+            let others = rows.filter { !$0.isRecent }
+            DropBody(maxHeight: 340) {
                 if !recents.isEmpty {
-                    sectionHeader("RECENT")
-                    ForEach(recents) { hostRow($0) }
+                    DropSection(label: "Recent", count: recents.count, order: 0) {
+                        DropWell {
+                            ForEach(Array(recents.enumerated()), id: \.element.id) { i, row in
+                                hostRow(row, index: i)
+                            }
+                        }
+                    }
                 }
                 if !others.isEmpty {
-                    sectionHeader("ALL HOSTS")
-                    ForEach(others) { hostRow($0) }
-                }
-                if rows.isEmpty {
-                    Text("No ssh targets found — connect to a host once, or add entries to ~/.ssh/config.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .padding(14)
+                    DropSection(label: "All hosts", count: others.count, order: 1) {
+                        DropWell {
+                            ForEach(Array(others.enumerated()), id: \.element.id) { i, row in
+                                hostRow(row, index: recents.count + i)
+                            }
+                        }
+                    }
                 }
             }
-            .padding(.vertical, 4)
         }
-        .frame(maxHeight: 280)
     }
 
-    private func sectionHeader(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 9, weight: .semibold, design: .rounded))
-            .kerning(1.2)
-            .foregroundStyle(Theme.textSecondary.opacity(0.7))
-            .padding(.horizontal, 14)
-            .padding(.top, 8)
-            .padding(.bottom, 3)
-    }
-
-    private func hostRow(_ row: Row) -> some View {
-        let index = selected.firstIndex(of: row.target)
-        return Button {
+    private func hostRow(_ row: Row, index: Int) -> some View {
+        let order = selected.firstIndex(of: row.target)
+        return DropRow(index: index, action: {
             SoundEffects.shared.play(.toggle)
-            if let index {
-                selected.remove(at: index)
-            } else {
-                selected.append(row.target)
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                if let order {
+                    selected.remove(at: order)
+                } else {
+                    selected.append(row.target)
+                }
             }
-        } label: {
-            HStack(spacing: 9) {
-                Image(systemName: index != nil
-                      ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(index != nil
-                                     ? Theme.accent : Theme.textSecondary.opacity(0.6))
+        }) {
+            HStack(spacing: 12) {
+                orderBadge(order)
                 Text(row.target)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
+                    .font(Drop.display(12.5, order != nil ? .semibold : .medium))
+                    .foregroundStyle(order != nil ? Theme.textPrimary : Theme.textPrimary.opacity(0.85))
                     .lineLimit(1)
                 if let detail = row.detail {
                     Text(detail)
-                        .font(.system(size: 10, design: .rounded))
+                        .font(Drop.mono(10))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
+                        .truncationMode(.middle)
                 }
-                Spacer()
-                if let index {
-                    Text("\(index + 1)")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.accent)
-                        .monospacedDigit()
-                }
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+    }
+
+    /// An empty ring until picked, then the row's place in the pane order.
+    private func orderBadge(_ order: Int?) -> some View {
+        ZStack {
+            Circle().strokeBorder(Theme.strokeStrong, lineWidth: 1)
+                .opacity(order == nil ? 1 : 0)
+            Circle().fill(Theme.textPrimary)
+                .scaleEffect(order == nil ? 0.4 : 1)
+                .opacity(order == nil ? 0 : 1)
+            if let order {
+                Text("\(order + 1)")
+                    .font(Drop.mono(10, .bold))
+                    .foregroundStyle(Theme.panelBed)
+                    .transition(.scale(scale: 0.5).combined(with: .opacity))
+            }
+        }
+        .frame(width: 20, height: 20)
     }
 
     private var footer: some View {
-        HStack {
-            Text(selected.isEmpty
-                 ? "Pick the hosts to fan out to."
-                 : "One pane per host, in the order picked.")
-                .font(.system(size: 9.5, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-            Spacer()
-            // Theme.accent is near-white on dark glass — as a fill it
-            // would swallow white text; the ssh blue holds contrast in
-            // both appearances.
-            Button(action: runIfReady) {
-                Text(selected.count <= 1
-                     ? "Run"
-                     : "Run on \(selected.count) hosts")
-                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                    .foregroundStyle(selected.isEmpty ? Theme.textSecondary : .white)
-                    .padding(.horizontal, 12).padding(.vertical, 5)
-                    .background(Capsule().fill(selected.isEmpty
-                                               ? AnyShapeStyle(Theme.stroke)
-                                               : AnyShapeStyle(Theme.sshAccentDeep)))
+        HStack(alignment: .center, spacing: 12) {
+            DropFigure(value: Double(selected.count), font: Drop.display(28, .light))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(selected.count == 1 ? "HOST PICKED" : "HOSTS PICKED")
+                    .font(Drop.mono(8.5, .medium))
+                    .kerning(1.6)
+                    .foregroundStyle(Theme.textSecondary.opacity(0.8))
+                Text(selected.isEmpty ? "Pick the hosts to fan out to."
+                                      : "One pane per host, in the order picked.")
+                    .font(Drop.display(10.5, .regular))
+                    .foregroundStyle(Theme.textSecondary)
             }
-            .buttonStyle(.plain)
-            .disabled(selected.isEmpty)
+            Spacer(minLength: 8)
+            DropButton(title: selected.count <= 1 ? "Run" : "Run on \(selected.count) hosts",
+                       symbol: "play.fill", prominent: true, action: runIfReady)
+                .disabled(selected.isEmpty)
+                .opacity(selected.isEmpty ? 0.4 : 1)
+                .animation(.easeOut(duration: 0.15), value: selected.isEmpty)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Drop.inset)
+        .padding(.bottom, 36)
+        .rollUp(delay: 0.30)
     }
 
     private func runIfReady() {

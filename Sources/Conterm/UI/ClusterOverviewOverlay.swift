@@ -1,16 +1,17 @@
 import SwiftUI
 
-/// Cluster Overview: the briefing card for one EXPLICIT kubectl
-/// context (whatever row was clicked), across ALL namespaces. Bands
-/// roll in with the palette's entrance stagger; ready bars animate on
-/// refresh. Data comes from ClusterPulse.fetchOverview — every call
-/// pinned with `--context`, so the card can never show a different
-/// cluster than its title.
+/// Cluster Overview: the drop for one EXPLICIT kubectl context (whatever
+/// row was clicked), across ALL namespaces. Built from the `Drop` kit: a
+/// masthead, a pulse of large figures around a pod-health ring, then nodes,
+/// workloads per namespace, Helm releases, services and recent warnings,
+/// each a section of rows in a well. Figures and gauges re-run when a
+/// refresh or the namespace filter changes their value. Data comes from
+/// ClusterPulse.fetchOverview — every call pinned with `--context`, so the
+/// card can never show a different cluster than its title.
 struct ClusterOverviewOverlay: View {
     @EnvironmentObject var state: AppState
     @ObservedObject private var pulse = ClusterPulse.shared
     @ObservedObject private var helm = HelmReleases.shared
-    let glassLive: Bool
 
     private var overview: ClusterPulse.Overview? { pulse.overview }
 
@@ -50,23 +51,19 @@ struct ClusterOverviewOverlay: View {
     }
 
     var body: some View {
-        BriefingCard(glassLive: glassLive) {
+        BriefingCard(width: 780) {
             VStack(spacing: 0) {
                 header
-                hairline
-                if let o = overview {
-                    content(filtered(o))
-                } else {
-                    VStack(spacing: 10) {
-                        ProgressView()
-                        Text("Asking the cluster…")
-                            .font(.system(size: 11.5, design: .rounded))
-                            .foregroundStyle(Theme.textSecondary)
+                Group {
+                    if let o = overview {
+                        content(filtered(o))
+                    } else {
+                        DropLoader(text: "Asking the cluster")
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 48)
                 }
+                .transition(.liquidSwap)
             }
+            .animation(.spring(response: 0.5, dampingFraction: 0.82), value: overview == nil)
         }
         .onChange(of: overview?.context) { _, _ in nsFilter = nil }
     }
@@ -74,66 +71,33 @@ struct ClusterOverviewOverlay: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 9) {
-                    Circle()
-                        .fill(gemColor)
-                        .frame(width: 9, height: 9)
-                        .shadow(color: gemColor.opacity(0.8), radius: 5)
-                    Text(overview.map { KubeContextWatch.shortLabel($0.context) }
-                         ?? "cluster")
-                        .font(.system(size: 21, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
-                }
-                Text(headerLine)
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(1)
-            }
-            Spacer()
+        DropHeader(eyebrow: "Cluster",
+                   title: overview.map { KubeContextWatch.shortLabel($0.context) } ?? "cluster",
+                   gem: gemColor, gemHelp: gemHelp,
+                   onClose: { state.closeClusterOverview() }) {
+            DropContext(headerLine)
+        } controls: {
             if let at = overview?.fetchedAt {
                 Text(Self.relative.localizedString(for: at, relativeTo: Date()))
-                    .font(.system(size: 10, design: .rounded))
+                    .font(Drop.mono(9.5))
                     .foregroundStyle(Theme.textSecondary.opacity(0.7))
+                    .padding(.trailing, 4)
             }
             if !namespaces.isEmpty { namespaceMenu }
-            if pulse.overviewLoading {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 24, height: 24)
-            } else {
-                Button {
-                    if let o = overview {
-                        pulse.fetchOverview(context: o.context)
-                        helm.refresh(context: o.context, force: true)
-                    }
-                    SoundEffects.shared.play(.click)
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
+            DropIconButton(symbol: "arrow.clockwise", help: "Refresh",
+                           spinning: pulse.overviewLoading) {
+                if let o = overview {
+                    pulse.fetchOverview(context: o.context)
+                    helm.refresh(context: o.context, force: true)
                 }
-                .buttonStyle(.plain)
-                .help("Refresh")
+                SoundEffects.shared.play(.click)
             }
-            Button { state.closeClusterOverview() } label: {
-                Text("esc")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Capsule().fill(Theme.stroke))
-            }
-            .buttonStyle(.plain)
+            .disabled(pulse.overviewLoading)
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
     }
 
-    /// Namespace narrowing chip: a menu of everything the fetch saw.
+    /// Namespace narrowing: a glass capsule over a menu of everything the
+    /// fetch saw. The rim brightens while a filter is active.
     private var namespaceMenu: some View {
         Menu {
             Picker("Namespace", selection: $nsFilter) {
@@ -145,19 +109,24 @@ struct ClusterOverviewOverlay: View {
             }
             .pickerStyle(.inline)
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Image(systemName: "line.3.horizontal.decrease")
-                    .font(.system(size: 8.5, weight: .semibold))
+                    .font(.system(size: 9, weight: .bold))
                 Text(effectiveFilter ?? "all namespaces")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .font(Drop.display(11, .semibold))
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 7, weight: .semibold))
+                    .font(.system(size: 7.5, weight: .bold))
+                    .opacity(0.7)
             }
-            .foregroundStyle(effectiveFilter == nil
-                             ? Theme.textSecondary : Theme.accent)
-            .padding(.horizontal, 8).padding(.vertical, 3.5)
-            .background(Capsule().fill(Theme.stroke))
+            .foregroundStyle(effectiveFilter == nil ? Theme.textSecondary : Theme.textPrimary)
+            .padding(.horizontal, 12)
+            .frame(height: 28)
+            .background(Capsule().fill(Theme.selectionFill))
+            .overlay(Capsule().strokeBorder(
+                effectiveFilter == nil ? AnyShapeStyle(Theme.stroke)
+                                       : AnyShapeStyle(Drop.sheen),
+                lineWidth: effectiveFilter == nil ? 0.5 : 1))
             .contentShape(Capsule())
         }
         .menuStyle(.borderlessButton)
@@ -173,11 +142,18 @@ struct ClusterOverviewOverlay: View {
         guard let o = overview else { return Theme.textSecondary.opacity(0.5) }
         let nodeDown = o.nodes.contains { !ClusterPulse.nodeIsReady($0.status) }
         let outage = o.deployments.contains { $0.desired > 0 && $0.ready == 0 }
-        if nodeDown || outage { return Color.red.opacity(0.95) }
+        if nodeDown || outage { return Drop.bad }
         let trouble = o.pods.contains { $0.health != .good }
             || o.deployments.contains { $0.ready < $0.desired }
-        if trouble { return Theme.warning }
-        return Color(red: 0.45, green: 0.85, blue: 0.55)
+        if trouble { return Drop.warn }
+        return Drop.good
+    }
+
+    private var gemHelp: String {
+        guard overview != nil else { return "Asking the cluster…" }
+        if gemColor == Drop.bad { return "A node is down or a workload is fully dark" }
+        if gemColor == Drop.warn { return "Running, with pods or deployments in trouble" }
+        return "Healthy"
     }
 
     private var headerLine: String {
@@ -201,132 +177,138 @@ struct ClusterOverviewOverlay: View {
 
     // MARK: Content
 
-    @State private var contentHeight: CGFloat = 0
-
-    private struct ContentHeightKey: PreferenceKey {
-        static let defaultValue: CGFloat = 0
-        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-            value = max(value, nextValue())
-        }
-    }
-
     private func content(_ o: ClusterPulse.Overview) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                if !o.nodes.isEmpty {
-                    nodesBand(o).rollUp(delay: 0.05)
-                    hairline
-                }
-                workloadsBand(o).rollUp(delay: 0.11)
-                if !filteredReleases.isEmpty {
-                    hairline
-                    helmBand.rollUp(delay: 0.17)
-                }
-                if !o.services.isEmpty {
-                    hairline
-                    servicesBand(o).rollUp(delay: 0.23)
-                }
-                if !o.events.isEmpty {
-                    hairline
-                    eventsBand(o).rollUp(delay: 0.29)
-                }
-            }
-            .padding(.bottom, 6)
-            .background(GeometryReader { geo in
-                Color.clear.preference(key: ContentHeightKey.self,
-                                       value: geo.size.height)
-            })
+        DropBody(maxHeight: 600) {
+            pulseBand(o)
+            if !o.nodes.isEmpty { nodesBand(o) }
+            workloadsBand(o)
+            if !filteredReleases.isEmpty { helmBand }
+            if !o.services.isEmpty { servicesBand(o) }
+            if !o.events.isEmpty { eventsBand(o) }
         }
-        .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
-        .frame(height: min(max(contentHeight, 80), 560))
-    }
-
-    private var hairline: some View {
-        Rectangle().fill(Theme.stroke).frame(height: 0.5)
-    }
-
-    private func bandLabel(_ symbol: String, _ text: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: symbol)
-                .font(.system(size: 8.5, weight: .semibold))
-                .foregroundStyle(Theme.textSecondary.opacity(0.7))
-            Text(text)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .kerning(1.3)
-                .foregroundStyle(Theme.textSecondary.opacity(0.7))
-        }
-    }
-
-    private func bar(fill: Double, tint: Color) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Theme.stroke)
-                Capsule().fill(tint)
-                    .frame(width: max(3, geo.size.width * min(1, max(0, fill))))
-            }
-        }
-        .frame(height: 4)
-        .animation(Theme.Spring.soft, value: fill)
     }
 
     /// A resource name with its namespace as a dimmed prefix, so the
     /// eye can skip the boilerplate and land on the name.
     private func namespacedName(_ ns: String, _ name: String,
-                                size: CGFloat = 11) -> Text {
+                                size: CGFloat = 11.5) -> Text {
         Text("\(ns)/")
-            .font(.system(size: size - 1, design: .monospaced))
+            .font(Drop.mono(size - 1))
             .foregroundStyle(Theme.textSecondary.opacity(0.6))
         + Text(name)
-            .font(.system(size: size, weight: .medium, design: .monospaced))
+            .font(Drop.mono(size, .medium))
             .foregroundStyle(Theme.textPrimary)
+    }
+
+    private func dot(_ color: Color, size: CGFloat = 7) -> some View {
+        Circle().fill(color)
+            .frame(width: size, height: size)
+            .shadow(color: color.opacity(0.6), radius: 3)
+    }
+
+    private func more(_ text: String) -> some View {
+        Text(text)
+            .font(Drop.display(10.5, .regular))
+            .foregroundStyle(Theme.textSecondary.opacity(0.75))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+    }
+
+    // MARK: Pulse
+
+    /// The cluster in five numbers: the share of pods that are healthy as a
+    /// ring, then the counts that explain it.
+    private func pulseBand(_ o: ClusterPulse.Overview) -> some View {
+        let total = o.pods.count
+        let running = o.pods.lazy.filter { $0.health == .good }.count
+        let bad = o.pods.lazy.filter { $0.health == .bad }.count
+        let pending = max(0, total - running - bad)
+        let tint: Color? = bad > 0 ? Drop.bad : pending > 0 ? Drop.warn : nil
+        let share = total > 0 ? Double(running) / Double(total) : 0
+        return HStack(alignment: .center, spacing: 34) {
+            DropRing(fraction: share, tint: tint, size: 104) {
+                VStack(spacing: 1) {
+                    HStack(alignment: .firstTextBaseline, spacing: 1) {
+                        DropFigure(value: share * 100, font: Drop.display(24, .light),
+                                   color: tint ?? Theme.textPrimary)
+                        Text("%")
+                            .font(Drop.display(11, .regular))
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    Text("HEALTHY")
+                        .font(Drop.mono(7.5, .medium))
+                        .kerning(1.4)
+                        .foregroundStyle(Theme.textSecondary.opacity(0.75))
+                }
+            }
+            heroStat("Running", running)
+            heroStat("In trouble", bad, tint: bad > 0 ? Drop.bad : nil)
+            if pending > 0 { heroStat("Pending", pending, tint: Drop.warn) }
+            heroStat("Nodes", o.nodes.count)
+            if !o.services.isEmpty { heroStat("Services", o.services.count) }
+            Spacer(minLength: 0)
+        }
+        .rollUp(delay: 0.08)
+    }
+
+    private func heroStat(_ label: String, _ value: Int, tint: Color? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            DropFigure(value: Double(value), color: tint ?? Theme.textPrimary)
+            Text(label.uppercased())
+                .font(Drop.mono(8.5, .medium))
+                .kerning(1.4)
+                .foregroundStyle(tint?.opacity(0.85) ?? Theme.textSecondary.opacity(0.75))
+        }
+        .fixedSize()
     }
 
     // MARK: Nodes
 
     private func nodesBand(_ o: ClusterPulse.Overview) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            bandLabel("server.rack", "NODES · \(o.nodes.count)")
-            ForEach(o.nodes) { node in
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Circle()
-                        .fill(ClusterPulse.nodeIsReady(node.status)
-                              ? Color(red: 0.45, green: 0.85, blue: 0.55)
-                              : Color.red.opacity(0.95))
-                        .frame(width: 5, height: 5)
-                    Text(node.name)
-                        .font(.system(size: 11.5, weight: .medium,
-                                      design: .monospaced))
-                        .foregroundStyle(Theme.textPrimary)
-                        .lineLimit(1)
-                        .frame(width: 190, alignment: .leading)
-                    if let cpu = node.cpuPct { pressure("cpu", cpu) }
-                    if let mem = node.memPct { pressure("mem", mem) }
-                    Spacer(minLength: 8)
-                    if node.status != "Ready" {
-                        Text(node.status)
-                            .font(.system(size: 10, design: .rounded))
-                            .foregroundStyle(Color.red.opacity(0.95))
+        DropSection(label: "Nodes", count: o.nodes.count, order: 1) {
+            DropWell {
+                ForEach(Array(o.nodes.enumerated()), id: \.element.id) { i, node in
+                    DropRow(index: i) {
+                        HStack(alignment: .center, spacing: 14) {
+                            dot(ClusterPulse.nodeIsReady(node.status) ? Drop.good : Drop.bad)
+                            Text(node.name)
+                                .font(Drop.mono(11.5, .medium))
+                                .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(width: 210, alignment: .leading)
+                            if let cpu = node.cpuPct { pressure("cpu", cpu) }
+                            if let mem = node.memPct { pressure("mem", mem) }
+                            Spacer(minLength: 8)
+                            if node.status != "Ready" {
+                                DropChip(text: node.status, tint: Drop.bad)
+                            }
+                        }
                     }
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+    }
+
+    /// Nil while comfortable, so the gauge stays neutral ink.
+    private func heat(_ pct: Int) -> Color? {
+        if pct > 90 { return Drop.bad }
+        if pct > 75 { return Drop.warn }
+        return nil
     }
 
     private func pressure(_ label: String, _ pct: Int) -> some View {
-        HStack(spacing: 5) {
-            Text(label)
-                .font(.system(size: 9, design: .rounded))
-                .foregroundStyle(Theme.textSecondary.opacity(0.8))
-            bar(fill: Double(pct) / 100,
-                tint: pct > 90 ? Color.red.opacity(0.95)
-                    : pct > 75 ? Theme.warning : Theme.accent)
-                .frame(width: 52)
+        HStack(spacing: 7) {
+            Text(label.uppercased())
+                .font(Drop.mono(8.5, .medium))
+                .kerning(1.2)
+                .foregroundStyle(Theme.textSecondary.opacity(0.75))
+            DropTube(fraction: Double(pct) / 100, tint: heat(pct), height: 4)
+                .frame(width: 72)
             Text("\(pct)%")
-                .font(.system(size: 9.5, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-                .monospacedDigit()
+                .font(Drop.mono(10))
+                .foregroundStyle(heat(pct) ?? Theme.textSecondary)
+                .frame(width: 34, alignment: .trailing)
         }
     }
 
@@ -379,53 +361,44 @@ struct ClusterOverviewOverlay: View {
     }
 
     private func workloadsBand(_ o: ClusterPulse.Overview) -> some View {
-        let running = o.pods.lazy.filter { $0.health == .good }.count
-        let bad = o.pods.lazy.filter { $0.health == .bad }.count
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                bandLabel("shippingbox",
-                          "WORKLOADS · \(effectiveFilter?.uppercased() ?? "ALL NAMESPACES")")
-                Spacer()
-                Text(bad > 0 ? "\(running) running · \(bad) in trouble"
-                             : "\(running) running")
-                    .font(.system(size: 9.5, design: .rounded))
-                    .foregroundStyle(bad > 0 ? Color.red.opacity(0.95)
-                                             : Theme.textSecondary)
-                    .monospacedDigit()
-            }
+        DropSection(label: "Workloads · \(effectiveFilter ?? "all namespaces")", order: 2) {
             if o.pods.isEmpty && o.deployments.isEmpty {
-                Text(effectiveFilter == nil ? "No pods in this cluster."
-                                            : "No pods in this namespace.")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
+                DropStatement(symbol: "shippingbox",
+                              title: effectiveFilter == nil ? "No pods in this cluster"
+                                                            : "No pods in this namespace")
+                    .padding(.bottom, -30)
             }
-            ForEach(namespaceGroups(o)) { group in
-                namespaceSection(group)
+            VStack(alignment: .leading, spacing: 18) {
+                ForEach(namespaceGroups(o)) { group in
+                    namespaceSection(group)
+                }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 
     private func namespaceSection(_ group: NamespaceGroup) -> some View {
         let byWorkload = Dictionary(grouping: group.pods,
                                     by: { workloadKey($0.name) })
-        return VStack(alignment: .leading, spacing: 6) {
-            // The band label already names a narrowed namespace.
+        return VStack(alignment: .leading, spacing: 7) {
+            // The section label already names a narrowed namespace.
             if effectiveFilter == nil {
                 Text(group.name)
-                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Theme.textSecondary.opacity(0.55))
-                    .padding(.top, 2)
+                    .font(Drop.mono(10, .medium))
+                    .foregroundStyle(Theme.textSecondary.opacity(0.7))
+                    .padding(.leading, 12)
             }
-            ForEach(group.deployments) { dep in
-                workloadRow(dep, pods: byWorkload[dep.name] ?? [])
-            }
-            ForEach(group.bare.prefix(8)) { pod in barePodRow(pod) }
-            if group.bare.count > 8 {
-                Text("+\(group.bare.count - 8) more pods")
-                    .font(.system(size: 9.5, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary.opacity(0.75))
+            DropWell {
+                ForEach(Array(group.deployments.enumerated()), id: \.element.id) { i, dep in
+                    DropRow(index: i) {
+                        workloadRow(dep, pods: byWorkload[dep.name] ?? [])
+                    }
+                }
+                ForEach(Array(group.bare.prefix(8).enumerated()), id: \.element.id) { i, pod in
+                    DropRow(index: group.deployments.count + i) { barePodRow(pod) }
+                }
+                if group.bare.count > 8 {
+                    more("+\(group.bare.count - 8) more pods")
+                }
             }
         }
     }
@@ -433,13 +406,14 @@ struct ClusterOverviewOverlay: View {
     private func workloadRow(_ dep: ClusterPulse.Deployment,
                              pods: [ClusterPulse.Pod]) -> some View {
         let short = dep.ready < dep.desired
-        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+        return HStack(alignment: .center, spacing: 12) {
             Text(dep.name)
-                .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                .font(Drop.mono(11.5, .medium))
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(1)
-                .frame(width: 170, alignment: .leading)
-            HStack(spacing: 3) {
+                .truncationMode(.middle)
+                .frame(width: 200, alignment: .leading)
+            HStack(spacing: 4) {
                 ForEach(pods.prefix(20)) { pod in
                     Circle()
                         .fill(podColor(pod.health))
@@ -449,209 +423,184 @@ struct ClusterOverviewOverlay: View {
                 }
                 if pods.count > 20 {
                     Text("+\(pods.count - 20)")
-                        .font(.system(size: 9, design: .rounded))
+                        .font(Drop.mono(9.5))
                         .foregroundStyle(Theme.textSecondary)
                 }
             }
             .animation(Theme.Spring.snappy, value: pods)
             Spacer(minLength: 8)
-            bar(fill: dep.desired > 0 ? Double(dep.ready) / Double(dep.desired) : 0,
-                tint: short ? Color.red.opacity(0.95)
-                            : Color(red: 0.45, green: 0.85, blue: 0.55))
-                .frame(width: 70)
+            DropTube(fraction: dep.desired > 0 ? Double(dep.ready) / Double(dep.desired) : 0,
+                     tint: short ? Drop.bad : Drop.good, height: 4)
+                .frame(width: 84)
             Text("\(dep.ready)/\(dep.desired)")
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(short ? Color.red.opacity(0.95)
-                                       : Theme.textSecondary)
-                .monospacedDigit()
-                .frame(width: 32, alignment: .trailing)
+                .font(Drop.mono(10.5, .medium))
+                .foregroundStyle(short ? Drop.bad : Theme.textSecondary)
+                .frame(width: 40, alignment: .trailing)
         }
-        .padding(.leading, effectiveFilter == nil ? 10 : 0)
     }
 
     private func barePodRow(_ pod: ClusterPulse.Pod) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .center, spacing: 10) {
             Circle().fill(podColor(pod.health))
                 .frame(width: 8, height: 8)
             Text(pod.name)
-                .font(.system(size: 11, design: .monospaced))
+                .font(Drop.mono(11.5))
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(width: 170, alignment: .leading)
-            Text(pod.status)
-                .font(.system(size: 10, design: .rounded))
-                .foregroundStyle(pod.health == .bad ? Color.red.opacity(0.9)
-                                 : pod.health == .pending ? Theme.warning
-                                 : Theme.textSecondary)
+                .frame(width: 240, alignment: .leading)
+            if pod.health == .good {
+                Text(pod.status)
+                    .font(Drop.display(11, .regular))
+                    .foregroundStyle(Theme.textSecondary)
+            } else {
+                DropChip(text: pod.status,
+                         tint: pod.health == .bad ? Drop.bad : Drop.warn)
+            }
             if pod.restarts > 2 {
-                Text("\(pod.restarts) restarts")
-                    .font(.system(size: 9.5, design: .rounded))
-                    .foregroundStyle(Theme.warning)
-                    .monospacedDigit()
+                DropChip(text: "\(pod.restarts) restarts",
+                         symbol: "arrow.counterclockwise", tint: Drop.warn)
             }
             Spacer(minLength: 8)
             Text(pod.age)
-                .font(.system(size: 9.5, design: .rounded))
+                .font(Drop.mono(10))
                 .foregroundStyle(Theme.textSecondary.opacity(0.75))
-                .monospacedDigit()
         }
-        .padding(.leading, effectiveFilter == nil ? 10 : 0)
     }
 
     private func podColor(_ health: ClusterPulse.Health) -> Color {
         switch health {
         case .good:    return Color(red: 0.35, green: 0.68, blue: 0.45)
-        case .pending: return Theme.warning
-        case .bad:     return Color.red.opacity(0.92)
+        case .pending: return Drop.warn
+        case .bad:     return Drop.bad
         }
     }
 
     // MARK: Helm
 
-    /// Releases for the card's context, narrowed by the namespace chip
-    /// like every other band.
+    /// Releases for the card's context, narrowed by the namespace filter
+    /// like every other section.
     private var filteredReleases: [HelmReleases.Release] {
         guard let ns = effectiveFilter else { return helm.releases }
         return helm.releases.filter { $0.namespace == ns }
     }
 
     private var helmBand: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 5) {
-                if let mark = CommandRow.bundledTemplateImage(named: "helm-mark") {
-                    Image(nsImage: mark)
-                        .resizable()
-                        .interpolation(.high)
-                        .frame(width: 10, height: 10)
-                        .foregroundStyle(Theme.textSecondary.opacity(0.7))
-                } else {
-                    Image(systemName: "helm")
-                        .font(.system(size: 8.5, weight: .semibold))
-                        .foregroundStyle(Theme.textSecondary.opacity(0.7))
-                }
-                Text("HELM RELEASES · \(filteredReleases.count)")
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .kerning(1.3)
-                    .foregroundStyle(Theme.textSecondary.opacity(0.7))
-            }
-            ForEach(filteredReleases) { release in
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Circle()
-                        .fill(helmStatusColor(release.status))
-                        .frame(width: 6, height: 6)
-                    namespacedName(release.namespace, release.name)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(width: 210, alignment: .leading)
-                    Text(release.chart)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 8)
-                    Text("rev \(release.revision)")
-                        .font(.system(size: 9.5, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .monospacedDigit()
-                    Text(release.status)
-                        .font(.system(size: 9.5, design: .rounded))
-                        .foregroundStyle(helmStatusColor(release.status))
+        DropSection(label: "Helm releases", count: filteredReleases.count, order: 3) {
+            DropWell {
+                ForEach(Array(filteredReleases.enumerated()), id: \.element.id) { i, release in
+                    DropRow(index: i) {
+                        HStack(alignment: .center, spacing: 12) {
+                            dot(helmStatusColor(release.status))
+                            namespacedName(release.namespace, release.name)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(width: 230, alignment: .leading)
+                            Text(release.chart)
+                                .font(Drop.mono(10.5))
+                                .foregroundStyle(Theme.textSecondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 8)
+                            Text("rev \(release.revision)")
+                                .font(Drop.mono(10))
+                                .foregroundStyle(Theme.textSecondary.opacity(0.75))
+                            DropChip(text: release.status,
+                                     tint: helmStatusColor(release.status))
+                        }
+                    }
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 
     private func helmStatusColor(_ status: String) -> Color {
         switch status {
         case "deployed":
-            return Color(red: 0.45, green: 0.85, blue: 0.55)
+            return Drop.good
         case let s where s.hasPrefix("pending"):
-            return Theme.warning
+            return Drop.warn
         case "uninstalling", "superseded":
-            return Theme.warning
+            return Drop.warn
         default:
-            return Color.red.opacity(0.9)
+            return Drop.bad
         }
     }
 
     // MARK: Services
 
     private func servicesBand(_ o: ClusterPulse.Overview) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            bandLabel("network", "SERVICES · \(o.services.count)")
-            ForEach(o.services.prefix(8)) { svc in
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    namespacedName(svc.namespace, svc.name)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(width: 210, alignment: .leading)
-                    Text(svc.type)
-                        .font(.system(size: 9.5, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 76, alignment: .leading)
-                    Text(svc.clusterIP)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(Theme.textSecondary)
-                        .textSelection(.enabled)
-                    Spacer(minLength: 8)
-                    Text(svc.ports)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1)
+        DropSection(label: "Services", count: o.services.count, order: 4) {
+            DropWell {
+                ForEach(Array(o.services.prefix(8).enumerated()), id: \.element.id) { i, svc in
+                    DropRow(index: i) {
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            namespacedName(svc.namespace, svc.name)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(width: 240, alignment: .leading)
+                            Text(svc.type.uppercased())
+                                .font(Drop.mono(8.5, .medium))
+                                .kerning(1.2)
+                                .foregroundStyle(Theme.textSecondary.opacity(0.75))
+                                .frame(width: 92, alignment: .leading)
+                            Text(svc.clusterIP)
+                                .font(Drop.mono(10.5))
+                                .foregroundStyle(Theme.textSecondary)
+                                .textSelection(.enabled)
+                            Spacer(minLength: 8)
+                            Text(svc.ports)
+                                .font(Drop.mono(10.5))
+                                .foregroundStyle(Theme.textSecondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                if o.services.count > 8 {
+                    more("+\(o.services.count - 8) more services")
                 }
             }
-            if o.services.count > 8 {
-                Text("+\(o.services.count - 8) more services")
-                    .font(.system(size: 9.5, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary.opacity(0.75))
-            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 
     // MARK: Events
 
     private func eventsBand(_ o: ClusterPulse.Overview) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            bandLabel("exclamationmark.triangle", "RECENT WARNINGS")
-            ForEach(o.events) { e in
-                HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Circle().fill(Theme.warning)
-                        .frame(width: 4, height: 4)
-                    (Text("\(e.reason) · ")
-                        .font(.system(size: 10.5, weight: .medium,
-                                      design: .monospaced))
-                        .foregroundStyle(Theme.textPrimary)
-                     + Text("\(e.namespace)/")
-                        .font(.system(size: 9.5, design: .monospaced))
-                        .foregroundStyle(Theme.textSecondary.opacity(0.6))
-                     + Text(e.object)
-                        .font(.system(size: 10.5, weight: .medium,
-                                      design: .monospaced))
-                        .foregroundStyle(Theme.textPrimary))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Text(e.age)
-                        .font(.system(size: 9.5, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary.opacity(0.75))
-                    Spacer(minLength: 0)
-                }
-                if !e.message.isEmpty {
-                    Text(e.message)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .padding(.leading, 11)
+        DropSection(label: "Recent warnings", tint: Drop.warn, order: 5) {
+            DropWell {
+                ForEach(Array(o.events.enumerated()), id: \.element.id) { i, e in
+                    DropRow(index: i) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                (Text("\(e.reason) · ")
+                                    .font(Drop.mono(11, .medium))
+                                    .foregroundStyle(Drop.warn)
+                                 + Text("\(e.namespace)/")
+                                    .font(Drop.mono(10))
+                                    .foregroundStyle(Theme.textSecondary.opacity(0.6))
+                                 + Text(e.object)
+                                    .font(Drop.mono(11, .medium))
+                                    .foregroundStyle(Theme.textPrimary))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer(minLength: 8)
+                                Text(e.age)
+                                    .font(Drop.mono(10))
+                                    .foregroundStyle(Theme.textSecondary.opacity(0.75))
+                            }
+                            if !e.message.isEmpty {
+                                Text(e.message)
+                                    .font(Drop.mono(10.5))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 
     private static let relative: RelativeDateTimeFormatter = {

@@ -7,15 +7,12 @@ import SwiftUI
 struct BriefingOverlay: View {
     @EnvironmentObject var state: AppState
     @ObservedObject private var briefing = Briefing.shared
-    let glassLive: Bool
 
     var body: some View {
-        BriefingCard(glassLive: glassLive, width: 620) {
+        BriefingCard(width: 680) {
             VStack(spacing: 0) {
                 header
-                Divider().opacity(0.4)
                 content
-                Divider().opacity(0.4)
                 footer
             }
         }
@@ -24,27 +21,15 @@ struct BriefingOverlay: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("While you were away")
-                    .font(.system(size: 21, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
-                Text(subtitle)
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-            }
-            Spacer()
+        DropHeader(eyebrow: "Briefing", title: "While you were away",
+                   onClose: dismiss) {
+            DropContext(subtitle)
+        } controls: {
             if briefing.awaySpan >= 60 {
-                Text(awayLabel)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Capsule().fill(Theme.stroke))
+                DropChip(text: awayLabel, symbol: "moon.fill",
+                         tint: Drop.tones[1])
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
     }
 
     private var subtitle: String {
@@ -60,6 +45,11 @@ struct BriefingOverlay: View {
         return "\(Int(s / 86400))d away"
     }
 
+    private func dismiss() {
+        Briefing.shared.markSeen()
+        state.closeBriefing()
+    }
+
     // MARK: Content
 
     @ViewBuilder
@@ -67,71 +57,68 @@ struct BriefingOverlay: View {
         let groups = briefing.grouped
         let work = briefing.outstandingWork
         if groups.isEmpty && work.isEmpty {
-            Text("No agents finished, nothing failed, nothing changed.")
-                .font(.system(size: 11.5, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.vertical, 30)
-                .frame(maxWidth: .infinity)
+            DropStatement(symbol: "moon.stars", title: "All quiet",
+                          message: "No agents finished, nothing failed, nothing changed.")
         } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(groups, id: \.kind) { group in
-                        band(group.kind, group.events)
-                        hairline
-                    }
-                    if !work.isEmpty { workBand(work) }
+            DropBody(maxHeight: 480) {
+                tally(groups)
+                ForEach(Array(groups.enumerated()), id: \.element.kind) { i, group in
+                    band(group.kind, group.events, order: i + 1)
                 }
-                .padding(.bottom, 6)
+                if !work.isEmpty { workBand(work, order: groups.count + 1) }
             }
-            .frame(height: min(CGFloat(briefing.pending.count + work.count) * 34 + 90, 420))
         }
     }
 
-    private var hairline: some View {
-        Rectangle().fill(Theme.stroke).frame(height: 0.5)
-    }
-
-    private func band(_ kind: Briefing.Kind, _ events: [Briefing.Event]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: kind.glyph)
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(color(kind))
-                Text(kind.label)
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .kerning(1.3)
-                    .foregroundStyle(color(kind))
-                Text("\(events.count)")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(Capsule().fill(Theme.stroke))
+    /// The absence in numbers: one large figure per kind of event.
+    private func tally(_ groups: [(kind: Briefing.Kind, events: [Briefing.Event])]) -> some View {
+        HStack(alignment: .top, spacing: 34) {
+            ForEach(groups, id: \.kind) { group in
+                VStack(alignment: .leading, spacing: 2) {
+                    DropFigure(value: Double(group.events.count), color: color(group.kind))
+                    Text(group.kind.label.uppercased())
+                        .font(Drop.mono(8.5, .medium))
+                        .kerning(1.6)
+                        .foregroundStyle(Theme.textSecondary.opacity(0.8))
+                }
             }
-            ForEach(events) { event in eventRow(event) }
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        .rollUp(delay: 0.08)
     }
 
-    private func eventRow(_ event: Briefing.Event) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            VStack(alignment: .leading, spacing: 1) {
+    private func band(_ kind: Briefing.Kind, _ events: [Briefing.Event],
+                      order: Int) -> some View {
+        DropSection(label: kind.label, tint: color(kind), count: events.count, order: order) {
+            DropWell {
+                ForEach(Array(events.enumerated()), id: \.element.id) { i, event in
+                    DropRow(index: i) { eventRow(event, kind: kind) }
+                }
+            }
+        }
+    }
+
+    private func eventRow(_ event: Briefing.Event, kind: Briefing.Kind) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: kind.glyph)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(color(kind))
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(color(kind).opacity(0.14)))
+            VStack(alignment: .leading, spacing: 2) {
                 Text(event.title)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary.opacity(0.92))
+                    .font(Drop.display(12.5, .semibold))
+                    .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 Text(event.message)
-                    .font(.system(size: 10.5, design: .rounded))
+                    .font(Drop.display(11, .regular))
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
             Spacer(minLength: 8)
             Text(Self.relative.localizedString(for: event.at, relativeTo: Date()))
-                .font(.system(size: 10, design: .rounded))
-                .monospacedDigit()
+                .font(Drop.mono(9.5))
                 .foregroundStyle(Theme.textSecondary.opacity(0.8))
                 .fixedSize()
         }
@@ -139,51 +126,43 @@ struct BriefingOverlay: View {
 
     /// What the agents left behind, read live. The events say an agent
     /// finished; this says whether its work is still sitting uncommitted.
-    private func workBand(_ work: [WorktreeWatch.Snapshot]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.triangle.pull")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Theme.accent)
-                Text("UNREVIEWED CHANGES")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .kerning(1.3)
-                    .foregroundStyle(Theme.accent)
-            }
-            ForEach(work, id: \.root) { snap in
-                Button { state.openWorktreeReview(root: snap.root) } label: {
-                    HStack(spacing: 8) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text((snap.root as NSString).lastPathComponent)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Theme.textPrimary.opacity(0.92))
-                            Text("\(snap.branch) · \(snap.summary)")
-                                .font(.system(size: 10.5, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundStyle(Theme.textSecondary)
-                                .lineLimit(1)
+    private func workBand(_ work: [WorktreeWatch.Snapshot], order: Int) -> some View {
+        DropSection(label: "Unreviewed changes", count: work.count, order: order) {
+            DropWell {
+                ForEach(Array(work.enumerated()), id: \.element.root) { i, snap in
+                    DropRow(index: i, action: { state.openWorktreeReview(root: snap.root) }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "arrow.triangle.pull")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Drop.sheen)
+                                .frame(width: 24, height: 24)
+                                .background(Circle().fill(Theme.selectionFill))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text((snap.root as NSString).lastPathComponent)
+                                    .font(Drop.display(12.5, .semibold))
+                                    .foregroundStyle(Theme.textPrimary)
+                                Text("\(snap.branch) · \(snap.summary)")
+                                    .font(Drop.mono(10))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(Theme.textSecondary.opacity(0.7))
                         }
-                        Spacer(minLength: 8)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 8.5, weight: .bold))
-                            .foregroundStyle(Theme.textSecondary.opacity(0.7))
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
     }
 
     private func color(_ kind: Briefing.Kind) -> Color {
         switch kind {
-        case .alert:   return Color(red: 0.93, green: 0.42, blue: 0.42)
-        case .plan:    return Color(red: 0.95, green: 0.72, blue: 0.32)
-        case .agent:   return Theme.accent
-        default:       return Theme.textSecondary.opacity(0.75)
+        case .alert:   return Drop.bad
+        case .plan:    return Drop.warn
+        case .agent:   return Drop.tones[0]
+        default:       return Theme.textSecondary
         }
     }
 
@@ -192,21 +171,11 @@ struct BriefingOverlay: View {
     private var footer: some View {
         HStack {
             Spacer()
-            Button {
-                Briefing.shared.markSeen()
-                state.closeBriefing()
-            } label: {
-                Text("Got it")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
-                    .padding(.horizontal, 14).padding(.vertical, 6)
-                    .background(Capsule().fill(Theme.selectionFill))
-                    .overlay(Capsule().strokeBorder(Theme.stroke, lineWidth: 0.75))
-            }
-            .buttonStyle(.plain)
+            DropButton(title: "Got it", symbol: "checkmark", prominent: true, action: dismiss)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        .padding(.horizontal, Drop.inset)
+        .padding(.bottom, 34)
+        .rollUp(delay: 0.34)
     }
 
     private static let relative: RelativeDateTimeFormatter = {

@@ -1,99 +1,71 @@
 import SwiftUI
 
-/// Host Overview: one glass card that answers "how is this machine?"
-/// in a glance. No boxed sub-cards — information sits directly on the
-/// glass as typographic bands separated by hairlines: identity, vitals
-/// (load / memory / storage), workloads, then network / schedule /
-/// health. A status gem beside the hostname sums the whole machine.
-/// Bands the host doesn't have simply don't render.
+/// Host Overview: one drop that answers "how is this machine?" in a
+/// glance. Built from the `Drop` kit: a masthead, then vitals as gauges
+/// (load and memory as rings, storage as tubes), workloads, the machine's
+/// facts, and its logs. A status gem beside the eyebrow sums the whole
+/// machine. Sections the host doesn't have simply don't render.
 struct HostOverviewOverlay: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject private var prefs: Preferences
     @StateObject private var probe: HostProbeModel
     @State private var retryTarget = ""
-    /// True once the spawn animation has settled. The live material
-    /// only mounts at rest — an NSGlassEffectView ignores SwiftUI's
-    /// animated blur/opacity, so animating over it would pop; the
-    /// condense-from-blur plays entirely against the solid bed.
-    let glassLive: Bool
 
-    init(target: String, glassLive: Bool) {
-        self.glassLive = glassLive
+    init(target: String) {
         _probe = StateObject(wrappedValue: HostProbeModel(target: target))
     }
 
     var body: some View {
-        BriefingCard(glassLive: glassLive) {
+        BriefingCard(width: 760) {
             VStack(spacing: 0) {
                 header
-                switch probe.phase {
-                case .loading: loading
-                case .failed(let message): failed(message)
-                case .loaded(let info): content(info)
+                Group {
+                    switch probe.phase {
+                    case .loading: DropLoader(text: "Collecting from \(probe.target)")
+                    case .failed(let message): failed(message)
+                    case .loaded(let info): content(info)
+                    }
                 }
+                .transition(.liquidSwap)
             }
+            .animation(.spring(response: 0.5, dampingFraction: 0.82), value: phaseKey)
+        }
+    }
+
+    private var phaseKey: Int {
+        switch probe.phase {
+        case .loading: return 0
+        case .failed: return 1
+        case .loaded: return 2
         }
     }
 
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 9) {
-                    statusGem
-                    Text(headline)
-                        .font(.system(size: 21, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
+        DropHeader(eyebrow: "Host", title: headline, gem: gemColor, gemHelp: gemHelp,
+                   onClose: { state.closeHostOverview() }) {
+            HStack(spacing: 7) {
+                if case .loaded(let info) = probe.phase,
+                   let badge = Self.distroBadge(info.os) {
+                    badge
                 }
-                HStack(spacing: 6) {
-                    if case .loaded(let info) = probe.phase,
-                       let badge = Self.distroBadge(info.os) {
-                        badge
-                    }
-                    Text(subheadline)
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1)
-                }
+                DropContext(subheadline)
             }
-            Spacer()
+        } controls: {
             if case .loaded = probe.phase, let at = probe.fetchedAt {
                 Text(Self.relative.localizedString(for: at, relativeTo: Date()))
-                    .font(.system(size: 10, design: .rounded))
+                    .font(Drop.mono(9.5))
                     .foregroundStyle(Theme.textSecondary.opacity(0.7))
+                    .padding(.trailing, 4)
             }
-            if probe.refreshing {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 24, height: 24)
-            } else {
-                Button {
-                    probe.refresh()
-                    SoundEffects.shared.play(.click)
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(isLoading)
-                .help("Refresh")
+            DropIconButton(symbol: "arrow.clockwise", help: "Refresh",
+                           spinning: probe.refreshing) {
+                probe.refresh()
+                SoundEffects.shared.play(.click)
             }
-            Button { state.closeHostOverview() } label: {
-                Text("esc")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Capsule().fill(Theme.stroke))
-            }
-            .buttonStyle(.plain)
+            .disabled(isLoading || probe.refreshing)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 14)
     }
 
     /// One dot for the whole machine. The server answered, so it IS
@@ -114,12 +86,12 @@ struct HostOverviewOverlay: View {
         guard case .loaded(let info) = probe.phase else {
             return Theme.textSecondary.opacity(0.5)
         }
-        if isOverloaded(info) { return Color.red.opacity(0.95) }
+        if isOverloaded(info) { return Drop.bad }
         if (info.failedUnits ?? 0) > 0 || info.rebootRequired
             || memHot(info) || diskHot(info) {
             return Theme.warning
         }
-        return Color(red: 0.45, green: 0.85, blue: 0.55)
+        return Drop.good
     }
 
     private var gemHelp: String {
@@ -219,46 +191,47 @@ struct HostOverviewOverlay: View {
         return parts.isEmpty ? "ssh \(probe.target)" : parts.joined(separator: "  ·  ")
     }
 
-    // MARK: - Loading / failure
-
-    private var loading: some View {
-        VStack(spacing: 10) {
-            ProgressView()
-            Text("Collecting from \(probe.target)…")
-                .font(.system(size: 11.5, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 56)
-    }
+    // MARK: - Failure
 
     private func failed(_ message: String) -> some View {
-        VStack(spacing: 14) {
-            Image(systemName: "bolt.horizontal.circle")
-                .font(.system(size: 26, weight: .light))
-                .foregroundStyle(Theme.warning)
-            Text(message)
-                .font(.system(size: 11.5, design: .monospaced))
+        VStack(spacing: 22) {
+            DropStatement(symbol: "bolt.horizontal", title: "Couldn't reach this host",
+                          tint: Drop.warn)
+                .padding(.bottom, -44)
+            Text(message.trimmingCharacters(in: .whitespacesAndNewlines))
+                .font(Drop.mono(10.5))
                 .foregroundStyle(Theme.textSecondary)
-                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .multilineTextAlignment(.leading)
                 .textSelection(.enabled)
-                .frame(maxWidth: 480)
-            HStack(spacing: 8) {
-                TextField("user@host", text: $retryTarget)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11.5, design: .monospaced))
-                    .frame(width: 240)
-                    .onSubmit(retry)
-                Button("Retry", action: retry)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: Drop.wellRadius, style: .continuous)
+                    .fill(Theme.selectionFill.opacity(0.55)))
+                .rollUp(delay: 0.22)
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    TextField("user@host", text: $retryTarget)
+                        .textFieldStyle(.plain)
+                        .font(Drop.mono(12))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background(Capsule().fill(Theme.selectionFill))
+                        .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 0.75))
+                        .frame(width: 300)
+                        .onSubmit(retry)
+                    DropButton(title: "Retry", symbol: "arrow.clockwise",
+                               prominent: true, action: retry)
+                }
+                Text("Probes non-interactively with your SSH keys. A different login is remembered for this host.")
+                    .font(Drop.display(10.5, .regular))
+                    .foregroundStyle(Theme.textSecondary.opacity(0.8))
             }
-            Text("Probes with your SSH keys. A different login is remembered for this host.")
-                .font(.system(size: 9.5, design: .rounded))
-                .foregroundStyle(Theme.textSecondary.opacity(0.8))
+            .rollUp(delay: 0.30)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .padding(.horizontal, Drop.inset)
+        .padding(.bottom, 40)
         .onAppear { retryTarget = probe.target }
     }
 
@@ -275,48 +248,34 @@ struct HostOverviewOverlay: View {
     // MARK: - Content
 
     private func content(_ info: HostInfo) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                alertsSection(info)
-                hairline
-                vitalsBand(info)
-                if info.containers != nil || info.vms != nil
-                    || info.kubelet || info.kubeNodes != nil {
-                    hairline
-                    workloadsBand(info)
-                }
-                hairline
-                footerBand(info)
-                if !info.topProcs.isEmpty || !info.listeningPorts.isEmpty {
-                    hairline
-                    procsPortsBand(info)
-                }
-                if !info.journalErrors.isEmpty || !info.kernelWarnings.isEmpty {
-                    hairline
-                    logsBand(info)
-                }
-                if !info.lastLogins.isEmpty {
-                    hairline
-                    loginsBand(info)
-                }
+        DropBody(maxHeight: 600) {
+            alertsSection(info)
+            vitalsBand(info)
+            if info.containers != nil || info.vms != nil
+                || info.kubelet || info.kubeNodes != nil {
+                workloadsBand(info)
             }
-            .padding(.bottom, 6)
+            factsBand(info)
+            if !info.topProcs.isEmpty || !info.listeningPorts.isEmpty {
+                procsPortsBand(info)
+            }
+            if !info.journalErrors.isEmpty || !info.kernelWarnings.isEmpty {
+                logsBand(info)
+            }
+            if !info.lastLogins.isEmpty {
+                loginsBand(info)
+            }
         }
-        .frame(maxHeight: 620)
-    }
-
-    private var hairline: some View {
-        Rectangle().fill(Theme.stroke).frame(height: 0.5)
     }
 
     private func alertItems(_ info: HostInfo) -> [(Color, String)] {
         var items: [(Color, String)] = []
         if let failed = info.failedUnits, failed > 0 {
-            items.append((Color.red.opacity(0.95),
+            items.append((Drop.bad,
                           "\(failed) failed unit\(failed == 1 ? "" : "s")"))
         }
         if isOverloaded(info) {
-            items.append((Color.red.opacity(0.95), "load above core count"))
+            items.append((Drop.bad, "load above core count"))
         }
         if info.rebootRequired {
             items.append((Theme.warning, "reboot required"))
@@ -333,119 +292,116 @@ struct HostOverviewOverlay: View {
     private func alertsSection(_ info: HostInfo) -> some View {
         let items = alertItems(info)
         if !items.isEmpty {
-            hairline
-            HStack(spacing: 16) {
+            HStack(spacing: 8) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    HStack(spacing: 6) {
-                        Circle().fill(item.0).frame(width: 5, height: 5)
-                        Text(item.1)
-                            .font(.system(size: 11, weight: .semibold,
-                                          design: .rounded))
-                            .foregroundStyle(item.0)
-                    }
+                    DropChip(text: item.1, symbol: "exclamationmark", tint: item.0)
                 }
-                Spacer()
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 10)
+            .rollUp(delay: 0.08)
         }
     }
 
     // MARK: Vitals
 
     private func vitalsBand(_ info: HostInfo) -> some View {
-        // Load and memory are single figures — fixed columns; storage
-        // grows with its mount list and takes the remaining width.
-        HStack(alignment: .top, spacing: 28) {
+        HStack(alignment: .top, spacing: 30) {
             if let load = info.loadAvg {
-                column("LOAD") { loadColumn(load, cores: info.cores) }
-                    .frame(width: 168)
+                loadGauge(load, cores: info.cores)
             }
             if let total = info.memTotalMB {
-                column("MEMORY") { memoryColumn(total: total, avail: info.memAvailMB) }
-                    .frame(width: 168)
+                memoryGauge(total: total, avail: info.memAvailMB)
             }
             if !info.disks.isEmpty {
-                column("STORAGE") { storageColumn(info.disks) }
+                DropSection(label: "Storage", order: 2) { storageColumn(info.disks) }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
     }
 
-    private func loadColumn(_ load: (Double, Double, Double),
-                            cores: Int?) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(String(format: "%.2f", load.0))
-                    .font(.system(size: 23, weight: .semibold, design: .rounded))
-                    .foregroundStyle(cores.map { loadTint(load.0, cores: $0) }
-                                     ?? Theme.textPrimary)
-                    .monospacedDigit()
+    private func loadGauge(_ load: (Double, Double, Double), cores: Int?) -> some View {
+        let tint = cores.flatMap { loadTint(load.0, cores: $0) }
+        return DropSection(label: "Load", order: 0) {
+            DropRing(fraction: cores.map { load.0 / Double(max($0, 1)) } ?? 0, tint: tint) {
+                DropFigure(value: load.0, format: "%.2f", font: Drop.display(22, .light),
+                           color: tint ?? Theme.textPrimary)
+            }
+            VStack(alignment: .leading, spacing: 2) {
                 Text(String(format: "%.2f · %.2f", load.1, load.2))
-                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                    .font(Drop.mono(10.5))
                     .foregroundStyle(Theme.textSecondary)
-                    .monospacedDigit()
-            }
-            if let cores {
-                bar(fill: min(1, load.0 / Double(cores)),
-                    tint: loadTint(load.0, cores: cores))
-                Text("\(cores) core\(cores == 1 ? "" : "s")")
-                    .font(.system(size: 9.5, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary.opacity(0.75))
-            }
-        }
-    }
-
-    private func loadTint(_ v: Double, cores: Int) -> Color {
-        let r = v / Double(max(cores, 1))
-        if r >= 1.0 { return Color.red.opacity(0.95) }
-        if r >= 0.7 { return Theme.warning }
-        return Theme.textPrimary
-    }
-
-    private func memoryColumn(total: Int, avail: Int?) -> some View {
-        let used = total - (avail ?? 0)
-        let frac = total > 0 ? Double(used) / Double(total) : 0
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text(gb(used))
-                    .font(.system(size: 23, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
-                    .monospacedDigit()
-                Text("of \(gb(total)) GB")
-                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-            }
-            bar(fill: frac, tint: frac > 0.9 ? Color.red.opacity(0.95)
-                : frac > 0.75 ? Theme.warning : Theme.accent)
-            Text("\(Int((frac * 100).rounded()))% in use")
-                .font(.system(size: 9.5, design: .rounded))
-                .foregroundStyle(Theme.textSecondary.opacity(0.75))
-        }
-    }
-
-    private func storageColumn(_ disks: [HostInfo.Disk]) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            ForEach(disks.prefix(3), id: \.mount) { d in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(d.mount)
-                            .font(.system(size: 11.5, weight: .medium,
-                                          design: .monospaced))
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(1)
-                        Spacer(minLength: 8)
-                        Text("\(Int((d.pct * 100).rounded()))% of \(gb(d.totalKB / 1024)) GB")
-                            .font(.system(size: 9.5, design: .rounded))
-                            .foregroundStyle(Theme.textSecondary)
-                            .monospacedDigit()
-                    }
-                    bar(fill: d.pct, tint: d.pct > 0.9 ? Color.red.opacity(0.95)
-                        : d.pct > 0.75 ? Theme.warning : Theme.accent)
+                if let cores {
+                    Text("\(cores) core\(cores == 1 ? "" : "s")")
+                        .font(Drop.display(10.5, .regular))
+                        .foregroundStyle(Theme.textSecondary.opacity(0.75))
                 }
             }
         }
+        .frame(width: 118)
+    }
+
+    /// Nil while the load is comfortable, so the ring stays neutral ink.
+    private func loadTint(_ v: Double, cores: Int) -> Color? {
+        let r = v / Double(max(cores, 1))
+        if r >= 1.0 { return Drop.bad }
+        if r >= 0.7 { return Drop.warn }
+        return nil
+    }
+
+    private func gaugeTint(_ fraction: Double) -> Color? {
+        if fraction > 0.9 { return Drop.bad }
+        if fraction > 0.75 { return Drop.warn }
+        return nil
+    }
+
+    private func memoryGauge(total: Int, avail: Int?) -> some View {
+        let used = total - (avail ?? 0)
+        let frac = total > 0 ? Double(used) / Double(total) : 0
+        return DropSection(label: "Memory", order: 1) {
+            DropRing(fraction: frac, tint: gaugeTint(frac)) {
+                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                    DropFigure(value: frac * 100, font: Drop.display(22, .light),
+                               color: gaugeTint(frac) ?? Theme.textPrimary)
+                    Text("%")
+                        .font(Drop.display(11, .regular))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(gb(used)) of \(gb(total)) GB")
+                    .font(Drop.mono(10.5))
+                    .foregroundStyle(Theme.textSecondary)
+                Text("in use")
+                    .font(Drop.display(10.5, .regular))
+                    .foregroundStyle(Theme.textSecondary.opacity(0.75))
+            }
+        }
+        .frame(width: 118)
+    }
+
+    private func storageColumn(_ disks: [HostInfo.Disk]) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(disks.prefix(4), id: \.mount) { d in
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(d.mount)
+                            .font(Drop.mono(12, .medium))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        Text("\(Int((d.pct * 100).rounded()))%")
+                            .font(Drop.display(13, .medium))
+                            .foregroundStyle(gaugeTint(d.pct) ?? Theme.textPrimary)
+                            .monospacedDigit()
+                        Text("of \(gb(d.totalKB / 1024)) GB")
+                            .font(Drop.display(10.5, .regular))
+                            .foregroundStyle(Theme.textSecondary)
+                            .monospacedDigit()
+                    }
+                    DropTube(fraction: d.pct, tint: gaugeTint(d.pct))
+                }
+            }
+        }
+        .padding(.top, 6)
     }
 
     private func gb(_ mb: Int) -> String {
@@ -455,79 +411,75 @@ struct HostOverviewOverlay: View {
     // MARK: Workloads
 
     private func workloadsBand(_ info: HostInfo) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            microLabel("WORKLOADS")
-            if let containers = info.containers {
-                workloadRow("shippingbox",
-                            "\(containers.count) container\(containers.count == 1 ? "" : "s")",
-                            names: [])
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(containers.prefix(5), id: \.name) { c in
-                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                            Text(c.name)
-                                .font(.system(size: 11, weight: .medium,
-                                              design: .monospaced))
-                                .foregroundStyle(Theme.textPrimary)
-                                .lineLimit(1)
-                                .frame(width: 190, alignment: .leading)
-                            Text(c.status.isEmpty ? c.image
-                                 : "\(c.image) · \(c.status)")
-                                .font(.system(size: 10, design: .rounded))
-                                .foregroundStyle(Theme.textSecondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer(minLength: 0)
+        DropSection(label: "Workloads", order: 3) {
+            HStack(spacing: 8) {
+                if let containers = info.containers {
+                    DropChip(text: "\(containers.count) container\(containers.count == 1 ? "" : "s")",
+                             symbol: "shippingbox.fill", tint: Drop.tones[0])
+                }
+                if let vms = info.vms {
+                    DropChip(text: "\(vms.count) virtual machine\(vms.count == 1 ? "" : "s")",
+                             symbol: "desktopcomputer", tint: Drop.tones[1])
+                }
+                if info.kubelet || info.kubeNodes != nil {
+                    DropChip(text: kubeSummary(info), symbol: "helm",
+                             tint: Drop.tones[4])
+                }
+            }
+            if let containers = info.containers, !containers.isEmpty {
+                DropWell {
+                    ForEach(Array(containers.prefix(6).enumerated()), id: \.element.name) { i, c in
+                        DropRow(index: i) {
+                            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                Text(c.name)
+                                    .font(Drop.mono(11.5, .medium))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .lineLimit(1)
+                                    .frame(width: 210, alignment: .leading)
+                                Text(c.image)
+                                    .font(Drop.display(11, .regular))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer(minLength: 8)
+                                if !c.status.isEmpty {
+                                    Text(c.status)
+                                        .font(Drop.mono(9.5))
+                                        .foregroundStyle(Theme.textSecondary.opacity(0.8))
+                                        .lineLimit(1)
+                                }
+                            }
                         }
                     }
-                    if containers.count > 5 {
-                        Text("+\(containers.count - 5) more containers")
-                            .font(.system(size: 10, design: .rounded))
-                            .foregroundStyle(Theme.textSecondary.opacity(0.75))
+                    if containers.count > 6 {
+                        more("+\(containers.count - 6) more containers")
                     }
                 }
-                .padding(.leading, 25)
             }
-            if let vms = info.vms {
-                workloadRow("desktopcomputer",
-                            "\(vms.count) virtual machine\(vms.count == 1 ? "" : "s")",
-                            names: vms)
-            }
-            if info.kubelet || info.kubeNodes != nil {
-                workloadRow("helm", kubeSummary(info), names: [])
+            if let vms = info.vms, !vms.isEmpty {
+                Text(nameList(vms))
+                    .font(Drop.mono(11))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(2)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+    }
+
+    private func more(_ text: String) -> some View {
+        Text(text)
+            .font(Drop.display(10.5, .regular))
+            .foregroundStyle(Theme.textSecondary.opacity(0.75))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
     }
 
     private func kubeSummary(_ info: HostInfo) -> String {
         var parts: [String] = []
-        if info.kubelet { parts.append("kubelet active — cluster node") }
+        if info.kubelet { parts.append("cluster node") }
         if let n = info.kubeNodes {
             parts.append("\(n) node\(n == 1 ? "" : "s") visible")
         }
         return parts.joined(separator: " · ")
-    }
-
-    private func workloadRow(_ symbol: String, _ headline: String,
-                             names: [String]) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 9) {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Theme.accent)
-                .frame(width: 16)
-            Text(headline)
-                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
-            if !names.isEmpty {
-                Text(nameList(names))
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            Spacer(minLength: 0)
-        }
     }
 
     private func nameList(_ names: [String]) -> String {
@@ -536,13 +488,13 @@ struct HostOverviewOverlay: View {
         return rest > 0 ? "\(shown), +\(rest) more" : shown
     }
 
-    // MARK: Footer band
+    // MARK: Facts
 
-    private func footerBand(_ info: HostInfo) -> some View {
-        HStack(alignment: .top, spacing: 24) {
+    private func factsBand(_ info: HostInfo) -> some View {
+        HStack(alignment: .top, spacing: 30) {
             if !info.ips.isEmpty || info.fqdn != nil {
-                column("NETWORK") {
-                    VStack(alignment: .leading, spacing: 4) {
+                DropSection(label: "Network", order: 4) {
+                    VStack(alignment: .leading, spacing: 5) {
                         if let fqdn = info.fqdn { monoLine(fqdn, primary: true) }
                         ForEach(info.ips.prefix(3), id: \.self) {
                             monoLine($0, primary: info.fqdn == nil)
@@ -551,11 +503,11 @@ struct HostOverviewOverlay: View {
                 }
             }
             if !info.timers.isEmpty || (info.cronEntries ?? 0) > 0 {
-                column("SCHEDULE") {
-                    VStack(alignment: .leading, spacing: 4) {
+                DropSection(label: "Schedule", order: 5) {
+                    VStack(alignment: .leading, spacing: 5) {
                         if let crons = info.cronEntries, crons > 0 {
                             Text("\(crons) crontab entr\(crons == 1 ? "y" : "ies")")
-                                .font(.system(size: 11.5, design: .rounded))
+                                .font(Drop.display(12, .medium))
                                 .foregroundStyle(Theme.textPrimary)
                         }
                         ForEach(info.timers.prefix(3), id: \.unit) { t in
@@ -564,24 +516,19 @@ struct HostOverviewOverlay: View {
                     }
                 }
             }
-            column("HEALTH") {
-                VStack(alignment: .leading, spacing: 5) {
-                    kvLine("Units",
-                           failedSummary(info),
-                           tint: (info.failedUnits ?? 0) > 0
-                               ? Color.red.opacity(0.95) : Theme.textPrimary)
+            DropSection(label: "Health", order: 6) {
+                VStack(alignment: .leading, spacing: 11) {
+                    DropFact(label: "Units", value: failedSummary(info),
+                             tint: (info.failedUnits ?? 0) > 0 ? Drop.bad : Theme.textPrimary)
                     if let users = info.usersLoggedIn {
-                        kvLine("Sessions", "\(users) logged in")
+                        DropFact(label: "Sessions", value: "\(users) logged in")
                     }
-                    kvLine("Reboot",
-                           info.rebootRequired ? "required" : "not needed",
-                           tint: info.rebootRequired ? Theme.warning
-                                                     : Theme.textPrimary)
+                    DropFact(label: "Reboot",
+                             value: info.rebootRequired ? "required" : "not needed",
+                             tint: info.rebootRequired ? Drop.warn : Theme.textPrimary)
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
     }
 
     private func failedSummary(_ info: HostInfo) -> String {
@@ -594,100 +541,80 @@ struct HostOverviewOverlay: View {
         return "\(failed) failed"
     }
 
-    private func kvLine(_ label: String, _ value: String,
-                        tint: Color = Theme.textPrimary) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(label)
-                .font(.system(size: 10.5, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-                .frame(width: 56, alignment: .leading)
-            Text(value)
-                .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                .foregroundStyle(tint)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-    }
-
     // MARK: Processes / ports
 
     private func procsPortsBand(_ info: HostInfo) -> some View {
-        HStack(alignment: .top, spacing: 24) {
+        HStack(alignment: .top, spacing: 30) {
             if !info.topProcs.isEmpty {
-                column("TOP PROCESSES") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(Array(info.topProcs.enumerated()),
-                                id: \.offset) { _, p in
-                            // Fixed name column keeps the figures in a
-                            // tight, scannable second column instead of
-                            // drifting to the far edge.
-                            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                                Text(p.name)
-                                    .font(.system(size: 11, weight: .medium,
-                                                  design: .monospaced))
-                                    .foregroundStyle(Theme.textPrimary)
-                                    .lineLimit(1)
-                                    .frame(width: 150, alignment: .leading)
-                                Text("\(p.cpu)% cpu · \(p.mem)% mem")
-                                    .font(.system(size: 9.5, design: .rounded))
-                                    .foregroundStyle(Theme.textSecondary)
-                                    .monospacedDigit()
-                                Spacer(minLength: 0)
+                DropSection(label: "Top processes", order: 7) {
+                    DropWell {
+                        ForEach(Array(info.topProcs.enumerated()), id: \.offset) { i, p in
+                            DropRow(index: i) {
+                                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                    Text(p.name)
+                                        .font(Drop.mono(11.5, .medium))
+                                        .foregroundStyle(Theme.textPrimary)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 8)
+                                    Text("\(p.cpu)% cpu")
+                                        .font(Drop.mono(10))
+                                        .foregroundStyle(Theme.textSecondary)
+                                        .frame(width: 70, alignment: .trailing)
+                                    Text("\(p.mem)% mem")
+                                        .font(Drop.mono(10))
+                                        .foregroundStyle(Theme.textSecondary.opacity(0.75))
+                                        .frame(width: 70, alignment: .trailing)
+                                }
                             }
                         }
                     }
                 }
             }
             if !info.listeningPorts.isEmpty {
-                column("LISTENING") {
-                    VStack(alignment: .leading, spacing: 4) {
+                DropSection(label: "Listening", order: 8) {
+                    VStack(alignment: .leading, spacing: 5) {
                         ForEach(info.listeningPorts.prefix(6), id: \.self) {
                             monoLine($0, primary: false)
                         }
                         if info.listeningPorts.count > 6 {
                             Text("+ \(info.listeningPorts.count - 6) more")
-                                .font(.system(size: 9.5, design: .rounded))
+                                .font(Drop.display(10.5, .regular))
                                 .foregroundStyle(Theme.textSecondary.opacity(0.75))
                         }
                     }
+                    .padding(.top, 6)
                 }
-                .frame(width: 170)
+                .frame(width: 190)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
     }
 
     // MARK: Log feeds
 
     private func logsBand(_ info: HostInfo) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Drop.sectionGap) {
             if !info.journalErrors.isEmpty {
-                logFeed("RECENT ERRORS — journal", info.journalErrors,
-                        dot: Color.red.opacity(0.85))
+                logFeed("Recent errors · journal", info.journalErrors, tint: Drop.bad, order: 9)
             }
             if !info.kernelWarnings.isEmpty {
-                logFeed("KERNEL — dmesg", info.kernelWarnings,
-                        dot: Theme.warning)
+                logFeed("Kernel · dmesg", info.kernelWarnings, tint: Drop.warn, order: 10)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
     }
 
     private func logFeed(_ label: String, _ lines: [String],
-                         dot: Color) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            microLabel(label)
-            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Circle().fill(dot).frame(width: 4, height: 4)
-                    Text(line)
-                        .font(.system(size: 10.5, design: .monospaced))
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .textSelection(.enabled)
+                         tint: Color, order: Int) -> some View {
+        DropSection(label: label, tint: tint, order: order) {
+            DropWell(padding: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(Drop.mono(10.5))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .textSelection(.enabled)
+                    }
                 }
             }
         }
@@ -696,56 +623,22 @@ struct HostOverviewOverlay: View {
     // MARK: Logins
 
     private func loginsBand(_ info: HostInfo) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            microLabel("RECENT LOGINS")
-            ForEach(Array(info.lastLogins.enumerated()), id: \.offset) { _, line in
-                Text(line)
-                    .font(.system(size: 10.5, design: .monospaced))
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .textSelection(.enabled)
+        DropSection(label: "Recent logins", order: 11) {
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(Array(info.lastLogins.enumerated()), id: \.offset) { _, line in
+                    monoLine(line, primary: false)
+                }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
     }
 
     private func monoLine(_ s: String, primary: Bool) -> some View {
         Text(s)
-            .font(.system(size: 11, design: .monospaced))
+            .font(Drop.mono(11))
             .foregroundStyle(primary ? Theme.textPrimary : Theme.textSecondary)
             .textSelection(.enabled)
             .lineLimit(1)
-    }
-
-    // MARK: Shared bits
-
-    private func column<Content: View>(_ label: String,
-                                       @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            microLabel(label)
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func microLabel(_ s: String) -> some View {
-        Text(s)
-            .font(.system(size: 9, weight: .semibold, design: .rounded))
-            .kerning(1.3)
-            .foregroundStyle(Theme.textSecondary.opacity(0.7))
-    }
-
-    private func bar(fill: Double, tint: Color) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Theme.stroke)
-                Capsule().fill(tint)
-                    .frame(width: max(3, geo.size.width * min(1, max(0, fill))))
-            }
-        }
-        .frame(height: 4)
+            .truncationMode(.tail)
     }
 
     private static let relative: RelativeDateTimeFormatter = {

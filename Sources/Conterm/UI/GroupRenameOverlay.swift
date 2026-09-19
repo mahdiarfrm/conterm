@@ -1,9 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// Glass overlay for renaming a tab group. Mirrors `RenameOverlay`
-/// (same proven focus path) but targets `TabGroupStore` instead of a
-/// `Tab`. Also lets the user change the group's color or delete it.
+/// Tab-group editor as a small `DropSurface` panel: name, color, delete.
+/// Mirrors `RenameOverlay` (same proven focus path) but targets
+/// `TabGroupStore` instead of a `Tab`.
 struct GroupRenameOverlay: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var tabGroups: TabGroupStore
@@ -22,37 +22,23 @@ struct GroupRenameOverlay: View {
         _colorKey = State(initialValue: g?.colorKey ?? TabGroup.colorKeys[0])
     }
 
+    /// Scene dim the presenter lays under this panel.
+    static let dim: Double = 0.28
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-            colorPicker
-            TextField("Group name", text: $name)
-                .textFieldStyle(.plain)
-                .font(.system(size: 15, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
-                .focused($focused)
-                .onSubmit { commit() }
-                .onExitCommand { state.cancelRenameGroup() }
-                .padding(.horizontal, 12).padding(.vertical, 9)
-                .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(Theme.stroke, lineWidth: 0.5)
-                )
-            actions
+        DropSurface(cornerRadius: 28, bevel: 14, sceneDim: Float(Self.dim),
+                    formDelay: 0.08) {
+            VStack(alignment: .leading, spacing: 16) {
+                header
+                DropNameField(placeholder: "Group name", text: $name, focused: $focused,
+                              onSubmit: commit,
+                              onExit: { state.cancelRenameGroup() })
+                colorPicker
+                actions
+            }
+            .padding(24)
+            .frame(width: 460)
         }
-        .padding(18)
-        .frame(width: 440)
-        .background(panelBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Theme.strokeStrong, lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.45), radius: 26, x: 0, y: 12)
         .onAppear {
             DispatchQueue.main.async { focused = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
@@ -66,41 +52,29 @@ struct GroupRenameOverlay: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: "circle.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(TabGroup.color(forKey: colorKey))
-                .shadow(color: TabGroup.color(forKey: colorKey).opacity(0.55), radius: 4)
-            Text("Edit Group")
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
+            DropEyebrow("Edit group", tint: TabGroup.color(forKey: colorKey))
+                .animation(Theme.Spring.snappy, value: colorKey)
             Spacer()
-            Text("esc")
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(Capsule().fill(Theme.stroke))
+            DropIconButton(symbol: "xmark", help: "Cancel (esc)") {
+                state.cancelRenameGroup()
+            }
         }
     }
 
     private var colorPicker: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             ForEach(TabGroup.colorKeys, id: \.self) { key in
                 let isSel = key == colorKey
                 Button {
                     colorKey = key
                 } label: {
-                    ZStack {
-                        Circle()
-                            .fill(TabGroup.color(forKey: key))
-                            .frame(width: 22, height: 22)
-                        Circle()
-                            .strokeBorder(Color.white.opacity(isSel ? 0.95 : 0.0),
-                                          lineWidth: 2)
-                            .frame(width: 22, height: 22)
-                    }
-                    .scaleEffect(isSel ? 1.12 : 1.0)
-                    .shadow(color: TabGroup.color(forKey: key).opacity(isSel ? 0.65 : 0),
-                            radius: isSel ? 6 : 0)
+                    Circle()
+                        .fill(TabGroup.color(forKey: key))
+                        .frame(width: 18, height: 18)
+                        .padding(4)
+                        .overlay(Circle().strokeBorder(
+                            Theme.textPrimary.opacity(isSel ? 0.85 : 0), lineWidth: 1.5))
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .animation(Theme.Spring.snappy, value: isSel)
@@ -110,29 +84,11 @@ struct GroupRenameOverlay: View {
 
     private var actions: some View {
         HStack(spacing: 8) {
-            Button("Delete Group", role: .destructive) {
-                deleteGroup()
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .medium, design: .rounded))
-            .foregroundStyle(Color(red: 1.0, green: 0.4, blue: 0.4))
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(Capsule().fill(Color.red.opacity(0.10)))
+            DropButton(title: "Delete group", symbol: "trash", tint: Drop.bad,
+                       action: deleteGroup)
             Spacer()
-            Button("Cancel") { state.cancelRenameGroup() }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(Capsule().fill(Color.white.opacity(0.05)))
-            Button("Save") { commit() }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.horizontal, 14).padding(.vertical, 6)
-                .background(Capsule().fill(Theme.accent.opacity(0.22)))
-                .overlay(Capsule().strokeBorder(Theme.accent.opacity(0.45),
-                                                lineWidth: 0.5))
+            DropButton(title: "Cancel") { state.cancelRenameGroup() }
+            DropButton(title: "Save", prominent: true, action: commit)
         }
     }
 
@@ -158,9 +114,5 @@ struct GroupRenameOverlay: View {
             state.renameGroupID = nil
         }
         state.focusActiveSurface()
-    }
-
-    private var panelBackground: some View {
-        OverlayPanelBackground(cornerRadius: 16)
     }
 }

@@ -2,14 +2,17 @@ import AppKit
 import SwiftUI
 
 /// Custom About panel — replaces macOS's stock orderFrontStandardAboutPanel
-/// with a glass-chrome window that matches Conterm's visual identity:
-/// big icon, version + libghostty build info, GitHub link, credits.
+/// with a glass-chrome window: big icon, version + libghostty build facts,
+/// links, credits, laid out in the `Drop` kit's language. It is its own
+/// window with nothing of ours behind it, so the surface is the system
+/// material, not a `LiquidDrop` — a drop refracts panes, and there are none
+/// here.
 @MainActor
 final class AboutPanel {
     static let shared = AboutPanel()
     private var window: NSWindow?
 
-    private static let panelSize = NSSize(width: 560, height: 420)
+    private static let panelSize = NSSize(width: 600, height: 470)
 
     func show() {
         if let win = window {
@@ -79,27 +82,29 @@ final class AboutPanel {
 private struct AboutWindowContent: View {
     var onClose: () -> Void
 
+    private static let corner: CGFloat = 30
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             // Full-bleed glass — covers the whole window, no gaps.
             GlassBackground(material: .hudWindow)
             Color.black.opacity(0.22)
 
-            VStack(spacing: 0) {
-                AboutContent()
-                    .padding(20)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            AboutContent()
+                .padding(.horizontal, Drop.inset)
+                .padding(.top, 58)
+                .padding(.bottom, 34)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            // Glass close button, top-left (where the traffic light
-            // would be) so it's where muscle memory expects.
-            CloseChip(action: onClose)
-                .padding(.top, 12)
-                .padding(.leading, 14)
+            // Close control top-left, where the traffic light would be,
+            // so it's where muscle memory expects.
+            DropIconButton(symbol: "xmark", help: "Close (esc)", action: onClose)
+                .padding(.top, 16)
+                .padding(.leading, 18)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                 .stroke(
                     LinearGradient(
                         colors: [Color.white.opacity(0.30), .clear],
@@ -111,40 +116,15 @@ private struct AboutWindowContent: View {
                 .allowsHitTesting(false)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                 .strokeBorder(Theme.strokeStrong, lineWidth: 1)
         )
         // Anti-aliased rounding of the whole panel (incl. the glass
         // material) — crisper than a CALayer corner mask.
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Self.corner, style: .continuous))
         .preferredColorScheme(.dark)
         // Esc closes, matching standard panel behavior.
         .background(EscClose(action: onClose))
-    }
-}
-
-/// Small frosted ✕ control. Brightens on hover.
-private struct CloseChip: View {
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "xmark")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(hovering ? Color.white : Color.white.opacity(0.7))
-                .frame(width: 18, height: 18)
-                .background(
-                    Circle().fill(Color.white.opacity(hovering ? 0.22 : 0.10))
-                )
-                .overlay(
-                    Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
-                )
-        }
-        .buttonStyle(.plain)
-        .help("Close")
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
     }
 }
 

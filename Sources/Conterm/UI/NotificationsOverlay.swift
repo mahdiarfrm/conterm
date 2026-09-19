@@ -1,33 +1,26 @@
 import SwiftUI
 
-/// Notification-center glass panel (the bell next to search opens this).
-/// Lists agent events newest-first; opening it marks everything read.
+/// Notification center (the bell next to search opens this): a small
+/// `DropSurface` panel in the palette's calm register. Lists agent events
+/// newest-first; opening it marks everything read.
 struct NotificationsOverlay: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var notifications: NotificationStore
 
+    /// Scene dim the presenter lays under this panel. Soft — the terminal
+    /// stays readable behind it.
+    static let dim: Double = 0.14
+    private static let inset: CGFloat = 24
+
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().opacity(0.4)
-            list
+        DropSurface(cornerRadius: 28, bevel: 14, sceneDim: Float(Self.dim),
+                    formDelay: 0.08, fadesEdges: !notifications.items.isEmpty) {
+            VStack(spacing: 0) {
+                header
+                list
+            }
+            .frame(width: 430)
         }
-        .background(panelBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Theme.strokeStrong, lineWidth: 1)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(LinearGradient(colors: [Color.white.opacity(0.30), .clear],
-                                       startPoint: .top, endPoint: .center),
-                        lineWidth: 1)
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
-        )
-        .shadow(color: .black.opacity(0.45), radius: 24, x: 0, y: 11)
-        .frame(width: 420)
         .onAppear {
             // Seeing the panel = read.
             DispatchQueue.main.async { notifications.markAllRead() }
@@ -36,86 +29,86 @@ struct NotificationsOverlay: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: "bell")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.accent)
-            Text("Notifications")
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
+            DropEyebrow("Notifications")
+            if !notifications.items.isEmpty {
+                Text("\(notifications.items.count)")
+                    .font(Drop.mono(9.5, .medium))
+                    .foregroundStyle(Theme.textSecondary.opacity(0.7))
+            }
             Spacer()
             if !notifications.items.isEmpty {
                 Button("Clear") { notifications.clearAll() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                    .padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(Capsule().fill(Color.white.opacity(0.06)))
+                    .buttonStyle(.drop)
             }
-            Text("esc")
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(Capsule().fill(Theme.stroke))
+            DropIconButton(symbol: "xmark", help: "Close (esc)") {
+                withAnimation(Theme.Spring.snappy) { state.notificationsOpen = false }
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.horizontal, Self.inset)
+        .padding(.top, 20)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder
     private var list: some View {
         if notifications.items.isEmpty {
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 Image(systemName: "bell.slash")
-                    .font(.system(size: 20))
+                    .font(.system(size: 22, weight: .ultraLight))
                     .foregroundStyle(Theme.textSecondary)
-                Text("No notifications")
-                    .font(.system(size: 11, design: .rounded))
+                Text("Nothing new")
+                    .font(Drop.display(12, .regular))
                     .foregroundStyle(Theme.textSecondary)
             }
             .frame(maxWidth: .infinity, minHeight: 120)
+            .padding(.bottom, 16)
         } else {
             ScrollView {
                 VStack(spacing: 2) {
-                    ForEach(notifications.items) { n in
+                    ForEach(Array(notifications.items.enumerated()), id: \.element.id) { i, n in
                         row(n)
+                            .rollUp(delay: 0.04 + Double(min(i, 10)) * 0.03, blurs: false)
                     }
                 }
-                .padding(8)
+                .padding(.horizontal, Self.inset - 10)
+                .padding(.top, 8)
+                .padding(.bottom, 22)
             }
-            .frame(maxHeight: 320)
+            .scrollIndicators(.never)
+            .frame(maxHeight: 340)
         }
     }
 
     private func row(_ n: AppNotification) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: n.tool == .generic ? "bell" : n.tool.fallbackSymbol)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(n.tool.glowColor)
                 .frame(width: 18)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 2) {
                 Text(n.title)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(Drop.display(12, .semibold))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 if !n.message.isEmpty {
                     Text(n.message)
-                        .font(.system(size: 11, design: .rounded))
+                        .font(Drop.display(11, .regular))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(2)
                 }
             }
             Spacer(minLength: 6)
             Text(relative(n.date))
-                .font(.system(size: 10, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
+                .font(Drop.mono(9.5))
+                .foregroundStyle(Theme.textSecondary.opacity(0.8))
                 .fixedSize()
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color.white.opacity(0.04))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Theme.selectionFill.opacity(0.55))
         )
     }
 
@@ -126,9 +119,5 @@ struct NotificationsOverlay: View {
         if s < 3600 { return "\(s/60)m" }
         if s < 86400 { return "\(s/3600)h" }
         return "\(s/86400)d"
-    }
-
-    private var panelBackground: some View {
-        OverlayPanelBackground(cornerRadius: 16)
     }
 }
