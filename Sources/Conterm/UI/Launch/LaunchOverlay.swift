@@ -1,17 +1,19 @@
 import SwiftUI
 
-/// Launch overlay. Keeps the no-logo, big-Big-Caslon-wordmark design,
-/// but **the background gradient does not move** during the active
-/// phase — it's a still, painted glass page. On exit, the entire
-/// overlay fades AND blurs out together.
+/// Launch overlay: the wordmark over a full-bleed colour page. It covers
+/// the whole window with nothing of the terminal showing, so there is
+/// nothing for a `LiquidDrop` to refract — the page is SwiftUI-drawn, and
+/// its motion follows the drop cards' rules instead: one-shot, 60 fps, and
+/// no animated blur over the whole surface (the exit is a fade with a
+/// slight lift, not a window-sized blur pass per frame).
 ///
 /// Choreography (~3.2 s):
 ///   0.00 s   black backdrop fades up
-///   0.20 s   color gradient page fades in (static — no drift)
+///   0.20 s   colour page fades in
 ///   0.40 s   wordmark blurs in
-///   0.85 s   tagline fades in
+///   0.85 s   tagline rises in
 ///   1.10 s   ambient chord plays
-///   2.40 s   the whole overlay fades + blurs out together
+///   2.40 s   the whole overlay fades out, lifting slightly
 ///   3.20 s   removed
 struct LaunchOverlay: View {
     var playSound: Bool = true
@@ -21,7 +23,7 @@ struct LaunchOverlay: View {
     @State private var washOpacity:     Double = 0.0
     @State private var wordIn:          Bool   = false
     @State private var taglineIn:       Bool   = false
-    @State private var exitBlur:        Double = 0.0
+    @State private var exiting:         Bool   = false
     @State private var overlayOpacity:  Double = 1.0
     /// One-shot guard. `.onAppear` can fire more than once for this
     /// view (its ZStack slot shifts whenever a sibling overlay toggles
@@ -55,7 +57,7 @@ struct LaunchOverlay: View {
                 tagline
             }
         }
-        .blur(radius: exitBlur)
+        .scaleEffect(exiting ? 1.04 : 1.0)
         .opacity(overlayOpacity)
         .ignoresSafeArea()
         .onAppear(perform: runSequence)
@@ -96,7 +98,7 @@ struct LaunchOverlay: View {
     /// the whole view tree on every frame.
     private var movingColors: some View {
         GeometryReader { geo in
-            TimelineView(.animation) { tl in
+            TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { tl in
                 let t = tl.date.timeIntervalSinceReferenceDate
                 // Cohesive red family — matching `colorWash`.
                 let palette: [Color] = [
@@ -130,7 +132,7 @@ struct LaunchOverlay: View {
     /// Film-grain layer. Canvas re-renders each frame so dots shift
     /// per frame and read as live grain rather than a fixed dither.
     private var grain: some View {
-        TimelineView(.animation) { tl in
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { tl in
             let t = tl.date.timeIntervalSinceReferenceDate
             Canvas { ctx, size in
                 // Deterministic-but-shifting noise: seed from t.
@@ -214,6 +216,7 @@ struct LaunchOverlay: View {
             .tracking(3)
             .foregroundStyle(Color(red: 0.95, green: 0.91, blue: 0.82).opacity(0.55))
             .opacity(taglineIn ? 1 : 0)
+            .offset(y: taglineIn ? 0 : 9)
     }
 
     // MARK: - Choreography
@@ -239,9 +242,9 @@ struct LaunchOverlay: View {
                 wordIn = true
             }
         }
-        // 0.85 — tagline fades in
+        // 0.85 — tagline rises in
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.85) {
-            withAnimation(.easeOut(duration: 0.6)) {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
                 taglineIn = true
             }
         }
@@ -249,16 +252,40 @@ struct LaunchOverlay: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.10) {
             if playSound { LaunchChime.shared.play() }
         }
-        // 2.40 — fade + blur out together
+        // 2.40 — fade out, lifting
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.40) {
             withAnimation(.easeIn(duration: 0.80)) {
                 overlayOpacity = 0
-                exitBlur = 18
+                exiting = true
             }
         }
         // 3.20 — gone
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.20) {
             onFinish()
+        }
+    }
+}
+
+/// Picks the launch overlay for the interface style — once. The style is
+/// latched when the intro mounts, so changing it while the intro plays
+/// can't swap the view underneath and replay the sequence (and its chime);
+/// the other look shows from the next launch.
+struct LaunchOverlayHost: View {
+    let playSound: Bool
+    let onFinish: () -> Void
+    @State private var liquidDrop: Bool
+
+    init(liquidDrop: Bool, playSound: Bool, onFinish: @escaping () -> Void) {
+        _liquidDrop = State(initialValue: liquidDrop)
+        self.playSound = playSound
+        self.onFinish = onFinish
+    }
+
+    var body: some View {
+        if liquidDrop {
+            LaunchOverlay(playSound: playSound, onFinish: onFinish)
+        } else {
+            ClassicLaunchOverlay(playSound: playSound, onFinish: onFinish)
         }
     }
 }

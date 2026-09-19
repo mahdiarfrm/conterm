@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Real settings panel — sidebar navigation on the left, scrollable
-/// content on the right, glass chrome around the whole thing. Slides
-/// in from the top like the command palette. Reachable via ⌘, or via
-/// the command palette ("Open settings").
+/// Settings: one `LiquidDrop` holding the section list on the left and the
+/// selected section's scrolling content on the right, in the `Drop` kit's
+/// language. Presented by `BriefingPresenter` like the briefing cards.
+/// Reachable via ⌘, or via the command palette ("Open settings").
 struct SettingsPanel: View {
     @EnvironmentObject var prefs: Preferences
     @EnvironmentObject var state: AppState
@@ -58,15 +58,15 @@ struct SettingsPanel: View {
     }
 
     var body: some View {
-        // Two detached glass bubbles — the section list and its
-        // content — mirroring the command palette's split surfaces.
-        HStack(spacing: 10) {
-            sidebar
-                .modifier(SettingsBubble())
-            content
-                .modifier(SettingsBubble())
+        BriefingCard(width: 960) {
+            HStack(spacing: 0) {
+                sidebar
+                content
+            }
+            // Full height when the window allows it; a short window gets a
+            // shorter panel rather than one that runs off the bottom.
+            .frame(maxHeight: 620)
         }
-        .frame(width: 870, height: 540)
         // Keyboard nav: ↑/↓/Tab in sidebar. AppState.settingsNavDelta
         // is bumped by Main.swift's event monitor whenever those keys
         // fire while the panel is open (we can't use .onKeyPress alone
@@ -95,7 +95,7 @@ struct SettingsPanel: View {
     private func applyRequestedSection() {
         guard let raw = state.requestedSettingsSection,
               let target = Section(rawValue: raw) else { return }
-        withAnimation(Theme.Spring.snappy) { section = target }
+        section = target
         state.requestedSettingsSection = nil
     }
 
@@ -103,7 +103,7 @@ struct SettingsPanel: View {
         let all = Section.allCases
         guard let i = all.firstIndex(of: section) else { return }
         let next = (i + step + all.count) % all.count
-        withAnimation(Theme.Spring.snappy) { section = all[next] }
+        section = all[next]
         // Same tick as the palette arrow-key navigation — short
         // and quiet so holding the arrow doesn't machine-gun.
         SoundEffects.shared.play(.paletteMove)
@@ -112,134 +112,66 @@ struct SettingsPanel: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "slider.horizontal.3")
-                    .foregroundStyle(Theme.accent)
-                    .font(.system(size: 13, weight: .semibold))
-                Text("Settings")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .padding(.bottom, 10)
-
-            VStack(spacing: 2) {
-                ForEach(Section.allCases) { item in
-                    sidebarItem(item)
-                }
-            }
-            .padding(.horizontal, 8)
-
-            Spacer()
-
-            Button {
-                state.toggleSettings()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "xmark.circle.fill")
-                    Text("Close")
-                }
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    Capsule().fill(Color.white.opacity(0.05))
-                )
-            }
-            .buttonStyle(.plain)
-            .padding(14)
-        }
-        .frame(width: 204)
-    }
-
-    /// One selection bubble shared by every row, so changing section
-    /// glides it rather than blinking it from one row to the next.
-    @Namespace private var selectionBubble
-    @State private var hovered: Section?
-
-    private func sidebarItem(_ item: Section) -> some View {
-        let active = section == item
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-        return Button {
-            withAnimation(Theme.Spring.snappy) { section = item }
-            // Suppress the click sound on a re-tap of the active
-            // section — the visible state is unchanged.
-            if !active { SoundEffects.shared.play(.toggle) }
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: item.icon)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(active ? Color.white : Theme.textSecondary)
-                    .frame(width: 19)
-                Text(item.label)
-                    .font(.system(size: 13.5, weight: active ? .semibold : .medium, design: .rounded))
-                    .foregroundStyle(active ? Color.white : Theme.textPrimary)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .background {
-                if active {
-                    shape
-                        .fill(Theme.accent.opacity(0.30))
-                        .overlay(shape.stroke(Theme.accent.opacity(0.50), lineWidth: 0.5))
-                        .matchedGeometryEffect(id: "settings.section", in: selectionBubble)
-                } else if hovered == item {
-                    shape.fill(Color.white.opacity(0.07))
-                }
-            }
-            // Without this the row is only clickable where it draws — the
-            // icon and the label — and the rest of it, including the gap
-            // the bubble covers, ignores the pointer.
-            .contentShape(shape)
-        }
-        .buttonStyle(.plain)
-        .onHover { inside in
-            withAnimation(.easeOut(duration: 0.12)) {
-                hovered = inside ? item : (hovered == item ? nil : hovered)
-            }
+        SettingsSidebar(selection: section) { item in
+            section = item
         }
     }
 
     // MARK: - Content
 
+    /// Coordinate space of the scrolling section content; `DropCascade`
+    /// reads each card's offset in it.
+    private static let scrollSpace = "settings.scroll"
+
     @ViewBuilder
     private var content: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                sectionBody
-            }
-            .padding(24)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            // Keyed on the section so switching is a change of content
-            // rather than a redraw in place, which is what lets it move.
-            .id(section)
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .offset(x: 14)),
-                removal: .opacity.combined(with: .offset(x: -10))))
+        ZStack(alignment: .topTrailing) {
+            // Keyed on the section, so a switch replaces the page. The swap
+            // itself is not animated: a section is full of AppKit-backed
+            // controls, and every frame of an animation over them is a
+            // main-thread pass across all of them. The arrival motion is the
+            // title rolling in and the cards cascading.
+            sectionPage(section)
+                .id(section)
+
+            DropIconButton(symbol: "xmark", help: "Close (esc)") { state.toggleSettings() }
+                .padding(.top, 34)
+                .padding(.trailing, Drop.inset)
+                .rollUp(delay: 0.10)
         }
-        .animation(Theme.Spring.snappy, value: section)
+    }
+
+    /// One section as a scrolling page.
+    private func sectionPage(_ item: Section) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                sectionBody(item)
+            }
+            .toggleStyle(.drop)
+            .padding(.leading, 28)
+            .padding(.trailing, Drop.inset)
+            .padding(.top, 40)
+            .padding(.bottom, 48)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .coordinateSpace(name: Self.scrollSpace)
+        }
+        .scrollIndicators(.never)
     }
 
     @ViewBuilder
-    private var sectionBody: some View {
-        Group {
-                switch section {
-                case .appearance: appearance
-                case .tabs:       tabs
-                case .widgets:    widgets
-                case .panes:      panes
-                case .window:     window
-                case .integrations: integrations
-                case .launch:     launch
-                case .palette:    palette
-                case .shortcuts:  shortcuts
-                case .config:     config
-                case .about:      about
-                }
+    private func sectionBody(_ item: Section) -> some View {
+        switch item {
+        case .appearance: appearance
+        case .tabs:       tabs
+        case .widgets:    widgets
+        case .panes:      panes
+        case .window:     window
+        case .integrations: integrations
+        case .launch:     launch
+        case .palette:    palette
+        case .shortcuts:  shortcuts
+        case .config:     config
+        case .about:      about
         }
     }
 
@@ -248,6 +180,25 @@ struct SettingsPanel: View {
     private var appearance: some View {
         VStack(alignment: .leading, spacing: 14) {
             sectionHeader("Appearance", subtitle: "Theme, font, and glass.")
+
+            // Interface style
+            card {
+                SettingsRow(title: "Interface",
+                            subtitle: "Liquid Drop is glass that refracts the terminal behind it, with motion. Classic is flat cards and system materials.") {
+                    // Chips, not a segmented Picker: that one is an AppKit
+                    // control, and this choice swaps the panel it sits in.
+                    HStack(spacing: 6) {
+                        ForEach(Preferences.InterfaceStyle.allCases, id: \.self) { style in
+                            DropFilterChip(title: style == .liquidDrop ? "Liquid Drop" : "Classic",
+                                           selected: prefs.interfaceStyle == style) {
+                                guard prefs.interfaceStyle != style else { return }
+                                SoundEffects.shared.play(.toggle)
+                                prefs.interfaceStyle = style
+                            }
+                        }
+                    }
+                }
+            }
 
             // Theme
             card {
@@ -280,7 +231,7 @@ struct SettingsPanel: View {
                                 ? "The Solid window is fully opaque, so panes always ride on it — pick Glass or Blur for see-through panes."
                                 : "Paint panes on solid black instead of letting the window material show through the cells. Off lets a translucent terminal reveal the window behind it.") {
                     Toggle("", isOn: $prefs.opaquePanes.withSound())
-                        .toggleStyle(.switch)
+                        .toggleStyle(.drop)
                         .labelsHidden()
                         .disabled(prefs.glassMode == .solid)
                 }
@@ -304,7 +255,7 @@ struct SettingsPanel: View {
                     .fixedSize(horizontal: true, vertical: false)
                 }
                 SettingsRow(title: "Pane corner radius",
-                            subtitle: "How round the terminal tile's corners are. Default matches the window; lower it toward the system radius for tighter corners.") {
+                            subtitle: "How round the terminal tile's corners are. Raise it to match the window's curve, lower it toward the system radius for tighter corners.") {
                     HStack(spacing: 8) {
                         Text("Sharp").subLabel().fixedSize()
                         Slider(value: $prefs.paneCornerRadius, in: 0.0...24.0, step: 1)
@@ -322,12 +273,6 @@ struct SettingsPanel: View {
                         Text("Larger").subLabel().fixedSize()
                     }
                     .fixedSize(horizontal: true, vertical: false)
-                }
-                SettingsRow(title: "Glass panels",
-                            subtitle: "Use real Liquid Glass for overlay panels — Command Palette, Search, Settings, Notifications. Off (default) paints them as solid cards, which is cheaper since they cover the terminal.") {
-                    Toggle("", isOn: $prefs.liquidGlassPanels.withSound())
-                        .toggleStyle(.switch)
-                        .labelsHidden()
                 }
                 SettingsRow(title: "Action pill",
                             subtitle: "The bell / search / ⌘K cluster wears an accent. Monochrome returns it to plain glass.") {
@@ -354,25 +299,25 @@ struct SettingsPanel: View {
                 SettingsRow(title: "Toolbar collapse button",
                             subtitle: "Chevron circle at the right end of the horizontal tab bar that tucks the toolbar cluster away. Hiding the chevron also brings the cluster back.") {
                     Toggle("", isOn: $prefs.showToolbarCollapse.withSound())
-                        .toggleStyle(.switch)
+                        .toggleStyle(.drop)
                         .labelsHidden()
                 }
                 SettingsRow(title: "Layout switcher",
                             subtitle: "The horizontal / vertical / agents / orbit segments in the toolbar. Turn off to hide the switcher if you stick with one layout (⌘⇧M still opens Orbit).") {
                     Toggle("", isOn: $prefs.showLayoutSwitcher.withSound())
-                        .toggleStyle(.switch)
+                        .toggleStyle(.drop)
                         .labelsHidden()
                 }
                 SettingsRow(title: "Blink when an agent needs you",
                             subtitle: "Pulse a pane's border in amber while its Claude agent is waiting on your input.") {
                     Toggle("", isOn: $prefs.blinkOnAttention.withSound())
-                        .toggleStyle(.switch)
+                        .toggleStyle(.drop)
                         .labelsHidden()
                 }
                 SettingsRow(title: "Tool bubbles on the agent pill",
                             subtitle: "A bubble beside the Claude pill for each terraform, kubectl, helm, docker, ssh, git or gh call in flight, ringed in the tool's colour; finished calls line up at the pane's top-left. Click one for the command and its output.") {
                     Toggle("", isOn: $prefs.agentToolBubbles.withSound())
-                        .toggleStyle(.switch)
+                        .toggleStyle(.drop)
                         .labelsHidden()
                 }
                 SettingsRow(title: "Efficient rendering",
@@ -388,7 +333,7 @@ struct SettingsPanel: View {
                             Ghostty.App.shared?.reloadConfig()
                         }
                     ).withSound())
-                    .toggleStyle(.switch)
+                    .toggleStyle(.drop)
                     .labelsHidden()
                 }
             }
@@ -423,9 +368,9 @@ struct SettingsPanel: View {
                 SettingsRow(title: "Widgets",
                             subtitle: "Stats, clock, git, GitHub, ping, notes, pixel pet, and more — enable and reorder them in the Widgets tab.") {
                     Button("Widgets…") {
-                        withAnimation(Theme.Spring.snappy) { section = .widgets }
+                        section = .widgets
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.drop)
                     .controlSize(.small)
                 }
             }
@@ -502,13 +447,13 @@ struct SettingsPanel: View {
                     SettingsRow(title: "Watch cluster",
                                 subtitle: "Poll kubectl across all namespaces every 45 seconds: a health gem on the pill (red = node down, amber = pod trouble), and notifications for crash-looping pods and NotReady nodes.") {
                         Toggle("", isOn: $prefs.kubeWatchCluster.withSound())
-                            .toggleStyle(.switch)
+                            .toggleStyle(.drop)
                             .labelsHidden()
                     }
                     SettingsRow(title: "Remember context switches",
                                 subtitle: "Off: switching from the widget exports KUBECONFIG into the focused pane only — new panes start on the default context. On: switches write the global kubeconfig.") {
                         Toggle("", isOn: $prefs.kubeRememberContext.withSound())
-                            .toggleStyle(.switch)
+                            .toggleStyle(.drop)
                             .labelsHidden()
                     }
                 }
@@ -605,19 +550,19 @@ struct SettingsPanel: View {
                 SettingsRow(title: "Conterm for iOS",
                             subtitle: "Publish this Mac's sessions for the phone app to read over SSH, act on what it asks, and advertise the Mac on the local network so it can be found without typing a hostname. Nothing is published while this is off.") {
                     Toggle("", isOn: $prefs.companionEnabled.withSound())
-                        .toggleStyle(.switch)
+                        .toggleStyle(.drop)
                         .labelsHidden()
                 }
                 SettingsRow(title: "Terraform cockpit",
                             subtitle: "Read each `terraform plan` back as a card: what it destroys, replaces and creates. With this on, terraform saves the plan to a file and prints where — a few lines the console would not otherwise show.") {
                     Toggle("", isOn: $prefs.terraformCockpit.withSound())
-                        .toggleStyle(.switch)
+                        .toggleStyle(.drop)
                         .labelsHidden()
                 }
                 SettingsRow(title: "While you were away",
                             subtitle: "Coming back after a long absence, sum up what happened: agents that finished, runs that failed, alerts, and changes left unreviewed.") {
                     Toggle("", isOn: $prefs.briefingEnabled.withSound())
-                        .toggleStyle(.switch)
+                        .toggleStyle(.drop)
                         .labelsHidden()
                 }
                 SettingsRow(title: "Away means",
@@ -699,7 +644,7 @@ struct SettingsPanel: View {
                         SoundEffects.shared.play(.click)
                         state.setupWizardVisible = true
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.drop)
                 }
             }
         }
@@ -776,13 +721,13 @@ struct SettingsPanel: View {
                             prefs.hiddenPaletteCommands = []
                         }
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.drop)
                     .controlSize(.small)
                     .disabled(prefs.hiddenPaletteCommands.isEmpty)
                     Button("Reset to default order") {
                         prefs.paletteCommandOrder = []
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.drop)
                     .controlSize(.small)
                     .disabled(prefs.paletteCommandOrder.isEmpty)
                 }
@@ -890,7 +835,7 @@ struct SettingsPanel: View {
                             Ghostty.App.shared?.reloadConfig()
                         }
                     ).withSound())
-                    .toggleStyle(.switch)
+                    .toggleStyle(.drop)
                     .labelsHidden()
                 }
                 SettingsRow(title: "Remote arrow keys",
@@ -904,7 +849,7 @@ struct SettingsPanel: View {
                             Ghostty.App.shared?.reloadConfig()
                         }
                     ).withSound())
-                    .toggleStyle(.switch)
+                    .toggleStyle(.drop)
                     .labelsHidden()
                 }
                 SettingsRow(title: "Launch command delay",
@@ -927,7 +872,7 @@ struct SettingsPanel: View {
                             claudeIntegrationOn = ClaudeIntegration.isInstalled
                         }
                     ).withSound())
-                    .toggleStyle(.switch)
+                    .toggleStyle(.drop)
                     .labelsHidden()
                 }
                 SettingsRow(title: "Codex integration",
@@ -950,7 +895,7 @@ struct SettingsPanel: View {
                                 codexAwaitsTrust = CodexIntegration.awaitsTrust
                             }
                         ).withSound())
-                        .toggleStyle(.switch)
+                        .toggleStyle(.drop)
                         .labelsHidden()
                     }
                 }
@@ -964,7 +909,7 @@ struct SettingsPanel: View {
                             openCodeIntegrationOn = OpenCodeIntegration.isInstalled
                         }
                     ).withSound())
-                    .toggleStyle(.switch)
+                    .toggleStyle(.drop)
                     .labelsHidden()
                 }
                 SettingsRow(title: "Diagnostic logging",
@@ -980,7 +925,7 @@ struct SettingsPanel: View {
                         .buttonStyle(.borderless)
                         .help("Reveal log in Finder")
                         Toggle("", isOn: $prefs.diagnosticLogging.withSound())
-                            .toggleStyle(.switch)
+                            .toggleStyle(.drop)
                             .labelsHidden()
                     }
                 }
@@ -996,7 +941,7 @@ struct SettingsPanel: View {
                         SoundEffects.shared.play(.click)
                         UpdateChecker.shared.checkInBackground(announce: true)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.drop)
                     .controlSize(.regular)
                 }
             }
@@ -1007,7 +952,7 @@ struct SettingsPanel: View {
                         SoundEffects.shared.play(.click)
                         BackupStore.exportWithPanel()
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.drop)
                     .controlSize(.regular)
                 }
                 SettingsRow(title: "Restore",
@@ -1016,7 +961,7 @@ struct SettingsPanel: View {
                         SoundEffects.shared.play(.click)
                         BackupStore.restoreWithPanel()
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.drop)
                     .controlSize(.regular)
                 }
             }
@@ -1055,7 +1000,7 @@ struct SettingsPanel: View {
                     SoundEffects.shared.play(.click)
                     NSWorkspace.shared.open(URL(fileURLWithPath: path))
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.drop)
                 Menu {
                     Button("Link to Ghostty config") {
                         SetupAssistant.linkGhosttyConfig()
@@ -1087,60 +1032,124 @@ struct SettingsPanel: View {
     }
 
     private func sectionHeader(_ title: String, subtitle: String) -> some View {
-        // Plain San Francisco in its bold cut — the system display
-        // face, unrounded, so section titles read as headers against
-        // the rounded body type.
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.system(size: 21, weight: .bold))
+        VStack(alignment: .leading, spacing: 6) {
+            RollUpText(title, font: Drop.title(), color: Theme.textPrimary,
+                       step: 0.024)
             Text(subtitle)
-                .font(.system(size: 12, design: .rounded))
+                .font(Drop.display(12.5, .regular))
                 .foregroundStyle(Theme.textSecondary)
+                .rollUp(delay: 0.14)
         }
+        .padding(.bottom, 6)
     }
 
     private func card<C: View>(@ViewBuilder _ content: () -> C) -> some View {
         VStack(spacing: 6) {
             content()
         }
-        .padding(16)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.045))
+            RoundedRectangle(cornerRadius: Drop.wellRadius + 4, style: .continuous)
+                .fill(Theme.selectionFill.opacity(0.55))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Theme.stroke, lineWidth: 1)
+            RoundedRectangle(cornerRadius: Drop.wellRadius + 4, style: .continuous)
+                .strokeBorder(Theme.stroke, lineWidth: 0.5)
         )
+        .modifier(DropCascade(space: Self.scrollSpace))
     }
 }
 
-/// Shared chrome for the settings panel's two floating glass bubbles
-/// (section list + content) — same vocabulary as the palette's.
-private struct SettingsBubble: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .background(
-                OverlayPanelBackground(cornerRadius: 20)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(Theme.strokeStrong, lineWidth: 1)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.28), .clear],
-                            startPoint: .top, endPoint: .center
-                        ),
-                        lineWidth: 1
-                    )
-                    .blendMode(.plusLighter)
-                    .allowsHitTesting(false)
-            )
-            .shadow(color: .black.opacity(0.45), radius: 30, x: 0, y: 12)
+// MARK: - Sidebar
+
+/// The section list. Its own view, with its own state, on purpose: hover
+/// and the gliding selection are animated, and an animated change to state
+/// owned by `SettingsPanel` would re-run the whole panel — every section's
+/// rows and controls — on each frame of the animation. Here the animation
+/// touches eleven small rows.
+private struct SettingsSidebar: View {
+    let selection: SettingsPanel.Section
+    let onSelect: (SettingsPanel.Section) -> Void
+
+    @State private var hovered: SettingsPanel.Section?
+    /// Row of the selection as drawn; follows `selection` inside an
+    /// animation.
+    @State private var shownIndex = 0
+
+    private static let rowHeight: CGFloat = 34
+    private static let rowGap: CGFloat = 3
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DropEyebrow("Settings", branded: true)
+                .padding(.leading, 12)
+                .padding(.bottom, 14)
+                .rollUp(delay: 0)
+
+            VStack(spacing: Self.rowGap) {
+                ForEach(Array(SettingsPanel.Section.allCases.enumerated()), id: \.element) { i, item in
+                    row(item)
+                        .rollUp(delay: 0.04 + Double(i) * 0.03, blurs: false)
+                }
+            }
+            // One selection bubble for the whole list, moved by `offset`.
+            // An offset is a render transform: gliding it costs no layout.
+            // A matched-geometry bubble re-runs layout every frame, and
+            // layout here reaches the section page beside it, whose AppKit
+            // controls are re-measured each time.
+            .background(alignment: .top) {
+                Capsule(style: .continuous)
+                    .fill(Theme.selectionFill)
+                    .overlay(Capsule(style: .continuous).strokeBorder(Drop.sheen, lineWidth: 1))
+                    .frame(height: Self.rowHeight)
+                    .offset(y: CGFloat(shownIndex) * (Self.rowHeight + Self.rowGap))
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, Drop.inset - 12)
+        .padding(.top, 40)
+        .padding(.bottom, 40)
+        .frame(width: 236)
+        .onChange(of: selection, initial: true) { _, now in
+            let index = SettingsPanel.Section.allCases.firstIndex(of: now) ?? 0
+            withAnimation(Theme.Spring.snappy) { shownIndex = index }
+        }
+    }
+
+    private func row(_ item: SettingsPanel.Section) -> some View {
+        let active = selection == item
+        let shape = Capsule(style: .continuous)
+        return Button {
+            // Suppress the click sound on a re-tap of the active
+            // section — the visible state is unchanged.
+            if !active { SoundEffects.shared.play(.toggle) }
+            onSelect(item)
+        } label: {
+            HStack(spacing: 11) {
+                Image(systemName: item.icon)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(active ? Theme.textPrimary : Theme.textSecondary)
+                    .frame(width: 18)
+                Text(item.label)
+                    .font(Drop.display(13, .medium))
+                    .foregroundStyle(active ? Theme.textPrimary : Theme.textSecondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 13)
+            .frame(height: Self.rowHeight)
+            .background(shape.fill(Theme.selectionFill.opacity(hovered == item && !active ? 0.7 : 0)))
+            // Without this the row is only clickable where it draws — the
+            // icon and the label — and the rest of it ignores the pointer.
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            withAnimation(.easeOut(duration: 0.12)) {
+                hovered = inside ? item : (hovered == item ? nil : hovered)
+            }
+        }
     }
 }
 
@@ -1166,7 +1175,7 @@ private struct SettingsRow<Trailing: View>: View {
             Spacer()
             trailing
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 9)
     }
 }
 
@@ -1306,96 +1315,94 @@ private struct ConfigEditor: View {
 struct AboutContent: View {
     var body: some View {
         let info = Ghostty.buildInfo
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 14) {
+        VStack(alignment: .leading, spacing: Drop.sectionGap) {
+            HStack(spacing: 22) {
                 if let img = NSImage(named: "AppIcon") {
                     // Render at 2x with high-quality interpolation, then
                     // clip with a continuous-curve squircle so the icon
-                    // edges read as crisp + smooth (the raw .icns at
-                    // 84×84 was getting nearest-pixel scaled, which left
-                    // visible jaggies along the rounded corners).
+                    // edges read as crisp + smooth (the raw .icns scaled
+                    // nearest-pixel leaves jaggies along the corners).
                     Image(nsImage: img)
                         .resizable()
                         .interpolation(.high)
                         .antialiased(true)
-                        .frame(width: 84, height: 84)
-                        .clipShape(RoundedRectangle(cornerRadius: 19,
+                        .frame(width: 88, height: 88)
+                        .clipShape(RoundedRectangle(cornerRadius: 20,
                                                      style: .continuous))
-                        .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+                        .shadow(color: .black.opacity(0.35), radius: 14, y: 5)
+                        .rollUp(delay: 0)
                 }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Conterm")
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("Version \(appVersion()) · \(libghosttyVersion(info.version))")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    RollUpText("Conterm", font: Drop.title(),
+                               color: Theme.textPrimary, startDelay: 0.05, step: 0.03)
                     Text("A modern macOS terminal, built on libghostty.")
-                        .font(.system(size: 12, design: .rounded))
+                        .font(Drop.display(12.5, .regular))
                         .foregroundStyle(Theme.textSecondary)
-                    HStack(spacing: 12) {
-                        linkPill("GitHub", systemImage: "chevron.left.forwardslash.chevron.right",
-                                 url: "https://github.com/mahdiarfrm/conterm")
-                        linkPill("Report a bug", systemImage: "ladybug",
-                                 url: "https://github.com/mahdiarfrm/conterm/issues")
-                    }
-                    .padding(.top, 4)
+                        .rollUp(delay: 0.18, blurs: false)
                 }
-                Spacer()
+                Spacer(minLength: 0)
             }
-            Divider().opacity(0.3)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Credits")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                bullet("libghostty by Mitchell Hashimoto — the terminal-emulator core.")
-                bullet("Ghostty's shell-integration scripts for zsh and bash, bundled directly.")
+
+            HStack(alignment: .top, spacing: 34) {
+                DropFact(label: "Version", value: appVersion(), mono: true)
+                DropFact(label: "libghostty", value: libghosttyVersion(info.version), mono: true)
+                DropFact(label: "Core build", value: buildMode(info.mode.rawValue))
+                DropFact(label: "License", value: "MIT")
+                Spacer(minLength: 0)
             }
-            Divider().opacity(0.3)
-            HStack {
-                Text("© 2026 Mahdiyar Faramarzpour · MIT-licensed.")
-                    .font(.system(size: 10, design: .rounded))
-                    .foregroundStyle(Theme.textSecondary)
-                Spacer()
+            .rollUp(delay: 0.24, blurs: false)
+
+            HStack(spacing: 10) {
+                linkButton("GitHub", symbol: "chevron.left.forwardslash.chevron.right",
+                           url: "https://github.com/mahdiarfrm/conterm")
+                linkButton("Report a bug", symbol: "ladybug",
+                           url: "https://github.com/mahdiarfrm/conterm/issues")
             }
+            .rollUp(delay: 0.30, blurs: false)
+
+            DropSection(label: "Credits", order: 4) {
+                VStack(alignment: .leading, spacing: 7) {
+                    credit("libghostty by Mitchell Hashimoto — the terminal-emulator core.")
+                    credit("Ghostty's shell-integration scripts for zsh and bash, bundled directly.")
+                }
+            }
+
+            Text("© 2026 Mahdiyar Faramarzpour")
+                .font(Drop.mono(9.5))
+                .kerning(0.6)
+                .foregroundStyle(Theme.textSecondary.opacity(0.75))
+                .rollUp(delay: 0.44, blurs: false)
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.04))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Theme.stroke, lineWidth: 1)
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func bullet(_ s: String) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Text("•").foregroundStyle(Theme.textSecondary)
-            Text(s).font(.system(size: 12, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
-        }
+    private func credit(_ s: String) -> some View {
+        Text(s)
+            .font(Drop.display(12.5, .regular))
+            .foregroundStyle(Theme.textPrimary.opacity(0.9))
+            .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func linkPill(_ label: String, systemImage: String, url: String) -> some View {
-        Button {
+    private func linkButton(_ label: String, symbol: String, url: String) -> some View {
+        DropButton(title: label, symbol: symbol) {
             if let u = URL(string: url) { NSWorkspace.shared.open(u) }
-        } label: {
-            Label(label, systemImage: systemImage)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(Capsule().fill(Color.white.opacity(0.08)))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5))
         }
-        .buttonStyle(.plain)
     }
 
     /// Trim version to first 12 chars so a long git SHA doesn't overflow.
     private func libghosttyVersion(_ raw: String) -> String {
-        "libghostty \(String(raw.prefix(12)))"
+        String(raw.prefix(12))
+    }
+
+    /// libghostty's `ghostty_build_mode_e`, by raw value in header order.
+    private func buildMode(_ raw: UInt32) -> String {
+        switch raw {
+        case 0:  return "debug"
+        case 1:  return "release · safe"
+        case 2:  return "release · fast"
+        case 3:  return "release · small"
+        default: return "unknown"
+        }
     }
 
     /// Conterm's own version, read from Info.plist so it stays in sync

@@ -220,15 +220,20 @@ enum SetupAssistant {
 
 /// First-run welcome + setup wizard. Shown once (after the launch
 /// animation) until completed or skipped. Lets the user pick how their
-/// config is sourced and whether modal overlays use frosted Liquid
-/// Glass, then writes the choices through Preferences + a config reload.
+/// config is sourced and how the app looks and sounds, then writes the
+/// choices through Preferences + a config reload.
+///
+/// An arrival, so it gets the full `LiquidDrop` (via `BriefingCard`) and
+/// sequences the drop itself: mount closed, open, reveal the content once
+/// the body has formed; on finish hide the content, let the drop collapse,
+/// then hand back to the owner.
 struct WelcomeWizard: View {
     @EnvironmentObject var prefs: Preferences
     @EnvironmentObject var state: AppState
 
     var onFinish: () -> Void
 
-    private enum ConfigChoice: Hashable { case importGhostty, useDirectly, fresh }
+    private typealias ConfigChoice = SetupWizardDraft.ConfigChoice
 
     /// Ordered set of wizard steps the user moves through with Back /
     /// Next. `welcome` and `ready` bookend the substantive choices.
@@ -236,36 +241,43 @@ struct WelcomeWizard: View {
         case welcome, config, look, tabs, widgets, sound, ready
         static func < (a: Step, b: Step) -> Bool { a.rawValue < b.rawValue }
 
-        var headline: String {
+        var title: String {
             switch self {
-            case .welcome: "WELCOME"
-            case .config:  "CONFIG"
-            case .look:    "LOOK"
-            case .tabs:    "TABS"
-            case .widgets: "WIDGETS"
-            case .sound:   "SOUND"
-            case .ready:   "READY"
+            case .welcome: "Welcome"
+            case .config:  "Configuration"
+            case .look:    "Look"
+            case .tabs:    "Tabs"
+            case .widgets: "Widgets"
+            case .sound:   "Sound"
+            case .ready:   "Ready"
             }
         }
     }
 
-    @State private var step: Step = .welcome
-    @State private var navDirection: Int = 1   // +1 forward, -1 back
+    // Window mode, solid panes, tab orientation, light/dark and the
+    // interface style bind straight to prefs: the window repaints beneath
+    // the wizard, so each pick previews itself. Skip is offered only on the
+    // welcome step, before any live-bound control is reachable, so none of
+    // them needs a restore path. The step and the deferred picks live in
+    // the shared draft: picking Classic swaps this wizard for
+    // `ClassicWelcomeWizard` on the spot, and the run carries across.
+    @ObservedObject private var draft = SetupWizardDraft.shared
 
-    @State private var configChoice: ConfigChoice = .useDirectly
-    // Window mode, solid panes, tab orientation, and light/dark bind
-    // straight to prefs: the window repaints beneath the wizard, so each
-    // pick previews itself. Skip is offered only on the welcome step,
-    // before any live-bound control is reachable, so none of them needs a
-    // restore path. The picks below change nothing visible while the
-    // wizard is up; they are applied on Get Started.
-    @State private var pickedGlassPanels = false
-    @State private var pickedEfficientRendering = true
-    @State private var pickedLaunchAnim = true
-    @State private var pickedSoundEffects = true
-    /// Widget kinds (WidgetKind rawValues) the user wants in the tab bar.
-    @State private var pickedWidgets: Set<String> = []
-    @State private var appeared = false
+    private var step: Step {
+        get { Step(rawValue: draft.step) ?? .welcome }
+        nonmutating set { draft.step = newValue.rawValue }
+    }
+
+    private var configChoice: ConfigChoice {
+        get { draft.configChoice }
+        nonmutating set { draft.configChoice = newValue }
+    }
+    /// Drop phases (see `BriefingPresenter`, which this mirrors).
+    @State private var dropOpen = false
+    @State private var revealed = false
+    /// `onAppear` can fire more than once for an overlay slot; the open
+    /// sequence and the prefs read must run once.
+    @State private var started = false
 
     /// White-on-transparent wordmark loaded as a template so the
     /// foreground gradient tints it (the same way the previous
@@ -296,7 +308,10 @@ struct WelcomeWizard: View {
 
     /// Room left around the card so it never runs into the window edges
     /// or under the title bar.
-    private static let cardMargin: CGFloat = 56
+    private static let cardMargin: CGFloat = 72
+    /// Matches the dim `BriefingCard`'s drop assumes under it, so the
+    /// refracted terminal is as bright as the terminal around the card.
+    private static let sceneDim: Double = 0.25
     /// Floor for the step viewport: below this the card is unusable, so a
     /// very short window scrolls rather than shrinking further.
     private static let minStepHeight: CGFloat = 140
@@ -312,8 +327,10 @@ struct WelcomeWizard: View {
     var body: some View {
         ZStack {
             // Dim scrim over the app.
-            Color.black.opacity(0.5)
+            Color.black.opacity(Self.sceneDim)
                 .ignoresSafeArea()
+                .opacity(dropOpen ? 1 : 0)
+                .animation(.easeOut(duration: 0.30), value: dropOpen)
                 .onTapGesture {} // swallow taps; force a choice/skip
                 .background(GeometryReader { g in
                     Color.clear.preference(key: WizardHeightKey.self, value: g.size.height)
@@ -322,120 +339,90 @@ struct WelcomeWizard: View {
                     if h > 0, abs(h - availableHeight) > 1 { availableHeight = h }
                 }
 
-            card
-                .frame(width: 540)
+            BriefingCard(width: 620) { card }
                 // Pin the card to its own content height. Without
                 // this SwiftUI hands the card the full ZStack height
                 // and the VStack interior stretches to fill (then the
-                // backdrop spans top-to-bottom of the window).
+                // drop spans top-to-bottom of the window).
                 .fixedSize(horizontal: false, vertical: true)
-                .scaleEffect(appeared ? 1 : 0.92)
-                .opacity(appeared ? 1 : 0)
-                .blur(radius: appeared ? 0 : 12)
+                .environment(\.liquidDropOpen, dropOpen)
+                .environment(\.liquidRevealed, revealed)
         }
         .onAppear {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) {
-                appeared = true
-            }
-            // If Ghostty isn't installed, importing isn't an option —
-            // default to a clean start.
-            if !ghosttyPresent { configChoice = .fresh }
-            pickedGlassPanels = prefs.liquidGlassPanels
-            pickedEfficientRendering = prefs.lowPowerRendering
-            pickedLaunchAnim    = prefs.launchAnimationEnabled
-            pickedSoundEffects  = prefs.soundEffectsEnabled
-            pickedWidgets       = Set(prefs.enabledWidgets)
+            guard !started else { return }
+            started = true
+            // Mounted closed for one pass so the drop has a state to grow
+            // from; content follows once the body has formed.
+            DispatchQueue.main.async { dropOpen = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.26) { revealed = true }
+            draft.seed(from: prefs, ghosttyPresent: ghosttyPresent)
         }
     }
 
     private var card: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(spacing: 0) {
-                header
-                Divider().opacity(0.25)
-            }
-            .measuringHeight(WizardChromeKey.self)
+            header
+                .measuringHeight(WizardChromeKey.self)
             // Every step scrolls, not just the long ones: the card is
             // pinned to its content height, so anything that doesn't fit
             // the viewport would otherwise render past the window.
             ScrollView(.vertical) {
                 stepBody
-                    .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 16)
+                    .frame(maxWidth: .infinity, minHeight: 200, alignment: .topLeading)
+                    .padding(.horizontal, Drop.inset)
+                    .padding(.vertical, 6)
                     .measuringHeight(WizardBodyHeightKey.self)
             }
             .frame(height: stepViewportHeight)
             .scrollBounceBehavior(.basedOnSize)
-            VStack(spacing: 0) {
-                Divider().opacity(0.25)
-                footer
-            }
-            .measuringHeight(WizardChromeKey.self)
+            .scrollIndicators(.never)
+            footer
+                .measuringHeight(WizardChromeKey.self)
         }
+        .toggleStyle(.drop)
         .onPreferenceChange(WizardChromeKey.self) { h in
             if h > 0, abs(h - chromeHeight) > 1 { chromeHeight = h }
         }
         .onPreferenceChange(WizardBodyHeightKey.self) { h in
             if h > 0, abs(h - bodyHeight) > 1 { bodyHeight = h }
         }
-        .background(
-            OverlayPanelBackground(cornerRadius: 24)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        // Wet-glass top-edge highlight + an accent glow rim.
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(
-                    LinearGradient(colors: [Color.white.opacity(0.35), .clear],
-                                   startPoint: .top, endPoint: .center),
-                    lineWidth: 1)
-                .blendMode(.plusLighter)
-                .allowsHitTesting(false)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(Theme.strokeStrong, lineWidth: 1)
-        )
-        .shadow(color: Theme.accent.opacity(0.18), radius: 40, y: 0)
-        .shadow(color: .black.opacity(0.55), radius: 44, y: 20)
     }
 
+    /// Masthead: where you are, the step's name set large and rolled in on
+    /// every step change, and the wordmark as a quiet signature.
     private var header: some View {
-        VStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: 7) {
+                DropEyebrow("Step \(step.rawValue + 1) of \(Step.allCases.count)")
+                    .contentTransition(.numericText())
+                    .animation(Theme.Spring.snappy, value: step)
+                    .rollUp(delay: 0)
+                RollUpText(step.title, font: Drop.title(), color: Theme.textPrimary,
+                           startDelay: 0.05, step: 0.028)
+                    .id(step)
+            }
+            Spacer(minLength: 12)
             Image(nsImage: Self.textLogo)
                 .resizable()
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
-                .frame(height: 38)
-                // `Theme.textPrimary` is dynamic, so the wordmark
-                // shows white-on-dark and inverts to black-on-light
-                // automatically.
-                .foregroundStyle(
-                    LinearGradient(colors: [Theme.textPrimary,
-                                            Theme.textPrimary.opacity(0.72)],
-                                   startPoint: .top, endPoint: .bottom)
-                )
-                .shadow(color: Theme.accent.opacity(0.35), radius: 18)
-                .shadow(color: Theme.textPrimary.opacity(0.15), radius: 24)
-            Text("STEP \(step.rawValue + 1) OF \(Step.allCases.count) — \(step.headline)")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .tracking(3)
+                .frame(height: 20)
+                // `Theme.textSecondary` is dynamic, so the wordmark reads
+                // on the dark and the light tint alike.
                 .foregroundStyle(Theme.textSecondary)
-                .contentTransition(.numericText())
-                .animation(Theme.Spring.snappy, value: step)
+                .padding(.top, 4)
+                .rollUp(delay: 0.10)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 18)
-        .padding(.bottom, 12)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Drop.inset)
+        .padding(.top, 34)
+        .padding(.bottom, 18)
     }
 
     // MARK: - Step body + transitions
 
-    /// The current step's content, with a directional slide transition
-    /// driven by `navDirection` so Next reads as moving forward and
-    /// Back as moving backward.
+    /// The current step's content. A step change is a swap inside the
+    /// drop: the new step rises in as the old one dissolves.
     @ViewBuilder
     private var stepBody: some View {
         Group {
@@ -450,25 +437,22 @@ struct WelcomeWizard: View {
             }
         }
         .id(step)
-        .transition(.asymmetric(
-            insertion: .move(edge: navDirection > 0 ? .trailing : .leading)
-                .combined(with: .opacity),
-            removal:   .move(edge: navDirection > 0 ? .leading : .trailing)
-                .combined(with: .opacity)
-        ))
+        .transition(.liquidSwap)
     }
 
     private var welcomeStep: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            sectionTitle("Welcome", systemImage: "sparkles")
+        VStack(alignment: .leading, spacing: 16) {
             Text("Conterm is a Ghostty-powered terminal with Liquid Glass chrome, tab groups, and a command palette.")
-                .font(.system(size: 13, design: .rounded))
+                .font(Drop.display(15, .regular))
+                .foregroundStyle(Theme.textPrimary.opacity(0.9))
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .rollUp(delay: 0.12, blurs: false)
+            Text("Config source, look, tabs, widgets, sound — then you're in.")
+                .font(Drop.display(12.5, .regular))
                 .foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Config source, look, tabs, widgets, sound — then you're in.")
-                .font(.system(size: 12, design: .rounded))
-                .foregroundStyle(Theme.textSecondary.opacity(0.8))
-                .fixedSize(horizontal: false, vertical: true)
+                .rollUp(delay: 0.20, blurs: false)
         }
     }
 
@@ -477,7 +461,10 @@ struct WelcomeWizard: View {
     }
 
     private var lookStep: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
+            interfaceSection
+                .padding(.bottom, 6)
+
             sectionTitle("Tint", systemImage: "paintpalette.fill")
             // Bound directly to prefs so the whole window flips
             // light/dark live as the user clicks — they can see
@@ -503,35 +490,26 @@ struct WelcomeWizard: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            Text("Sidebar mode puts tabs in a resizable left panel.")
-                .font(.system(size: 11, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
+            caption("Sidebar mode puts tabs in a resizable left panel.")
 
             sectionTitle("Launch animation", systemImage: "sparkles")
-            Toggle(isOn: $pickedLaunchAnim.withSound()) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Play the wordmark intro at startup")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("Off skips it after the first launch.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                }
+                .padding(.top, 6)
+            DropWell(padding: 14) {
+                settingToggle("Play the wordmark intro at startup",
+                              "Off skips it after the first launch.",
+                              isOn: $draft.launchAnim.withSound())
             }
-            .toggleStyle(.switch)
-            .tint(Theme.accent)
         }
     }
 
     private var widgetsStep: some View {
         VStack(alignment: .leading, spacing: 14) {
             sectionTitle("Tab-bar widgets", systemImage: "square.grid.2x2.fill")
-            Text("Glanceable pills in the tab bar. Reorder and fine-tune them anytime in Settings ▸ Widgets.")
-                .font(.system(size: 11, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(WidgetKind.allCases) { widgetPickRow($0) }
+            caption("Glanceable pills in the tab bar. Reorder and fine-tune them anytime in Settings ▸ Widgets.")
+            DropWell {
+                ForEach(Array(WidgetKind.allCases.enumerated()), id: \.element.id) { i, kind in
+                    DropRow(index: i) { widgetPickRow(kind) }
+                }
             }
         }
     }
@@ -540,7 +518,7 @@ struct WelcomeWizard: View {
         // Full-width row with the switch pushed to a uniform trailing edge,
         // so icons/titles align on the left and toggles align on the right
         // regardless of subtitle length.
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Group {
                 if kind.icon == TerraformMark.iconName {
                     TerraformGlyph(color: Theme.textSecondary, size: 13)
@@ -553,25 +531,23 @@ struct WelcomeWizard: View {
             .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
                 Text(kind.title)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(Drop.display(13, .semibold))
                     .foregroundStyle(Theme.textPrimary)
                 Text(kind.subtitle)
-                    .font(.system(size: 11, design: .rounded))
+                    .font(Drop.display(11, .regular))
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
             Toggle("", isOn: Binding(
-                get: { pickedWidgets.contains(kind.rawValue) },
+                get: { draft.widgets.contains(kind.rawValue) },
                 set: { on in
-                    if on { pickedWidgets.insert(kind.rawValue) }
-                    else  { pickedWidgets.remove(kind.rawValue) }
+                    if on { draft.widgets.insert(kind.rawValue) }
+                    else  { draft.widgets.remove(kind.rawValue) }
                     SoundEffects.shared.play(.toggle)
                 }
             ))
             .labelsHidden()
-            .toggleStyle(.switch)
-            .tint(Theme.accent)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -579,19 +555,11 @@ struct WelcomeWizard: View {
     private var soundStep: some View {
         VStack(alignment: .leading, spacing: 18) {
             sectionTitle("Sound effects", systemImage: "speaker.wave.2.fill")
-            Toggle(isOn: $pickedSoundEffects.withSound()) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Subtle clicks on panes, tabs, and the palette")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("Quick synthesised tones — never speech, never loud.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            DropWell(padding: 14) {
+                settingToggle("Subtle clicks on panes, tabs, and the palette",
+                              "Quick synthesised tones — never speech, never loud.",
+                              isOn: $draft.soundEffects.withSound())
             }
-            .toggleStyle(.switch)
-            .tint(Theme.accent)
 
             // Preview chips — one per sound family. Each fires
             // through the engine with the preference gate
@@ -607,7 +575,7 @@ struct WelcomeWizard: View {
                 soundPreviewButton("Tab",     systemImage: "rectangle.stack",
                                    effect: .tabAdd)
             }
-            .opacity(pickedSoundEffects ? 1 : 0.4)
+            .opacity(draft.soundEffects ? 1 : 0.4)
         }
     }
 
@@ -639,27 +607,32 @@ struct WelcomeWizard: View {
                 Image(systemName: systemImage)
                     .font(.system(size: 10, weight: .semibold))
                 Text(title)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.drop)
     }
 
     private var readyStep: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionTitle("Ready", systemImage: "checkmark.seal.fill")
-            Text("Conterm-specific shortcuts to know:")
-                .font(.system(size: 13, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-            VStack(alignment: .leading, spacing: 6) {
-                Label("⌘K — command palette", systemImage: "keyboard")
-                Label("⌘D split right · ⌘⇧D split down", systemImage: "rectangle.split.2x1")
-                Label("⌥1…9 — jump to pane", systemImage: "number")
+            sectionTitle("Shortcuts to know", systemImage: "keyboard")
+            DropWell {
+                DropRow(index: 0) { shortcutRow("⌘K", "Command palette") }
+                DropRow(index: 1) { shortcutRow("⌘D · ⌘⇧D", "Split right · split down") }
+                DropRow(index: 2) { shortcutRow("⌥1…9", "Jump to pane") }
             }
-            .font(.system(size: 12, design: .rounded))
-            .foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    private func shortcutRow(_ keys: String, _ what: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(keys)
+                .font(Drop.mono(12, .medium))
+                .foregroundStyle(Theme.textPrimary)
+                .frame(width: 120, alignment: .leading)
+            Text(what)
+                .font(Drop.display(12.5, .regular))
+                .foregroundStyle(Theme.textSecondary)
+            Spacer(minLength: 0)
         }
     }
 
@@ -667,11 +640,10 @@ struct WelcomeWizard: View {
 
     private var configSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("Configuration", systemImage: "doc.text")
+            sectionTitle("Config source", systemImage: "doc.text")
             if hasContermConfig {
-                Text("A Conterm config already exists. Pick one to overwrite, or Skip.")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(Theme.accent.opacity(0.9))
+                DropChip(text: "A Conterm config already exists — pick one to overwrite, or go back and Skip.",
+                         symbol: "exclamationmark", tint: Drop.warn)
             }
             if ghosttyPresent {
                 choiceRow(.useDirectly,
@@ -699,40 +671,90 @@ struct WelcomeWizard: View {
             withAnimation(Theme.Spring.snappy) { configChoice = choice }
             if !selected { SoundEffects.shared.play(.toggle) }
         } label: {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
                 Image(systemName: selected ? "largecircle.fill.circle" : "circle")
                     .font(.system(size: 14))
-                    .foregroundStyle(selected ? Theme.accent : Theme.textSecondary)
+                    .foregroundStyle(selected ? Theme.textPrimary : Theme.textSecondary)
                     .padding(.top, 1)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
                         Text(title)
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .font(Drop.display(13, .semibold))
                             .foregroundStyle(Theme.textPrimary)
                         if let badge {
-                            Text(badge)
-                                .font(.system(size: 9, weight: .bold, design: .rounded))
-                                .foregroundStyle(.black)
-                                .padding(.horizontal, 6).padding(.vertical, 1)
-                                .background(Capsule().fill(Theme.accent))
+                            DropChip(text: badge, tint: Theme.textPrimary)
                         }
                     }
                     Text(subtitle)
-                        .font(.system(size: 11, design: .rounded))
+                        .font(Drop.display(11, .regular))
                         .foregroundStyle(Theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
             }
-            .padding(10)
+            .padding(14)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(selected ? Theme.accentSoft : Color.white.opacity(0.03))
+                RoundedRectangle(cornerRadius: Drop.wellRadius, style: .continuous)
+                    .fill(Theme.selectionFill.opacity(selected ? 1 : 0.45))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(selected ? Theme.accent.opacity(0.5) : Color.white.opacity(0.06),
-                                  lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: Drop.wellRadius, style: .continuous)
+                    .strokeBorder(selected ? AnyShapeStyle(Drop.sheen) : AnyShapeStyle(Theme.stroke),
+                                  lineWidth: selected ? 1 : 0.5)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Interface style
+
+    /// Liquid Drop or Classic, live: picking Classic hands the rest of the
+    /// run to `ClassicWelcomeWizard` (see `SetupWizardDraft`).
+    private var interfaceSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("Interface", systemImage: "drop.fill")
+            HStack(alignment: .top, spacing: 10) {
+                styleChoice(.liquidDrop, title: "Liquid Drop",
+                            subtitle: "Glass that bends the terminal behind it; panels arrive as drops.")
+                styleChoice(.classic, title: "Classic",
+                            subtitle: "Flat cards and system materials.")
+            }
+        }
+    }
+
+    private func styleChoice(_ style: Preferences.InterfaceStyle, title: String,
+                             subtitle: String) -> some View {
+        let selected = prefs.interfaceStyle == style
+        return Button {
+            guard !selected else { return }
+            SoundEffects.shared.play(.toggle)
+            prefs.interfaceStyle = style
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                        .font(.system(size: 13))
+                        .foregroundStyle(selected ? Theme.textPrimary : Theme.textSecondary)
+                    Text(title)
+                        .font(Drop.display(13, .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                }
+                Text(subtitle)
+                    .font(Drop.display(11, .regular))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(
+                RoundedRectangle(cornerRadius: Drop.wellRadius, style: .continuous)
+                    .fill(Theme.selectionFill.opacity(selected ? 1 : 0.45))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Drop.wellRadius, style: .continuous)
+                    .strokeBorder(selected ? AnyShapeStyle(Drop.sheen) : AnyShapeStyle(Theme.stroke),
+                                  lineWidth: selected ? 1 : 0.5)
             )
             .contentShape(Rectangle())
         }
@@ -755,57 +777,49 @@ struct WelcomeWizard: View {
                 .labelsHidden()
                 // The caption tracks the selection so each mode explains
                 // itself. The three modes cost the same — look only.
-                Text(Self.modeCaption(prefs.glassMode))
-                    .font(.system(size: 11, design: .rounded))
+                caption(Self.modeCaption(prefs.glassMode))
+            }
+
+            DropWell(padding: 14) {
+                VStack(alignment: .leading, spacing: 16) {
+                    settingToggle("Solid panes",
+                                  prefs.glassMode == .solid
+                                    ? "The Solid window is fully opaque, so panes always ride on it — pick Glass or Blur for see-through panes."
+                                    : "Each pane rides on solid black, framing the terminal cells against the window. Turn off for see-through panes that let the window material show through the cells.",
+                                  isOn: $prefs.opaquePanes.withSound())
+                        .disabled(prefs.glassMode == .solid)
+                    settingToggle("Efficient rendering",
+                                  "Redraw only when the terminal changes, not every screen refresh. Fast scrolling may tear slightly.",
+                                  isOn: $draft.efficientRendering.withSound())
+                }
+            }
+        }
+    }
+
+    /// Title and explanation on the left, switch pinned to the trailing
+    /// edge, so a column of them aligns whatever the text lengths.
+    private func settingToggle(_ title: String, _ subtitle: String,
+                               isOn: Binding<Bool>) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(Drop.display(13, .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(subtitle)
+                    .font(Drop.display(11, .regular))
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            Toggle(isOn: $prefs.opaquePanes.withSound()) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Solid panes")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text(prefs.glassMode == .solid
-                            ? "The Solid window is fully opaque, so panes always ride on it — pick Glass or Blur for see-through panes."
-                            : "Each pane rides on solid black, framing the terminal cells against the window. Turn off for see-through panes that let the window material show through the cells.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .toggleStyle(.switch)
-            .tint(Theme.accent)
-            .disabled(prefs.glassMode == .solid)
-
-            Toggle(isOn: $pickedGlassPanels.withSound()) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Glass panels")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("Use real Liquid Glass for overlay panels — Command Palette, Search, Settings. Off (default) paints them as solid cards, which is cheaper since they cover the terminal.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .toggleStyle(.switch)
-            .tint(Theme.accent)
-
-            Toggle(isOn: $pickedEfficientRendering.withSound()) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Efficient rendering")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("Redraw only when the terminal changes, not every screen refresh. Fast scrolling may tear slightly.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .toggleStyle(.switch)
-            .tint(Theme.accent)
+            Spacer(minLength: 8)
+            Toggle("", isOn: isOn).labelsHidden()
         }
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text)
+            .font(Drop.display(11.5, .regular))
+            .foregroundStyle(Theme.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private static func modeCaption(_ mode: Preferences.GlassMode) -> String {
@@ -822,32 +836,24 @@ struct WelcomeWizard: View {
     // MARK: - Footer
 
     private var footer: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             HStack(spacing: 12) {
                 // Back on every step except the first.
                 if step != .welcome {
-                    Button { goBack() } label: {
-                        Text("Back")
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(Theme.textSecondary)
-                            .padding(.horizontal, 14).padding(.vertical, 7)
-                            .background(Capsule().fill(Color.white.opacity(0.06)))
-                    }
-                    .buttonStyle(.plain)
+                    DropButton(title: "Back", symbol: "chevron.left") { goBack() }
                 } else {
                     // Skip is only meaningful at the very start.
-                    Button("Skip") {
+                    DropButton(title: "Skip") {
                         SoundEffects.shared.play(.click)
                         finish(applyConfig: false)
                     }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
                 }
                 Spacer()
                 stepDots
                 Spacer()
-                Button {
+                DropButton(title: step == .ready ? "Get Started" : "Next",
+                           symbol: step == .ready ? "checkmark" : nil,
+                           prominent: true) {
                     if step == .ready {
                         // Final commit gets `.click` — distinct
                         // from the per-step `.toggle` so the
@@ -857,26 +863,16 @@ struct WelcomeWizard: View {
                     } else {
                         goNext()
                     }
-                } label: {
-                    Text(step == .ready ? "Get Started" : "Next")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        // Use the opposite of `Theme.textPrimary` so the
-                        // label always contrasts with `Theme.accent`
-                        // (accent + textPrimary are paired inverses).
-                        .foregroundStyle(prefs.lightGlass ? Color.white : Color.black)
-                        .padding(.horizontal, 18).padding(.vertical, 8)
-                        .background(Capsule().fill(Theme.accent))
                 }
-                .buttonStyle(.plain)
             }
-            // Disclaimer the header used to carry — now a quiet note
-            // at the bottom of every step.
             Text("You can change anything later in Settings.")
-                .font(.system(size: 10, design: .rounded))
+                .font(Drop.mono(9.5))
                 .foregroundStyle(Theme.textSecondary.opacity(0.7))
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .padding(.horizontal, Drop.inset)
+        .padding(.top, 18)
+        .padding(.bottom, 30)
+        .rollUp(delay: 0.22, blurs: false)
     }
 
     /// Step-progress dots in the footer center.
@@ -884,17 +880,16 @@ struct WelcomeWizard: View {
         HStack(spacing: 6) {
             ForEach(Step.allCases, id: \.self) { s in
                 Capsule()
-                    .fill(s == step ? Theme.accent
-                          : (s < step ? Theme.accent.opacity(0.45)
-                                      : Theme.textSecondary.opacity(0.25)))
-                    .frame(width: s == step ? 14 : 6, height: 6)
+                    .fill(s == step ? Theme.textPrimary
+                          : (s < step ? Theme.textPrimary.opacity(0.45)
+                                      : Theme.strokeStrong))
+                    .frame(width: s == step ? 16 : 6, height: 6)
                     .animation(Theme.Spring.snappy, value: step)
             }
         }
     }
 
     private func goNext() {
-        navDirection = 1
         withAnimation(Theme.Spring.soft) {
             if let next = Step(rawValue: step.rawValue + 1) { step = next }
         }
@@ -902,21 +897,20 @@ struct WelcomeWizard: View {
     }
 
     private func goBack() {
-        navDirection = -1
         withAnimation(Theme.Spring.soft) {
             if let prev = Step(rawValue: step.rawValue - 1) { step = prev }
         }
         SoundEffects.shared.play(.toggle)
     }
 
+    /// Sub-heading inside a step. The step's own name is in the masthead,
+    /// so these only label the groups beneath it.
     private func sectionTitle(_ text: String, systemImage: String) -> some View {
         HStack(spacing: 7) {
             Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.accent)
-            Text(text)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+            DropEyebrow(text)
         }
     }
 
@@ -924,19 +918,18 @@ struct WelcomeWizard: View {
 
     private func finish(applyConfig: Bool) {
         if applyConfig {
-            prefs.liquidGlassPanels     = pickedGlassPanels
-            prefs.lowPowerRendering     = pickedEfficientRendering
+            prefs.lowPowerRendering     = draft.efficientRendering
             // glassMode, opaquePanes, tabOrientation, and lightGlass are
             // already current — those controls write straight to prefs
             // for live preview.
-            prefs.launchAnimationEnabled = pickedLaunchAnim
-            prefs.soundEffectsEnabled   = pickedSoundEffects
+            prefs.launchAnimationEnabled = draft.launchAnim
+            prefs.soundEffectsEnabled   = draft.soundEffects
             // Enabled widgets in canonical order; preserve any prior order
             // for kinds that were already enabled.
-            let priorOrder = prefs.enabledWidgets.filter { pickedWidgets.contains($0) }
+            let priorOrder = prefs.enabledWidgets.filter { draft.widgets.contains($0) }
             let added = WidgetKind.allCases
                 .map(\.rawValue)
-                .filter { pickedWidgets.contains($0) && !priorOrder.contains($0) }
+                .filter { draft.widgets.contains($0) && !priorOrder.contains($0) }
             prefs.enabledWidgets = priorOrder + added
             prefs.useDefaultConfig = false
 
@@ -958,8 +951,13 @@ struct WelcomeWizard: View {
             prefs.refreshPaneBlurFromConfig()
         }
         prefs.hasCompletedSetup = true
-        withAnimation(.easeOut(duration: 0.25)) {
-            onFinish()
+        // Content out, drop collapses, then the owner unmounts.
+        revealed = false
+        dropOpen = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
+            withAnimation(.easeOut(duration: 0.15)) { onFinish() }
+            // Once the card is gone, so the step doesn't visibly rewind.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { draft.reset() }
         }
     }
 }
