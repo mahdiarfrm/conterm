@@ -776,8 +776,9 @@ struct WelcomeWizard: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 // The caption tracks the selection so each mode explains
-                // itself. The three modes cost the same — look only.
+                // itself; Glass also carries its cost note.
                 caption(Self.modeCaption(prefs.glassMode))
+                if prefs.glassMode == .glass { GlassCostNote() }
             }
 
             DropWell(padding: 14) {

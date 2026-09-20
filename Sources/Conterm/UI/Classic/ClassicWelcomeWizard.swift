@@ -591,11 +591,12 @@ struct ClassicWelcomeWizard: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 // The caption tracks the selection so each mode explains
-                // itself. The three modes cost the same — look only.
+                // itself; Glass also carries its cost note.
                 Text(Self.modeCaption(prefs.glassMode))
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if prefs.glassMode == .glass { GlassCostNote() }
             }
 
             Toggle(isOn: $prefs.opaquePanes.withSound()) {

@@ -354,6 +354,24 @@ private struct GlassPillModifier: ViewModifier {
     }
 }
 
+/// Shown under the window-material picker while Glass is chosen: Glass
+/// samples and refracts the live desktop, which asks more of the GPU and
+/// the battery than Blur's frosted material. One colour, glyph included —
+/// a caution to read, not an alarm.
+struct GlassCostNote: View {
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 10, weight: .semibold))
+            Text("Glass uses more GPU and battery than Blur.")
+                .font(.system(size: 10.5, design: .rounded))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(Theme.textSecondary)
+        .transition(.opacity)
+    }
+}
+
 /// A chrome control's bed in the current interface style: the kit's lens in
 /// Liquid Drop, the flat chrome fill with its wet top edge in Classic.
 /// `selected` is the picked segment of a switcher, or a lit control.

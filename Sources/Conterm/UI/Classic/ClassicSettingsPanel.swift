@@ -245,7 +245,7 @@ struct ClassicSettingsPanel: View {
             // Glass
             card {
                 SettingsRow(title: "Window",
-                            subtitle: "Glass is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Blur is the classic frosted material; Solid is a fully opaque window. The three cost the same — pick by look.") {
+                            subtitle: "Glass is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Blur is the classic frosted material; Solid is a fully opaque window.") {
                     Picker("", selection: Binding(
                         get: { prefs.glassMode },
                         set: { prefs.glassMode = $0 }
@@ -257,6 +257,10 @@ struct ClassicSettingsPanel: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(width: 210)
+                }
+                if prefs.glassMode == .glass {
+                    GlassCostNote()
+                        .padding(.horizontal, 2)
                 }
                 SettingsRow(title: "Solid panes",
                             subtitle: prefs.glassMode == .solid
