@@ -83,7 +83,6 @@ extension OrbitSearchPanel {
                         // which fought every arrow key and left two rows
                         // looking picked at once.
                         row(hit, active: i == index)
-                            .id("orbit-hit-\(i)")
                             .onTapGesture { onCommit(hit) }
                     }
                 }
@@ -92,7 +91,13 @@ extension OrbitSearchPanel {
             .frame(maxHeight: 380)
             // Unanimated: held down, the arrow repeats faster than an animation
             // can finish, and the queued ones fight each other into a crawl.
-            .onChange(of: index) { _, i in proxy.scrollTo("orbit-hit-\(i)", anchor: .center) }
+            // By the row's `ForEach` identity: a lazy stack can only scroll to
+            // a row it hasn't built yet through that, never through an `.id()`
+            // the unbuilt row would have carried.
+            .onChange(of: index) { _, i in
+                guard results.indices.contains(i) else { return }
+                proxy.scrollTo(results[i].id, anchor: .center)
+            }
         }
     }
 
