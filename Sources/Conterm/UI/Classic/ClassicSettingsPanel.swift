@@ -1176,6 +1176,7 @@ private struct KeyboardShortcuts {
             Item(label: "New tab",          keys: "⌘T"),
             Item(label: "Close pane / tab", keys: "⌘W"),
             Item(label: "Jump to tab 1–9",  keys: "⌘1 … ⌘9"),
+            Item(label: "Next / previous tab", keys: "⌘⇧] ⌘⇧["),
             Item(label: "Minimize window",  keys: "⌘M"),
         ]),
         Group(title: "Panes", items: [

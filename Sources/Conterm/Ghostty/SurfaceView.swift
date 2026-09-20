@@ -825,18 +825,27 @@ extension Ghostty {
                               #selector(ctxPaste),
                               enabled: NSPasteboard.general
                                   .string(forType: .string) != nil))
+            menu.addItem(item("Select All", "selection.pin.in.out",
+                              #selector(ctxSelectAll)))
             menu.addItem(.separator())
-            // Names follow the `SplitAxis` enum: `.horizontal` puts the
-            // panes side-by-side; `.vertical` stacks them.
-            menu.addItem(item("Split Horizontally", "rectangle.split.2x1",
+            menu.addItem(item("Find…", "magnifyingglass", #selector(ctxFind)))
+            menu.addItem(item("Clear Screen", "eraser", #selector(ctxClear)))
+            menu.addItem(.separator())
+            // Named as in the File menu. `SplitAxis.horizontal` puts the
+            // panes side by side; `.vertical` stacks them.
+            menu.addItem(item("Split Right", "rectangle.split.2x1",
                               #selector(ctxSplitHorizontally)))
-            menu.addItem(item("Split Vertically", "rectangle.split.1x2",
+            menu.addItem(item("Split Down", "rectangle.split.1x2",
                               #selector(ctxSplitVertically)))
+            menu.addItem(item("Close Pane", "xmark.rectangle",
+                              #selector(ctxClosePane)))
             if let host = controller?.hostOverviewTarget?() {
                 menu.addItem(.separator())
                 menu.addItem(item("Host Overview — \(host)", "server.rack",
                                   #selector(ctxHostOverview)))
             }
+            menu.addItem(.separator())
+            menu.addItem(item("Command Palette", "command", #selector(ctxPalette)))
 
             return menu
         }
@@ -844,6 +853,13 @@ extension Ghostty {
         @objc private func ctxCopy()  { controller?.copySelection() }
         @objc private func ctxPaste() { controller?.paste() }
         @objc private func ctxHostOverview() { controller?.onHostOverview?() }
+        // The right-click took first responder, so this pane is the active
+        // one and the app-level actions below land on it.
+        @objc private func ctxSelectAll() { _ = controller?.performBindingAction("select_all") }
+        @objc private func ctxClear()     { _ = controller?.performBindingAction("clear_screen") }
+        @objc private func ctxFind()      { (NSApp.delegate as? AppDelegate)?.showSearch(nil) }
+        @objc private func ctxClosePane() { (NSApp.delegate as? AppDelegate)?.closeActive(nil) }
+        @objc private func ctxPalette()   { (NSApp.delegate as? AppDelegate)?.togglePalette(nil) }
         @objc private func ctxSplitHorizontally() { controller?.onSplit?(.horizontal) }
         @objc private func ctxSplitVertically()   { controller?.onSplit?(.vertical) }
         override func otherMouseDown(with event: NSEvent) {

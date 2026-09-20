@@ -14,7 +14,7 @@ struct ContermApp {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
     private(set) var prefs: Preferences!
     private var ghostty: Ghostty.App?
     private var notes: NotesStore!
@@ -280,9 +280,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return wc
     }
 
-    /// macOS Dock menu — appears on right-click of our Dock icon.
-    /// Standard pattern: "New Window" up top, optionally other quick
-    /// actions, then a separator.
+    /// Dock menu: the two ways to start work, then every agent waiting on
+    /// the user — the one thing worth reaching from outside the app — each
+    /// jumping to its pane. macOS appends the window list itself.
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         let menu = NSMenu()
         let newWindow = NSMenuItem(title: "New Window",
@@ -296,7 +296,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                                  keyEquivalent: "")
         newTab.target = self
         menu.addItem(newTab)
+
+        let waiting = AgentCenter.shared.entries.filter { $0.phase == .attention }
+        if !waiting.isEmpty {
+            menu.addItem(.separator())
+            let header = NSMenuItem(title: waiting.count == 1 ? "Waiting on You"
+                                                              : "\(waiting.count) Waiting on You",
+                                    action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for entry in waiting.prefix(8) {
+                let where_ = entry.dirLabel == "—" ? "" : " — \(entry.dirLabel)"
+                let mi = NSMenuItem(title: entry.tool.displayName + where_,
+                                    action: #selector(jumpToWaitingAgent(_:)),
+                                    keyEquivalent: "")
+                mi.target = self
+                mi.representedObject = entry.id
+                menu.addItem(mi)
+            }
+        }
         return menu
+    }
+
+    @objc private func jumpToWaitingAgent(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID,
+              let entry = AgentCenter.shared.entries.first(where: { $0.id == id }) else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        AgentCenter.shared.jump(to: entry)
     }
 
     /// Re-open a window if the user clicks the Dock icon while no
@@ -310,6 +336,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     // MARK: - Menu actions (called from MainMenu)
+
+    /// Checks the View menu's mode items against the state they mirror, and
+    /// greys out what needs a window when none is open.
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard !windows.isEmpty, state != nil else {
+            let windowless: Set<Selector> = [
+                #selector(newWindow(_:)), #selector(showAboutPanel(_:)),
+                #selector(checkForUpdates(_:)), #selector(quitOrCloseWindow(_:)),
+                #selector(openProjectPage(_:)), #selector(openReleaseNotes(_:)),
+                #selector(openIssues(_:)),
+            ]
+            return item.action.map(windowless.contains) ?? false
+        }
+        // Disabled, their ⌘G chords pass through to the terminal.
+        if item.action == #selector(findNext(_:)) || item.action == #selector(findPrevious(_:)) {
+            return state.searchOpen
+        }
+        switch MenuTag(rawValue: item.tag) {
+        case .layoutHorizontal: item.state = check(prefs.tabOrientation == .horizontal && !state.orbitOpen)
+        case .layoutVertical:   item.state = check(prefs.tabOrientation == .vertical && !state.orbitOpen)
+        case .layoutAgents:     item.state = check(prefs.tabOrientation == .agents && !state.orbitOpen)
+        case .autoHideSidebar:
+            item.state = check(prefs.autoHideSidebar)
+            return prefs.tabOrientation == .vertical
+        case .styleLiquidDrop:  item.state = check(prefs.interfaceStyle == .liquidDrop)
+        case .styleClassic:     item.state = check(prefs.interfaceStyle == .classic)
+        case .orbit:            item.state = check(state.orbitOpen)
+        case nil: break
+        }
+        return true
+    }
+
+    private func check(_ on: Bool) -> NSControl.StateValue { on ? .on : .off }
 
     /// Customized "About Conterm" panel. Standard macOS layout: big
     /// app icon, name, version, copyright line. Name attribution lives
@@ -351,8 +410,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         state.toggleSettings()
         NSApp.keyWindow?.makeFirstResponder(nil)
     }
-    @objc func toggleVerticalTabs(_ sender: Any?) {
-        prefs.cycleTabOrientation()
+    @objc func renameTab(_ sender: Any?) {
+        guard let tab = state.selectedTab else { return }
+        state.beginRename(tab)
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+    @objc func showSearch(_ sender: Any?) {
+        state.toggleSearch()
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+    @objc func findNext(_ sender: Any?)     { _ = state.navigateSearch(next: true) }
+    @objc func findPrevious(_ sender: Any?) { _ = state.navigateSearch(next: false) }
+    @objc func clearScreen(_ sender: Any?) {
+        _ = state.selectedTab?.paneTree.activePane?.controller?
+            .performBindingAction("clear_screen")
+    }
+    @objc func toggleAgents(_ sender: Any?) {
+        state.toggleAgentCenter()
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+    @objc func toggleNotifications(_ sender: Any?) {
+        withAnimation(Theme.Spring.bouncy) { state.notificationsOpen.toggle() }
+    }
+    @objc func setLayout(_ sender: NSMenuItem) {
+        let mode: Preferences.TabOrientation
+        switch MenuTag(rawValue: sender.tag) {
+        case .layoutVertical: mode = .vertical
+        case .layoutAgents:   mode = .agents
+        default:              mode = .horizontal
+        }
+        withAnimation(Theme.Spring.soft) { state.closeOrbit(); prefs.tabOrientation = mode }
+    }
+    @objc func toggleAutoHideSidebar(_ sender: Any?) { prefs.autoHideSidebar.toggle() }
+    @objc func setInterfaceStyle(_ sender: NSMenuItem) {
+        prefs.interfaceStyle = MenuTag(rawValue: sender.tag) == .styleClassic ? .classic : .liquidDrop
+    }
+    @objc func toggleOrbit(_ sender: Any?) {
+        if state.orbitOpen { state.closeOrbit() } else { state.openOrbit() }
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+    @objc func previousPrompt(_ sender: Any?) { jumpToPrompt(-1) }
+    @objc func nextPrompt(_ sender: Any?)     { jumpToPrompt(1) }
+    private func jumpToPrompt(_ delta: Int) {
+        _ = state.selectedTab?.paneTree.activePane?.controller?
+            .performBindingAction("jump_to_prompt:\(delta)")
+    }
+    @objc func selectNextTab(_ sender: Any?)     { stepTab(1) }
+    @objc func selectPreviousTab(_ sender: Any?) { stepTab(-1) }
+    private func stepTab(_ delta: Int) {
+        let tabs = state.tabs
+        guard tabs.count > 1,
+              let at = tabs.firstIndex(where: { $0.id == state.selectedID }) else { return }
+        state.select(tabs[((at + delta) % tabs.count + tabs.count) % tabs.count].id)
+    }
+    @objc func showBriefing(_ sender: Any?)       { state.openBriefing() }
+    @objc func showAgentHistory(_ sender: Any?)   { state.openAgentToolsForActivePane() }
+    @objc func showWorktreeReview(_ sender: Any?) { state.openWorktreeReviewForActivePane() }
+    @objc func showAnsibleReport(_ sender: Any?)  { state.openAnsibleLastReport() }
+    @objc func showTerraformPlan(_ sender: Any?)  { state.openTerraformLastPlan() }
+    @objc func showFleetRun(_ sender: Any?) {
+        state.openFleetRun()
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+    @objc func showShortcuts(_ sender: Any?) {
+        state.openSettings(section: SettingsPanel.Section.shortcuts.rawValue)
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+    @objc func openProjectPage(_ sender: Any?)  { open("https://github.com/mahdiarfrm/conterm") }
+    @objc func openReleaseNotes(_ sender: Any?) { open("https://github.com/mahdiarfrm/conterm/releases") }
+    @objc func openIssues(_ sender: Any?)       { open("https://github.com/mahdiarfrm/conterm/issues") }
+    private func open(_ url: String) {
+        if let u = URL(string: url) { NSWorkspace.shared.open(u) }
     }
 
     /// Catches app-level shortcuts before they reach the SurfaceView.
