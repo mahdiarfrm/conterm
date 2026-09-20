@@ -117,6 +117,20 @@ if [[ -f "$APP/Contents/Resources/cursor-mark.png" ]]; then
     echo "OK: bundled flat app resources (cursor-mark.png, …)"
 fi
 
+# The system picks an app's control styling by the SDK its binary is stamped
+# with (LC_BUILD_VERSION): a stamp below 26 gets the pre-Liquid-Glass window
+# buttons and controls. SwiftPM's build backend stamps the deployment target
+# (14.0) there instead of the SDK it linked against, so stamp the real one.
+# Before codesign, because rewriting a load command invalidates a signature.
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+STAMPED="$(otool -l "$APP/Contents/MacOS/Conterm" | awk '/LC_BUILD_VERSION/{f=1} f&&/ sdk /{print $2; exit}')"
+if [[ -n "$SDK_VERSION" && "$STAMPED" != "$SDK_VERSION" ]]; then
+    echo "==> stamp SDK $SDK_VERSION (was $STAMPED)"
+    MINOS="$(otool -l "$APP/Contents/MacOS/Conterm" | awk '/LC_BUILD_VERSION/{f=1} f&&/ minos /{print $2; exit}')"
+    vtool -set-build-version macos "$MINOS" "$SDK_VERSION" -replace \
+          -output "$APP/Contents/MacOS/Conterm" "$APP/Contents/MacOS/Conterm" 2>/dev/null
+fi
+
 echo "==> codesign"
 # Strip extended attrs (resource forks etc.) so codesign doesn't
 # choke. Otherwise we get "resource fork, Finder information, or
