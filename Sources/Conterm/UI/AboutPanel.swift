@@ -12,7 +12,7 @@ final class AboutPanel {
     static let shared = AboutPanel()
     private var window: NSWindow?
 
-    private static let panelSize = NSSize(width: 600, height: 470)
+    private static let panelWidth: CGFloat = 520
 
     func show() {
         if let win = window {
@@ -21,7 +21,19 @@ final class AboutPanel {
             return
         }
 
-        let size = Self.panelSize
+        // The window takes the height its content asks for at the panel's
+        // width, once: the hosting view neither resizes the window nor is
+        // stretched by it, so the layout can't be pulled taller than it is.
+        let host = NSHostingView(rootView: AboutWindowContent {
+            self.close()
+        }
+        .frame(width: Self.panelWidth)
+        .fixedSize(horizontal: false, vertical: true))
+        // Measured while the view still reports an intrinsic size; with no
+        // sizing options it reports none, and would fit to zero.
+        let fitted = ceil(host.fittingSize.height)
+        host.sizingOptions = []
+        let size = NSSize(width: Self.panelWidth, height: max(fitted, 320))
         let win = NSWindow(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.titled, .closable, .fullSizeContentView],
@@ -30,14 +42,12 @@ final class AboutPanel {
         )
 
         // The SwiftUI content fills the whole window so the glass card
-        // IS the window. The hosting view uses autoresizing to track
-        // window size; the controller does not drive sizing.
-        let host = NSHostingView(rootView: AboutWindowContent {
-            self.close()
-        })
+        // IS the window.
         host.frame = NSRect(origin: .zero, size: size)
         host.autoresizingMask = [.width, .height]
         win.contentView = host
+        win.contentMinSize = size
+        win.contentMaxSize = size
 
         win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
@@ -86,15 +96,10 @@ private struct AboutWindowContent: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Full-bleed glass — covers the whole window, no gaps.
-            GlassBackground(material: .hudWindow)
-            Color.black.opacity(0.22)
-
-            AboutContent()
+            AboutContent(centered: true)
                 .padding(.horizontal, Drop.inset)
-                .padding(.top, 58)
-                .padding(.bottom, 34)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.vertical, 44)
+                .frame(maxWidth: .infinity)
 
             // Close control top-left, where the traffic light would be,
             // so it's where muscle memory expects.
@@ -102,7 +107,14 @@ private struct AboutWindowContent: View {
                 .padding(.top, 16)
                 .padding(.leading, 18)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Full-bleed glass behind the content. As a background it takes the
+        // content's size instead of offering one of its own.
+        .background {
+            ZStack {
+                GlassBackground(material: .hudWindow)
+                Color.black.opacity(0.22)
+            }
+        }
         .overlay(
             RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
                 .stroke(

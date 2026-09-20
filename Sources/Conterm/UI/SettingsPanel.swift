@@ -1313,42 +1313,22 @@ private struct ConfigEditor: View {
 // MARK: - About content (also used in standalone About panel)
 
 struct AboutContent: View {
+    /// The About window sets everything on one centred axis; Settings keeps
+    /// the page's leading edge.
+    var centered = false
+
     var body: some View {
         let info = Ghostty.buildInfo
-        VStack(alignment: .leading, spacing: Drop.sectionGap) {
-            HStack(spacing: 22) {
-                if let img = NSImage(named: "AppIcon") {
-                    // Render at 2x with high-quality interpolation, then
-                    // clip with a continuous-curve squircle so the icon
-                    // edges read as crisp + smooth (the raw .icns scaled
-                    // nearest-pixel leaves jaggies along the corners).
-                    Image(nsImage: img)
-                        .resizable()
-                        .interpolation(.high)
-                        .antialiased(true)
-                        .frame(width: 88, height: 88)
-                        .clipShape(RoundedRectangle(cornerRadius: 20,
-                                                     style: .continuous))
-                        .shadow(color: .black.opacity(0.35), radius: 14, y: 5)
-                        .rollUp(delay: 0)
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    RollUpText("Conterm", font: Drop.title(),
-                               color: Theme.textPrimary, startDelay: 0.05, step: 0.03)
-                    Text("A modern macOS terminal, built on libghostty.")
-                        .font(Drop.display(12.5, .regular))
-                        .foregroundStyle(Theme.textSecondary)
-                        .rollUp(delay: 0.18, blurs: false)
-                }
-                Spacer(minLength: 0)
-            }
+        let axis: HorizontalAlignment = centered ? .center : .leading
+        VStack(alignment: axis, spacing: Drop.sectionGap) {
+            masthead
 
             HStack(alignment: .top, spacing: 34) {
                 DropFact(label: "Version", value: appVersion(), mono: true)
                 DropFact(label: "libghostty", value: libghosttyVersion(info.version), mono: true)
                 DropFact(label: "Core build", value: buildMode(info.mode.rawValue))
                 DropFact(label: "License", value: "MIT")
-                Spacer(minLength: 0)
+                if !centered { Spacer(minLength: 0) }
             }
             .rollUp(delay: 0.24, blurs: false)
 
@@ -1360,12 +1340,14 @@ struct AboutContent: View {
             }
             .rollUp(delay: 0.30, blurs: false)
 
-            DropSection(label: "Credits", order: 4) {
-                VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: axis, spacing: 13) {
+                DropEyebrow("Credits")
+                VStack(alignment: axis, spacing: 7) {
                     credit("libghostty by Mitchell Hashimoto — the terminal-emulator core.")
                     credit("Ghostty's shell-integration scripts for zsh and bash, bundled directly.")
                 }
             }
+            .rollUp(delay: 0.36, blurs: false)
 
             Text("© 2026 Mahdiyar Faramarzpour")
                 .font(Drop.mono(9.5))
@@ -1373,13 +1355,61 @@ struct AboutContent: View {
                 .foregroundStyle(Theme.textSecondary.opacity(0.75))
                 .rollUp(delay: 0.44, blurs: false)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
+    }
+
+    /// Icon, name and the one-line description: stacked on the centred
+    /// axis, side by side on a leading one.
+    @ViewBuilder
+    private var masthead: some View {
+        if centered {
+            VStack(spacing: 16) {
+                appIcon
+                nameAndTagline(alignment: .center)
+            }
+        } else {
+            HStack(spacing: 22) {
+                appIcon
+                nameAndTagline(alignment: .leading)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var appIcon: some View {
+        if let img = NSImage(named: "AppIcon") {
+            // High-quality interpolation, then a continuous-curve squircle
+            // clip: the raw .icns scaled down leaves jaggies at the corners.
+            // The icon art carries its own transparent margin; the frame is
+            // drawn past it so the visible tile lands on the layout's edge.
+            Image(nsImage: img)
+                .resizable()
+                .interpolation(.high)
+                .antialiased(true)
+                .frame(width: 96, height: 96)
+                .shadow(color: .black.opacity(0.35), radius: 14, y: 5)
+                .padding(-8)
+                .rollUp(delay: 0)
+        }
+    }
+
+    private func nameAndTagline(alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 6) {
+            RollUpText("Conterm", font: Drop.title(),
+                       color: Theme.textPrimary, startDelay: 0.05, step: 0.03)
+            Text("A modern macOS terminal, built on libghostty.")
+                .font(Drop.display(12.5, .regular))
+                .foregroundStyle(Theme.textSecondary)
+                .rollUp(delay: 0.18, blurs: false)
+        }
     }
 
     private func credit(_ s: String) -> some View {
         Text(s)
             .font(Drop.display(12.5, .regular))
             .foregroundStyle(Theme.textPrimary.opacity(0.9))
+            .multilineTextAlignment(centered ? .center : .leading)
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -1389,9 +1419,12 @@ struct AboutContent: View {
         }
     }
 
-    /// Trim version to first 12 chars so a long git SHA doesn't overflow.
+    /// The version without its build metadata: `1.3.2-main-+24c5671` reads
+    /// as `1.3.2-main`, and a long git SHA can't overflow the column.
     private func libghosttyVersion(_ raw: String) -> String {
-        String(raw.prefix(12))
+        let core = raw.split(separator: "+", maxSplits: 1).first.map(String.init) ?? raw
+        let trimmed = core.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return String(trimmed.prefix(14))
     }
 
     /// libghostty's `ghostty_build_mode_e`, by raw value in header order.
