@@ -39,36 +39,47 @@ struct AppView: View {
             // and the intro animation restarting forever (a permanent
             // ~50% CPU redraw storm that read as a frozen "loading
             // animation").
-            // Explicit zIndex on every modal overlay: a ZStack child
-            // being REMOVED falls back to z 0, which puts its exit
-            // transition underneath the opaque terminal content — the
-            // close animation plays invisibly and reads as an instant
-            // pop. Pinning each overlay above the content keeps the
-            // exit on screen.
-            searchOverlay.id("overlay.search").zIndex(10)
-            notificationsOverlay.id("overlay.notifications").zIndex(11)
-            // Orbit renders inside `content`, at the bottom of this stack, so
-            // this sits above it and the map's "Overview" opens over the mode
-            // rather than behind it.
-            hostOverviewOverlay.id("overlay.hostOverview").zIndex(16)
-            ansibleCockpitOverlay.id("overlay.ansible").zIndex(13)
-            // Opened from the agent center (14) and the briefing (15),
-            // so it sits above both — a review that appears behind the
-            // thing you clicked reads as nothing having happened.
-            worktreeOverlay.id("overlay.worktree").zIndex(17)
-            terraformOverlay.id("overlay.terraform").zIndex(13)
-            agentToolsOverlay.id("overlay.agentTools").zIndex(13)
-            briefingOverlay.id("overlay.briefing").zIndex(15)
-            closePromptOverlay.id("overlay.closePrompt").zIndex(25)
-            clusterOverviewOverlay.id("overlay.cluster").zIndex(13)
-            agentCenterOverlay.id("overlay.agentCenter").zIndex(14)
-            renameOverlay.id("overlay.rename").zIndex(12)
-            fleetRunOverlay.id("overlay.fleet").zIndex(12)
-            groupRenameOverlay.id("overlay.groupRename").zIndex(13)
-            paletteOverlay.id("overlay.palette").zIndex(20)
-            settingsOverlay.id("overlay.settings").zIndex(21)
-            launchOverlay.id("overlay.launch").zIndex(30)
-            setupWizardOverlay.id("overlay.setup").zIndex(31)
+            // Overlays live in one `windowBound` layer, and each is bound
+            // again inside it. The hosting view publishes this stack's
+            // minimum size as the window's, and a ZStack is as large as its
+            // largest child — so one card taller than a small window would
+            // otherwise raise the window's minimum, grow the stack past it,
+            // and re-centre the tab bar and panes off its edges. Anything
+            // added to the layer is bound by construction.
+            ZStack(alignment: .top) {
+                // Explicit zIndex on every modal overlay: a ZStack child
+                // being REMOVED falls back to z 0, which puts its exit
+                // transition underneath the opaque terminal content — the
+                // close animation plays invisibly and reads as an instant
+                // pop. Pinning each overlay above the content keeps the
+                // exit on screen.
+                searchOverlay.windowBound().id("overlay.search").zIndex(10)
+                notificationsOverlay.windowBound().id("overlay.notifications").zIndex(11)
+                // Orbit renders inside `content`, at the bottom of this stack, so
+                // this sits above it and the map's "Overview" opens over the mode
+                // rather than behind it.
+                hostOverviewOverlay.windowBound().id("overlay.hostOverview").zIndex(16)
+                ansibleCockpitOverlay.windowBound().id("overlay.ansible").zIndex(13)
+                // Opened from the agent center (14) and the briefing (15),
+                // so it sits above both — a review that appears behind the
+                // thing you clicked reads as nothing having happened.
+                worktreeOverlay.windowBound().id("overlay.worktree").zIndex(17)
+                terraformOverlay.windowBound().id("overlay.terraform").zIndex(13)
+                agentToolsOverlay.windowBound().id("overlay.agentTools").zIndex(13)
+                briefingOverlay.windowBound().id("overlay.briefing").zIndex(15)
+                closePromptOverlay.windowBound().id("overlay.closePrompt").zIndex(25)
+                clusterOverviewOverlay.windowBound().id("overlay.cluster").zIndex(13)
+                agentCenterOverlay.windowBound().id("overlay.agentCenter").zIndex(14)
+                renameOverlay.windowBound().id("overlay.rename").zIndex(12)
+                fleetRunOverlay.windowBound().id("overlay.fleet").zIndex(12)
+                groupRenameOverlay.windowBound().id("overlay.groupRename").zIndex(13)
+                paletteOverlay.windowBound().id("overlay.palette").zIndex(20)
+                settingsOverlay.windowBound().id("overlay.settings").zIndex(21)
+                launchOverlay.windowBound().id("overlay.launch").zIndex(30)
+                setupWizardOverlay.windowBound().id("overlay.setup").zIndex(31)
+            }
+            .windowBound()
+            .zIndex(10)
         }
         // Color scheme follows the Glass tint: light tint → light
         // appearance so the adaptive Theme colors flip to DARK text
@@ -974,5 +985,18 @@ private struct FloatingSidebarSurface<Drop: View, Classic: View>: ViewModifier {
                 .offset(x: revealed ? 0 : hiddenOffset)
                 .opacity(revealed ? 1 : 0)
         }
+    }
+}
+
+extension View {
+    /// Takes exactly the space it is offered and asks for none of its own,
+    /// whatever its content would need: an overlay that cannot fit overflows
+    /// inside its own layer instead of resizing the layout beneath it. Its
+    /// flexible content — scrolling bodies — is offered the window's size
+    /// and shrinks to it.
+    func windowBound() -> some View {
+        // Top-aligned, as the root stack places its children.
+        frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity,
+              alignment: .top)
     }
 }

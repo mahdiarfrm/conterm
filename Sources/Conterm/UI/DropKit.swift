@@ -281,8 +281,9 @@ struct DropBody<Content: View>: View {
     @State private var height: CGFloat = 0
 
     var body: some View {
-        // A ScrollView takes its whole proposed height; pinning it to the
-        // measured content keeps a short card short.
+        // A ScrollView takes its whole proposed height; capping it at the
+        // measured content keeps a short card short, and leaving it free
+        // below that lets the card give way in a window too small for it.
         ScrollView {
             VStack(alignment: .leading, spacing: Drop.sectionGap) { content }
                 .padding(.horizontal, Drop.inset)
@@ -294,7 +295,7 @@ struct DropBody<Content: View>: View {
         }
         .scrollIndicators(.never)
         .onPreferenceChange(DropBodyHeightKey.self) { height = $0 }
-        .frame(height: min(max(height, 60), maxHeight))
+        .frame(maxHeight: min(max(height, 60), maxHeight))
         // Rows dissolve into the glass at both ends instead of being cut.
         .mask(LinearGradient(stops: [
             .init(color: .clear, location: 0),
