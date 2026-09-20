@@ -1059,8 +1059,11 @@ private struct SearchHintButton: View {
 }
 
 /// Toolbar agent pill — appears only while agents are running (the cluster
-/// extends to make room), showing the robot mark + a live count. Opens the
-/// agent command center; lights to the accent while it's open.
+/// extends to make room), showing the stack mark + a live count. A click
+/// opens the agent command center — the count is a count of what that list
+/// holds — and lights the pill while it is open. Orbit, focused on the
+/// working session, is on the context menu; the layout switcher is its
+/// primary entry.
 private struct AgentToolbarPill: View {
     @EnvironmentObject var state: AppState
     @ObservedObject private var center = AgentCenter.shared
@@ -1072,11 +1075,14 @@ private struct AgentToolbarPill: View {
         Group {
             if center.runningCount > 0 {
                 Button {
-                    // The cockpit entry: open Orbit focused on the working session
-                    // so you see (and steer) what it's doing live. The flat roster
-                    // stays on ⌘⇧A and this pill's context menu.
-                    state.openOrbit(focusSession: workingSessionID)
-                    NSApp.keyWindow?.makeFirstResponder(nil)
+                    if state.agentCenterOpen {
+                        state.toggleAgentCenter()
+                    } else {
+                        state.openAgentCenter(tab: .live)
+                        // Drop the surface's first-responder claim so the
+                        // roster's reply fields can take focus.
+                        NSApp.keyWindow?.makeFirstResponder(nil)
+                    }
                 } label: {
                     HStack(spacing: Theme.ui(4)) {
                         Image(systemName: "rectangle.stack")
@@ -1095,11 +1101,10 @@ private struct AgentToolbarPill: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .help("See it in Orbit · right-click for the agent list")
+                .help("Agents (⌘⇧A) · right-click to see it in Orbit")
                 .contextMenu {
-                    Button("Open in Orbit") { state.openOrbit(focusSession: workingSessionID) }
-                    Button("Agent list (⌘⇧A)") {
-                        state.openAgentCenter(tab: .live)
+                    Button("Open in Orbit") {
+                        state.openOrbit(focusSession: workingSessionID)
                         NSApp.keyWindow?.makeFirstResponder(nil)
                     }
                 }
