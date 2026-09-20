@@ -189,7 +189,7 @@ struct CommandPalette: View {
                     .modifier(PaletteBubble(cornerRadius: 27, darken: 0.14))
             }
         case .commands:
-            barBubble("Search commands, files, hosts, history… or math", "magnifyingglass")
+            barBubble("Search commands, files, hosts, history… or math", ContermGlyph.iconName)
         case .notesList:
             barBubble("Search notes…", "note.text")
         case .sessions:
@@ -333,6 +333,8 @@ struct CommandPalette: View {
             Group {
                 if icon == RobotGlyph.iconName {
                     RobotGlyph(color: Theme.textSecondary, size: 18)
+                } else if icon == ContermGlyph.iconName {
+                    ContermGlyph().fill(Theme.textSecondary).frame(width: 22, height: 22)
                 } else {
                     Image(systemName: icon)
                         .foregroundStyle(Theme.textSecondary)

@@ -14,6 +14,8 @@ extension CommandPalette {
         HStack(spacing: 10) {
             if icon == RobotGlyph.iconName {
                 RobotGlyph(color: Theme.textSecondary, size: 17)
+            } else if icon == ContermGlyph.iconName {
+                ContermGlyph().fill(Theme.textSecondary).frame(width: 20, height: 20)
             } else {
                 Image(systemName: icon)
                     .foregroundStyle(Theme.textSecondary)

@@ -10,6 +10,9 @@ import SwiftUI
 /// line and the `~` are heavier than the icon's so the mark still reads at
 /// eyebrow size.
 struct ContermGlyph: Shape {
+    /// Stands in for an SF Symbol name where an icon is passed as a string.
+    static let iconName = "conterm.glyph"
+
     func path(in rect: CGRect) -> Path {
         // Drawn in a 100-unit square, then fitted to `rect`.
         let tileFrame = CGRect(x: 19, y: 18, width: 62, height: 62)
