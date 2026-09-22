@@ -529,6 +529,7 @@ struct DropIconButton: View {
     var help: String = ""
     var spinning = false
     let action: () -> Void
+    @Environment(\.isEnabled) private var enabled
     @State private var hovering = false
 
     var body: some View {
@@ -548,10 +549,11 @@ struct DropIconButton: View {
                 hovering ? AnyShapeStyle(Drop.sheen) : AnyShapeStyle(Theme.stroke),
                 lineWidth: hovering ? 1 : 0.5))
             .scaleEffect(hovering ? 1.08 : 1)
+            .opacity(enabled ? 1 : 0.4)
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .onHover { hovering = $0 }
+        .onHover { hovering = enabled && $0 }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: hovering)
         .help(help)
     }
@@ -565,6 +567,7 @@ struct DropButton: View {
     var prominent = false
     var tint: Color? = nil
     let action: () -> Void
+    @Environment(\.isEnabled) private var enabled
     @State private var hovering = false
 
     var body: some View {
@@ -585,10 +588,11 @@ struct DropButton: View {
                          : AnyShapeStyle((tint ?? Theme.textPrimary).opacity(0.28)),
                 lineWidth: hovering ? 1 : 0.75))
             .scaleEffect(hovering ? 1.03 : 1)
+            .opacity(enabled ? 1 : 0.4)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .onHover { hovering = $0 }
+        .onHover { hovering = enabled && $0 }
         .animation(.spring(response: 0.3, dampingFraction: 0.72), value: hovering)
     }
 }
