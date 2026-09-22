@@ -274,9 +274,7 @@ extension OrbitOverlay {
                         .onChange(of: g.frame(in: .global)) { _, f in previewFrames[pane.id] = f }
                         .onDisappear { previewFrames[pane.id] = nil }
                 })
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.ultraThinMaterial))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Theme.strokeStrong, lineWidth: 1))
+                .orbitGlass(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .shadow(color: .black.opacity(0.5), radius: 30, y: 10)
                 .position(pos)

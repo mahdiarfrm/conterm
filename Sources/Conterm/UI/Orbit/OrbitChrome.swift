@@ -38,8 +38,8 @@ extension OrbitOverlay {
                     }
                     .foregroundStyle(autoResolveNames ? Theme.accent : Theme.textSecondary)
                     .padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(Capsule().fill(autoResolveNames ? Theme.accent.opacity(0.14) : chromeFill(prefs)))
-                    .overlay(Capsule().strokeBorder(autoResolveNames ? Theme.accent.opacity(0.4) : .clear, lineWidth: 1))
+                    .orbitChip(Capsule(), tint: autoResolveNames ? Theme.accent : nil,
+                               rim: autoResolveNames ? Theme.accent.opacity(0.4) : nil)
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -230,7 +230,7 @@ extension OrbitOverlay {
             layoutSegment("Orbital", .structured)
         }
         .padding(2)
-        .background(Capsule().fill(chromeFill(prefs)))
+        .orbitChip(Capsule())
         .help("How nodes are arranged: organic spring layout, or a fixed orbital one")
     }
 
@@ -265,8 +265,7 @@ extension OrbitOverlay {
             }
             .foregroundStyle(Theme.accent)
             .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(Capsule().fill(chromeFill(prefs)))
-            .overlay(Capsule().strokeBorder(Theme.accent.opacity(0.5), lineWidth: 1))
+            .orbitChip(Capsule(), rim: Theme.accent.opacity(0.5))
         } else if let focused = state.orbitFocusSession {
             // Focus hides the rest of the fleet, so leaving it has to be a
             // button you can see, not a sentence you have to have read.
@@ -284,8 +283,7 @@ extension OrbitOverlay {
                 }
                 .foregroundStyle(Theme.accent)
                 .padding(.horizontal, 10).padding(.vertical, 4)
-                .background(Capsule().fill(chromeFill(prefs)))
-                .overlay(Capsule().strokeBorder(Theme.accent.opacity(0.4), lineWidth: 1))
+                .orbitChip(Capsule(), rim: Theme.accent.opacity(0.4))
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -380,7 +378,7 @@ extension OrbitOverlay {
                 .foregroundStyle(Theme.textPrimary.opacity(0.75))
         }
         .padding(.horizontal, 7).padding(.vertical, 3)
-        .background(Capsule().fill(chromeFill(prefs)))
+        .orbitChip(Capsule())
         .help("\(n) \(label)")
     }
 
@@ -393,8 +391,7 @@ extension OrbitOverlay {
                     .foregroundStyle(Theme.textPrimary.opacity(0.85))
             }
             .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(Capsule().fill(chromeFill(prefs)))
-            .overlay(Capsule().strokeBorder(tint.opacity(0.35), lineWidth: 1))
+            .orbitChip(Capsule(), rim: tint.opacity(0.35))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -467,8 +464,7 @@ extension OrbitOverlay {
                     }.buttonStyle(.plain)
                 }
                 .padding(.horizontal, 10).padding(.vertical, 7)
-                .background(Capsule().fill(.ultraThinMaterial))
-                .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 1))
+                .orbitGlass(Capsule())
                 .shadow(color: .black.opacity(0.35), radius: 18, y: 6)
                 .padding(.top, 84)
                 Spacer()
@@ -512,7 +508,7 @@ extension OrbitOverlay {
                     zoomButton("arrow.counterclockwise") { zoom = 1; pan = .zero; sim.releaseAll() }
                     zoomButton("plus") { zoom = min(zoom + 0.2, 2.6) }
                 }
-                .padding(4).background(Capsule().fill(chromeFill(prefs)))
+                .padding(4).orbitChip(Capsule())
                 .padding(.trailing, 18).padding(.bottom, controlsBottom)
             }
         }
@@ -659,8 +655,7 @@ extension OrbitOverlay {
                 .popover(isPresented: nativeDialog(showComposer) { showComposer = false },
                          arrowEdge: .bottom) { composerBody }
                 .padding(.horizontal, 13).padding(.vertical, 9)
-                .background(Capsule().fill(.ultraThinMaterial))
-                .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 1))
+                .orbitGlass(Capsule(), lit: true)
                 .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
                 .padding(.bottom, 18)
             }
@@ -732,8 +727,7 @@ extension OrbitOverlay {
                 }
             }
             .padding(.horizontal, 13).padding(.vertical, 9)
-            .background(Capsule().fill(.ultraThinMaterial))
-            .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 1))
+            .orbitGlass(Capsule(), lit: true)
             .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
             .padding(.bottom, 18)
         }
@@ -773,12 +767,10 @@ extension OrbitOverlay {
                 }
                 .frame(width: 340, alignment: .leading)
                 .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.ultraThinMaterial))
                 // The highlight is a full-width fill, so it has to be clipped to
                 // the container or it squares off the rounded corners.
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Theme.strokeStrong, lineWidth: 1))
+                .orbitGlass(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.bottom, 6)
             }
             HStack(spacing: 10) {
@@ -816,8 +808,7 @@ extension OrbitOverlay {
                 nodeVerbs(node)
             }
             .padding(.horizontal, 13).padding(.vertical, 9)
-            .background(Capsule().fill(.ultraThinMaterial))
-            .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 1))
+            .orbitGlass(Capsule(), lit: true)
             .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
             .padding(.bottom, 18)
         }
@@ -1082,7 +1073,7 @@ extension OrbitOverlay {
                         }
                         .foregroundStyle(r.exitCode == 0 ? okGreen : failRed)
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Capsule().fill(chromeFill(prefs)))
+                        .orbitChip(Capsule())
                     }
                     // An empty field sends a bare Return, so a prompt waiting
                     // on "Enter to confirm" can be answered without opening

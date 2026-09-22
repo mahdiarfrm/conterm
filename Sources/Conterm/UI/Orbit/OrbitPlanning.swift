@@ -42,9 +42,8 @@ extension OrbitOverlay {
                 }.buttonStyle(.plain)
             }
             .padding(8)
-            .background(RoundedRectangle(cornerRadius: 9).fill(.ultraThinMaterial))
-            .overlay(RoundedRectangle(cornerRadius: 9)
-                .strokeBorder(Color(red: 0.98, green: 0.80, blue: 0.34).opacity(0.9), lineWidth: 2))
+            .orbitGlass(RoundedRectangle(cornerRadius: 9),
+                        rim: Color(red: 0.98, green: 0.80, blue: 0.34).opacity(0.9), rimWidth: 2)
             .shadow(color: .black.opacity(0.35), radius: 12, y: 5)
             .position(screen(id, center: center))
         }
@@ -64,8 +63,7 @@ extension OrbitOverlay {
                     railButton("note.text", "Add note") { addNoteAtCenter() }
                 }
                 .padding(6)
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(chromeFill(prefs)))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.strokeStrong, lineWidth: 1))
+                .orbitChip(RoundedRectangle(cornerRadius: 16, style: .continuous), outlined: true)
                 if addingHosts { hostPicker }
                 Spacer(minLength: 0)
             }

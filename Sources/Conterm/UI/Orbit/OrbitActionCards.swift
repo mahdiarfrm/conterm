@@ -58,8 +58,7 @@ struct ActionDetailCard: View {
             }
         }
         .padding(11)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.ultraThinMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(tint.opacity(0.35), lineWidth: 1))
+        .orbitGlass(RoundedRectangle(cornerRadius: 12, style: .continuous), rim: tint.opacity(0.35))
         .shadow(color: .black.opacity(0.35), radius: 16, y: 6)
     }
 
@@ -98,9 +97,8 @@ struct PreviewCard: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(.ultraThinMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
-            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+        .orbitGlass(RoundedRectangle(cornerRadius: 11, style: .continuous),
+                    classicRim: Color.white.opacity(0.12))
         .shadow(color: .black.opacity(0.45), radius: 16, y: 8)
     }
 

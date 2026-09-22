@@ -71,8 +71,7 @@ extension OrbitOverlay {
             }
             .foregroundStyle(primary ? Theme.accent : Theme.textPrimary)
             .padding(.horizontal, 11).padding(.vertical, 6)
-            .background(Capsule().fill(primary ? chromeFill(prefs, selected: true) : chromeFill(prefs)))
-            .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 1))
+            .orbitChip(Capsule(), selected: primary, outlined: true)
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
@@ -94,8 +93,7 @@ extension OrbitOverlay {
             }
             .foregroundStyle(primary ? Theme.accent : Theme.textPrimary)
             .padding(.horizontal, 11).padding(.vertical, 6)
-            .background(Capsule().fill(primary ? chromeFill(prefs, selected: true) : chromeFill(prefs)))
-            .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 1))
+            .orbitChip(Capsule(), selected: primary, outlined: true)
         }
         // `.button` + a plain button style, not `.borderlessButton`: the
         // borderless style paints its own chrome and drops the capsule, so a

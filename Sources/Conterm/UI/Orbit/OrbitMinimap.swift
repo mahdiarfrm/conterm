@@ -100,12 +100,8 @@ extension OrbitOverlay {
             // point the surrounding HStack will give it — stretching the panel
             // across the whole foot of the canvas.
             .frame(width: minimapSize.width)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(prefs.lightGlass ? Color.white.opacity(0.82) : Color.black.opacity(0.72)))
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.ultraThinMaterial))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Theme.strokeStrong, lineWidth: 1))
+            .orbitGlass(RoundedRectangle(cornerRadius: 12, style: .continuous),
+                        bed: prefs.lightGlass ? 0.82 : 0.72)
             .shadow(color: .black.opacity(0.35), radius: 16, y: 6)
             .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottomLeading)))
         } else {
@@ -113,7 +109,7 @@ extension OrbitOverlay {
                 Image(systemName: "map").font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.textSecondary)
                     .frame(width: 28, height: 24)
-                    .background(Capsule().fill(chromeFill(prefs)))
+                    .orbitChip(Capsule())
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)

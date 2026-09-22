@@ -656,8 +656,7 @@ extension OrbitOverlay {
                         Text("Add to this space").font(.system(size: 13, weight: .semibold, design: .rounded))
                     }
                     .foregroundStyle(Theme.accent).padding(.horizontal, 16).padding(.vertical, 10)
-                    .background(Capsule().fill(chromeFill(prefs, selected: true)))
-                    .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 1))
+                    .orbitChip(Capsule(), selected: true, outlined: true)
                 }.buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

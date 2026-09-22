@@ -270,8 +270,7 @@ struct TimelineDeckView: View {
         // there. Inset past the arc instead.
         .padding(.horizontal, 30).padding(.top, 15).padding(.bottom, 13)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(RoundedRectangle(cornerRadius: 38, style: .continuous).fill(.ultraThinMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 38, style: .continuous).strokeBorder(Theme.strokeStrong, lineWidth: 1))
+        .orbitGlass(RoundedRectangle(cornerRadius: 38, style: .continuous))
         .shadow(color: .black.opacity(0.32), radius: 18, y: 6)
     }
 
@@ -359,12 +358,8 @@ struct TimelineDeckView: View {
         }
         .padding(10)
         .frame(width: 290, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 11, style: .continuous)
-            .fill(light ? Color.white.opacity(0.95) : Color.black.opacity(0.9)))
-        .background(RoundedRectangle(cornerRadius: 11, style: .continuous)
-            .fill(.ultraThinMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
-            .strokeBorder(tint.opacity(0.45), lineWidth: 1))
+        .orbitGlass(RoundedRectangle(cornerRadius: 11, style: .continuous),
+                    bed: light ? 0.95 : 0.9, rim: tint.opacity(0.45))
         .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
         .allowsHitTesting(false)
     }

@@ -156,7 +156,7 @@ extension OrbitOverlay {
             .padding(.horizontal, 11)
             // Match the mode switcher's pill height so the two sit on one line.
             .frame(height: 30)
-            .background(Capsule().fill(state.orbitFocusSession != nil ? Theme.accent.opacity(0.14) : chromeFill(prefs)))
+            .orbitChip(Capsule(), tint: state.orbitFocusSession != nil ? Theme.accent : nil)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
