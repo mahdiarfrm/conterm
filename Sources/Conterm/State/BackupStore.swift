@@ -127,21 +127,15 @@ enum BackupStore {
     }
 
     private static func alert(_ title: String, _ message: String) {
-        let a = NSAlert()
-        a.messageText = title
-        a.informativeText = message
-        a.alertStyle = .warning
-        a.runModal()
+        DropAlert(topic: "Backup", title: title, message: message, tone: .bad).ask()
     }
 
     private static func promptRelaunch() {
-        let a = NSAlert()
-        a.messageText = "Backup restored"
-        a.informativeText = "Conterm needs to relaunch to apply the restored "
-            + "sessions and settings."
-        a.addButton(withTitle: "Relaunch Now")
-        a.addButton(withTitle: "Later")
-        if a.runModal() == .alertFirstButtonReturn { relaunch() }
+        DropAlert(topic: "Backup", title: "Backup restored",
+                  message: "Conterm needs to relaunch to apply the restored "
+                      + "sessions and settings.",
+                  buttons: ["Relaunch Now", "Later"]
+        ).ask { if $0 == 0 { relaunch() } }
     }
 
     private static func relaunch() {

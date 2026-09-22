@@ -112,7 +112,10 @@ final class UpdateChecker: ObservableObject {
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tag = obj["tag_name"] as? String else {
                 phase = .failed("Unexpected response (\(code))")
-                if announce { alert("Couldn't check for updates", "GitHub returned an unexpected response.") }
+                if announce {
+                    alert("Couldn't check for updates", "GitHub returned an unexpected response.",
+                          tone: .warn)
+                }
                 return
             }
             let notes = (obj["body"] as? String) ?? ""
@@ -140,7 +143,7 @@ final class UpdateChecker: ObservableObject {
             }
         } catch {
             phase = .failed(error.localizedDescription)
-            if announce { alert("Couldn't check for updates", error.localizedDescription) }
+            if announce { alert("Couldn't check for updates", error.localizedDescription, tone: .warn) }
         }
     }
 
@@ -167,18 +170,20 @@ final class UpdateChecker: ObservableObject {
     /// a manual check that finds an update.
     func promptInstall() {
         guard let rel = latest else { return }
-        let a = NSAlert()
-        a.messageText = "Update available — Conterm \(rel.version)"
-        a.informativeText = rel.notes.isEmpty
-            ? "A newer version is available on GitHub."
-            : String(rel.notes.prefix(600))
-        a.addButton(withTitle: "Install & Relaunch")
-        a.addButton(withTitle: "Release Notes")
-        a.addButton(withTitle: "Later")
-        switch a.runModal() {
-        case .alertFirstButtonReturn:  Task { await downloadAndSwap(rel) }
-        case .alertSecondButtonReturn: NSWorkspace.shared.open(rel.htmlURL)
-        default: break
+        DropAlert(
+            topic: "Update",
+            title: "Conterm \(rel.version) is available",
+            message: rel.notes.isEmpty
+                ? "A newer version is available on GitHub."
+                : "You have \(currentVersion).",
+            detail: rel.notes.isEmpty ? nil : String(rel.notes.prefix(600)),
+            buttons: ["Install & Relaunch", "Release Notes", "Later"]
+        ).ask { choice in
+            switch choice {
+            case 0:  Task { await self.downloadAndSwap(rel) }
+            case 1:  NSWorkspace.shared.open(rel.htmlURL)
+            default: break
+            }
         }
     }
 
@@ -188,7 +193,7 @@ final class UpdateChecker: ObservableObject {
         guard zip.scheme?.lowercased() == "https" else {
             phase = .failed("Update URL was not HTTPS")
             alert("Update blocked",
-                  "The update download URL wasn't HTTPS, so it wasn't installed.")
+                  "The update download URL wasn't HTTPS, so it wasn't installed.", tone: .bad)
             return
         }
         let appURL = Bundle.main.bundleURL
@@ -197,7 +202,7 @@ final class UpdateChecker: ObservableObject {
             alert("Move Conterm to Applications",
                   "Automatic update needs Conterm to run from a normal, writable "
                   + "location (e.g. /Applications). It's currently running from "
-                  + appURL.deletingLastPathComponent().path + ".")
+                  + appURL.deletingLastPathComponent().path + ".", tone: .warn)
             return
         }
 
@@ -219,7 +224,8 @@ final class UpdateChecker: ObservableObject {
 
             guard let newApp = findApp(in: extractDir) else {
                 phase = .failed("No app in the downloaded archive")
-                alert("Update failed", "The downloaded archive didn't contain Conterm.app.")
+                alert("Update failed", "The downloaded archive didn't contain Conterm.app.",
+                      tone: .bad)
                 return
             }
             // Refuse a bundle whose signature seal doesn't verify — a
@@ -229,13 +235,13 @@ final class UpdateChecker: ObservableObject {
                 alert("Update blocked",
                       "The downloaded update failed its code-signature check "
                       + "and was not installed. Download it manually from the "
-                      + "releases page instead.")
+                      + "releases page instead.", tone: .bad)
                 return
             }
             swapAndRelaunch(old: appURL, new: newApp)
         } catch {
             phase = .failed(error.localizedDescription)
-            alert("Update failed", error.localizedDescription)
+            alert("Update failed", error.localizedDescription, tone: .bad)
         }
     }
 
@@ -294,7 +300,7 @@ final class UpdateChecker: ObservableObject {
         task.arguments = ["-c", script]
         do { try task.run() } catch {
             phase = .failed("Couldn't start the installer")
-            alert("Update failed", "Couldn't launch the installer step.")
+            alert("Update failed", "Couldn't launch the installer step.", tone: .bad)
             return
         }
         NSApp.terminate(nil)
@@ -320,10 +326,7 @@ final class UpdateChecker: ObservableObject {
         }.value
     }
 
-    private func alert(_ title: String, _ message: String) {
-        let a = NSAlert()
-        a.messageText = title
-        a.informativeText = message
-        a.runModal()
+    private func alert(_ title: String, _ message: String, tone: DropAlert.Tone = .neutral) {
+        DropAlert(topic: "Updates", title: title, message: message, tone: tone).ask()
     }
 }

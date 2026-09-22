@@ -902,6 +902,8 @@ final class AppState: ObservableObject {
 
     func askBeforeClosing(_ kind: ClosePrompt.Kind, message: String, restore: Bool,
                           answer: @escaping (_ confirmed: Bool, _ restore: Bool) -> Void) {
+        // Closing outranks whatever else this window was asking.
+        answerDropAlert()
         closePromptRestore = restore
         closePromptAnswer = answer
         closePrompt = ClosePrompt(kind: kind, message: message)
@@ -918,6 +920,28 @@ final class AppState: ObservableObject {
             SoundEffects.shared.play(.paletteClose)
         }
         answer?(confirmed, closePromptRestore)
+    }
+
+    // MARK: In-window alerts
+
+    /// The alert this window is asking; see `DropAlert.ask`.
+    @Published var dropAlert: DropAlert?
+    private var dropAlertAnswer: ((Int) -> Void)?
+
+    func ask(_ alert: DropAlert, answer: @escaping (Int) -> Void) {
+        dropAlertAnswer = answer
+        dropAlert = alert
+        SoundEffects.shared.play(.paletteOpen)
+    }
+
+    /// Answer with the button at `index`; nil answers as the alert's cancel.
+    func answerDropAlert(_ index: Int? = nil) {
+        guard let alert = dropAlert else { return }
+        let answer = dropAlertAnswer
+        dropAlertAnswer = nil
+        dropAlert = nil
+        if index == nil { SoundEffects.shared.play(.paletteClose) }
+        answer?(index ?? alert.cancelIndex)
     }
 
     /// "While you were away" card. One window shows it — the app delegate

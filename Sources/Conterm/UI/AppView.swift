@@ -68,6 +68,8 @@ struct AppView: View {
                 agentToolsOverlay.windowBound().id("overlay.agentTools").zIndex(13)
                 briefingOverlay.windowBound().id("overlay.briefing").zIndex(15)
                 closePromptOverlay.windowBound().id("overlay.closePrompt").zIndex(25)
+                // Over Settings, which backup and update checks are asked from.
+                dropAlertOverlay.windowBound().id("overlay.alert").zIndex(26)
                 clusterOverviewOverlay.windowBound().id("overlay.cluster").zIndex(13)
                 agentCenterOverlay.windowBound().id("overlay.agentCenter").zIndex(14)
                 renameOverlay.windowBound().id("overlay.rename").zIndex(12)
@@ -695,6 +697,15 @@ struct AppView: View {
                           insets: EdgeInsets(top: 0, leading: 0, bottom: 60, trailing: 0),
                           onDismiss: { state.answerClosePrompt(confirmed: false) }) { prompt in
             ClosePromptOverlay(prompt: prompt)
+                .environmentObject(state)
+        }
+    }
+
+    private var dropAlertOverlay: some View {
+        BriefingPresenter(item: state.dropAlert, alignment: .center,
+                          insets: EdgeInsets(top: 0, leading: 0, bottom: 60, trailing: 0),
+                          onDismiss: { state.answerDropAlert() }) { alert in
+            DropAlertOverlay(alert: alert)
                 .environmentObject(state)
         }
     }

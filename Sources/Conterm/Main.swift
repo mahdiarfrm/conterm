@@ -248,6 +248,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 // every close path — red button, ⌘⇧W, and the performClose
                 // that drains the last tab.
                 if let wc = self.windows.first(where: { $0.window === closing }) {
+                    // An alert asked here is answered as cancelled, so
+                    // whatever awaits it doesn't wait on a window that's gone.
+                    wc.state.answerDropAlert()
                     for tab in wc.state.tabs {
                         for pane in tab.paneTree.root.leaves() {
                             // Out of any cockpit dock or window it was mounted in first.
@@ -561,13 +564,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // is nil; a dispatched key event would otherwise crash on the IUO.
             guard self.state != nil else { return event }
 
-            // The close/quit prompt owns the keyboard while it is up: Esc
-            // cancels, Return confirms, and nothing else reaches the
-            // terminal it is about to end. ⌘-chords still pass.
+            // The close/quit prompt and an in-window alert own the keyboard
+            // while up: Esc cancels, Return confirms, and nothing else
+            // reaches the terminal under them. ⌘-chords still pass.
             if let asking = self.windows.first(where: { $0.state.closePrompt != nil }) {
                 switch event.keyCode {
                 case 53:      asking.state.answerClosePrompt(confirmed: false); return nil
                 case 36, 76:  asking.state.answerClosePrompt(confirmed: true);  return nil
+                default:
+                    if !event.modifierFlags.contains(.command) { return nil }
+                }
+            }
+            if let asking = self.windows.first(where: { $0.state.dropAlert != nil }),
+               let alert = asking.state.dropAlert {
+                switch event.keyCode {
+                case 53:      asking.state.answerDropAlert(); return nil
+                case 36, 76:
+                    if alert.returnAnswers { asking.state.answerDropAlert(0) }
+                    return nil
                 default:
                     if !event.modifierFlags.contains(.command) { return nil }
                 }
@@ -1043,6 +1057,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         suppressAutoSaveOnce = true
     }
 
+    /// The window on screen that holds an in-window question: the key one,
+    /// else the first visible and not minimised.
+    private func frontWindow() -> WindowController? {
+        let host = windows.first { $0.window === NSApp.keyWindow }
+            ?? windows.first { $0.window.isVisible && !$0.window.isMiniaturized }
+        guard let host, host.window.isVisible, !host.window.isMiniaturized else { return nil }
+        return host
+    }
+
+    /// Where a `DropAlert` is asked; nil when no window is on screen or the
+    /// front one is already asking something.
+    func alertHost() -> WindowController? {
+        guard let host = frontWindow(), host.state.dropAlert == nil,
+              host.state.closePrompt == nil else { return nil }
+        return host
+    }
+
     /// The system-alert form of the close/quit question, for when no window
     /// can host the in-window prompt. Returns the restore choice, or nil on
     /// cancel.
@@ -1119,10 +1150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // the Classic interface style.
         let systemQuit = NSAppleEventManager.shared().currentAppleEvent?
             .attributeDescriptor(forKeyword: AEKeyword(0x7768_793F /* 'why?' */)) != nil
-        let host = windows.first { $0.window === NSApp.keyWindow }
-            ?? windows.first { $0.window.isVisible && !$0.window.isMiniaturized }
-        guard prefs?.liquidDrop == true, !systemQuit, let host,
-              host.window.isVisible, !host.window.isMiniaturized else {
+        guard prefs?.liquidDrop == true, !systemQuit, let host = frontWindow() else {
             guard let restore = Self.runCloseAlert(title: "Quit Conterm?", message: message,
                                                    confirm: "Quit", restore: restoreDefault)
             else { return .terminateCancel }

@@ -126,21 +126,20 @@ final class PairingService {
         let who = name.isEmpty ? "A phone" : name
 
         NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = "Pair \(who) with this Mac?"
-        alert.informativeText = """
-        The phone shows a code. Allow only if it is
-
-        \(code)
-
-        Allowing lets that phone sign in to this Mac over SSH as \(NSUserName()), \
-        with Conterm on iOS or any SSH client. Remove it later by deleting its \
-        line from ~/.ssh/authorized_keys.
-        """
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Allow")
-        alert.addButton(withTitle: "Don't Allow")
-        guard alert.runModal() == .alertFirstButtonReturn else {
+        // Allow takes a click: the request can land while someone is typing,
+        // and a stray Return must not hand out SSH access.
+        let choice = await DropAlert(
+            topic: "Pairing",
+            title: "Pair \(who) with this Mac?",
+            message: "The phone shows a code. Allow only if it is",
+            code: code,
+            detail: "Allowing lets that phone sign in to this Mac over SSH as \(NSUserName()), "
+                + "with Conterm on iOS or any SSH client. Remove it later by deleting its "
+                + "line from ~/.ssh/authorized_keys.",
+            buttons: ["Allow", "Don't Allow"],
+            returnAnswers: false
+        ).ask()
+        guard choice == 0 else {
             answer(connection, Reply(ok: false, error: "Declined on the Mac."))
             return
         }
