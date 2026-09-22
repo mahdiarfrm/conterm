@@ -272,32 +272,38 @@ extension OrbitOverlay {
                 HStack {
                     Button("Cancel") { scaleTarget = nil }
                     Spacer()
-                    Button("Apply") {
-                        let to = scaleDraft
-                        let from = work.replicas ?? 0
-                        let apply = {
-                            kube.scale(context: t.context, namespace: t.namespace,
-                                       pod: t.pod, workload: work, to: to)
-                            sim.wake()
-                        }
-                        scaleTarget = nil
-                        guarded(t.context, verb: "Scale to \(to)",
-                                subject: "Scale \(work.label) to \(to)",
-                                detail: to == 0
-                                    ? "\(work.label) in \(t.context) stops serving "
-                                        + "entirely. It stays defined and can be scaled "
-                                        + "back up, but every one of its \(from) pods "
-                                        + "goes away now."
-                                    : "\(work.label) in \(t.context) goes from \(from) "
-                                        + "to \(to) replicas.",
-                                apply)
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(scaleDraft == work.replicas)
+                    Button("Apply") { applyScale() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(scaleDraft == work.replicas)
                 }
             }
             .padding(14).frame(width: 240)
         }
+    }
+
+    /// Send the staged replica count, through the production gate. A no-op
+    /// when the count is unchanged or the workload is no longer known.
+    func applyScale() {
+        guard let t = scaleTarget, let work = kube.workload(t.context, t.namespace, t.pod),
+              scaleDraft != work.replicas else { return }
+        let to = scaleDraft
+        let from = work.replicas ?? 0
+        let apply = {
+            kube.scale(context: t.context, namespace: t.namespace,
+                       pod: t.pod, workload: work, to: to)
+            sim.wake()
+        }
+        scaleTarget = nil
+        guarded(t.context, verb: "Scale to \(to)",
+                subject: "Scale \(work.label) to \(to)",
+                detail: to == 0
+                    ? "\(work.label) in \(t.context) stops serving "
+                        + "entirely. It stays defined and can be scaled "
+                        + "back up, but every one of its \(from) pods "
+                        + "goes away now."
+                    : "\(work.label) in \(t.context) goes from \(from) "
+                        + "to \(to) replicas.",
+                apply)
     }
 
     func togglePod(context: String, namespace: String, pod: String) {

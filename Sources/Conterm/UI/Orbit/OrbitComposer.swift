@@ -33,10 +33,7 @@ extension OrbitOverlay {
                 HStack(spacing: 6) {
                     TextField("playbook.yml", text: $compPlaybook)
                         .textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced))
-                    Button("Pick") {
-                        let p = NSOpenPanel(); p.canChooseFiles = true; p.canChooseDirectories = false
-                        if p.runModal() == .OK, let u = p.url { compPlaybook = u.path }
-                    }
+                    Button("Pick", action: pickComposerPlaybook)
                 }
                 HStack(spacing: 14) {
                     Toggle("become", isOn: $compBecome).font(.system(size: 11))
@@ -79,14 +76,24 @@ extension OrbitOverlay {
                     .frame(maxWidth: .infinity).padding(.vertical, 5)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(compKind == .ansible && compPlaybook.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(!composerReady)
         }
         .padding(16).frame(width: 288)
     }
 
+    /// A playbook run needs a playbook; a command may be empty.
+    var composerReady: Bool {
+        compKind == .run || !compPlaybook.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    func pickComposerPlaybook() {
+        let p = NSOpenPanel(); p.canChooseFiles = true; p.canChooseDirectories = false
+        if p.runModal() == .OK, let u = p.url { compPlaybook = u.path }
+    }
+
     func addFromComposer() {
         let targets = Array(selectedHosts).sorted()
-        guard !targets.isEmpty else { return }
+        guard !targets.isEmpty, composerReady else { return }
         scheduler.add(kind: compKind,
                       payload: compKind == .run ? compCommand.trimmingCharacters(in: .whitespaces)
                                                 : compPlaybook.trimmingCharacters(in: .whitespaces),

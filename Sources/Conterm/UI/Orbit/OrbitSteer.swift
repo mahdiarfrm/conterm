@@ -148,25 +148,32 @@ extension OrbitOverlay {
                         containers.loadStats(container: c.name, host: host, runtime: runtime)
                     }
                 }
-                containerButton(.remove, busy: busy) { confirmingRemoval = (host, c.name) }
+                containerButton(.remove, busy: busy) {
+                    confirmingRemoval = (host, c.name, runtime)
+                }
             }
         }
         .confirmationDialog(
             "Remove \(confirmingRemoval?.name ?? "")?",
-            isPresented: Binding(get: { confirmingRemoval != nil },
-                                 set: { if !$0 { confirmingRemoval = nil } }),
+            isPresented: nativeDialog(confirmingRemoval != nil) { confirmingRemoval = nil },
             titleVisibility: .visible
         ) {
-            Button("Remove", role: .destructive) {
-                if let t = confirmingRemoval {
-                    runContainer(.remove, t.name, on: t.host, runtime: runtime)
-                }
-                confirmingRemoval = nil
-            }
+            Button("Remove", role: .destructive, action: removeConfirmedContainer)
             Button("Cancel", role: .cancel) { confirmingRemoval = nil }
         } message: {
-            Text("This deletes the container on \(Self.hostShort(host)). Its image stays.")
+            Text(containerRemoveMessage)
         }
+    }
+
+    var containerRemoveMessage: String {
+        let host = confirmingRemoval?.host ?? ""
+        return "This deletes the container on \(Self.hostShort(host)). Its image stays."
+    }
+
+    func removeConfirmedContainer() {
+        guard let t = confirmingRemoval else { return }
+        runContainer(.remove, t.name, on: t.host, runtime: t.runtime)
+        confirmingRemoval = nil
     }
 
     func containerButton(_ action: ContainerAction, busy: Bool,

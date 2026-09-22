@@ -105,6 +105,7 @@ extension OrbitOverlay {
                 .orbitPanel(cornerRadius: 28, dim: 0.42)
                 .transition(.opacity)
             }
+            .orbitDialogKeys()
         }
     }
 }

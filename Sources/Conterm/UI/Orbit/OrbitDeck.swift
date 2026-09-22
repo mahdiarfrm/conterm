@@ -162,6 +162,13 @@ extension OrbitOverlay {
         .fixedSize()
     }
 
+    func commitSpaceRename() {
+        if let id = spaces.currentID {
+            spaces.rename(id, spaceNameInput.trimmingCharacters(in: .whitespaces))
+        }
+        renamingSpace = false
+    }
+
     var menuLabel: String {
         if let sid = state.orbitFocusSession { return sessionName(sid) }
         return spaces.current?.name ?? (isFleetView ? "Fleet" : "Live")

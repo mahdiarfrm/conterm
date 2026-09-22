@@ -656,7 +656,8 @@ extension OrbitOverlay {
                                     : "Take this host off this board")
                     }
                 }
-                .popover(isPresented: $showComposer, arrowEdge: .bottom) { composerBody }
+                .popover(isPresented: nativeDialog(showComposer) { showComposer = false },
+                         arrowEdge: .bottom) { composerBody }
                 .padding(.horizontal, 13).padding(.vertical, 9)
                 .background(Capsule().fill(.ultraThinMaterial))
                 .overlay(Capsule().strokeBorder(Theme.strokeStrong, lineWidth: 1))

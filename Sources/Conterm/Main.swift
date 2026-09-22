@@ -573,6 +573,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 }
             }
 
+            // A dialog over Orbit owns the keyboard the same way: Esc cancels
+            // it, Return answers it, and no bare key reaches the map behind
+            // it. A field inside the dialog keeps its own keys, and ⇥ still
+            // moves between the dialog's controls.
+            if self.state.orbitOpen, OrbitDialogBus.shared.isOpen {
+                if event.keyCode == 53 { self.state.orbitEscTick &+= 1; return nil }
+                if !event.modifierFlags.contains(.command) {
+                    if event.keyCode == 48 || OrbitKey.isEditing { return event }
+                    if event.keyCode == 36 || event.keyCode == 76 {
+                        OrbitDialogBus.shared.returnTick &+= 1
+                    }
+                    return nil
+                }
+            }
+
             // Esc: bump the palette's tick so it can unwind one level
             // (note-edit → notes-list → commands → closed). Settings
             // panel still just closes outright.

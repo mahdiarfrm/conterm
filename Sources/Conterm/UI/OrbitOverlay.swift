@@ -164,7 +164,7 @@ struct OrbitOverlay: View {
     @State var inspector: Inspector = .none
     @State var resolveSinks: [String: AnyCancellable] = [:]
     /// The container a Remove is waiting on confirmation for.
-    @State var confirmingRemoval: (host: String, name: String)?
+    @State var confirmingRemoval: (host: String, name: String, runtime: ContainerRuntime)?
     /// The pod a Delete is waiting on confirmation for.
     @State var confirmingPodDelete: (context: String, namespace: String, pod: String)?
     /// The pod whose workload is being scaled, and the number being dialled in.
@@ -182,6 +182,8 @@ struct OrbitOverlay: View {
     @State var fleetCommand = ""
     @State var renamingSpace = false
     @State var spaceNameInput = ""
+    /// The text field of the Liquid Drop dialog that is up; one at a time.
+    @FocusState var dialogFieldFocused: Bool
     @State var addingHosts = false
     @State var hostQuery = ""
     /// When on, Orbit fetches & caches every host's real name from the server —
@@ -458,6 +460,7 @@ struct OrbitOverlay: View {
             routinesPanel
             helpPanel
             searchPanel.zIndex(20)   // over every panel: it can aim at any of them
+            dropDialogs.zIndex(25)
             dangerGatePanel.zIndex(30)   // over everything, including search
         }
         // 1 Hz while Orbit is open. The plan advances on the engine's own clock;
@@ -531,8 +534,10 @@ struct OrbitOverlay: View {
         }
         .onChange(of: state.orbitKeyTick) { _, _ in handleOrbitKeyTick() }
         .onChange(of: state.orbitEscTick) { _, _ in
-            // Esc unwinds the map one step: the aimed bar, then the selection.
+            // Esc unwinds the map one step: an open dialog, the aimed bar,
+            // then the selection.
             withAnimation(Theme.Spring.snappy) {
+                guard !cancelDialog() else { return }
                 if linkMode { linkMode = false; pendingLinkFrom = nil }
                 else if barNode != nil { barNode = nil }
                 else {
@@ -555,8 +560,7 @@ struct OrbitOverlay: View {
         .onChange(of: inspector) { _, _ in confirmingRemoval = nil }
         .confirmationDialog(
             "Delete \(confirmingPodDelete?.pod ?? "")?",
-            isPresented: Binding(get: { confirmingPodDelete != nil },
-                                 set: { if !$0 { confirmingPodDelete = nil } }),
+            isPresented: nativeDialog(confirmingPodDelete != nil) { confirmingPodDelete = nil },
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) { deleteConfirmedPod(force: false) }
@@ -572,17 +576,17 @@ struct OrbitOverlay: View {
             // that this is not that one.
             Text(podDeleteMessage)
         }
-        .popover(isPresented: Binding(get: { scaleTarget != nil },
-                                      set: { if !$0 { scaleTarget = nil } })) {
+        .popover(isPresented: nativeDialog(scaleTarget != nil) { scaleTarget = nil }) {
             scaleEditor
         }
         .popover(isPresented: Binding(get: { launchingRoutine != nil },
                                       set: { if !$0 { launchingRoutine = nil } })) {
             routineLauncher
         }
-        .alert("Rename space", isPresented: $renamingSpace) {
+        .alert("Rename space",
+               isPresented: nativeDialog(renamingSpace) { renamingSpace = false }) {
             TextField("Name", text: $spaceNameInput)
-            Button("Save") { if let id = spaces.currentID { spaces.rename(id, spaceNameInput) } }
+            Button("Save", action: commitSpaceRename)
             Button("Cancel", role: .cancel) {}
         }
     }
