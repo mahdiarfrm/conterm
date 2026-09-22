@@ -740,6 +740,146 @@ extension ToggleStyle where Self == DropToggleStyle {
     static var drop: DropToggleStyle { DropToggleStyle() }
 }
 
+/// One of a few values, as a row of filter chips: the drop's segmented
+/// control.
+struct DropChoice<Value: Hashable>: View {
+    @Binding var selection: Value
+    let options: [(value: Value, title: String)]
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(options, id: \.value) { option in
+                DropFilterChip(title: option.title, selected: selection == option.value) {
+                    guard selection != option.value else { return }
+                    selection = option.value
+                }
+            }
+        }
+    }
+}
+
+/// A value on a thin track: the switch's sheen fills up to the knob, and
+/// the knob is the switch's. `step` snaps from the range's lower bound.
+struct DropSlider: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    var step: Double? = nil
+    @Environment(\.isEnabled) private var enabled
+    @State private var hovering = false
+    @State private var dragging = false
+
+    private static let knob: CGFloat = 16
+
+    var body: some View {
+        GeometryReader { geo in
+            let travel = max(geo.size.width - Self.knob, 1)
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.strokeStrong)
+                    .frame(height: 5)
+                Capsule().fill(Drop.sheen)
+                    .frame(width: Self.knob / 2 + travel * fraction, height: 5)
+                Circle()
+                    .fill(Color.white)
+                    .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                    .frame(width: Self.knob, height: Self.knob)
+                    .scaleEffect(dragging ? 1.15 : (hovering ? 1.08 : 1))
+                    .offset(x: travel * fraction)
+            }
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { drag in
+                    dragging = true
+                    set(Double((drag.location.x - Self.knob / 2) / travel))
+                }
+                .onEnded { _ in dragging = false })
+        }
+        .frame(height: 22)
+        .onHover { hovering = enabled && $0 }
+        .opacity(enabled ? 1 : 0.4)
+        .animation(.spring(response: 0.28, dampingFraction: 0.72), value: dragging)
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .accessibilityElement()
+        .accessibilityValue(Text(value, format: .number.precision(.fractionLength(0...2))))
+        .accessibilityAdjustableAction { direction in
+            let nudge = step ?? (range.upperBound - range.lowerBound) / 20
+            switch direction {
+            case .increment: clampAndSet(value + nudge)
+            case .decrement: clampAndSet(value - nudge)
+            @unknown default: break
+            }
+        }
+    }
+
+    private var fraction: CGFloat {
+        let span = range.upperBound - range.lowerBound
+        guard span > 0 else { return 0 }
+        return CGFloat(min(max((value - range.lowerBound) / span, 0), 1))
+    }
+
+    private func set(_ fraction: Double) {
+        let f = min(max(fraction, 0), 1)
+        clampAndSet(range.lowerBound + f * (range.upperBound - range.lowerBound))
+    }
+
+    private func clampAndSet(_ raw: Double) {
+        var v = raw
+        if let step, step > 0 {
+            v = range.lowerBound + ((v - range.lowerBound) / step).rounded() * step
+        }
+        v = min(max(v, range.lowerBound), range.upperBound)
+        if v != value { value = v }
+    }
+}
+
+/// A count dialled in steps: round − and + around the figure.
+struct DropStepper: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    var step: Double = 1
+    let label: (Double) -> String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            DropIconButton(symbol: "minus") { value = max(range.lowerBound, value - step) }
+                .disabled(value <= range.lowerBound)
+            Text(label(value))
+                .font(Drop.mono(11.5, .medium))
+                .monospacedDigit()
+                .foregroundStyle(Theme.textPrimary)
+                .frame(minWidth: 34)
+                .contentTransition(.numericText(value: value))
+                .animation(.snappy(duration: 0.2), value: value)
+            DropIconButton(symbol: "plus") { value = min(range.upperBound, value + step) }
+                .disabled(value >= range.upperBound)
+        }
+    }
+}
+
+/// A text input on a drop: a plain field in a recessed capsule (or a
+/// rounded rectangle, given a radius).
+struct DropFieldBed: ViewModifier {
+    var cornerRadius: CGFloat? = nil
+    /// Tighter padding for fields packed several to a row.
+    var compact = false
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius ?? 100, style: .continuous)
+        content
+            .textFieldStyle(.plain)
+            .padding(.horizontal, compact ? 9 : 13)
+            .padding(.vertical, compact ? 6 : 8)
+            .background(shape.fill(Theme.selectionFill))
+            .overlay(shape.strokeBorder(Theme.stroke, lineWidth: 0.5))
+    }
+}
+
+extension View {
+    func dropFieldBed(cornerRadius: CGFloat? = nil, compact: Bool = false) -> some View {
+        modifier(DropFieldBed(cornerRadius: cornerRadius, compact: compact))
+    }
+}
+
 /// Surfaces a view with a delay taken from how far down its scroll content
 /// it sits, so a page of unindexed cards still arrives top to bottom.
 /// `space` names the scroll content's coordinate space.

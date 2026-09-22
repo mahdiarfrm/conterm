@@ -214,17 +214,12 @@ struct SettingsPanel: View {
             card {
                 SettingsRow(title: "Window",
                             subtitle: "Glass is one sheet of Liquid Glass over the desktop; the panes are opaque tiles on top. Blur is the classic frosted material; Solid is a fully opaque window.") {
-                    Picker("", selection: Binding(
+                    DropChoice(selection: Binding(
                         get: { prefs.glassMode },
                         set: { prefs.glassMode = $0 }
-                    ).withSound()) {
-                        Text("Glass").tag(Preferences.GlassMode.glass)
-                        Text("Blur").tag(Preferences.GlassMode.blur)
-                        Text("Solid").tag(Preferences.GlassMode.solid)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 210)
+                    ).withSound(), options: [
+                        (.glass, "Glass"), (.blur, "Blur"), (.solid, "Solid"),
+                    ])
                 }
                 if prefs.glassMode == .glass {
                     GlassCostNote()
@@ -241,19 +236,14 @@ struct SettingsPanel: View {
                 }
                 SettingsRow(title: "Tint",
                             subtitle: "Cool dark or cool light.") {
-                    Picker("", selection: $prefs.lightGlass.withSound()) {
-                        Text("Dark").tag(false)
-                        Text("Light").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 150)
+                    DropChoice(selection: $prefs.lightGlass.withSound(),
+                               options: [(false, "Dark"), (true, "Light")])
                 }
                 SettingsRow(title: "Frost",
                             subtitle: "How clear the glass reads. Clear shows the desktop through the top bar and gaps; frost it up for more privacy on a busy wallpaper. Does not change its cost.") {
                     HStack(spacing: 8) {
                         Text("Clear").subLabel().fixedSize()
-                        Slider(value: $prefs.glassiness, in: 0.0...1.0).frame(width: 180)
+                        DropSlider(value: $prefs.glassiness, range: 0.0...1.0).frame(width: 180)
                         Text("Frosted").subLabel().fixedSize()
                     }
                     .fixedSize(horizontal: true, vertical: false)
@@ -262,7 +252,7 @@ struct SettingsPanel: View {
                             subtitle: "How round the terminal tile's corners are. Raise it to match the window's curve, lower it toward the system radius for tighter corners.") {
                     HStack(spacing: 8) {
                         Text("Sharp").subLabel().fixedSize()
-                        Slider(value: $prefs.paneCornerRadius, in: 0.0...24.0, step: 1)
+                        DropSlider(value: $prefs.paneCornerRadius, range: 0.0...24.0, step: 1)
                             .frame(width: 180)
                         Text("Round").subLabel().fixedSize()
                     }
@@ -272,7 +262,7 @@ struct SettingsPanel: View {
                             subtitle: "How large the chrome around the terminal is drawn — the tab bar, the toolbar and their pills. The terminal's own font size is set separately, above.") {
                     HStack(spacing: 8) {
                         Text("Smaller").subLabel().fixedSize()
-                        Slider(value: $prefs.uiScale, in: 0.85...1.25, step: 0.05)
+                        DropSlider(value: $prefs.uiScale, range: 0.85...1.25, step: 0.05)
                             .frame(width: 180)
                         Text("Larger").subLabel().fixedSize()
                     }
@@ -357,17 +347,10 @@ struct SettingsPanel: View {
             card {
                 SettingsRow(title: "Orientation",
                             subtitle: "Top bar or left sidebar.") {
-                    Picker("", selection: Binding(
+                    DropChoice(selection: Binding(
                         get: { prefs.tabOrientation },
                         set: { prefs.tabOrientation = $0 }
-                    ).withSound()) {
-                        ForEach(Preferences.TabOrientation.allCases) { o in
-                            Text(o.label).tag(o)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 200)
-                    .labelsHidden()
+                    ).withSound(), options: Preferences.TabOrientation.allCases.map { ($0, $0.label) })
                 }
                 SettingsRow(title: "Widgets",
                             subtitle: "Stats, clock, git, GitHub, ping, notes, pixel pet, and more — enable and reorder them in the Widgets tab.") {
@@ -437,15 +420,15 @@ struct SettingsPanel: View {
                     SettingsRow(title: "Production patterns",
                                 subtitle: "Comma-separated, case-insensitive substrings. A kubectl context whose name contains one turns red — pill, context list, and the focused pane's glow. Also editable from the pill's gear.") {
                         TextField("prod", text: $prefs.kubeDangerPatterns)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(Drop.mono(11))
+                            .dropFieldBed(cornerRadius: 10, compact: true)
                             .frame(width: 180)
                     }
                     SettingsRow(title: "Kubeconfig paths",
                                 subtitle: "Colon-separated files to read (first file's current-context wins, like kubectl). Empty uses $KUBECONFIG, then ~/.kube/config.") {
                         TextField("~/.kube/config", text: $prefs.kubeConfigPaths)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(Drop.mono(11))
+                            .dropFieldBed(cornerRadius: 10, compact: true)
                             .frame(width: 180)
                     }
                     SettingsRow(title: "Watch cluster",
@@ -571,13 +554,8 @@ struct SettingsPanel: View {
                 }
                 SettingsRow(title: "Away means",
                             subtitle: "Hours unattended before a return is worth summarising.") {
-                    Stepper(value: $prefs.briefingAfterHours, in: 1...24, step: 1) {
-                        Text("\(Int(prefs.briefingAfterHours))h")
-                            .font(.system(size: 11, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                    .disabled(!prefs.briefingEnabled)
+                    DropStepper(value: $prefs.briefingAfterHours, range: 1...24) { "\(Int($0))h" }
+                        .disabled(!prefs.briefingEnabled)
                 }
             }
         }
@@ -614,31 +592,22 @@ struct SettingsPanel: View {
                 SettingsRow(title: "UI sound effects",
                             subtitle: "Subtle clicks on panes, tabs, and the command palette.") {
                     HStack(spacing: 10) {
-                        Button {
-                            // Audible sample of the engine's
-                            // output. Disabled when SFX are off so
-                            // the affordance can't claim sound is
-                            // being played while the toggle silences
-                            // it.
+                        // Audible sample of the engine's output. Disabled
+                        // when SFX are off so the affordance can't claim
+                        // sound is being played while the toggle silences it.
+                        DropIconButton(symbol: "speaker.wave.2.fill", help: "Play sample") {
                             SoundEffects.shared.play(.paletteOpen)
-                        } label: {
-                            Image(systemName: "speaker.wave.2.fill")
-                                .font(.system(size: 11, weight: .semibold))
                         }
-                        .buttonStyle(.borderless)
-                        .help("Play sample")
                         .disabled(!prefs.soundEffectsEnabled)
                         Toggle("", isOn: $prefs.soundEffectsEnabled.withSound()).labelsHidden()
                     }
                 }
                 SettingsRow(title: "Preview animation",
                             subtitle: "Play the launch animation now.") {
-                    Button("Play") {
+                    DropButton(title: "Play", prominent: true) {
                         SoundEffects.shared.play(.click)
                         state.launchOverlayVisible = true
                     }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Theme.accent.opacity(0.7))
                 }
                 SettingsRow(title: "Run setup wizard",
                             subtitle: "Re-run the first-run setup.") {
@@ -820,13 +789,11 @@ struct SettingsPanel: View {
                 configSourceRow
                 SettingsRow(title: "Reload",
                             subtitle: "Re-read the config file and reapply blur.") {
-                    Button("Reload") {
+                    DropButton(title: "Reload", prominent: true) {
                         SoundEffects.shared.play(.click)
                         (NSApp.delegate as? AppDelegate)?.reloadConfigAndReapplyBlur()
                         prefs.refreshPaneBlurFromConfig()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
                 }
                 SettingsRow(title: "Safe mode",
                             subtitle: "Ignore both config files and boot on Ghostty's built-in defaults. Use to recover from a bad edit; your files aren't touched.") {
@@ -860,7 +827,7 @@ struct SettingsPanel: View {
                             subtitle: "How long a new tab waits for its shell to finish loading before an SSH shortcut or other launch command is typed into it. Raise it if a heavy shell startup (a big .zshrc) swallows the command.") {
                     HStack(spacing: 8) {
                         Text("Instant").subLabel().fixedSize()
-                        Slider(value: $prefs.launchCommandDelay, in: 0.0...3.0, step: 0.1)
+                        DropSlider(value: $prefs.launchCommandDelay, range: 0.0...3.0, step: 0.1)
                             .frame(width: 180)
                         Text("Patient").subLabel().fixedSize()
                     }
@@ -919,15 +886,10 @@ struct SettingsPanel: View {
                 SettingsRow(title: "Diagnostic logging",
                             subtitle: "Write internal events to ~/Library/Logs/Conterm/conterm.log. A development aid; off by default.") {
                     HStack(spacing: 10) {
-                        Button {
+                        DropIconButton(symbol: "folder", help: "Reveal log in Finder") {
                             SoundEffects.shared.play(.click)
                             DiagnosticLog.reveal()
-                        } label: {
-                            Image(systemName: "folder")
-                                .font(.system(size: 11, weight: .semibold))
                         }
-                        .buttonStyle(.borderless)
-                        .help("Reveal log in Finder")
                         Toggle("", isOn: $prefs.diagnosticLogging.withSound())
                             .toggleStyle(.drop)
                             .labelsHidden()
@@ -1285,12 +1247,10 @@ private struct ConfigEditor: View {
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(.green)
                 }
-                Button("Save") {
+                DropButton(title: "Save", prominent: true) {
                     SoundEffects.shared.play(.click)
                     save()
                 }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.accent.opacity(0.75))
             }
         }
         .task {
@@ -1705,10 +1665,10 @@ private struct FontEditor: View {
             SettingsRow(title: "Size",
                         subtitle: "Font size in points. Restart-free for live panes.") {
                 HStack(spacing: 8) {
-                    Slider(value: Binding(
+                    DropSlider(value: Binding(
                         get: { fonts.currentSize },
                         set: { fonts.apply(size: $0) }
-                    ), in: FontCatalog.minSize...FontCatalog.maxSize, step: 1)
+                    ), range: FontCatalog.minSize...FontCatalog.maxSize, step: 1)
                     .frame(width: 200)
                     Text("\(Int(fonts.currentSize)) pt").monoLabel()
                         .frame(width: 48, alignment: .trailing)

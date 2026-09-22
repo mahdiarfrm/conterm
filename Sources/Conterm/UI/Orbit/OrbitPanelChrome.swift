@@ -105,24 +105,9 @@ struct OrbitOutputWell: View {
     }
 }
 
-/// A text input on a panel: a plain field in a recessed capsule.
-struct OrbitFieldBed: ViewModifier {
-    var cornerRadius: CGFloat? = nil
-    /// Tighter padding for fields packed several to a row.
-    var compact = false
-
-    func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius ?? 100, style: .continuous)
-        content
-            .padding(.horizontal, compact ? 9 : 13)
-            .padding(.vertical, compact ? 6 : 8)
-            .background(shape.fill(Theme.selectionFill))
-            .overlay(shape.strokeBorder(Theme.stroke, lineWidth: 0.5))
-    }
-}
-
 extension View {
+    /// A text input on a panel; see `DropFieldBed`.
     func orbitFieldBed(cornerRadius: CGFloat? = nil, compact: Bool = false) -> some View {
-        modifier(OrbitFieldBed(cornerRadius: cornerRadius, compact: compact))
+        dropFieldBed(cornerRadius: cornerRadius, compact: compact)
     }
 }
