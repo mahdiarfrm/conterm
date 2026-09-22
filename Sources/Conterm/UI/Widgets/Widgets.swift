@@ -297,20 +297,24 @@ struct WidgetPopoverChrome<Trailing: View, Content: View>: View {
     var width: CGFloat = 260
     @ViewBuilder var trailing: Trailing
     @ViewBuilder var content: Content
+    /// On a drop the header is set in the drop's type and parted from the
+    /// content by space rather than a rule.
+    @Environment(\.onDropPopover) private var onDrop
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Theme.ui(8)) {
                 Text(title)
-                    .font(.system(size: Theme.ui(12), weight: .semibold, design: .rounded))
+                    .font(onDrop ? Drop.display(Theme.ui(13))
+                                 : .system(size: Theme.ui(12), weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.textPrimary)
                 Spacer(minLength: 8)
                 trailing
             }
             .padding(.horizontal, Theme.ui(14))
-            .padding(.top, Theme.ui(12))
+            .padding(.top, Theme.ui(onDrop ? 14 : 12))
             .padding(.bottom, Theme.ui(10))
-            Divider().opacity(0.45)
+            if !onDrop { Divider().opacity(0.45) }
             content
         }
         // Scaled here rather than at each call site, so a widget passes the

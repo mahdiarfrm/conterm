@@ -602,6 +602,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 }
             }
 
+            // A widget popover is the innermost thing open; Esc closes it first.
+            if event.keyCode == 53, DropPopoverBus.shared.isOpen {
+                DropPopoverBus.shared.escTick &+= 1
+                return nil
+            }
+
             // Esc: bump the palette's tick so it can unwind one level
             // (note-edit → notes-list → commands → closed). Settings
             // panel still just closes outright.

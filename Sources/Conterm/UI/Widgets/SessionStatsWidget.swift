@@ -157,7 +157,7 @@ struct SessionStatsWidget: View {
                             .monospacedDigit()
                     }
                 }
-                .popover(isPresented: $showingPopover, arrowEdge: .top) {
+                .dropPopover(isPresented: $showingPopover) {
                     SessionStatsPopover(snap: model.snap)
                 }
             }

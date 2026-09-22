@@ -83,6 +83,8 @@ struct AppView: View {
             .windowBound()
             .zIndex(10)
         }
+        // Widget popovers, over everything they can be opened beside.
+        .overlayPreferenceValue(DropPopoverKey.self) { DropPopoverLayer(items: $0) }
         // Color scheme follows the Glass tint: light tint → light
         // appearance so the adaptive Theme colors flip to DARK text
         // (legible on the light glass), dark tint → dark appearance

@@ -33,7 +33,7 @@ struct TerraformWidget: View {
                         }
                     }
                 }
-                .popover(isPresented: $showingPopover, arrowEdge: .top) {
+                .dropPopover(isPresented: $showingPopover) {
                     TerraformPlansPopover(center: center, state: state)
                 }
             }
@@ -62,7 +62,7 @@ struct TerraformWidget: View {
 private struct TerraformPlansPopover: View {
     @ObservedObject var center: TerraformCenter
     let state: AppState
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.closePopover) private var dismiss
 
     private var ordered: [(paneID: UUID, plan: TerraformCenter.Plan)] {
         center.plans.map { ($0.key, $0.value) }

@@ -23,7 +23,7 @@ struct SystemStatsWidget: View {
                     }) {
             row
         }
-        .popover(isPresented: $showingPopover, arrowEdge: .top) {
+        .dropPopover(isPresented: $showingPopover) {
             SystemStatsPopover(stats: stats)
         }
     }

@@ -183,7 +183,7 @@ struct ContainersWidget: View {
                             .monospacedDigit()
                     }
                 }
-                .popover(isPresented: $showingPopover, arrowEdge: .top) {
+                .dropPopover(isPresented: $showingPopover) {
                     // Environment objects don't reliably cross into the
                     // popover's window — hand AppState over explicitly.
                     ContainersPopover(model: model, state: state)
@@ -201,7 +201,7 @@ struct ContainersWidget: View {
 private struct ContainersPopover: View {
     @ObservedObject var model: ContainerRuntimesModel
     let state: AppState
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.closePopover) private var dismiss
 
     var body: some View {
         WidgetPopoverChrome(title: "Containers", width: 300, trailing: {

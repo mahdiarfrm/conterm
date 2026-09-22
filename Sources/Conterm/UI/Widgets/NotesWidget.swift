@@ -35,7 +35,7 @@ private struct NotesPill: View {
                 }
             }
         }
-        .popover(isPresented: $showingPopover, arrowEdge: .top) {
+        .dropPopover(isPresented: $showingPopover) {
             NotesPopover(notes: notes)
         }
     }

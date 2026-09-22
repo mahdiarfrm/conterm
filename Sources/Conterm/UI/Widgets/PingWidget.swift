@@ -136,7 +136,7 @@ struct PingWidget: View {
                     .monospacedDigit()
             }
         }
-        .popover(isPresented: $showingPopover, arrowEdge: .top) {
+        .dropPopover(isPresented: $showingPopover) {
             PingPopover(model: model)
         }
     }

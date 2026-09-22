@@ -48,7 +48,7 @@ struct AnsibleWidget: View {
                         }
                     }
                 }
-                .popover(isPresented: $showingPopover, arrowEdge: .top) {
+                .dropPopover(isPresented: $showingPopover) {
                     AnsibleRunsPopover(center: center, state: state)
                 }
             }
@@ -82,7 +82,7 @@ struct AnsibleWidget: View {
 private struct AnsibleRunsPopover: View {
     @ObservedObject var center: AnsibleCenter
     let state: AppState
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.closePopover) private var dismiss
 
     private var ordered: [(paneID: UUID, run: AnsibleCenter.Run)] {
         center.runs.map { ($0.key, $0.value) }

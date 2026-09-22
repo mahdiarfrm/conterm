@@ -83,7 +83,7 @@ private struct KubePillCore: View {
                     }
                 }
                 .overlay(rolloutHalo)
-                .popover(isPresented: $showingPopover, arrowEdge: .top) {
+                .dropPopover(isPresented: $showingPopover) {
                     // Environment objects don't reliably cross into the
                     // popover's window — hand everything over explicitly.
                     KubernetesPopover(prefs: prefs, state: state,
@@ -167,7 +167,7 @@ private struct KubernetesPopover: View {
     /// Session switches export a LOCAL overlay path — meaningless
     /// inside an SSH session, so switching is disabled there.
     let paneIsRemote: Bool
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.closePopover) private var dismiss
 
     private enum Page { case contexts, settings }
     @State private var page: Page = .contexts
