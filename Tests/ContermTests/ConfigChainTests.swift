@@ -78,6 +78,81 @@ import GhosttyKit
         #expect(stringValue(cfg, "cursor-style") == "bar")
     }
 
+    // MARK: - config-file includes
+
+    /// Writes `files` (name → text) into a fresh directory, loads
+    /// `config` through `loadContermConfig`, and finalizes.
+    private func loadContermConfig(_ files: [String: String]) -> ghostty_config_t? {
+        Ghostty.initializeOnce()
+        let dir = NSTemporaryDirectory() + "conterm-include-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        for (name, text) in files {
+            try? text.write(toFile: dir + "/" + name, atomically: true, encoding: .utf8)
+        }
+        guard let cfg = ghostty_config_new() else { return nil }
+        Ghostty.App.loadContermConfig(cfg, path: dir + "/config")
+        ghostty_config_finalize(cfg)
+        return cfg
+    }
+
+    @Test func includedFileIsApplied() {
+        guard let cfg = loadContermConfig([
+            "config": "config-file = ghostty.conf",
+            "ghostty.conf": "cursor-style = underline",
+        ]) else { Issue.record("ghostty_config_new failed"); return }
+        defer { ghostty_config_free(cfg) }
+        #expect(stringValue(cfg, "cursor-style") == "underline")
+        #expect(diagnostics(cfg).isEmpty, "\(diagnostics(cfg))")
+    }
+
+    /// Lines under the include override it, regardless of libghostty's
+    /// native include-last order.
+    @Test func contermConfigOverridesIncludedFile() {
+        guard let cfg = loadContermConfig([
+            "config": "config-file = ghostty.conf\ncursor-style = bar",
+            "ghostty.conf": "cursor-style = underline\nwindow-inherit-working-directory = false",
+        ]) else { Issue.record("ghostty_config_new failed"); return }
+        defer { ghostty_config_free(cfg) }
+        #expect(stringValue(cfg, "cursor-style") == "bar")
+        var inherit = true
+        _ = "window-inherit-working-directory".withCString {
+            ghostty_config_get(cfg, &inherit, $0, UInt(strlen($0)))
+        }
+        #expect(inherit == false)
+    }
+
+    @Test func nestedIncludeIsApplied() {
+        guard let cfg = loadContermConfig([
+            "config": "config-file = \"ghostty.conf\"",
+            "ghostty.conf": "config-file = nested.conf",
+            "nested.conf": "cursor-style = underline",
+        ]) else { Issue.record("ghostty_config_new failed"); return }
+        defer { ghostty_config_free(cfg) }
+        #expect(stringValue(cfg, "cursor-style") == "underline")
+        #expect(diagnostics(cfg).isEmpty, "\(diagnostics(cfg))")
+    }
+
+    @Test func includeParsingHonorsOptionalQuotesAndReset() {
+        let dir = NSTemporaryDirectory() + "conterm-include-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let path = dir + "/config"
+        try? """
+        config-file = dropped.conf
+        config-file =
+        # config-file = commented.conf
+        config-file = ?"missing.conf"
+        config-file = ~/abs.conf
+        """.write(toFile: path, atomically: true, encoding: .utf8)
+        let includes = Ghostty.App.configFileIncludes(in: path)
+        #expect(includes.map(\.path) == [
+            (dir as NSString).appendingPathComponent("missing.conf"),
+            (NSHomeDirectory() as NSString).appendingPathComponent("abs.conf"),
+        ].map { ($0 as NSString).standardizingPath })
+        #expect(includes.map(\.optional) == [true, false])
+    }
+
     // MARK: - Lastword block
 
     /// The generated lastword must always be syntactically valid Ghostty

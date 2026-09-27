@@ -70,8 +70,8 @@ extension Ghostty {
             // Load order (last wins). Conterm uses a SINGLE user-facing
             // config file (~/.config/conterm/config). The user can
             // delegate to their Ghostty config from inside that file
-            // with `config-file = ~/.config/ghostty/config`, which
-            // libghostty resolves recursively. Two-file confusion gone:
+            // with `config-file = ~/.config/ghostty/config`; includes load
+            // first, so lines in the Conterm config override them:
             //   1) Conterm's bundled defaults
             //   2) ~/.config/conterm/config (the only file we name)
 
@@ -99,7 +99,7 @@ extension Ghostty {
             // (The Ghostty config is no longer auto-loaded here — if
             // the user wants those settings they enable them with a
             // `config-file = ...ghostty/config` line in conterm config,
-            // which libghostty processes recursively.)
+            // applied by `loadContermConfig`.)
 
             // 2) Firstword: Conterm's own defaults, loaded BEFORE the
             //    user config so any of them can be overridden there.
@@ -117,7 +117,7 @@ extension Ghostty {
                 if App.useDefaultGhosttyConfig {
                     clog("conterm: safe mode — skipping ~/.config/conterm/config")
                 } else {
-                    contermConfigPath.withCString { ghostty_config_load_file(cfg, $0) }
+                    App.loadContermConfig(cfg, path: contermConfigPath)
                     clog("conterm: loaded conterm overrides \(contermConfigPath)")
                 }
             } else {
@@ -517,6 +517,70 @@ extension Ghostty {
             }
         }
 
+        /// Loads the Conterm user config with its `config-file` includes
+        /// applied BEFORE the file's own lines, so settings in the Conterm
+        /// config override whatever the included files set. libghostty's
+        /// native order is the reverse (includes load after the including
+        /// file finishes), and `ghostty_config_load_file` never follows
+        /// includes on its own.
+        ///
+        /// Top-level includes are loaded here directly; their nested
+        /// includes go through `ghostty_config_load_recursive_files`. The
+        /// Conterm config's own `config-file` lines are then re-registered
+        /// by the final load but never followed again, so each included
+        /// file applies exactly once.
+        nonisolated static func loadContermConfig(_ cfg: ghostty_config_t, path: String) {
+            let includes = configFileIncludes(in: path)
+            let fm = FileManager.default
+            for include in includes {
+                guard fm.fileExists(atPath: include.path) else {
+                    if !include.optional {
+                        clog("conterm: config-file not found: \(include.path)")
+                    }
+                    continue
+                }
+                include.path.withCString { ghostty_config_load_file(cfg, $0) }
+                clog("conterm: loaded include \(include.path)")
+            }
+            if !includes.isEmpty { ghostty_config_load_recursive_files(cfg) }
+            path.withCString { ghostty_config_load_file(cfg, $0) }
+        }
+
+        /// The `config-file` entries of a config file, resolved the way
+        /// libghostty resolves them: `?` marks an optional file, quotes are
+        /// stripped, `~/` expands to home, relative paths resolve against
+        /// the including file's directory, and an empty value clears the
+        /// list.
+        nonisolated static func configFileIncludes(in path: String) -> [(path: String, optional: Bool)] {
+            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return [] }
+            let baseDir = (path as NSString).deletingLastPathComponent
+            var result: [(path: String, optional: Bool)] = []
+            for raw in text.split(whereSeparator: \.isNewline) {
+                let line = raw.trimmingCharacters(in: .whitespaces)
+                guard !line.hasPrefix("#"), let eq = line.firstIndex(of: "=") else { continue }
+                let key = line[..<eq].trimmingCharacters(in: .whitespaces)
+                guard key == "config-file" else { continue }
+                var value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
+                if value.isEmpty { result.removeAll(); continue }
+                var optional = false
+                if value.hasPrefix("?") {
+                    optional = true
+                    value.removeFirst()
+                }
+                if value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") {
+                    value = String(value.dropFirst().dropLast())
+                }
+                if value.hasPrefix("~/") {
+                    value = (NSHomeDirectory() as NSString)
+                        .appendingPathComponent(String(value.dropFirst(2)))
+                } else if !value.hasPrefix("/") {
+                    value = (baseDir as NSString).appendingPathComponent(value)
+                }
+                result.append(((value as NSString).standardizingPath, optional))
+            }
+            return result
+        }
+
         nonisolated static func applyConfigChain(_ cfg: ghostty_config_t) {
             let fm = FileManager.default
             let configHome: String = {
@@ -537,14 +601,14 @@ extension Ghostty {
             writeAndLoadFirstword(into: cfg)
             // 3) Conterm's single user-facing config (highest priority).
             //    The user pulls in their Ghostty config from inside it via
-            //    `config-file = …`, which libghostty resolves recursively —
+            //    `config-file = …`, applied by `loadContermConfig` —
             //    so the Ghostty config is NOT auto-loaded here, matching
             //    init(). SKIPPED in safe mode so a broken config can't
             //    break a reload.
             if !useDefaultGhosttyConfig {
                 let contermConfigPath = InstanceState.configPath("config")
                 if fm.fileExists(atPath: contermConfigPath) {
-                    contermConfigPath.withCString { ghostty_config_load_file(cfg, $0) }
+                    App.loadContermConfig(cfg, path: contermConfigPath)
                 }
             }
             // 4) Lastword: regenerated each reload so preference
