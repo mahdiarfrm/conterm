@@ -30,17 +30,64 @@ and live overviews of your SSH hosts, Kubernetes clusters, and containers.
 
 https://github.com/user-attachments/assets/afbe93e9-9741-46d3-9eef-1c7b0d62ab64
 
+**At a glance**
+
+- Split panes, top or sidebar tabs, tab groups, and full session restore.
+- `⌘K` searches commands, shell and clipboard history, SSH hosts, files,
+  notes and every open pane.
+- Claude Code, Codex and opencode report *ready / thinking / needs you* per
+  pane, with a command center for all of them and a review of what each
+  changed.
+- Host, Kubernetes, container, Ansible and Terraform overviews built from
+  the commands you already run.
+- Orbit maps your sessions and fleet; routines repeat work across hosts.
+- A Liquid Drop interface, with the flat Classic style one click away.
+
 ## Contents
 
-- [Features](#features)
 - [Install](#install)
 - [Updating](#updating)
+- [Features](#features)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Configuration](#configuration)
 - [Backup & restore](#backup--restore)
+- [Privacy](#privacy)
 - [Building from source](#building-from-source)
 - [How it fits together](#how-it-fits-together)
 - [License](#license)
+
+## Install
+
+Download the latest `.dmg` from the
+[Releases page](https://github.com/mahdiarfrm/conterm/releases/latest), open it,
+and drag `Conterm.app` into `Applications`.
+
+**First launch:** Conterm is ad-hoc signed (open source, not notarized
+through a paid Apple Developer account), so the first launch needs one step:
+right-click `Conterm.app` → **Open** → **Open**. If macOS still refuses:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Conterm.app
+```
+
+macOS may then ask for access to folders like Documents or Downloads —
+that's your shell and its tools (git, kubectl, claude) reading files
+there, which is what a terminal does. Approve once; the grant survives
+updates.
+
+### Requirements
+
+- macOS **14 (Sonoma)** or later — tested through macOS 26 (Tahoe).
+- **Apple Silicon** (M1 or later). Intel is untested.
+- Liquid Glass / blur chrome requires **macOS 26**; on 14–15 the app is fully
+  functional with plain chrome.
+
+## Updating
+
+Conterm checks GitHub for new releases at launch and once a day while running,
+and shows an update pill in the toolbar when one is available — click it to
+install and relaunch. You can also trigger it from **Conterm → Check for
+Updates** or *Settings → Config*, and turn the automatic check off there.
 
 ## Features
 
@@ -94,7 +141,7 @@ One search over everything:
   a notification center for what finished while you were away. Hooks are
   installed non-destructively (Claude's in `~/.claude/settings.json`,
   Codex's in `~/.codex/hooks.json`; both run one script).
-- **Activity bubbles** — whatever Claude or Codex is doing pops up beside the pill
+- **Tool bubbles** — whatever Claude or Codex is doing pops up beside the pill
   as a monochrome bubble, one per kind in flight, its ring sweeping in that
   kind's colour: terraform, ansible, kubectl, helm, docker, ssh, git, gh,
   plain shell, reading and editing files, searching code, web search and
@@ -120,11 +167,6 @@ One search over everything:
 - **Command markers** *(shell integration)* — a ✓ / ✗ chip with the run time
   when a command fails or takes a while, a notification when a long command
   finishes while you've stepped away, and `⌘↑` / `⌘↓` to jump between prompts.
-- **Tool bubbles** — a bubble per kind of tool call in flight beside the
-  agent pill, so a glance says what the agent has its hands in — terraform,
-  kubernetes, the shell, the web, a sub-agent. Finished calls fold into a
-  History capsule that opens the record: every call with what it was about,
-  how long it took, how it ended, and its output.
 - **Working-tree review** — the pill says the agent is thinking; this says
   what it changed. Each agent card carries a live count of the files it has
   touched since it started, with the insertions and deletions; click through
@@ -287,39 +329,6 @@ Treat it as beta.
   letters it joins.
 - **SSH-host detection** in the pane chrome, and synthesized UI sound effects.
 
-## Install
-
-Download the latest `.dmg` from the
-[Releases page](https://github.com/mahdiarfrm/conterm/releases/latest), open it,
-and drag `Conterm.app` into `Applications`.
-
-**First launch:** Conterm is self-signed (open-source, not notarized
-through a paid Apple Developer account), so the first launch needs one step:
-right-click `Conterm.app` → **Open** → **Open**. If macOS still refuses:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/Conterm.app
-```
-
-macOS may then ask for access to folders like Documents or Downloads —
-that's your shell and its tools (git, kubectl, claude) reading files
-there, which is what a terminal does. Approve once; the grant survives
-updates.
-
-### Requirements
-
-- macOS **14 (Sonoma)** or later — tested through macOS 26 (Tahoe).
-- **Apple Silicon** (M1 or later). Intel is untested.
-- Liquid Glass / blur chrome requires **macOS 26**; on 14–15 the app is fully
-  functional with plain chrome.
-
-## Updating
-
-Conterm checks GitHub for new releases at launch and once a day while running,
-and shows an update pill in the toolbar when one is available — click it to
-install and relaunch. You can also trigger it from **Conterm → Check for
-Updates** or *Settings → Config*, and turn the automatic check off there.
-
 ## Keyboard shortcuts
 
 | Shortcut | Action |
@@ -391,6 +400,24 @@ containing your app settings, sessions, notes, tab groups, and both the Conterm
 and Ghostty config files. **Restore** reads it back and relaunches — handy when
 moving to a new machine.
 
+## Privacy
+
+No account, no telemetry, no server of Conterm's own. The requests it makes:
+
+- **Update check** — the GitHub releases API, at launch and once a day.
+  Off in *Settings → Config*.
+- **Public IP widget** (when enabled) — `api.ipify.org`, falling back to
+  `checkip.amazonaws.com` and `icanhazip.com`.
+- **Ping widget** (when enabled) — a TCP connect to `8.8.8.8:53`.
+- **Host Overview** — the distribution's logo, fetched by name from the
+  simple-icons CDNs once and cached.
+
+Everything else — agent status, host and cluster overviews, the GitHub
+widget (through your own `gh`) — runs on your Mac or over connections you
+already make. Clipboard history stays in memory. The iOS companion is off
+until you turn it on; then the Mac advertises itself and pairs on the local
+network, and everything else goes over your own SSH.
+
 ## Building from source
 
 Requires the Swift toolchain (Command Line Tools is enough — no full Xcode):
@@ -447,9 +474,11 @@ the kit as an artifact.
 
 Conterm is a SwiftUI + AppKit app that drives libghostty through
 `GhosttyKit.xcframework`. Each pane owns a `ghostty_surface_t` and the `NSView`
-it renders into; the SwiftUI layer handles tabs, splits, the palette, and the
-glass chrome. The terminal core — GPU rendering, parsing, fonts and ligatures,
-themes, and shell integration — is entirely Ghostty's.
+it renders into. The split tree is laid out by AppKit (`PaneTreeView`), which
+reframes a surviving pane across splits and closes rather than rebuilding it;
+SwiftUI handles tabs, the palette, per-pane chrome and the glass surfaces.
+The terminal core — GPU rendering, parsing, fonts and ligatures, themes, and
+shell integration — is entirely Ghostty's.
 
 ```
 Sources/Conterm/
