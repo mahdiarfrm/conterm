@@ -33,6 +33,7 @@ NAME="Conterm Demo"
 TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro
 BUNDLE=dev.conterm.ios
 GROUND="${DEMO_GROUND:-indigo}"   # the app's background colour in every shot
+PACE="${DEMO_PACE:-2.5}"          # CONTERM_TOUR_PACE: dwell multiplier for a slow machine
 
 build=0; fresh=0
 for a in "$@"; do
@@ -110,42 +111,9 @@ launch() {
     local prefs
     prefs="$(xcrun simctl get_app_container "$UDID" "$BUNDLE" data)/Library/Preferences/$BUNDLE.plist"
     xcrun simctl spawn "$UDID" defaults write "$prefs" conterm.ground "$GROUND"
-    env "$@" xcrun simctl launch "$UDID" "$BUNDLE" >/dev/null
+    # A time zone of its own, so "Here" on the World card isn't the Mac's.
+    env SIMCTL_CHILD_TZ=Europe/Amsterdam "$@" xcrun simctl launch "$UDID" "$BUNDLE" >/dev/null
 }
-
-# ── the tour, captured at its steps ──────────────────────────────────
-# step | seconds after it | shot
-STEPS=(
-  "push overview|7|overview"
-  "push shell|5|terminal"
-  "switcher|2|switcher"
-  "pop shell|2.5|home-sessions"
-  "activity detail|3.5|activity"
-  "settings tab|2.5|settings"
-  "search|5|search"
-)
-echo "==> tour"
-xcrun simctl spawn "$UDID" log stream --style compact \
-    --predicate 'subsystem == "dev.conterm.ios" AND category == "tour"' >"$DEMO/ios/tour.log" 2>&1 &
-pids+=($!)
-sleep 2
-launch SIMCTL_CHILD_CONTERM_TOUR=1 SIMCTL_CHILD_CONTERM_SSHTEST_HOST=web-01.local \
-    SIMCTL_CHILD_CONTERM_SSHTEST_PORT=2201 SIMCTL_CHILD_CONTERM_SSHTEST_USER=deploy \
-    SIMCTL_CHILD_CONTERM_SSHTEST_KEY="$KEY" SIMCTL_CHILD_CONTERM_SSHTEST_FINGERPRINT="$FP"
-seen=""
-for _ in $(seq 600); do
-    for row in "${STEPS[@]}"; do
-        IFS='|' read -r step after name <<<"$row"
-        [[ " $seen " == *" $name "* ]] && continue
-        if grep -q "tour: $step" "$DEMO/ios/tour.log"; then
-            seen+=" $name"
-            ( sleep "$after"; shot "ios-$name" ) &
-        fi
-    done
-    grep -q "tour: ground indigo" "$DEMO/ios/tour.log" && break
-    sleep 0.5
-done
-sleep 6
 
 # ── pairing, then the Mac it paired with ─────────────────────────────
 echo "==> demo Mac"
@@ -158,7 +126,7 @@ sleep 20   # its panes start their scripted work
 # kept once the first connection succeeds, so the Mac is shot in the same
 # launch, after fakessh.py has seen the phone pair and then connect.
 until_logged() {
-    for _ in $(seq 120); do grep -q "$1" "$DEMO/ios/fakessh.log" && return 0; sleep 0.5; done
+    for _ in $(seq 360); do grep -q "$1" "$DEMO/ios/fakessh.log" && return 0; sleep 0.5; done
     echo "    never saw: $1"; return 1
 }
 echo "==> pairing"
@@ -166,11 +134,54 @@ launch SIMCTL_CHILD_CONTERM_TAB=hosts SIMCTL_CHILD_CONTERM_PAIR=1
 until_logged "^pairing" && { sleep 1; shot ios-pairing; }
 until_logged "connect 2202" && { sleep 10; shot ios-mac; }
 echo "==> a pane"
+seen_mac=$(grep -c "connect 2202" "$DEMO/ios/fakessh.log")
 launch SIMCTL_CHILD_CONTERM_TAB=companion SIMCTL_CHILD_CONTERM_PANE=1
-sleep 16; shot ios-mac-pane
-echo "==> machines, home"
+for _ in $(seq 240); do
+    (( $(grep -c "connect 2202" "$DEMO/ios/fakessh.log") > seen_mac )) && break; sleep 0.5
+done
+sleep 12; shot ios-mac-pane
+# ── the tour, captured at its steps ──────────────────────────────────
+# step | seconds after its log line arrives | shot. The tour runs at
+# PACE, and its lines reach the log stream a few seconds late on a busy
+# machine, so each offset sits early inside the stretched dwell.
+STEPS=(
+  "push overview|12|overview"
+  "switcher|2|switcher"
+  "tour: switch$|5|terminal"
+  "activity detail|5|activity"
+  "heartbeat detail|5|heartbeat"
+  "world detail|5|world"
+  "fleet detail|5|fleet"
+  "settings tab|2.5|settings"
+  "search|7|search"
+  "tour: home$|3|home"
+)
+echo "==> tour"
+xcrun simctl spawn "$UDID" log stream --style compact \
+    --predicate 'subsystem == "dev.conterm.ios" AND category == "tour"' >"$DEMO/ios/tour.log" 2>&1 &
+pids+=($!)
+sleep 2
+launch SIMCTL_CHILD_CONTERM_TOUR=1 SIMCTL_CHILD_CONTERM_TOUR_PACE="$PACE" \
+    SIMCTL_CHILD_CONTERM_SSHTEST_HOST=web-01.local \
+    SIMCTL_CHILD_CONTERM_SSHTEST_PORT=2201 SIMCTL_CHILD_CONTERM_SSHTEST_USER=deploy \
+    SIMCTL_CHILD_CONTERM_SSHTEST_KEY="$KEY" SIMCTL_CHILD_CONTERM_SSHTEST_FINGERPRINT="$FP"
+seen=""
+for _ in $(seq 600); do
+    for row in "${STEPS[@]}"; do
+        IFS='|' read -r step after name <<<"$row"
+        [[ " $seen " == *" $name "* ]] && continue
+        pattern="tour: ${step#tour: }"
+        if grep -qE "$pattern" "$DEMO/ios/tour.log"; then
+            seen+=" $name"
+            ( sleep "$after"; shot "ios-$name" ) &
+        fi
+    done
+    grep -q "tour: ground crimson" "$DEMO/ios/tour.log" && break
+    sleep 0.5
+done
+sleep 6
+
+echo "==> machines"
 launch SIMCTL_CHILD_CONTERM_TAB=machines
 sleep 10; shot ios-machines
-launch
-sleep 14; shot ios-home
 echo "==> done"

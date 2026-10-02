@@ -515,6 +515,18 @@ def host(name):
     rc = os.path.join(home, ".zshrc")
     with open(rc, "w") as f:
         f.write(f"PROMPT='%F{{green}}deploy@{name}%f:%F{{blue}}%~%f$ '\nHISTFILE=/dev/null\ncd ~\n")
+        if os.environ.get("DEMO_TAIL"):
+            # A shell with something running in it: an access log, short
+            # lines for a phone's width, steady traffic for its meters.
+            f.write("""print -P "$PROMPT"'tail -f /var/log/nginx/access.log'
+paths=(/v1/refunds /v1/webhooks /healthz /v1/orders /v1/session /v1/ledger)
+codes=(200 200 200 200 201 204 304 429)
+while true; do
+  printf '%s %3d %-12s %4dms\\n' "$(date +%T)" ${codes[$((RANDOM % 8 + 1))]} \\
+    ${paths[$((RANDOM % 6 + 1))]} $((RANDOM % 180 + 4))
+  sleep 0.3
+done
+""")
     os.execve("/bin/zsh", ["-zsh", "-i"], {"HOME": home, "ZDOTDIR": home, "TERM": os.environ.get("TERM", "xterm-256color"),
                                             "PATH": "/usr/bin:/bin", "LANG": "en_US.UTF-8"})
 

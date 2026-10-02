@@ -69,6 +69,35 @@ def probe(name):
                                   "\n===conterm:tz===\nEtc/UTC\n===conterm:utcoff===\n+0000\n===conterm:end===")
     return text
 
+# The overview's live sampler reads counters and diffs them between calls,
+# so they have to move: a few hundred ticks of CPU and some kilobytes of
+# traffic per read, the busy share wandering a little.
+_counters = {}
+
+def pulse(name):
+    import random, time as _t
+    c = _counters.setdefault(name, {"t": _t.time(), "cores": [[1000, 4000] for _ in range(4)],
+                                    "rx": 9_812_331_002, "tx": 4_221_908_115})
+    now = _t.time(); dt = max(now - c["t"], 0.5); c["t"] = now
+    for core in c["cores"]:
+        ticks = int(100 * dt)
+        busy = int(ticks * random.uniform(0.22, 0.58))
+        core[0] += busy; core[1] += ticks - busy
+    c["rx"] += int(dt * random.uniform(40_000, 160_000))
+    c["tx"] += int(dt * random.uniform(12_000, 60_000))
+    tot = [sum(x[0] for x in c["cores"]), sum(x[1] for x in c["cores"])]
+    def cpu(label, busy, idle):
+        return f"{label} {busy} 0 {busy // 5} {idle} 12 0 9 0 0 0"
+    load = f"{random.uniform(0.55, 0.85):.2f} 0.58 0.51 2/311 88213"
+    lines = ["\n===conterm:load===", load,
+             "\n===conterm:mem===", "MemTotal:        8141820 kB", f"MemAvailable:    {random.randint(3_300_000, 3_420_000)} kB",
+             "\n===conterm:stat===", cpu("cpu ", *tot)] + \
+            [cpu(f"cpu{i}", *core) for i, core in enumerate(c["cores"])] + \
+            ["\n===conterm:net===",
+             f"  eth0: {c['rx']} 8123412 0 0 0 0 0 0 {c['tx']} 6012345 0 0 0 0 0 0",
+             "\n===conterm:top===", "\n===conterm:macmem===", "\n===conterm:end==="]
+    return "\n".join(lines) + "\n"
+
 def env_for(name, term=None):
     env = {"HOME": HOMES[name], "USER": USERS[name], "LOGNAME": USERS[name],
            "PATH": f"{SHIMS}:/usr/bin:/bin", "LANG": "en_US.UTF-8", "SHELL": "/bin/sh"}
@@ -100,6 +129,7 @@ async def shell(name, process):
     set_size(master, rows, cols)
     env = env_for(name, process.term_type or "xterm-256color")
     env["SSH_ORIGINAL_COMMAND"] = ""
+    env["DEMO_TAIL"] = "1"
     proc = await asyncio.create_subprocess_exec(
         "/usr/bin/python3", PLAYER, "host", name if name in demo.HOSTS else "web-01",
         stdin=slave, stdout=slave, stderr=slave, env=env, preexec_fn=_controlling_tty)
@@ -134,8 +164,10 @@ async def shell(name, process):
 async def command(name, cmd, process):
     if cmd.strip() in ("sh", "/bin/sh"):
         cmd = (await process.stdin.read()).decode(errors="replace")
-    if "===conterm:" in cmd:
-        process.stdout.write(probe(name).encode())
+    if "===conterm:" in cmd or "put load" in cmd:
+        # The sampler asks for `load`; the overview's collector for `hostname`.
+        text = pulse(name) if "put load" in cmd and "put hostname" not in cmd else probe(name)
+        process.stdout.write(text.encode())
         return 0
     proc = await asyncio.create_subprocess_exec(
         "/bin/sh", "-c", cmd, cwd=HOMES[name], env=env_for(name),
