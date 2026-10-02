@@ -152,15 +152,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate(ignoringOtherApps: true)
 
         // CONTERM_OPEN_ON_LAUNCH opens one surface shortly after launch and
-        // leaves it open — `settings`, `briefing` or `palette` — so its cost
-        // at rest can be measured from outside without driving the UI.
-        if let surface = ProcessInfo.processInfo.environment["CONTERM_OPEN_ON_LAUNCH"] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+        // leaves it open, so its cost at rest can be measured — and the
+        // surface captured — from outside without driving the UI. A value
+        // is a surface name, optionally `name:argument`:
+        //   settings[:section]  palette  briefing  agents  activity  orbit
+        //   history  review  ansible  terraform  fleet
+        //   host:<ssh target>   cluster:<kube context>
+        // CONTERM_OPEN_DELAY overrides the wait (seconds, default 6).
+        let env = ProcessInfo.processInfo.environment
+        if let request = env["CONTERM_OPEN_ON_LAUNCH"] {
+            let delay = env["CONTERM_OPEN_DELAY"].flatMap(Double.init) ?? 6
+            let parts = request.split(separator: ":", maxSplits: 1).map(String.init)
+            let name = parts.first?.lowercased() ?? ""
+            let arg = parts.count > 1 ? parts[1] : nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let state = self?.state else { return }
-                switch surface.lowercased() {
-                case "settings": state.openSettings()
-                case "briefing": state.openBriefing()
-                case "palette":  state.paletteOpen = true
+                switch name {
+                case "settings":  state.openSettings(section: arg)
+                case "briefing":  state.openBriefing()
+                case "palette":   state.paletteOpen = true
+                case "agents":    state.openAgentCenter(tab: .live)
+                case "activity":  state.openAgentCenter(tab: .activity)
+                case "orbit":     state.openOrbit()
+                case "history":   state.openAgentToolsForActivePane()
+                case "review":    state.openWorktreeReviewForActivePane()
+                case "ansible":   state.openAnsibleLastReport()
+                case "terraform": state.openTerraformLastPlan()
+                case "fleet":     state.openFleetRun()
+                case "host":      if let arg { state.openHostOverview(paneHost: arg) }
+                case "cluster":   if let arg { state.openClusterOverview(context: arg) }
                 default: break
                 }
             }
