@@ -37,3 +37,6 @@ ContermDev.app/
 # real run. These carry session scrollback and cwds, so they stay out of the
 # repo by shape rather than by name.
 .test-*/
+
+# Demo screenshots: staged app copy output (scripts/demo/screenshots.sh).
+.demo-shots/

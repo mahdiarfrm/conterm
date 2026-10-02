@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /usr/bin/python3 "${CONTERM_USER_HOME:-$HOME}/.local/share/conterm-demo/demo.py" terraform "$@"
