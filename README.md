@@ -91,7 +91,11 @@ Updates** or *Settings → Config*, and turn the automatic check off there.
 
 ## Features
 
+<img src="docs/assets/screens/main.webp" alt="A Conterm window: Claude Code at work beside a kubectl watch and an SSH session" width="100%" />
+
 ### Panes, tabs & sessions
+
+<img src="docs/assets/screens/sidebar.webp" alt="Sidebar tabs with widgets and three split panes" width="100%" />
 
 - **Recursive split panes** — `⌘D` splits right, `⌘⇧D` splits down, to any
   depth. Drag the dividers to resize; focus any pane by number with `⌥1`–`⌥9`.
@@ -117,6 +121,8 @@ Updates** or *Settings → Config*, and turn the automatic check off there.
 
 ### Command palette (`⌘K`)
 
+<img src="docs/assets/screens/palette.webp" alt="The command palette over a split window" width="100%" />
+
 One search over everything:
 
 - A single query reaches app commands, **shell history** (re-run any zsh/bash
@@ -133,6 +139,13 @@ One search over everything:
   Cursor"**, and **reorder or hide** commands from *Settings → Palette*.
 
 ### Agent-aware
+
+<img src="docs/assets/screens/agents.webp" alt="The agent command center listing a Claude session that needs you" width="100%" />
+
+<p>
+  <img src="docs/assets/screens/history.webp" alt="An agent's tool-call history" width="49%" />
+  <img src="docs/assets/screens/review.webp" alt="Working-tree review of an agent's changes" width="49%" />
+</p>
 
 - **Status pills** — a per-pane pill shows when
   [Claude Code](https://www.anthropic.com/claude-code),
@@ -178,7 +191,20 @@ One search over everything:
   rollouts, cluster alerts, failed commands, and any changes left unreviewed.
   The threshold for "away" is yours to set; `⌘K` opens it on demand.
 
+<p align="center">
+  <img src="docs/assets/screens/briefing.webp" alt="The While you were away briefing" width="70%" />
+</p>
+
 ### Hosts & clusters
+
+<p>
+  <img src="docs/assets/screens/host.webp" alt="Host Overview of an Ubuntu server" width="49%" />
+  <img src="docs/assets/screens/cluster.webp" alt="Cluster Overview of a Kubernetes context" width="49%" />
+</p>
+<p>
+  <img src="docs/assets/screens/ansible.webp" alt="Ansible run report: hosts by tasks" width="49%" />
+  <img src="docs/assets/screens/terraform.webp" alt="Terraform plan card" width="49%" />
+</p>
 
 - **Host Overview** — right-click an SSH pane (or click the ⓘ beside its
   title pill) for a glass briefing on the machine: load, memory, disks,
@@ -220,6 +246,8 @@ One search over everything:
   save a plan at all.
 
 ### Orbit — the fleet as a map *(beta)*
+
+<img src="docs/assets/screens/orbit.webp" alt="Orbit: sessions, hosts and the cluster context as a graph" width="100%" />
 
 Orbit is new and still settling — the shape is there, the edges are not.
 Treat it as beta.
@@ -298,6 +326,8 @@ Treat it as beta.
   (*Settings → Config*).
 
 ### Appearance
+
+<img src="docs/assets/screens/settings.webp" alt="Settings in the Liquid Drop interface" width="100%" />
 
 - **Liquid Drop interface** — panels open as a drop of glass: the rim bends
   the live terminal behind it with a soft colour fringe, the body frosts it,
@@ -451,6 +481,12 @@ bash scripts/dev.sh reset    # throw its state away
 Any build does the same when given `CONTERM_STATE_HOME`. An instance that
 cannot claim the session file neither restores nor saves it, so two Conterms
 never trade windows even without the variable.
+
+The screenshots in this README come from `scripts/demo/screenshots.sh`. It
+runs Conterm against a staged user home (`CONTERM_USER_HOME`) with made-up
+repos, hosts, a cluster and agent sessions, so nothing from your own machine
+appears in them. It needs Homebrew's `openssh`, whose `sshd` plays the remote
+hosts.
 
 `setup.sh` fetches the prebuilt GhosttyKit at the pinned commit. Official
 releases instead ship a GhosttyKit built from source with the local patches
