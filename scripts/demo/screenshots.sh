@@ -11,6 +11,9 @@
 #   bash scripts/demo/screenshots.sh              build, then every shot
 #   bash scripts/demo/screenshots.sh --no-build   reuse Conterm.app
 #   bash scripts/demo/screenshots.sh main orbit   just those shots
+#   bash scripts/demo/screenshots.sh --hold       stage and run it, no shots,
+#                                                 until interrupted (the Mac
+#                                                 the iOS shots connect to)
 #
 # Needs Homebrew's openssh (its sshd plays the remote hosts; macOS's own
 # sshd won't run unprivileged) and Screen Recording for the terminal
@@ -48,8 +51,10 @@ SHOTS=(
 
 [[ -x /opt/homebrew/opt/openssh/sbin/sshd ]] || { echo "needs: brew install openssh"; exit 1; }
 
-build=1; want=()
-for a in "$@"; do [[ $a == --no-build ]] && build=0 || want+=("$a"); done
+build=1; hold=0; want=()
+for a in "$@"; do
+    case $a in --no-build) build=0 ;; --hold) hold=1 ;; *) want+=("$a") ;; esac
+done
 
 if (( build )); then
     echo "==> building"
@@ -69,9 +74,29 @@ WID="$ROOT/.build/demo-windowid"
 [[ -x $WID && $WID -nt $KIT/windowid.swift ]] || swiftc -O -o "$WID" "$KIT/windowid.swift"
 BACK="$ROOT/.build/demo-backdrop"
 [[ -x $BACK && $BACK -nt $KIT/backdrop.swift ]] || swiftc -O -o "$BACK" "$KIT/backdrop.swift"
-"$BACK" & backdrop=$!
-trap 'kill $backdrop 2>/dev/null; pkill -f "$BIN" 2>/dev/null' EXIT
-sleep 1
+backdrop=""
+if (( ! hold )); then
+    "$BACK" & backdrop=$!
+    trap 'kill $backdrop 2>/dev/null; pkill -f "$BIN" 2>/dev/null' EXIT
+    sleep 1
+fi
+
+if (( hold )); then
+    # DEMO_STAGED=1: the caller has staged already and owns that tree.
+    if [[ ${DEMO_STAGED:-} != 1 ]]; then
+        DEMO_DEFAULTS="${DEMO_DEFAULTS:-}" python3 "$KIT/stage.py" $W $H >/dev/null || exit 1
+    fi
+    env -i PATH="$DEMO/home/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+        HOME="$DEMO/home" USER="$USER" LOGNAME="$USER" SHELL=/bin/zsh LANG=en_US.UTF-8 \
+        TMPDIR="${TMPDIR:-/tmp}" KUBECONFIG="$DEMO/home/.kube/config" \
+        CONTERM_USER_HOME="$DEMO/home" CONTERM_STATE_HOME="$DEMO/state" \
+        "$BIN" >"$DEMO/stdout.log" 2>&1 &
+    held=$!
+    trap 'kill $held 2>/dev/null' EXIT INT TERM
+    echo "==> holding (pid $held)"
+    wait $held
+    exit 0
+fi
 
 mkdir -p "$OUT"
 for row in "${SHOTS[@]}"; do

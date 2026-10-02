@@ -156,11 +156,13 @@ def run_claude(scene):
                ("❯ 1. Yes", cyan("❯ 1. Yes")),
                ("  2. Yes, and don't ask again for kubectl apply", "  2. Yes, and don't ask again for kubectl apply"),
                ("  3. No, and tell Claude what to do differently", grey("  3. No, and tell Claude what to do differently"))], 56)
-        # "Needs you" lapses to ready after a while unanswered; a
-        # waiting agent keeps saying so.
+        # "Needs you" lapses to ready after 30 s, and repeating it changes
+        # nothing, so the wait is restated through a moment of work.
+        osc(f"claude:attention:{t.path}")
         while True:
+            time.sleep(20)
+            osc(f"claude:prompt:{t.path}")
             osc(f"claude:attention:{t.path}")
-            time.sleep(24)
     for name, arg, inp in s.get("running", []):
         tid = f"toolu_{uuid.uuid4().hex[:24]}"
         t.tool_use(tid, name, inp)

@@ -259,10 +259,12 @@ def stage_defaults(own_look):
     fmt = lambda t: time.strftime("%Y-%m-%d %H:%M:%S +0000", time.gmtime(t))
     d("conterm.briefingLastSeen", "-date", fmt(NOW - 3 * 3600))
     d("conterm.briefingLastResigned", "-date", fmt(NOW - 2.8 * 3600))
-    # Per-shot overrides from screenshots.sh: "key=value" string settings.
+    # Per-shot overrides from screenshots.sh: "key=value", true/false as
+    # booleans and anything else as a string.
     for pair in os.environ.get("DEMO_DEFAULTS", "").split():
         key, _, value = pair.partition("=")
-        d(key, "-string", value)
+        if value in ("true", "false"): d(key, "-bool", value)
+        else: d(key, "-string", value)
 
 def main():
     width, height = (int(sys.argv[1]), int(sys.argv[2])) if len(sys.argv) > 2 else (1440, 820)
