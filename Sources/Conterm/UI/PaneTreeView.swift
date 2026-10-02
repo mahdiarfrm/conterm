@@ -939,6 +939,11 @@ struct PaneChrome: View {
     /// Tool bubbles take the pill's own height, measured rather than
     /// assumed, so the row reads as one set whatever the label's metrics.
     @State private var pillHeight: CGFloat = 36
+    /// Widths that place the agent cluster: its own, the pane title pill's
+    /// beside it, and the chrome's. See `clusterShift`.
+    @State private var clusterWidth: CGFloat = 0
+    @State private var titleWidth: CGFloat = 0
+    @State private var chromeWidth: CGFloat = 0
     /// Between the pill and the first bubble, and between bubbles.
     private static let bubbleGap: CGFloat = 8
     /// The bubbles beside the pill, one per kind in flight.
@@ -1059,6 +1064,19 @@ struct PaneChrome: View {
         }
     }
 
+    /// How far the agent cluster moves left of centre to clear the pane
+    /// title pill pinned top-trailing. Centred while the two fit side by
+    /// side; past that the cluster gives way, never beyond the leading
+    /// inset — a pane too narrow for both lets them meet rather than push
+    /// the cluster off the pane.
+    private var clusterShift: CGFloat {
+        guard prefs.showPaneTitleBar, titleWidth > 0, chromeWidth > 0 else { return 0 }
+        let reserved = titleWidth + 12 + Self.bubbleGap
+        let overlap = (chromeWidth + clusterWidth) / 2 - (chromeWidth - reserved)
+        let room = max(0, (chromeWidth - clusterWidth) / 2 - 12)
+        return min(max(0, overlap), room)
+    }
+
     var body: some View {
         let corner = Theme.paneCorner
         ZStack {
@@ -1164,6 +1182,14 @@ struct PaneChrome: View {
                 .onPreferenceChange(PillHeightKey.self) { h in
                     if h > 0, abs(h - pillHeight) > 0.5 { pillHeight = h }
                 }
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: ClusterWidthKey.self, value: g.size.width)
+                })
+                .onPreferenceChange(ClusterWidthKey.self) { w in
+                    if abs(w - clusterWidth) > 0.5 { clusterWidth = w }
+                }
+                .offset(x: -clusterShift)
+                .animation(Theme.Spring.bouncy, value: clusterShift)
                 .padding(.top, 10)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .animation(Theme.Spring.bouncy, value: liveBubbles.items.map(\.id))
@@ -1205,9 +1231,21 @@ struct PaneChrome: View {
                                  index: index, isActive: isActive,
                                  dragPayload: PaneDrag.payload(for: pane.id))
                 }
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: TitleWidthKey.self, value: g.size.width)
+                })
+                .onPreferenceChange(TitleWidthKey.self) { w in
+                    if abs(w - titleWidth) > 0.5 { titleWidth = w }
+                }
                 .padding(.top, 10).padding(.trailing, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
+        }
+        .background(GeometryReader { g in
+            Color.clear.preference(key: ChromeWidthKey.self, value: g.size.width)
+        })
+        .onPreferenceChange(ChromeWidthKey.self) { w in
+            if abs(w - chromeWidth) > 0.5 { chromeWidth = w }
         }
         .animation(Theme.Spring.snappy, value: pane.agent)
         .animation(Theme.Spring.snappy, value: pane.toolRuns)
@@ -1260,6 +1298,27 @@ struct PaneChrome: View {
 
 /// The agent pill's rendered height, read by the chrome to size the tool
 /// bubbles beside it.
+private struct ClusterWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct TitleWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct ChromeWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private struct PillHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
