@@ -301,7 +301,7 @@ kbd{
   width:100vw; height:100dvh; max-width:none; max-height:none; margin:0; padding:0; border:0;
   background:#05070B; color:var(--text); overflow:hidden;
 }
-.viewer[open]{display:grid; grid-template-rows:auto minmax(0,1fr) auto}
+.viewer[open]{display:grid; grid-template-rows:auto minmax(0,1fr) auto; grid-template-columns:minmax(0,1fr)}
 .viewer::backdrop{background:transparent}
 .v-top{display:flex; align-items:center; gap:12px; padding:calc(12px + env(safe-area-inset-top)) 16px 8px}
 .v-count{font:500 14px/1 var(--mono); color:var(--dim); min-width:64px}
@@ -314,11 +314,14 @@ kbd{
 .v-btn:hover{background:rgba(255,255,255,.16)}
 .v-btn:disabled{opacity:.35; cursor:default}
 .v-btn svg{width:20px; height:20px}
-.v-stage{position:relative; overflow:hidden; display:grid; place-items:center; touch-action:none; cursor:zoom-in}
+/* Definite tracks, so the picture's percentage limits resolve against the
+   space between the bars and it always arrives whole. */
+.v-stage{position:relative; overflow:hidden; display:grid; place-items:center; touch-action:none; cursor:zoom-in;
+  grid-template:minmax(0,1fr) / minmax(0,1fr); padding:8px 16px}
 .v-stage.zoomed{cursor:grab}
 .v-stage.dragging{cursor:grabbing}
 .v-stage img{
-  max-width:calc(100vw - 32px); max-height:100%; width:auto; height:auto; border-radius:14px;
+  max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; border-radius:14px;
   transform-origin:0 0; will-change:transform; user-select:none; -webkit-user-drag:none;
   transition:opacity .16s ease;
 }
