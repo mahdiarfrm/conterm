@@ -289,6 +289,13 @@ Treat it as beta.
 
 ### Conterm for iOS
 
+<p>
+  <img src="docs/assets/screens/ios/mac.webp" alt="Studio Mac's sessions on the phone, one Claude waiting" width="24%" />
+  <img src="docs/assets/screens/ios/mac-pane.webp" alt="A Mac pane mirrored on the phone" width="24%" />
+  <img src="docs/assets/screens/ios/home.webp" alt="Conterm for iOS home: the Mac, shells and activity" width="24%" />
+  <img src="docs/assets/screens/ios/overview.webp" alt="Host Overview of web-01 on the phone" width="24%" />
+</p>
+
 - **Your sessions on your phone** — every window, tab and pane, which agent
   is waiting on you, and a reply back to it. Conterm publishes what it's
   doing to a file the phone reads over the SSH connection you already have:

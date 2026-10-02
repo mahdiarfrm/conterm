@@ -293,6 +293,15 @@ kbd{
   font:500 22px/1 var(--sans);
 }
 
+/* Phone screenshots: three to a row, scrolling sideways on a phone. */
+.phones{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px}
+.phone-shot{border-radius:28px}
+@media (max-width:600px){
+  .phones{grid-auto-flow:column; grid-template-columns:none; grid-auto-columns:62%;
+          overflow-x:auto; scroll-snap-type:x mandatory; padding-bottom:6px}
+  .phone-shot{scroll-snap-align:start}
+}
+
 /* Status dots carry a shape as well as a colour. */
 .dot{flex:none; width:8px; height:8px; border-radius:50%; background:var(--faint)}
 .dot.ok{background:var(--ok)}
@@ -576,21 +585,13 @@ footer p a{color:var(--dim)}
           <li><b>Off by default.</b> Nothing is published until you turn it on.</li>
         </ul>
       </div>
-      <div class="stage" data-term="ios" style="min-height:560px">
-        <div class="phone" role="img" aria-label="Conterm for iOS listing panes on a Mac">
-          <div class="scr">
-            <div class="hdr"><span class="dot ok"></span>Studio Mac</div>
-            <div class="it attn"><span class="dot attn"></span>Claude Code<small>needs you</small></div>
-            <div class="it"><span class="dot work"></span>api-gateway<small>~/code/api</small></div>
-            <div class="it"><span class="dot"></span>db-01<small>ssh</small></div>
-            <div class="it"><span class="dot err"></span>terraform plan<small>2 destroy</small></div>
-            <div class="it"><span class="dot"></span>web-01<small>ssh</small></div>
-            <div class="bottom">Nearby: 1 Mac</div>
-          </div>
-        </div>
-        <div class="pair" aria-label="Pairing code">
-          <span class="glass">4</span><span class="glass">8</span><span class="glass">1</span><span class="glass">9</span><span class="glass">0</span><span class="glass">6</span>
-        </div>
+      <div class="phones">
+          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/mac.webp" aria-label="Enlarge: Studio Mac's sessions on the phone, one Claude waiting"><img src="assets/screens/ios/mac.webp" alt="Studio Mac's sessions on the phone, one Claude waiting" width="600" height="1304" loading="lazy" decoding="async" /></button>
+          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/mac-pane.webp" aria-label="Enlarge: A Mac pane mirrored on the phone"><img src="assets/screens/ios/mac-pane.webp" alt="A Mac pane mirrored on the phone" width="600" height="1304" loading="lazy" decoding="async" /></button>
+          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/home.webp" aria-label="Enlarge: Conterm for iOS home: the Mac, shells and activity"><img src="assets/screens/ios/home.webp" alt="Conterm for iOS home: the Mac, shells and activity" width="600" height="1304" loading="lazy" decoding="async" /></button>
+          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/overview.webp" aria-label="Enlarge: Host Overview of web-01 on the phone"><img src="assets/screens/ios/overview.webp" alt="Host Overview of web-01 on the phone" width="600" height="1304" loading="lazy" decoding="async" /></button>
+          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/terminal.webp" aria-label="Enlarge: A shell on web-01"><img src="assets/screens/ios/terminal.webp" alt="A shell on web-01" width="600" height="1304" loading="lazy" decoding="async" /></button>
+          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/switcher.webp" aria-label="Enlarge: Switching between shells"><img src="assets/screens/ios/switcher.webp" alt="Switching between shells" width="600" height="1304" loading="lazy" decoding="async" /></button>
       </div>
     </div>
   </section>
