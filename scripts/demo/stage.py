@@ -6,10 +6,14 @@
   /Users/Shared/conterm-demo/state   the instance's own state: session
                                      layout, preferences, cards to open
 
-Nothing here reads the real home. Run by screenshots.sh before every shot
-so each one starts from the same place.
+Nothing of the real home's content comes across. Its look may: with
+DEMO_LOOK=own (the default) the runner's Conterm config — fonts, colours,
+opacity, with anything that would size the window or change what runs
+stripped — and an allowlist of appearance preferences are copied in.
+DEMO_LOOK=plain stages Conterm's defaults instead. Run by screenshots.sh
+before every shot so each one starts from the same place.
 """
-import json, os, shutil, subprocess, sys, time, uuid
+import json, os, plistlib, shutil, subprocess, sys, tempfile, time, uuid
 
 ROOT = "/Users/Shared/conterm-demo"
 HOME = f"{ROOT}/home"
@@ -18,6 +22,23 @@ KIT = os.path.dirname(os.path.abspath(__file__))
 SSHD = "/opt/homebrew/opt/openssh/sbin/sshd"
 NOW = time.time()
 APPLE_EPOCH = 978307200  # Foundation dates count from 2001-01-01
+
+REAL_HOME = os.path.expanduser("~")
+REAL_DOMAIN = "app.conterm.Conterm"
+# Config keys that would size or place the window, or change what a pane
+# runs; the demo decides those.
+STRIP_KEYS = {"config-file", "maximize", "window-width", "window-height",
+              "window-save-state", "window-position-x", "window-position-y",
+              "shell-integration", "shell-integration-features", "command",
+              "initial-command", "working-directory", "initial-window"}
+# Appearance only — never a key that holds hosts, paths, history or state.
+LOOK_PREFS = ["actionAccent", "agentPillLite", "autoGlass", "coolGlass", "glassiness",
+              "glassMode", "glassStyle", "interfaceStyle", "lightGlass", "liquidGlass",
+              "liquidGlassOverlays", "liquidGlassPanels", "lowPowerGlass", "newTabAccent",
+              "paneBackgroundBlur", "paneCornerRadius", "paneFrostiness", "redActionBar",
+              "showLayoutSwitcher", "showPaneTitleBar", "statsShowCPU", "statsShowMemory",
+              "statsShowNetwork", "themeFromConfig", "uiScale", "useLegacyGlass",
+              "windowOpacity", "clock24Hour", "clockShowDate", "clockShowSeconds", "sidebarWidth"]
 
 HOSTS = {"web-01": "10.0.1.21", "web-02": "10.0.1.22", "web-03": "10.0.1.23",
          "db-01": "10.0.2.10", "bastion": "10.0.0.5"}
@@ -152,12 +173,38 @@ def split(axis, frac, a, b): return {"kind": "split", "axis": axis, "fraction": 
 def tab(title, tree, active=0):
     return {"title": title, "customTitle": True, "indexLabel": title, "tree": tree, "activePaneIndex": active}
 
-def stage_state(width, height):
+def own_config():
+    """The runner's Conterm config with its includes inlined, includes
+    first (they apply before the file's own lines), minus STRIP_KEYS."""
+    def lines(path, depth):
+        if not os.path.isfile(path) or depth > 3: return []
+        here, includes, own = os.path.dirname(path), [], []
+        for raw in open(path, encoding="utf-8", errors="replace"):
+            line = raw.rstrip("\n")
+            key, _, value = line.partition("=")
+            key = key.strip()
+            if key == "config-file":
+                inc = os.path.expanduser(value.strip().strip('"').lstrip("?"))
+                includes += lines(inc if os.path.isabs(inc) else os.path.join(here, inc), depth + 1)
+            elif key not in STRIP_KEYS:
+                own.append(line)
+        return includes + own
+    return lines(f"{REAL_HOME}/.config/conterm/config", 0)
+
+def own_look_prefs():
+    out = subprocess.run(["defaults", "export", REAL_DOMAIN, "-"], capture_output=True)
+    if out.returncode != 0: return {}
+    real = plistlib.loads(out.stdout)
+    return {f"conterm.{k}": real[f"conterm.{k}"] for k in LOOK_PREFS if f"conterm.{k}" in real}
+
+def stage_state(width, height, own_look):
     write(f"{STATE}/.conterm-instance-seeded", "")
     cfg = f"{STATE}/.config/conterm"
-    write(f"{cfg}/config", "font-size = 13\nwindow-padding-x = 10\nwindow-padding-y = 8\n")
+    base = own_config() if own_look else []
+    write(f"{cfg}/config", "\n".join(base or ["font-size = 13", "window-padding-x = 10",
+                                               "window-padding-y = 8"]) + "\n")
     snap = {"stateHome": STATE, "windows": [{
-        "frame": f"{{{{90, 110}}, {{{width}, {height}}}}}", "selectedIndex": 0,
+        "frame": f"{{{{90, 140}}, {{{width}, {height}}}}}", "selectedIndex": 0,
         "tabs": [
             tab("api-gateway", split("horizontal", 0.52, leaf("code/api-gateway"),
                                      split("vertical", 0.5, leaf("k8s"), leaf("ops/web-01")))),
@@ -192,10 +239,14 @@ def stage_state(width, height):
             f.write(json.dumps({"id": str(uuid.uuid4()).upper(), "kind": kind, "title": title,
                                 "message": msg, "at": NOW - APPLE_EPOCH - mins * 60}) + "\n")
 
-def stage_defaults():
+def stage_defaults(own_look):
     suite = suite_name(STATE)
     subprocess.run(["defaults", "delete", suite], stderr=subprocess.DEVNULL)
     subprocess.run(["defaults", "delete", "app.conterm.Conterm.demo"], stderr=subprocess.DEVNULL)
+    if own_look:
+        with tempfile.NamedTemporaryFile(suffix=".plist") as f:
+            f.write(plistlib.dumps(own_look_prefs())); f.flush()
+            run("defaults", "import", suite, f.name)
     def d(key, *val): run("defaults", "write", suite, key, *val)
     d("conterm.hasCompletedSetup", "-bool", "true")
     d("conterm.agentToolBubbles", "-bool", "true")
@@ -214,12 +265,13 @@ def stage_defaults():
         d(key, "-string", value)
 
 def main():
-    width, height = (int(sys.argv[1]), int(sys.argv[2])) if len(sys.argv) > 2 else (1200, 760)
+    width, height = (int(sys.argv[1]), int(sys.argv[2])) if len(sys.argv) > 2 else (1440, 820)
+    own_look = os.environ.get("DEMO_LOOK", "own") != "plain"
     if os.path.exists(ROOT): shutil.rmtree(ROOT)
     os.makedirs(ROOT)
     stage_home()
-    stage_state(width, height)
-    stage_defaults()
+    stage_state(width, height, own_look)
+    stage_defaults(own_look)
     print(ROOT)
 
 if __name__ == "__main__":

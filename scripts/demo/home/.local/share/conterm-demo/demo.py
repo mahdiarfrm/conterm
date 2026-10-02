@@ -166,13 +166,13 @@ def run_claude(scene):
         t.tool_use(tid, name, inp)
         osc(f"claude:tool:start:{tid}:{name}:{excerpt(inp.get('command') or arg)}")
         say(tool_line(name, arg))
-    say("", orange("✻ ") + orange("Waiting on terraform and the rollout…") + grey("  (esc to interrupt · 4m 12s · ↓ 18.4k tokens)"))
+    say("", orange("✻ ") + orange("Waiting on terraform and the rollout…") + grey("  (4m 12s · esc to interrupt)"))
     forever()
 
 SCENES = {
     "api-gateway": {
         "branch": "feat/webhook-retries",
-        "task": "Retry failed webhook deliveries with exponential backoff, and roll it out to staging",
+        "task": "Retry failed webhooks with backoff and roll it out to staging",
         "done": [
             ("Read", "internal/webhooks/deliver.go", {"file_path": "internal/webhooks/deliver.go"},
              "184 lines", "Read 184 lines"),
@@ -196,7 +196,7 @@ SCENES = {
     },
     "billing": {
         "branch": "fix/refund-idempotency",
-        "task": "Make the refund endpoint idempotent and ship the manifest",
+        "task": "Make refunds idempotent and ship the manifest",
         "done": [
             ("Read", "internal/refunds/handler.go", {"file_path": "internal/refunds/handler.go"},
              "122 lines", "Read 122 lines"),
@@ -229,7 +229,7 @@ PODS = [
     ("api", "api-7d9f6c5b8-2kq4x", "1/1", "Running", "0", "3h12m"),
     ("api", "api-7d9f6c5b8-8vt7n", "1/1", "Running", "0", "3h12m"),
     ("api", "api-7d9f6c5b8-x9m2p", "1/1", "Running", "0", "3h11m"),
-    ("api", "webhooks-5b6c8d9f7-l2wq8", "1/1", "Running", "1", "2d4h"),
+    ("hooks", "webhooks-5b6c8d9f7-l2wq8", "1/1", "Running", "1", "2d4h"),
     ("billing", "refunds-6c7f9b4d5-qq8tr", "1/1", "Running", "0", "6h40m"),
     ("billing", "ledger-0", "1/1", "Running", "0", "12d"),
     ("worker", "worker-5c4d8b7f9-hq2lz", "1/1", "Running", "0", "1d2h"),
@@ -248,9 +248,15 @@ NODES = [("node-eu1-a", "Ready", "control-plane", "34d", "v1.33.2", 38, 61),
          ("node-eu1-b", "Ready", "<none>", "34d", "v1.33.2", 64, 72),
          ("node-eu1-c", "Ready", "<none>", "12d", "v1.33.2", 21, 44)]
 
-def table(rows, widths):
-    for r in rows:
+def table(rows, header=None, also=()):
+    """kubectl's layout: each column as wide as its longest cell plus three.
+    `also` widens columns for rows a watch prints later."""
+    allrows = ([header] if header else []) + list(rows)
+    sized = allrows + list(also)
+    widths = [max(len(str(r[i])) for r in sized) + 3 for i in range(len(sized[0]))]
+    for r in allrows:
         print("".join(str(v).ljust(w) for v, w in zip(r, widths)).rstrip())
+    return widths
 
 def kubectl(args):
     a = [x for x in args if not x.startswith("--request-timeout")]
@@ -277,21 +283,23 @@ def kubectl(args):
                 phase = "Succeeded" if p[3] == "Completed" else "Running"
                 print(f"{p[0]}   {p[1]}   {phase}")
             return
+        head = ("NAMESPACE", "NAME", "READY", "STATUS", "RESTARTS", "AGE")
         if allns:
-            if headers: print("NAMESPACE     NAME                                  READY   STATUS             RESTARTS   AGE")
-            table(rows, [14, 38, 8, 19, 11, 8])
+            table(rows, head if headers else None)
         else:
-            if headers: print("NAME                         READY   STATUS             RESTARTS   AGE")
-            table([p[1:] for p in rows], [29, 8, 19, 11, 8])
-        if watch:
-            sys.stdout.flush()
-            time.sleep(3)
-            for line in ["api-7d9f6c5b8-x9m2p          1/1     Terminating        0          3h12m",
-                         "api-6c8b7d9f4-r4tqz          0/1     Pending            0          0s",
-                         "api-6c8b7d9f4-r4tqz          0/1     ContainerCreating  0          1s",
-                         "api-6c8b7d9f4-r4tqz          1/1     Running            0          9s"]:
-                print(line); sys.stdout.flush(); time.sleep(2.5)
-            forever()
+            later = [("api-7d9f6c5b8-x9m2p", "1/1", "Terminating", "0", "3h12m"),
+                     ("api-6c8b7d9f4-r4tqz", "0/1", "Pending", "0", "0s"),
+                     ("api-6c8b7d9f4-r4tqz", "0/1", "ContainerCreating", "0", "1s"),
+                     ("api-6c8b7d9f4-r4tqz", "1/1", "Running", "0", "9s")]
+            widths = table([p[1:] for p in rows], head[1:] if headers else None,
+                           also=later if watch else ())
+            if watch:
+                sys.stdout.flush()
+                time.sleep(3)
+                for r in later:
+                    print("".join(str(v).ljust(w) for v, w in zip(r, widths)).rstrip())
+                    sys.stdout.flush(); time.sleep(2.5)
+                forever()
         return
     if verb == "get" and what in ("deployments", "deploy"):
         for d in DEPLOYS:
