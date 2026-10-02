@@ -484,9 +484,10 @@ never trade windows even without the variable.
 
 The screenshots in this README come from `scripts/demo/screenshots.sh`. It
 runs Conterm against a staged user home (`CONTERM_USER_HOME`) with made-up
-repos, hosts, a cluster and agent sessions, so nothing from your own machine
-appears in them. It needs Homebrew's `openssh`, whose `sshd` plays the remote
-hosts.
+repos, hosts, a cluster and agent sessions, over a backdrop that hides every
+other window. Only your look comes along (fonts, colours, glass);
+`DEMO_LOOK=plain` uses the defaults. It needs Homebrew's `openssh`, whose
+`sshd` plays the remote hosts.
 
 `setup.sh` fetches the prebuilt GhosttyKit at the pinned commit. Official
 releases instead ship a GhosttyKit built from source with the local patches
