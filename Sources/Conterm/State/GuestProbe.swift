@@ -61,7 +61,7 @@ final class GuestProbe: ObservableObject {
             let script = "virsh dominfo -- \(Self.shellQuote(guest)); "
                        + "echo '#ADDR#'; "
                        + "virsh domifaddr -- \(Self.shellQuote(guest)) 2>/dev/null || true"
-            let out = runWidgetTool("/usr/bin/ssh", [
+            let out = runWidgetTool("/usr/bin/ssh", InstanceState.sshArguments + [
                 "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
                 OrbitEngine.cleanHost(host), script,
             ])

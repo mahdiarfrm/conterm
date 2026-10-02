@@ -128,7 +128,7 @@ final class OrbitModel: ObservableObject {
 
         let macID = "mac"
         add(MapNode(id: macID, kind: .mac,
-                    label: Host.current().localizedName ?? "This Mac",
+                    label: InstanceState.machineName,
                     subtitle: nil, status: .neutral, pane: nil))
 
         var hosts: [String: Bool] = [:]                 // target → active
@@ -292,7 +292,7 @@ final class OrbitModel: ObservableObject {
     /// A pane's project: the basename of its working directory. Panes sharing
     /// one gravitate together.
     static func projectKey(_ cwd: String?) -> String? {
-        guard let c = cwd, !c.isEmpty, c != NSHomeDirectory() else { return nil }
+        guard let c = cwd, !c.isEmpty, c != InstanceState.userHome else { return nil }
         let base = (c as NSString).lastPathComponent
         return base.isEmpty || base == "/" || base == "~" ? nil : base
     }

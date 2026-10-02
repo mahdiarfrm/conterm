@@ -41,7 +41,7 @@ final class NearbyBeacon: NSObject {
     /// anyone who can see the machine's Remote Login service.
     func start() {
         guard service == nil else { return }
-        let name = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+        let name = InstanceState.machineName
         let service = NetService(domain: "local.", type: Self.serviceType,
                                  name: name, port: 22)
         service.delegate = self
@@ -77,7 +77,7 @@ final class NearbyBeacon: NSObject {
         let reachable = Self.sshIsListening()
         let record: [String: Data] = [
             "user": Data(NSUserName().utf8),
-            "host": Data((Host.current().localizedName ?? "Mac").utf8),
+            "host": Data(InstanceState.machineName.utf8),
             // The name that actually resolves. Deriving it from the Bonjour
             // instance name does not work: "Sam's MacBook Air" becomes
             // `sams-MacBook-Air.local`, with the apostrophe dropped

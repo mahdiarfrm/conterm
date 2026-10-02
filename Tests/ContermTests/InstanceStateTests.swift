@@ -35,6 +35,21 @@ struct InstanceStateTests {
 
     /// Two sandboxes must not share a preferences domain any more than a
     /// sandbox shares one with the real instance.
+    @Test func userHomeDefaultsToTheRealHome() {
+        #expect(InstanceState.resolveUserHome(env: [:], realHome: "/Users/x") == "/Users/x")
+        #expect(InstanceState.resolveUserHome(env: ["CONTERM_USER_HOME": " "],
+                                              realHome: "/Users/x") == "/Users/x")
+    }
+
+    @Test func userHomeOverrideIsIndependentOfStateHome() {
+        let env = ["CONTERM_USER_HOME": "/Users/Shared/demo/home",
+                   "CONTERM_STATE_HOME": "/Users/Shared/demo/state"]
+        #expect(InstanceState.resolveUserHome(env: env, realHome: "/Users/x")
+                == "/Users/Shared/demo/home")
+        #expect(InstanceState.resolveHome(env: env, realHome: "/Users/x")
+                == "/Users/Shared/demo/state")
+    }
+
     @Test func eachStateHomeGetsItsOwnSuite() {
         let a = InstanceState.suiteName(for: "/tmp/one")
         let b = InstanceState.suiteName(for: "/tmp/two")

@@ -21,7 +21,7 @@ enum ShellHistory {
     private static let cap = 2000
 
     static func loadAll() -> [HistoryEntry] {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let home = InstanceState.userHome
         let zsh  = "\(home)/.zsh_history"
         let bash = "\(home)/.bash_history"
 
@@ -63,7 +63,7 @@ enum ShellHistory {
     }
 
     static func activity(now: Date = Date()) -> Activity {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let home = InstanceState.userHome
         guard let lines = readLines("\(home)/.zsh_history") else { return Activity() }
         let cal = Calendar.current
         let todayStart = cal.startOfDay(for: now)

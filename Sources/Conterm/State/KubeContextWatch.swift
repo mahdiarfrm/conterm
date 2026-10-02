@@ -130,7 +130,7 @@ final class KubeContextWatch: ObservableObject {
             s.split(whereSeparator: { $0 == ":" || $0.isNewline })
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
-                .map { $0.hasPrefix("~") ? NSHomeDirectory() + $0.dropFirst() : $0 }
+                .map { $0.hasPrefix("~") ? InstanceState.userHome + $0.dropFirst() : $0 }
         }
         if let manual = InstanceState.defaults.string(forKey: "conterm.kubeConfigPaths"),
            !manual.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -140,7 +140,7 @@ final class KubeContextWatch: ObservableObject {
            !env.isEmpty {
             return split(env)
         }
-        return ["\(NSHomeDirectory())/.kube/config"]
+        return ["\(InstanceState.userHome)/.kube/config"]
     }
 
     /// Stat-gated re-parse across every config file. Merge follows
@@ -216,7 +216,7 @@ final class KubeContextWatch: ObservableObject {
     /// empty content, unsets) KUBECONFIG, and deletes it.
     @discardableResult
     nonisolated static func writeSessionFile(paneID: UUID, content: String) -> Bool {
-        let dir = "\(NSHomeDirectory())/.conterm/k8s"
+        let dir = "\(InstanceState.userHome)/.conterm/k8s"
         try? FileManager.default.createDirectory(atPath: dir,
                                                  withIntermediateDirectories: true)
         let path = "\(dir)/pane-\(paneID.uuidString)"
@@ -229,7 +229,7 @@ final class KubeContextWatch: ObservableObject {
     /// orphan it (pane ids are never reused, so it could only rot).
     nonisolated static func removeSessionFile(paneID: UUID) {
         try? FileManager.default.removeItem(
-            atPath: "\(NSHomeDirectory())/.conterm/k8s/pane-\(paneID.uuidString)")
+            atPath: "\(InstanceState.userHome)/.conterm/k8s/pane-\(paneID.uuidString)")
     }
 
     /// Launch-time sweep of every pane file: ids are minted fresh each
@@ -239,7 +239,7 @@ final class KubeContextWatch: ObservableObject {
     /// they're stable, reused, and may be referenced by KUBECONFIG in
     /// shells that outlived a pane.
     nonisolated static func sweepSessionFiles() {
-        let dir = "\(NSHomeDirectory())/.conterm/k8s"
+        let dir = "\(InstanceState.userHome)/.conterm/k8s"
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir)
         else { return }
         for name in names where name.hasPrefix("pane-") || name.hasPrefix("rollout-") {
@@ -254,7 +254,7 @@ final class KubeContextWatch: ObservableObject {
     /// under a deliberately short home path — this filename appears in
     /// the pane, so it must read cleanly.
     nonisolated static func sessionOverlay(for context: String) -> String? {
-        let dir = "\(NSHomeDirectory())/.conterm/k8s"
+        let dir = "\(InstanceState.userHome)/.conterm/k8s"
         try? FileManager.default.createDirectory(atPath: dir,
                                                  withIntermediateDirectories: true)
         let safe = String(context.map {

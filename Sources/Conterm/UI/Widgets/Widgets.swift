@@ -342,8 +342,11 @@ func widgetChipDivider() -> some View {
 /// Locate a CLI tool that GUI apps can't find via PATH (Homebrew, Docker
 /// Desktop, and Nix all install outside the default GUI environment).
 func locateWidgetTool(_ name: String) -> String? {
-    let home = NSHomeDirectory()
-    let candidates = [
+    let home = InstanceState.userHome
+    // A staged home's own tools come first, so it can stand in for the
+    // clusters and runtimes it describes.
+    let staged = InstanceState.stagedUserHome ? ["\(home)/.local/bin/\(name)"] : []
+    let candidates = staged + [
         "/opt/homebrew/bin/\(name)",
         "/usr/local/bin/\(name)",
         "/usr/bin/\(name)",

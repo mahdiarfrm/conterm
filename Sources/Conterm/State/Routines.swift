@@ -292,9 +292,7 @@ final class RoutineStore: ObservableObject {
     private let maxRuns = 120
 
     private static func fileURL(_ name: String) -> URL? {
-        guard let base = FileManager.default.urls(for: .applicationSupportDirectory,
-                                                  in: .userDomainMask).first else { return nil }
-        let dir = base.appendingPathComponent("Conterm", isDirectory: true)
+        let dir = InstanceState.supportDirectory
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent(name)
     }

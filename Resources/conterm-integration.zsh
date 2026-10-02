@@ -2,6 +2,16 @@
 # Conterm pane hooks (appended to the bundled Ghostty zsh integration
 # at build time). CONTERM_PANE_ID identifies this shell's pane.
 #
+# An instance run against a staged user home (CONTERM_USER_HOME) hands it
+# to its shells. This runs from .zshenv, after login(1) has reset HOME and
+# before .zprofile / .zshrc, so the staged home's rc files and history
+# take over and every `$HOME/.conterm` path below meets the app's.
+if [[ -n "$CONTERM_USER_HOME" && -d "$CONTERM_USER_HOME" ]]; then
+    export HOME="$CONTERM_USER_HOME"
+    export ZDOTDIR="$CONTERM_USER_HOME"
+fi
+
+#
 # Silent kubectl session switch: the Kubernetes widget writes a one-shot
 # file holding a KUBECONFIG value for this pane; it's applied here right
 # before the next command runs — nothing is typed into the terminal —

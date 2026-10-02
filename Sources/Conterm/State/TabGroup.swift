@@ -68,7 +68,7 @@ final class TabGroupStore: ObservableObject {
     private var nextColorIndex = 0
 
     init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let home = InstanceState.userHome
         let dir = InstanceState.configDir
         try? FileManager.default.createDirectory(atPath: dir,
                                                   withIntermediateDirectories: true)

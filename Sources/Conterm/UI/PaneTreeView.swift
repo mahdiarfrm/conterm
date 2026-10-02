@@ -328,7 +328,7 @@ private func restoreCommandLine(resumeSession: String?,
         // Claude runs full-screen and the shell emits no OSC 7 while it does,
         // so `cwd` here is wherever you were before it started, and resuming
         // there stops on the trust prompt for a folder you did not mean.
-        let dir = ClaudeProjects.directory(forSession: id) ?? cwd ?? NSHomeDirectory()
+        let dir = ClaudeProjects.directory(forSession: id) ?? cwd ?? InstanceState.userHome
         return "cd \(shellQuote(dir)) && claude --resume \(shellQuote(id))"
     }
     if let sb = scrollback, !sb.isEmpty, let path = writeRestoreScrollback(sb) {

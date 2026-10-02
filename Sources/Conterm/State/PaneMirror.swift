@@ -33,8 +33,7 @@ enum PaneMirror {
     static let cadence: TimeInterval = 0.25
 
     static var directory: URL {
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/conterm/remote-panes", isDirectory: true)
+        let dir = URL(fileURLWithPath: InstanceState.configDir + "/remote-panes", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

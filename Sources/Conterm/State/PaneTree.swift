@@ -35,7 +35,7 @@ final class Pane: ObservableObject, Identifiable {
     /// Seeded to the user's home dir at construction so that splits
     /// happening BEFORE the first OSC 7 report still propagate a
     /// sensible directory.
-    @Published var cwd: String? = NSHomeDirectory()
+    @Published var cwd: String? = InstanceState.userHome
 
     /// Set when we detect we're SSH'd into a remote host: the
     /// hostname component of an OSC 7 `kitty-shell-cwd://` URL

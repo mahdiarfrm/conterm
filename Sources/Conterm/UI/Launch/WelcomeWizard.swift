@@ -6,7 +6,7 @@ import SwiftUI
 /// the wizard can show an honest disclaimer.
 @MainActor
 enum SetupAssistant {
-    private static var home: String { NSHomeDirectory() }
+    private static var home: String { InstanceState.userHome }
     static var contermDir: String { InstanceState.configDir }
     static var contermConfigPath: String { "\(contermDir)/config" }
 

@@ -25,8 +25,7 @@ enum RemoteStatePublisher {
 
     /// Beside `tab-groups.json`, which already lives here.
     private static var url: URL {
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/conterm", isDirectory: true)
+        let dir = URL(fileURLWithPath: InstanceState.configDir, isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("remote-state.json")
     }
@@ -123,7 +122,7 @@ enum RemoteStatePublisher {
         let payload = Payload(
             version: formatVersion,
             publishedAt: Date(),
-            hostName: Host.current().localizedName,
+            hostName: InstanceState.machineName,
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
             windows: windows)
 

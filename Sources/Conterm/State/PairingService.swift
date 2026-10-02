@@ -196,7 +196,7 @@ final class PairingService {
     /// alone.
     static func authorize(key: String, comment: String) throws {
         let fm = FileManager.default
-        let dir = fm.homeDirectoryForCurrentUser.appendingPathComponent(".ssh", isDirectory: true)
+        let dir = URL(fileURLWithPath: InstanceState.userHome).appendingPathComponent(".ssh", isDirectory: true)
         if !fm.fileExists(atPath: dir.path) {
             try fm.createDirectory(at: dir, withIntermediateDirectories: true,
                                    attributes: [.posixPermissions: 0o700])

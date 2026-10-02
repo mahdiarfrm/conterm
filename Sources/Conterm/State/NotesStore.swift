@@ -46,7 +46,7 @@ final class NotesStore: ObservableObject {
     private let url: URL
 
     init() {
-        let home = NSHomeDirectory()
+        let home = InstanceState.userHome
         let dir = InstanceState.configDir
         try? FileManager.default.createDirectory(atPath: dir,
                                                  withIntermediateDirectories: true)

@@ -168,7 +168,7 @@ struct SidebarTabMeta: View {
         }
 
         private static func tildePath(_ path: String) -> String {
-            let home = NSHomeDirectory()
+            let home = InstanceState.userHome
             guard path.hasPrefix(home) else { return path }
             return "~" + path.dropFirst(home.count)
         }

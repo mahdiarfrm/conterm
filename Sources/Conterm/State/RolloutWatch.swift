@@ -62,7 +62,7 @@ final class RolloutWatch: ObservableObject {
     private var polling = false
 
     nonisolated private static var markerDir: String {
-        "\(NSHomeDirectory())/.conterm/k8s"
+        "\(InstanceState.userHome)/.conterm/k8s"
     }
 
     private init() {

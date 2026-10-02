@@ -215,7 +215,7 @@ final class ContainerControl: ObservableObject {
     // MARK: - Transport
 
     nonisolated private static func ssh(host: String, line: String) -> String? {
-        runWidgetTool("/usr/bin/ssh", [
+        runWidgetTool("/usr/bin/ssh", InstanceState.sshArguments + [
             "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
             OrbitEngine.cleanHost(host), line,
         ])

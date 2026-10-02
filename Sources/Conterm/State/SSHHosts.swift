@@ -38,7 +38,7 @@ enum SSHHistory {
     /// (`: <ts>:<dur>;<cmd>`) and falls back to file position for
     /// plain bash entries.
     static func recentTargets(limit: Int = 30) -> [String] {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let home = InstanceState.userHome
         var entries: [(time: Double, target: String)] = []
         var fallback: Double = 0
 
@@ -218,7 +218,7 @@ struct SSHHost: Identifiable, Hashable {
 enum SSHHosts {
     /// Concrete (non-wildcard) Host aliases, sorted alphabetically.
     static func loadAll() -> [SSHHost] {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let home = InstanceState.userHome
         let primary = "\(home)/.ssh/config"
         var visited = Set<String>()
         var hosts: [SSHHost] = []

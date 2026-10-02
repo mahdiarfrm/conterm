@@ -26,8 +26,7 @@ enum RemoteControl {
     private static var directoryFD: Int32 = -1
 
     static var inboxURL: URL {
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/conterm/remote-inbox", isDirectory: true)
+        let dir = URL(fileURLWithPath: InstanceState.configDir + "/remote-inbox", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

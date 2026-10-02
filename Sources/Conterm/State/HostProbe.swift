@@ -229,7 +229,8 @@ final class HostProbeModel: ObservableObject {
     nonisolated private static func fetch(target: String) -> FetchResult {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-        p.arguments = ["-o", "BatchMode=yes",
+        p.arguments = InstanceState.sshArguments
+                    + ["-o", "BatchMode=yes",
                        "-o", "ConnectTimeout=6",
                        target, "sh"]
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()

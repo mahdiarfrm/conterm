@@ -10,7 +10,7 @@ import Foundation
 /// new session will stop on Claude's trust prompt.
 @MainActor
 enum ClaudeProjects {
-    static var root: String { "\(NSHomeDirectory())/.claude/projects" }
+    static var root: String { "\(InstanceState.userHome)/.claude/projects" }
 
     /// Whether Claude has been run here before. A first run in a directory
     /// stops on "do you trust the files in this folder", and a session waiting
@@ -112,7 +112,7 @@ enum ClaudeProjects {
     /// the last two components, since a menu of full paths is a menu you read
     /// rather than scan.
     static func shortLabel(_ path: String) -> String {
-        let home = NSHomeDirectory()
+        let home = InstanceState.userHome
         var p = path
         if p.hasPrefix(home) { p = "~" + p.dropFirst(home.count) }
         let parts = p.split(separator: "/").map(String.init)

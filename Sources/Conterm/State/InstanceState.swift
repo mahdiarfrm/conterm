@@ -48,6 +48,55 @@ enum InstanceState {
     /// This instance runs beside another one's state rather than on it.
     static var isolated: Bool { home != NSHomeDirectory() }
 
+    /// Where the user's own files are read from: shell history,
+    /// `~/.ssh/config`, `~/.claude`, kubeconfigs, the `~/.conterm`
+    /// rendezvous. The real home unless `CONTERM_USER_HOME` points
+    /// somewhere else — a staged home with made-up hosts and sessions, for
+    /// screenshots that show none of the real ones. Pane shells take the
+    /// same home (see `conterm-integration.zsh`), so both ends of every
+    /// rendezvous file agree.
+    static let userHome: String = resolveUserHome(env: ProcessInfo.processInfo.environment,
+                                                  realHome: NSHomeDirectory())
+
+    static func resolveUserHome(env: [String: String], realHome: String) -> String {
+        guard let raw = env["CONTERM_USER_HOME"],
+              !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return realHome }
+        return (raw as NSString).expandingTildeInPath
+    }
+
+    /// The user's files come from somewhere other than the real home.
+    static var stagedUserHome: Bool { userHome != NSHomeDirectory() }
+
+    /// This Mac's name as Conterm shows and advertises it. A staged home is
+    /// a stand-in for someone else's machine, so it never shows the real
+    /// one: `CONTERM_MACHINE_NAME`, or a generic name.
+    static var machineName: String {
+        if stagedUserHome {
+            return ProcessInfo.processInfo.environment["CONTERM_MACHINE_NAME"] ?? "Studio Mac"
+        }
+        return Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+    }
+
+    /// `ssh` / `scp` resolve their config and known hosts from the passwd
+    /// home, never `$HOME`; a staged home has to name its own.
+    static var sshArguments: [String] {
+        guard stagedUserHome else { return [] }
+        return ["-F", "\(userHome)/.ssh/config",
+                "-o", "UserKnownHostsFile=\(userHome)/.ssh/known_hosts"]
+    }
+
+    /// `~/Library/Application Support/Conterm`: routines, frecency, the
+    /// companion's inbox and mirrors. An isolated instance keeps its own,
+    /// like its session and log.
+    static var supportDirectory: URL {
+        if isolated {
+            return URL(fileURLWithPath: "\(home)/Library/Application Support/Conterm",
+                       isDirectory: true)
+        }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Conterm", isDirectory: true)
+    }
+
     /// Session, notes, tab groups, workspaces, and the user config file.
     static var configDir: String { "\(home)/.config/conterm" }
 

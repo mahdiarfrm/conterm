@@ -19,7 +19,7 @@ import Foundation
 @MainActor
 enum OpenCodeIntegration {
     private static var dir: String {
-        "\(NSHomeDirectory())/.config/opencode/plugin"
+        "\(InstanceState.userHome)/.config/opencode/plugin"
     }
     private static var path: String { "\(dir)/conterm-agent.js" }
 

@@ -226,7 +226,7 @@ final class AgentTranscriptStore: @unchecked Sendable {
         }
     }
     private var states: [String: FileState] = [:]
-    private var projectsRoot: String { "\(NSHomeDirectory())/.claude/projects" }
+    private var projectsRoot: String { "\(InstanceState.userHome)/.claude/projects" }
 
     /// Claude Code's project-dir encoding of an absolute path.
     static func encode(cwd: String) -> String {

@@ -64,7 +64,7 @@ extension Ghostty {
             let configHome: String = {
                 if let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"],
                    !xdg.isEmpty { return xdg }
-                return (NSHomeDirectory() as NSString).appendingPathComponent(".config")
+                return (InstanceState.userHome as NSString).appendingPathComponent(".config")
             }()
 
             // Load order (last wins). Conterm uses a SINGLE user-facing
@@ -137,7 +137,7 @@ extension Ghostty {
                 # defaults). To also pull in your Ghostty config,
                 # uncomment the next line:
                 #
-                # config-file = \(NSHomeDirectory())/.config/ghostty/config
+                # config-file = \(InstanceState.userHome)/.config/ghostty/config
 
                 # font-family = "JetBrains Mono"
                 # font-size = 13
@@ -571,7 +571,7 @@ extension Ghostty {
                     value = String(value.dropFirst().dropLast())
                 }
                 if value.hasPrefix("~/") {
-                    value = (NSHomeDirectory() as NSString)
+                    value = (InstanceState.userHome as NSString)
                         .appendingPathComponent(String(value.dropFirst(2)))
                 } else if !value.hasPrefix("/") {
                     value = (baseDir as NSString).appendingPathComponent(value)
@@ -586,7 +586,7 @@ extension Ghostty {
             let configHome: String = {
                 if let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"],
                    !xdg.isEmpty { return xdg }
-                return (NSHomeDirectory() as NSString).appendingPathComponent(".config")
+                return (InstanceState.userHome as NSString).appendingPathComponent(".config")
             }()
             // Mirror init()'s load order exactly so a reload rebuilds the
             // SAME config — otherwise a theme/font change would resolve

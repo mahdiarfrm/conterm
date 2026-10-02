@@ -697,7 +697,7 @@ final class Preferences: ObservableObject {
     }
 
     private var ghosttyConfigPath: String {
-        (NSHomeDirectory() as NSString).appendingPathComponent(".config/ghostty/config")
+        (InstanceState.userHome as NSString).appendingPathComponent(".config/ghostty/config")
     }
     private var contermConfigPath: String {
         InstanceState.configPath("config")

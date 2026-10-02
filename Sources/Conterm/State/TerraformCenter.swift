@@ -108,7 +108,7 @@ final class TerraformCenter: ObservableObject {
     private var reading: Set<String> = []
 
     nonisolated private static var feedDir: String {
-        "\(NSHomeDirectory())/.conterm/terraform"
+        "\(InstanceState.userHome)/.conterm/terraform"
     }
     /// Parsed and kept by the app, unlike the plan files beside it that
     /// terraform writes — so it belongs with the rest of this instance's

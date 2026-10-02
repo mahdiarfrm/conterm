@@ -198,19 +198,25 @@ extension Ghostty {
                 }
                 return body(nil)
             }
+            // A staged user home rides along so the pane's shell adopts it
+            // (conterm-integration.zsh) and agrees with the app on where
+            // `~/.conterm` and the rest of the user's files live.
+            var env: [(String, String)] = []
+            if let paneID { env.append(("CONTERM_PANE_ID", paneID.uuidString)) }
+            if InstanceState.stagedUserHome {
+                env.append(("CONTERM_USER_HOME", InstanceState.userHome))
+            }
+            let owned = env.map { (strdup($0.0)!, strdup($0.1)!) }
+            defer { owned.forEach { free($0.0); free($0.1) } }
+            var vars = owned.map { ghostty_env_var_s(key: UnsafePointer($0.0), value: UnsafePointer($0.1)) }
             let result: ghostty_surface_t? = withDir { dirPtr in
                 if let dirPtr { cfg.working_directory = dirPtr }
-                return "CONTERM_PANE_ID".withCString { keyPtr in
-                    (paneID?.uuidString ?? "").withCString { valPtr in
-                        var envVar = ghostty_env_var_s(key: keyPtr, value: valPtr)
-                        return withUnsafeMutablePointer(to: &envVar) { envPtr in
-                            if paneID != nil {
-                                cfg.env_vars = envPtr
-                                cfg.env_var_count = 1
-                            }
-                            return ghostty_surface_new(app.handle, &cfg)
-                        }
+                return vars.withUnsafeMutableBufferPointer { buf in
+                    if let base = buf.baseAddress {
+                        cfg.env_vars = base
+                        cfg.env_var_count = buf.count
                     }
+                    return ghostty_surface_new(app.handle, &cfg)
                 }
             }
             guard let s = result else {

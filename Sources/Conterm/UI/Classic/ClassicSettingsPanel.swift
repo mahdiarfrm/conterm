@@ -1216,7 +1216,7 @@ private struct ConfigEditor: View {
     @State private var saved: Bool = false
 
     private var configPath: String {
-        let home = NSHomeDirectory()
+        let home = InstanceState.userHome
         return InstanceState.configPath("config")
     }
 

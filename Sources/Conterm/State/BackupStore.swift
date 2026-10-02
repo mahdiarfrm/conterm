@@ -17,7 +17,7 @@ import Foundation
 @MainActor
 enum BackupStore {
     private static let schema = 1
-    private static var home: String { NSHomeDirectory() }
+    private static var home: String { InstanceState.userHome }
 
     /// Backup-relative path → absolute on-disk path. The list is a
     /// whitelist: restore only ever writes to one of these exact

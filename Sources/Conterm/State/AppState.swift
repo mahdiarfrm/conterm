@@ -447,7 +447,8 @@ final class AppState: ObservableObject {
                     && isDir.boolValue
             }
             let destination = "\(target):\(dir.isEmpty ? "" : dir + "/")"
-            let args = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-q"]
+            let args = InstanceState.sshArguments
+                + ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-q"]
                 + (recursive ? ["-r"] : [])
                 + (dial?.scpFlags ?? [])
                 + paths + [destination]
@@ -1039,7 +1040,7 @@ final class AppState: ObservableObject {
         }
         // Non-zsh shells have no hook — fall back to the visible export,
         // $HOME-shortened and space-led so history-skip configs drop it.
-        let home = NSHomeDirectory()
+        let home = InstanceState.userHome
         let paths = ([overlay] + KubeContextWatch.configPaths())
             .map { $0.hasPrefix(home) ? "$HOME" + $0.dropFirst(home.count) : $0 }
             .joined(separator: ":")

@@ -7,7 +7,7 @@ import Foundation
 @MainActor
 enum UserConfigStore {
     static var path: String {
-        let home = NSHomeDirectory()
+        let home = InstanceState.userHome
         return InstanceState.configPath("config")
     }
 

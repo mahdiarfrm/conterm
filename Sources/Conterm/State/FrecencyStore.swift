@@ -19,9 +19,7 @@ final class FrecencyStore {
     private let halfLife: TimeInterval = 7 * 24 * 3600
 
     private static var fileURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory,
-                                            in: .userDomainMask).first!
-            .appendingPathComponent("Conterm", isDirectory: true)
+        let base = InstanceState.supportDirectory
         try? FileManager.default.createDirectory(
             at: base, withIntermediateDirectories: true)
         return base.appendingPathComponent("frecency.json")

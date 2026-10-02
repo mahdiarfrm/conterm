@@ -117,7 +117,7 @@ final class AnsibleCenter: ObservableObject {
     private var failureSeq = 0
 
     nonisolated private static var feedDir: String {
-        "\(NSHomeDirectory())/.conterm/ansible"
+        "\(InstanceState.userHome)/.conterm/ansible"
     }
     /// The persisted report is this instance's own — unlike the run feeds
     /// beside it, which the shell writes and the app only reads.

@@ -46,7 +46,7 @@ struct AgentHookSpec {
 enum AgentHooks {
     static let claude = AgentHookSpec(
         identity: "claude",
-        settingsPath: "\(NSHomeDirectory())/.claude/settings.json",
+        settingsPath: "\(InstanceState.userHome)/.claude/settings.json",
         events: ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
                  "PostToolUseFailure", "Stop", "Notification", "SessionEnd"])
 
@@ -57,7 +57,7 @@ enum AgentHooks {
     /// poll or by `settleToolRuns` when the turn ends.
     static let codex = AgentHookSpec(
         identity: "codex",
-        settingsPath: "\(NSHomeDirectory())/.codex/hooks.json",
+        settingsPath: "\(InstanceState.userHome)/.codex/hooks.json",
         events: ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
                  "PermissionRequest", "Stop", "SessionEnd"])
 
@@ -69,12 +69,12 @@ enum AgentHooks {
     /// settings entry, so a synced settings file still points somewhere
     /// sensible on another machine (and does nothing there until Conterm
     /// writes the script).
-    nonisolated static var scriptPath: String { "\(NSHomeDirectory())/.conterm/agent-hook.sh" }
+    nonisolated static var scriptPath: String { "\(InstanceState.userHome)/.conterm/agent-hook.sh" }
     private static let scriptRef = "\"$HOME/.conterm/agent-hook.sh\""
     /// The script's name in earlier releases; removed when the current one
     /// is written.
     nonisolated private static var legacyScriptPath: String {
-        "\(NSHomeDirectory())/.conterm/claude-hook.sh"
+        "\(InstanceState.userHome)/.conterm/claude-hook.sh"
     }
 
     /// One command per event. The script never writes to stdout/stderr and
@@ -370,7 +370,7 @@ enum CodexIntegration {
     static var awaitsTrust: Bool { isInstalled && !hasTrustRecord }
 
     private static var hasTrustRecord: Bool {
-        let path = "\(NSHomeDirectory())/.codex/config.toml"
+        let path = "\(InstanceState.userHome)/.codex/config.toml"
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
         return trustRecorded(in: text, for: AgentHooks.codex.settingsPath)
     }

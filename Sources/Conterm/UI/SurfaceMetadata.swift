@@ -29,7 +29,7 @@ func shellQuote(_ s: String) -> String {
 @MainActor
 func friendlyDirLabel(for cwd: String?) -> String {
     guard let cwd, !cwd.isEmpty else { return "—" }
-    let home = NSHomeDirectory()
+    let home = InstanceState.userHome
     if cwd == home { return "~" }
     if cwd == "/" { return "/" }
 
@@ -139,8 +139,8 @@ let localHostnames: Set<String> = {
 /// `~` / `~/foo` → `<HOME>` / `<HOME>/foo`. Bare paths pass through.
 @MainActor
 private func expandTilde(_ p: String) -> String {
-    if p == "~" { return NSHomeDirectory() }
-    if p.hasPrefix("~/") { return NSHomeDirectory() + String(p.dropFirst(1)) }
+    if p == "~" { return InstanceState.userHome }
+    if p.hasPrefix("~/") { return InstanceState.userHome + String(p.dropFirst(1)) }
     return p
 }
 

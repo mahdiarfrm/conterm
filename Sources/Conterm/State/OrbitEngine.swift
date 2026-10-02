@@ -242,7 +242,7 @@ final class OrbitEngine: ObservableObject {
     /// the captured log.
     private static func ansibleEnvironment(feedID: UUID) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
-        let dir = "\(NSHomeDirectory())/.conterm/ansible"
+        let dir = "\(InstanceState.userHome)/.conterm/ansible"
         try? FileManager.default.createDirectory(atPath: dir,
                                                  withIntermediateDirectories: true)
         env["CONTERM_ANSIBLE_LOG"] = "\(dir)/run-\(feedID.uuidString).jsonl"
@@ -367,16 +367,18 @@ final class OrbitEngine: ObservableObject {
     nonisolated private static func runSSH(host rawHost: String, command: String,
                                            group: RunGroup) -> (Int, String) {
         capture(URL(fileURLWithPath: "/usr/bin/ssh"),
-                ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-                 cleanHost(rawHost), command],
+                InstanceState.sshArguments
+                    + ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                       cleanHost(rawHost), command],
                 group: group)
     }
 
     nonisolated private static func runSCP(local: String, host rawHost: String,
                                            group: RunGroup) -> (Int, String) {
         capture(URL(fileURLWithPath: "/usr/bin/scp"),
-                ["-r", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-                 local, "\(cleanHost(rawHost)):"],
+                InstanceState.sshArguments
+                    + ["-r", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                       local, "\(cleanHost(rawHost)):"],
                 group: group)
     }
 

@@ -90,7 +90,7 @@ final class BackgroundAgents: ObservableObject {
                            shortID: (obj["id"] as? String)
                                ?? String(sid.prefix(8)),
                            name: (obj["name"] as? String) ?? "Background agent",
-                           cwd: (obj["cwd"] as? String) ?? NSHomeDirectory(),
+                           cwd: (obj["cwd"] as? String) ?? InstanceState.userHome,
                            state: (obj["state"] as? String)
                                ?? (obj["status"] as? String) ?? "")
         }

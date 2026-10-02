@@ -38,7 +38,7 @@ extension OrbitOverlay {
         panel.allowsMultipleSelection = false
         panel.prompt = "Start here"
         panel.message = "Where should this agent run?"
-        panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory())
+        panel.directoryURL = URL(fileURLWithPath: InstanceState.userHome)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         startAgent(in: url.path)
     }
@@ -48,7 +48,7 @@ extension OrbitOverlay {
     /// rather than held in view state.
     @ViewBuilder
     func newAgentMenuItems() -> some View {
-        Button("Home") { startAgent(in: NSHomeDirectory()) }
+        Button("Home") { startAgent(in: InstanceState.userHome) }
         let recents = ClaudeProjects.recent()
         if !recents.isEmpty {
             Divider()
