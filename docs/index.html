@@ -236,7 +236,7 @@ kbd{
 }
 
 /* Chapter: copy column + a stage. */
-.chapter{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:clamp(32px, 5vw, 72px); align-items:start}
+.chapter{display:grid; grid-template-columns:minmax(0,4fr) minmax(0,8fr); gap:clamp(32px, 5vw, 72px); align-items:start}
 .chapter .copy{position:sticky; top:110px}
 @media (max-width:900px){
   .chapter{grid-template-columns:minmax(0,1fr)}
@@ -265,111 +265,40 @@ kbd{
 .term .r{color:rgba(255,107,110,.8)} .term .c{color:rgba(124,199,232,.8)} .term .v{color:rgba(195,155,242,.8)}
 .term .t{color:rgba(236,238,243,.72)}
 
+/* Screenshots: the first one leads, the rest sit two to a row, and any
+   of them opens full size. Each is the window over the capture backdrop,
+   so the frame here stays a hairline. */
+.shots{display:grid; gap:14px}
+.shots .grid{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px}
+.shots .grid > :last-child:nth-child(odd){grid-column:1 / -1}
+.shot{
+  display:block; width:100%; padding:0; border:0; margin:0; cursor:zoom-in;
+  border-radius:18px; overflow:hidden; background:var(--pane);
+  box-shadow:0 0 0 1px var(--line), 0 30px 70px -36px #000;
+}
+.shot img{display:block; width:100%; height:auto}
+@media (max-width:600px){ .shots .grid{grid-template-columns:minmax(0,1fr)} }
+
+.lightbox{
+  width:100vw; height:100dvh; max-width:none; max-height:none; margin:0; padding:clamp(12px, 3vw, 40px);
+  border:0; background:rgba(4,6,10,.88); cursor:zoom-out;
+}
+.lightbox[open]{display:grid; place-items:center}
+.lightbox::backdrop{background:transparent}
+.lightbox img{max-width:100%; max-height:100%; width:auto; height:auto; border-radius:16px}
+.lightbox .close{
+  position:fixed; top:calc(14px + env(safe-area-inset-top)); right:16px; width:44px; height:44px;
+  border:0; border-radius:50%; cursor:pointer; color:var(--text);
+  background:rgba(255,255,255,.1); box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);
+  font:500 22px/1 var(--sans);
+}
+
 /* Status dots carry a shape as well as a colour. */
 .dot{flex:none; width:8px; height:8px; border-radius:50%; background:var(--faint)}
 .dot.ok{background:var(--ok)}
 .dot.attn{background:var(--attn); box-shadow:0 0 0 3px rgba(245,181,68,.2)}
 .dot.err{background:var(--err); border-radius:2px}
 .dot.work{background:var(--cyan)}
-
-/* ── Mock: palette ────────────────────────────────────────────── */
-.palette{width:min(520px, 100%); padding:10px}
-.palette .q{
-  display:flex; align-items:center; gap:10px; padding:12px 14px 14px;
-  font:500 16px/1 var(--sans); border-bottom:1px solid var(--line); margin-bottom:6px;
-}
-.palette .q .caret{width:2px; height:18px; background:var(--cyan)}
-.palette .q kbd{margin-left:auto; font-size:11px}
-.palette .row{display:grid; grid-template-columns:28px minmax(0,1fr) auto; align-items:center; gap:10px; padding:9px 12px; border-radius:12px; font-size:14.5px}
-.palette .row.sel{background:rgba(255,255,255,.08); box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
-.palette .row .ic{width:28px; height:28px; border-radius:8px; display:grid; place-items:center; background:rgba(255,255,255,.06); color:var(--dim)}
-.palette .row .ic svg{width:15px; height:15px}
-.palette .row mark{background:none; color:var(--text); font-weight:600}
-.palette .row .nm{color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.palette .row .sh{font:400 12px/1 var(--mono); color:var(--faint)}
-.palette .calc{display:flex; justify-content:space-between; margin:6px 4px 2px; padding:10px 12px; border-radius:12px; background:rgba(124,199,232,.07); font:500 13.5px/1 var(--mono); color:var(--cyan)}
-
-/* ── Mock: split window ───────────────────────────────────────── */
-.window{width:min(560px, 100%); padding:10px; border-radius:18px}
-.window .bar{display:flex; gap:6px; padding:4px 6px 10px}
-.window .bar i{width:11px; height:11px; border-radius:50%; background:rgba(255,255,255,.16)}
-.window .bar .tab{margin-left:12px; padding:2px 10px; border-radius:7px; font-size:12px; color:var(--dim); background:rgba(255,255,255,.06)}
-.panes{display:grid; grid-template-columns:1.3fr 1fr; grid-template-rows:1fr 1fr; gap:6px; height:200px}
-.panes div{border-radius:10px; background:rgba(8,10,14,.75); padding:10px 12px; font:400 11.5px/1.6 var(--mono); color:var(--dim); overflow:hidden; white-space:pre}
-.panes div:first-child{grid-row:1 / 3; box-shadow:inset 0 0 0 1px rgba(124,199,232,.4)}
-.panes b{font-weight:400; color:var(--text)} .panes .g{color:var(--ok)}
-
-/* ── Mock: agents ─────────────────────────────────────────────── */
-.roster{width:min(460px, 100%); padding:14px; display:grid; gap:8px}
-.roster .hd{display:flex; align-items:center; justify-content:space-between; padding:4px 6px 8px; font-size:13px; color:var(--dim)}
-.agent{padding:12px 14px; border-radius:14px; background:rgba(255,255,255,.045); box-shadow:inset 0 0 0 1px var(--line)}
-.agent.attn{box-shadow:inset 0 0 0 1px rgba(245,181,68,.5); background:rgba(245,181,68,.06)}
-.agent .top{display:flex; align-items:center; gap:8px; font-size:14.5px; font-weight:500}
-.agent .top .br{font:400 12px/1 var(--mono); color:var(--faint)}
-.agent .top .st{margin-left:auto; font-size:12.5px; font-weight:500}
-.agent.attn .st{color:var(--attn)} .agent .st.work{color:var(--cyan)} .agent .st.idle{color:var(--dim)}
-.agent .task{margin:4px 0 6px; font-size:13.5px; color:#C6CBD6}
-.agent .meta{font:400 12px/1 var(--mono); color:var(--faint); display:flex; gap:14px; flex-wrap:wrap}
-.agent .reply{margin-top:10px; display:flex; gap:6px}
-.agent .reply span{padding:6px 11px; border-radius:999px; font-size:12px; background:rgba(255,255,255,.07); box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
-
-.bubbles{display:flex; flex-wrap:wrap; align-items:center; gap:8px; justify-content:center}
-.bubble{display:inline-flex; align-items:center; gap:8px; padding:8px 13px 8px 9px; border-radius:999px; font:500 13px/1 var(--sans)}
-.bubble .ring{width:16px; height:16px; border-radius:50%; background:conic-gradient(var(--k) 0 68%, rgba(255,255,255,.12) 0)}
-.bubble .ring{-webkit-mask:radial-gradient(circle, transparent 5px, #000 5.5px); mask:radial-gradient(circle, transparent 5px, #000 5.5px)}
-.review{width:min(460px, 100%); padding:16px 18px}
-.review .top{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px}
-.review .top b{font-weight:600}
-.add{color:var(--ok)} .del{color:var(--err)}
-.review .f{display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-top:1px solid var(--line); font:400 13px/1.3 var(--mono); color:var(--dim)}
-.review .f em{font-style:normal; white-space:nowrap}
-
-/* ── Mock: host overview ──────────────────────────────────────── */
-.host{width:min(480px, 100%); padding:20px 22px}
-.host .top{display:flex; align-items:center; gap:10px; margin-bottom:14px}
-.host .top b{font:500 15px/1 var(--mono)}
-.host .top span{margin-left:auto; font-size:13px; color:var(--dim)}
-.gem{width:12px; height:12px; border-radius:4px; transform:rotate(45deg); background:linear-gradient(135deg, #9ff0c8, var(--ok)); box-shadow:0 0 12px rgba(91,212,154,.6)}
-.meter{display:grid; grid-template-columns:62px minmax(0,1fr) 80px; align-items:center; gap:12px; padding:6px 0; font-size:13px; color:var(--dim)}
-.meter em{font:400 12px/1 var(--mono); font-style:normal; text-align:right; color:var(--text)}
-.tube{height:8px; border-radius:99px; background:rgba(255,255,255,.07); box-shadow:inset 0 1px 2px rgba(0,0,0,.5); overflow:hidden}
-.tube i{display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg, rgba(124,199,232,.7), rgba(124,199,232,1)); box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
-.tube.warm i{background:linear-gradient(90deg, rgba(245,181,68,.7), var(--attn))}
-.host .chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:14px}
-.host .chips span{padding:5px 10px; border-radius:999px; font-size:12.5px; color:#C6CBD6; background:rgba(255,255,255,.06)}
-.kpill{display:inline-flex; align-items:center; gap:9px; padding:9px 15px; border-radius:999px; font:500 13px/1 var(--mono)}
-.kpill.prod{box-shadow:inset 0 0 0 1px rgba(255,107,110,.55), 0 0 24px -6px rgba(255,107,110,.5); color:#FFD0D1}
-.matrix{width:min(480px, 100%); padding:14px 16px}
-.matrix .hd{display:flex; justify-content:space-between; font-size:13px; color:var(--dim); margin-bottom:10px}
-.matrix .hd b{color:var(--text); font-weight:500; font-family:var(--mono)}
-.matrix .grid{display:grid; grid-template-columns:62px repeat(10, 1fr); gap:4px; align-items:center; font:400 11.5px/1 var(--mono); color:var(--faint)}
-.matrix .grid i{height:14px; border-radius:4px; background:rgba(255,255,255,.07)}
-.matrix .grid i.o{background:rgba(91,212,154,.55)} .matrix .grid i.c{background:rgba(245,181,68,.7)} .matrix .grid i.x{background:var(--err)}
-
-/* ── Mock: orbit ──────────────────────────────────────────────── */
-.orbit{width:100%; max-width:560px; aspect-ratio:4/3; padding:0; overflow:hidden}
-.orbit svg{position:absolute; inset:0; width:100%; height:100%}
-.orbit .ringl{fill:none; stroke:rgba(255,255,255,.09); stroke-dasharray:2 5}
-.orbit .wire{stroke:rgba(255,255,255,.18); stroke-width:1.2}
-.orbit .wire.live{stroke:var(--attn); stroke-width:1.6; stroke-dasharray:4 4}
-.orbit .node{position:absolute; transform:translate(-50%,-50%); display:flex; align-items:center; gap:7px; padding:7px 11px; border-radius:12px; font-size:12.5px; white-space:nowrap; background:rgba(20,25,35,.85); box-shadow:inset 0 1px 0 rgba(255,255,255,.1), inset 0 0 0 1px var(--line)}
-.orbit .node.me{padding:9px 14px; font-weight:600; box-shadow:inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(124,199,232,.45)}
-.orbit .node.aim{box-shadow:inset 0 0 0 1.5px var(--attn)}
-.orbit .node .k{margin-left:4px; padding:1px 6px; border-radius:5px; font:600 11px/1.4 var(--mono); color:var(--ink); background:var(--text)}
-.orbit .verbs{position:absolute; left:50%; bottom:16px; transform:translateX(-50%); display:flex; gap:4px; padding:5px; border-radius:999px; background:rgba(20,25,35,.9); box-shadow:inset 0 1px 0 rgba(255,255,255,.12), inset 0 0 0 1px var(--line)}
-.orbit .verbs span{padding:7px 13px; border-radius:999px; font-size:12.5px; color:var(--dim)}
-.orbit .verbs span.on{color:var(--ink); background:var(--text); font-weight:600}
-.routine{width:min(480px, 100%); padding:16px 18px}
-.routine .top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px}
-.routine .top b{font:500 15px/1 var(--mono)}
-.routine .top span{font-size:13px; color:var(--dim)}
-.step{display:grid; grid-template-columns:22px minmax(0,1fr) auto; gap:10px; align-items:center; padding:9px 0; border-top:1px solid var(--line); font-size:14px}
-.step .n{width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font:600 11px/1 var(--mono); background:rgba(255,255,255,.08); color:var(--dim)}
-.step .n.ok{background:rgba(91,212,154,.18); color:var(--ok)}
-.step .n.x{background:rgba(255,107,110,.18); color:var(--err)}
-.step code{font-size:12.5px; padding:2px 7px; border-radius:6px; background:rgba(124,199,232,.1); color:var(--cyan)}
-.step em{font:400 12px/1 var(--mono); font-style:normal; color:var(--faint)}
-.step em.x{color:var(--err)}
 
 /* ── Mock: phone ──────────────────────────────────────────────── */
 .phone{width:244px; aspect-ratio:9/19; border-radius:42px; padding:12px; background:#05060A; box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.14), inset 0 0 0 6px #0B0D12, 0 40px 80px -30px #000}
@@ -523,46 +452,11 @@ footer p a{color:var(--dim)}
           <li><b>Find</b> searches scrollback, or a Claude Code conversation that never reached it.</li>
         </ul>
       </div>
-      <div>
-        <div class="stage" data-term="shell">
-          <div class="palette glass" role="img" aria-label="Command palette searching for 'swit'">
-            <div class="q"><span>swit</span><span class="caret"></span><kbd>⌘K</kbd></div>
-            <div class="row sel">
-              <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 7h13l-4-4M17 17H4l4 4"/></svg></span>
-              <span class="nm"><mark>Swit</mark>ch to api-gateway</span><span class="sh">~/code/api</span>
-            </div>
-            <div class="row">
-              <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 9l3 3-3 3M13 15h4"/></svg></span>
-              <span class="nm"><mark>Swit</mark>ch SSH host to web-01</span><span class="sh">ssh config</span>
-            </div>
-            <div class="row">
-              <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7h7l2 2h9v10H3z"/></svg></span>
-              <span class="nm"><mark>Swit</mark>ch tab group to Servers</span><span class="sh">7 tabs</span>
-            </div>
-            <div class="row">
-              <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg></span>
-              <span class="nm">git <mark>swit</mark>ch release/2.8</span><span class="sh">12m ago</span>
-            </div>
-            <div class="calc"><span>512 MiB in MB</span><span>536.87 MB</span></div>
-          </div>
-        </div>
-        <div class="stage" data-term="build" style="min-height:320px">
-          <div class="window glass" role="img" aria-label="A window split into three panes">
-            <div class="bar"><i></i><i></i><i></i><span class="tab">api-gateway</span></div>
-            <div class="panes">
-<div><b>~/code/api $</b> make test
-ok  api/routes   0.41s
-ok  api/store    1.03s
-<span class="g">PASS</span>
-<b>~/code/api $</b> ▍</div>
-<div><b>$</b> kubectl get pods
-api-7d9f  1/1 Running
-api-x9m2  1/1 Running</div>
-<div><b>$</b> tail -f app.log
-200 GET /health 2ms
-200 POST /login 41ms</div>
-            </div>
-          </div>
+      <div class="shots">
+        <button class="shot" type="button" data-full="assets/screens/main.webp" aria-label="Enlarge: A Conterm window: Claude Code beside a kubectl watch and an SSH session"><img src="assets/screens/main.webp" alt="A Conterm window: Claude Code beside a kubectl watch and an SSH session" width="1800" height="1073" loading="lazy" decoding="async" /></button>
+        <div class="grid">
+          <button class="shot" type="button" data-full="assets/screens/sidebar.webp" aria-label="Enlarge: Sidebar tabs with widgets and three split panes"><img src="assets/screens/sidebar.webp" alt="Sidebar tabs with widgets and three split panes" width="1800" height="1073" loading="lazy" decoding="async" /></button>
+          <button class="shot" type="button" data-full="assets/screens/palette.webp" aria-label="Enlarge: The command palette over a split window"><img src="assets/screens/palette.webp" alt="The command palette over a split window" width="1800" height="1073" loading="lazy" decoding="async" /></button>
         </div>
       </div>
     </div>
@@ -590,41 +484,12 @@ api-x9m2  1/1 Running</div>
           <li><b><code>claude --bg</code> sessions</b> join the roster with one-click resume.</li>
         </ul>
       </div>
-      <div>
-        <div class="stage" data-term="agent">
-          <div class="roster glass" role="img" aria-label="Agent command center listing three agents">
-            <div class="hd"><span>3 agents running</span><kbd>⌘⇧A</kbd></div>
-            <div class="agent attn">
-              <div class="top"><span class="dot attn"></span>Claude Code <span class="br">main</span><span class="st">Needs you</span></div>
-              <div class="task">Wire the refresh token into the session store</div>
-              <div class="meta"><span>$0.34</span><span>128k tokens</span><span>2m ago</span></div>
-              <div class="reply"><span>Accept</span><span>Reply</span><span>Jump to pane</span></div>
-            </div>
-            <div class="agent">
-              <div class="top"><span class="dot work"></span>Codex <span class="br">fix/ratelimit</span><span class="st work">Thinking</span></div>
-              <div class="task">Move the limiter into middleware</div>
-              <div class="meta"><span>$0.11</span><span>41k tokens</span></div>
-            </div>
-            <div class="agent">
-              <div class="top"><span class="dot ok"></span>opencode <span class="br">docs</span><span class="st idle">Ready</span></div>
-              <div class="task">Update the API reference</div>
-            </div>
-          </div>
-        </div>
-        <div class="stage" data-term="agent2" style="min-height:360px">
-          <div class="bubbles" role="img" aria-label="Tool bubbles for terraform, search and shell">
-            <span class="bubble glass" style="--k:#C39BF2"><span class="ring"></span>terraform</span>
-            <span class="bubble glass" style="--k:#7CC7E8"><span class="ring"></span>search code</span>
-            <span class="bubble glass" style="--k:#5BD49A"><span class="ring"></span>shell</span>
-            <span class="bubble glass" style="--k:#9AA1B0"><span class="ring" style="background:rgba(255,255,255,.3)"></span>History · 14</span>
-          </div>
-          <div class="review glass" role="img" aria-label="Working-tree review: four files changed">
-            <div class="top"><b>Changes since start</b><span><span class="add">+412</span> <span class="del">−96</span></span></div>
-            <div class="f">routes/auth.go<em><span class="add">+188</span> <span class="del">−12</span></em></div>
-            <div class="f">middleware/jwt.go<em><span class="add">+141</span> <span class="del">−60</span></em></div>
-            <div class="f">config/dev.yaml<em><span class="add">+83</span> <span class="del">−24</span></em></div>
-            <div class="f">1 commit: harden the token path<em>reviewed</em></div>
-          </div>
+      <div class="shots">
+        <button class="shot" type="button" data-full="assets/screens/agents.webp" aria-label="Enlarge: The agent command center with a Claude session waiting on you"><img src="assets/screens/agents.webp" alt="The agent command center with a Claude session waiting on you" width="1800" height="1073" loading="lazy" decoding="async" /></button>
+        <div class="grid">
+          <button class="shot" type="button" data-full="assets/screens/history.webp" aria-label="Enlarge: An agent's tool-call history"><img src="assets/screens/history.webp" alt="An agent's tool-call history" width="1800" height="1073" loading="lazy" decoding="async" /></button>
+          <button class="shot" type="button" data-full="assets/screens/review.webp" aria-label="Enlarge: Working-tree review of what an agent changed"><img src="assets/screens/review.webp" alt="Working-tree review of what an agent changed" width="1800" height="1073" loading="lazy" decoding="async" /></button>
+          <button class="shot" type="button" data-full="assets/screens/briefing.webp" aria-label="Enlarge: The While you were away briefing"><img src="assets/screens/briefing.webp" alt="The While you were away briefing" width="1800" height="1073" loading="lazy" decoding="async" /></button>
         </div>
       </div>
     </div>
@@ -651,25 +516,12 @@ api-x9m2  1/1 Running</div>
           <li><b>Fleet run</b> sends one command to many hosts, a pane each.</li>
         </ul>
       </div>
-      <div>
-        <div class="stage" data-term="host">
-          <span class="kpill glass prod"><span class="dot err"></span>prod-eu-1 · api</span>
-          <div class="host glass" role="img" aria-label="Host overview for web-01: healthy">
-            <div class="top"><span class="gem"></span><b>deploy@web-01</b><span>up 41 days</span></div>
-            <div class="meter"><span>load</span><div class="tube"><i style="width:32%"></i></div><em>0.64</em></div>
-            <div class="meter"><span>memory</span><div class="tube"><i style="width:58%"></i></div><em>4.6 / 8 GB</em></div>
-            <div class="meter"><span>disk /</span><div class="tube warm"><i style="width:81%"></i></div><em>81%</em></div>
-            <div class="chips"><span>7 containers</span><span>0 failed units</span><span>3 updates</span></div>
-          </div>
-          <div class="matrix glass" role="img" aria-label="Ansible run: 4 hosts by 10 tasks, one failure">
-            <div class="hd"><b>deploy.yml</b><span>task 10 of 14 · 1 failed</span></div>
-            <div class="grid">
-              <span>web-01</span><i class="o"></i><i class="o"></i><i class="c"></i><i class="o"></i><i class="o"></i><i class="c"></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i>
-              <span>web-02</span><i class="o"></i><i class="o"></i><i class="c"></i><i class="o"></i><i class="o"></i><i class="c"></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i>
-              <span>web-03</span><i class="o"></i><i class="o"></i><i class="c"></i><i class="o"></i><i class="x"></i><i></i><i></i><i></i><i></i><i></i>
-              <span>db-01</span><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="c"></i><i class="o"></i><i class="o"></i><i class="o"></i>
-            </div>
-          </div>
+      <div class="shots">
+        <button class="shot" type="button" data-full="assets/screens/host.webp" aria-label="Enlarge: Host Overview of an Ubuntu server"><img src="assets/screens/host.webp" alt="Host Overview of an Ubuntu server" width="1800" height="1073" loading="lazy" decoding="async" /></button>
+        <div class="grid">
+          <button class="shot" type="button" data-full="assets/screens/cluster.webp" aria-label="Enlarge: Cluster Overview of a Kubernetes context"><img src="assets/screens/cluster.webp" alt="Cluster Overview of a Kubernetes context" width="1800" height="1073" loading="lazy" decoding="async" /></button>
+          <button class="shot" type="button" data-full="assets/screens/ansible.webp" aria-label="Enlarge: An Ansible run report: hosts by tasks"><img src="assets/screens/ansible.webp" alt="An Ansible run report: hosts by tasks" width="1800" height="1073" loading="lazy" decoding="async" /></button>
+          <button class="shot" type="button" data-full="assets/screens/terraform.webp" aria-label="Enlarge: A Terraform plan card"><img src="assets/screens/terraform.webp" alt="A Terraform plan card" width="1800" height="1073" loading="lazy" decoding="async" /></button>
         </div>
       </div>
     </div>
@@ -698,36 +550,8 @@ api-x9m2  1/1 Running</div>
           asks first.
         </p>
       </div>
-      <div>
-        <div class="stage" data-term="orbit" style="padding:clamp(12px,2vw,24px)">
-          <div class="orbit glass" role="img" aria-label="Orbit map: this Mac at the centre, sessions and hosts around it">
-            <svg viewBox="0 0 400 300" aria-hidden="true" preserveAspectRatio="none">
-              <ellipse class="ringl" cx="200" cy="140" rx="78" ry="58"/>
-              <ellipse class="ringl" cx="200" cy="140" rx="160" ry="112"/>
-              <line class="wire" x1="200" y1="140" x2="128" y2="104"/>
-              <line class="wire live" x1="200" y1="140" x2="282" y2="112"/>
-              <line class="wire" x1="128" y1="104" x2="62" y2="70"/>
-              <line class="wire" x1="282" y1="112" x2="338" y2="200"/>
-              <line class="wire" x1="200" y1="140" x2="150" y2="210"/>
-            </svg>
-            <div class="node me" style="left:50%; top:46.6%"><span class="dot ok"></span>This Mac</div>
-            <div class="node" style="left:32%; top:34.6%"><span class="dot"></span>zsh · api<span class="k">S</span></div>
-            <div class="node aim" style="left:70.5%; top:37.3%"><span class="dot attn"></span>Claude · needs you<span class="k">D</span></div>
-            <div class="node" style="left:17%; top:22.6%"><span class="dot ok"></span>prod-eu-1</div>
-            <div class="node" style="left:84.5%; top:66.6%"><span class="dot ok"></span>web-01</div>
-            <div class="node" style="left:37.5%; top:70%"><span class="dot err"></span>web-07<span class="k">F</span></div>
-            <div class="verbs"><span class="on">Connect</span><span>Run</span><span>Logs</span><span>Details</span></div>
-          </div>
-        </div>
-        <div class="stage" data-term="routine" style="min-height:340px">
-          <div class="routine glass" role="img" aria-label="Routine deploy-api: two steps done, one partly failed">
-            <div class="top"><b>deploy-api</b><span>nightly at 02:00</span></div>
-            <div class="step"><span class="n ok">✓</span><span>Drain <code>web-*</code></span><em>12 hosts · 4.1s</em></div>
-            <div class="step"><span class="n ok">✓</span><span>helm upgrade api <code>v2.8.1</code></span><em>21.6s</em></div>
-            <div class="step"><span class="n x">!</span><span>Smoke test</span><em class="x">11/12 ok</em></div>
-            <div class="step"><span class="n">4</span><span>Restore traffic</span><em>waiting</em></div>
-          </div>
-        </div>
+      <div class="shots">
+        <button class="shot" type="button" data-full="assets/screens/orbit.webp" aria-label="Enlarge: Orbit: sessions, hosts and the cluster context as a graph"><img src="assets/screens/orbit.webp" alt="Orbit: sessions, hosts and the cluster context as a graph" width="1800" height="1073" loading="lazy" decoding="async" /></button>
       </div>
     </div>
   </section>
@@ -866,6 +690,11 @@ api-x9m2  1/1 Running</div>
   </div>
 </footer>
 
+<dialog class="lightbox" id="lightbox" aria-label="Screenshot">
+  <button class="close" type="button" aria-label="Close">×</button>
+  <img alt="" />
+</dialog>
+
 <script>
 (() => {
 'use strict';
@@ -945,8 +774,7 @@ const S = {
     [[' 08:14 up 41 days, load average: 0.64 0.58 0.51','d']],
   ],
 };
-S.build = S.shell; S.agent2 = S.agent; S.host = S.shell; S.orbit = S.kube;
-S.routine = S.ansible; S.ios = S.agent;
+S.ios = S.agent;
 
 const TONE = { t:'#D9DDE6', d:'#7E8596', g:'#5BD49A', a:'#F5B544', r:'#FF6B6E', c:'#7CC7E8', v:'#C39BF2', ' ':'#000' };
 const CLS  = { t:'t', d:'', g:'g', a:'a', r:'r', c:'c', v:'v', ' ':'' };
@@ -1313,6 +1141,16 @@ function start() {
   }
 }
 (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(start);
+
+/* ── Screenshot viewer ─────────────────────────────────────────── */
+const box = document.getElementById('lightbox');
+const boxImg = box.querySelector('img');
+document.querySelectorAll('.shot').forEach(b => b.addEventListener('click', () => {
+  boxImg.src = b.dataset.full;
+  boxImg.alt = b.querySelector('img').alt;
+  box.showModal();
+}));
+box.addEventListener('click', () => box.close());
 
 /* ── Demo video ──────────────────────────────────────────────────
    Loads and plays only while on screen. Reduced motion or a data-saver
