@@ -1217,9 +1217,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// into a form. Files, not a server — see `RemoteStatePublisher`.
     ///
     /// All three are idempotent, so the preference can drive them directly.
+    /// An instance on a staged user home stands in for another machine: it
+    /// publishes its files but never announces itself or takes a pairing,
+    /// which would put this Mac's own name and login on the network.
     static func startCompanion() {
         RemoteStatePublisher.start()
         RemoteControl.start()
+        guard !InstanceState.stagedUserHome else { return }
         NearbyBeacon.shared.start()
         PairingService.shared.start()
     }
