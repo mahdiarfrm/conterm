@@ -150,6 +150,21 @@ kbd,code{font-family:var(--mono)}
 .flybrand img:first-child{width:var(--h); height:var(--h); filter:drop-shadow(0 12px 28px rgba(0,0,0,.55))}
 .flybrand img:last-child{height:calc(var(--h) * .82); width:auto}
 @media (max-width:720px){ .hero-brand-slot, .flybrand{--h:60px} }
+/* Phones re-rasterise a filtered layer at every scale step; no shadow there. */
+@media (pointer:coarse){ .flybrand img:first-child{filter:none} }
+/* Where scroll timelines exist the compositor runs the dock against the
+   scroll itself, so it can't fall behind it; the measurements come from
+   script as custom properties. Elsewhere script sets the transform. */
+@supports (animation-timeline: scroll()) {
+  .flybrand.ready{
+    animation:dock linear both; animation-timeline:scroll(root block);
+    animation-range:0px var(--span, 1px);
+  }
+}
+@keyframes dock{
+  from{transform:translate(var(--x0), var(--y0)) scale(1)}
+  to{transform:translate(var(--x1), var(--y1)) scale(var(--s1))}
+}
 .nav a.link{
   padding:10px 14px; border-radius:999px; text-decoration:none;
   font-size:14px; color:var(--dim); transition:color .15s, background-color .15s;
@@ -279,19 +294,45 @@ kbd{
 .shot img{display:block; width:100%; height:auto}
 @media (max-width:600px){ .shots .grid{grid-template-columns:minmax(0,1fr)} }
 
-.lightbox{
-  width:100vw; height:100dvh; max-width:none; max-height:none; margin:0; padding:clamp(12px, 3vw, 40px);
-  border:0; background:rgba(4,6,10,.88); cursor:zoom-out;
+/* Viewer: every screenshot on the page in one sequence — arrows, keys,
+   swipe, a thumbnail strip, and zoom by button, double-click, wheel or
+   pinch, panning by drag once zoomed. */
+.viewer{
+  width:100vw; height:100dvh; max-width:none; max-height:none; margin:0; padding:0; border:0;
+  background:#05070B; color:var(--text); overflow:hidden;
 }
-.lightbox[open]{display:grid; place-items:center}
-.lightbox::backdrop{background:transparent}
-.lightbox img{max-width:100%; max-height:100%; width:auto; height:auto; border-radius:16px}
-.lightbox .close{
-  position:fixed; top:calc(14px + env(safe-area-inset-top)); right:16px; width:44px; height:44px;
-  border:0; border-radius:50%; cursor:pointer; color:var(--text);
-  background:rgba(255,255,255,.1); box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);
-  font:500 22px/1 var(--sans);
+.viewer[open]{display:grid; grid-template-rows:auto minmax(0,1fr) auto}
+.viewer::backdrop{background:transparent}
+.v-top{display:flex; align-items:center; gap:12px; padding:calc(12px + env(safe-area-inset-top)) 16px 8px}
+.v-count{font:500 14px/1 var(--mono); color:var(--dim); min-width:64px}
+.v-caption{flex:1; min-width:0; margin:0; font-size:15px; color:#C6CBD6; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.v-btn{
+  width:44px; height:44px; border:0; border-radius:50%; flex:none; display:grid; place-items:center;
+  cursor:pointer; color:var(--text); background:rgba(255,255,255,.08);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12); transition:background-color .15s;
 }
+.v-btn:hover{background:rgba(255,255,255,.16)}
+.v-btn:disabled{opacity:.35; cursor:default}
+.v-btn svg{width:20px; height:20px}
+.v-stage{position:relative; overflow:hidden; display:grid; place-items:center; touch-action:none; cursor:zoom-in}
+.v-stage.zoomed{cursor:grab}
+.v-stage.dragging{cursor:grabbing}
+.v-stage img{
+  max-width:calc(100vw - 32px); max-height:100%; width:auto; height:auto; border-radius:14px;
+  transform-origin:0 0; will-change:transform; user-select:none; -webkit-user-drag:none;
+  transition:opacity .16s ease;
+}
+.v-stage img.fading{opacity:0}
+.v-stage img.settle{transition:transform .22s cubic-bezier(.2,.8,.2,1), opacity .16s ease}
+.v-side{position:absolute; top:50%; transform:translateY(-50%); z-index:2}
+.v-prev{left:16px} .v-next{right:16px}
+.v-strip{display:flex; gap:8px; overflow-x:auto; padding:10px 16px calc(14px + env(safe-area-inset-bottom)); scrollbar-width:none}
+.v-strip::-webkit-scrollbar{display:none}
+.v-thumb{flex:none; height:56px; padding:0; border:0; border-radius:8px; overflow:hidden; cursor:pointer; opacity:.5;
+  background:none; box-shadow:0 0 0 1px var(--line); transition:opacity .15s, box-shadow .15s}
+.v-thumb img{height:100%; width:auto; display:block}
+.v-thumb[aria-current="true"]{opacity:1; box-shadow:0 0 0 2px var(--text)}
+@media (max-width:600px){ .v-side{display:none} .v-thumb{height:44px} }
 
 /* Phone screenshots: three to a row, scrolling sideways on a phone. */
 .phones{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px}
@@ -586,12 +627,15 @@ footer p a{color:var(--dim)}
         </ul>
       </div>
       <div class="phones">
+          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/home.webp" aria-label="Enlarge: Conterm for iOS home: a Mac, two live shells, activity and heartbeat"><img src="assets/screens/ios/home.webp" alt="Conterm for iOS home: a Mac, two live shells, activity and heartbeat" width="600" height="1304" loading="lazy" decoding="async" /></button>
           <button class="shot phone-shot" type="button" data-full="assets/screens/ios/mac.webp" aria-label="Enlarge: Studio Mac's sessions on the phone, one Claude waiting"><img src="assets/screens/ios/mac.webp" alt="Studio Mac's sessions on the phone, one Claude waiting" width="600" height="1304" loading="lazy" decoding="async" /></button>
           <button class="shot phone-shot" type="button" data-full="assets/screens/ios/mac-pane.webp" aria-label="Enlarge: A Mac pane mirrored on the phone"><img src="assets/screens/ios/mac-pane.webp" alt="A Mac pane mirrored on the phone" width="600" height="1304" loading="lazy" decoding="async" /></button>
-          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/home.webp" aria-label="Enlarge: Conterm for iOS home: the Mac, shells and activity"><img src="assets/screens/ios/home.webp" alt="Conterm for iOS home: the Mac, shells and activity" width="600" height="1304" loading="lazy" decoding="async" /></button>
-          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/overview.webp" aria-label="Enlarge: Host Overview of web-01 on the phone"><img src="assets/screens/ios/overview.webp" alt="Host Overview of web-01 on the phone" width="600" height="1304" loading="lazy" decoding="async" /></button>
-          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/terminal.webp" aria-label="Enlarge: A shell on web-01"><img src="assets/screens/ios/terminal.webp" alt="A shell on web-01" width="600" height="1304" loading="lazy" decoding="async" /></button>
+          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/overview.webp" aria-label="Enlarge: Host Overview of web-01, sampled live"><img src="assets/screens/ios/overview.webp" alt="Host Overview of web-01, sampled live" width="600" height="1304" loading="lazy" decoding="async" /></button>
+          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/terminal.webp" aria-label="Enlarge: A shell on web-01 following an access log"><img src="assets/screens/ios/terminal.webp" alt="A shell on web-01 following an access log" width="600" height="1304" loading="lazy" decoding="async" /></button>
           <button class="shot phone-shot" type="button" data-full="assets/screens/ios/switcher.webp" aria-label="Enlarge: Switching between shells"><img src="assets/screens/ios/switcher.webp" alt="Switching between shells" width="600" height="1304" loading="lazy" decoding="async" /></button>
+          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/activity.webp" aria-label="Enlarge: Activity: traffic through every open shell"><img src="assets/screens/ios/activity.webp" alt="Activity: traffic through every open shell" width="600" height="1304" loading="lazy" decoding="async" /></button>
+          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/heartbeat.webp" aria-label="Enlarge: Heartbeat: hosts sampled after their overview closes"><img src="assets/screens/ios/heartbeat.webp" alt="Heartbeat: hosts sampled after their overview closes" width="600" height="1304" loading="lazy" decoding="async" /></button>
+          <button class="shot phone-shot" type="button" data-full="assets/screens/ios/pairing.webp" aria-label="Enlarge: Pairing with a Mac on the local network"><img src="assets/screens/ios/pairing.webp" alt="Pairing with a Mac on the local network" width="600" height="1304" loading="lazy" decoding="async" /></button>
       </div>
     </div>
   </section>
@@ -691,9 +735,20 @@ footer p a{color:var(--dim)}
   </div>
 </footer>
 
-<dialog class="lightbox" id="lightbox" aria-label="Screenshot">
-  <button class="close" type="button" aria-label="Close">×</button>
-  <img alt="" />
+<dialog class="viewer" id="viewer" aria-label="Screenshots">
+  <div class="v-top">
+    <span class="v-count" aria-live="polite"></span>
+    <p class="v-caption"></p>
+    <button class="v-btn" type="button" data-act="out" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M20 20l-4-4"/></svg></button>
+    <button class="v-btn" type="button" data-act="in" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M8 11h6M11 8v6M20 20l-4-4"/></svg></button>
+    <button class="v-btn" type="button" data-act="close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="v-stage">
+    <button class="v-btn v-side v-prev" type="button" data-act="prev" aria-label="Previous screenshot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <img alt="" draggable="false" />
+    <button class="v-btn v-side v-next" type="button" data-act="next" aria-label="Next screenshot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+  </div>
+  <div class="v-strip" role="tablist" aria-label="All screenshots"></div>
 </dialog>
 
 <script>
@@ -865,8 +920,16 @@ function drawTerm() {
   });
 }
 
+let scrolling = 0;
+addEventListener('scroll', () => { scrolling = performance.now(); }, { passive:true });
 function tick(now) {
   if (reduce) return;
+  // While the page scrolls the backdrop holds still: a texture upload per
+  // line competes with scrolling for the GPU, most of all on a phone.
+  if (now - scrolling < 180) {
+    panes.forEach(p => { if (now >= p.next) p.next = now + 200; });
+    return;
+  }
   panes.forEach(p => {
     if (now >= p.next) {
       p.buf.shift(); p.buf.push(p.s[p.i]); p.i = (p.i + 1) % p.s.length;
@@ -1144,14 +1207,139 @@ function start() {
 (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(start);
 
 /* ── Screenshot viewer ─────────────────────────────────────────── */
-const box = document.getElementById('lightbox');
-const boxImg = box.querySelector('img');
-document.querySelectorAll('.shot').forEach(b => b.addEventListener('click', () => {
-  boxImg.src = b.dataset.full;
-  boxImg.alt = b.querySelector('img').alt;
-  box.showModal();
-}));
-box.addEventListener('click', () => box.close());
+const shots = [...document.querySelectorAll('.shot')];
+const viewer = document.getElementById('viewer');
+const vStage = viewer.querySelector('.v-stage');
+const vImg = vStage.querySelector('img');
+const vCount = viewer.querySelector('.v-count');
+const vCaption = viewer.querySelector('.v-caption');
+const vStrip = viewer.querySelector('.v-strip');
+let at = 0, zoom = 1, panX = 0, panY = 0;
+
+shots.forEach((b, i) => {
+  const t = document.createElement('button');
+  t.className = 'v-thumb'; t.type = 'button'; t.setAttribute('role', 'tab');
+  t.setAttribute('aria-label', b.querySelector('img').alt);
+  t.innerHTML = `<img src="${b.dataset.full}" alt="" loading="lazy" />`;
+  t.addEventListener('click', () => show(i));
+  vStrip.append(t);
+  b.addEventListener('click', () => { show(i, true); viewer.showModal(); });
+});
+
+function apply(settle) {
+  vImg.classList.toggle('settle', !!settle);
+  vImg.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+  vStage.classList.toggle('zoomed', zoom > 1);
+  viewer.querySelector('[data-act="out"]').disabled = zoom <= 1;
+  viewer.querySelector('[data-act="in"]').disabled = zoom >= 4;
+}
+/* Zoom about a point given relative to the image's untransformed box,
+   so that point stays under the pointer. */
+function zoomTo(next, px, py) {
+  next = Math.min(4, Math.max(1, next));
+  if (px === undefined) { px = vImg.offsetWidth / 2; py = vImg.offsetHeight / 2; }
+  const k = next / zoom;
+  panX = px - (px - panX) * k; panY = py - (py - panY) * k;
+  zoom = next;
+  if (zoom === 1) { panX = 0; panY = 0; }
+  clamp(); apply(true);
+}
+function clamp() {
+  const w = vImg.offsetWidth, h = vImg.offsetHeight;
+  panX = Math.min(0, Math.max(w - w * zoom, panX));
+  panY = Math.min(0, Math.max(h - h * zoom, panY));
+}
+function show(i, instant) {
+  at = (i + shots.length) % shots.length;
+  const b = shots[at], alt = b.querySelector('img').alt;
+  zoom = 1; panX = 0; panY = 0; apply();
+  const swap = () => { vImg.src = b.dataset.full; vImg.alt = alt; vImg.classList.remove('fading'); };
+  if (instant) swap(); else { vImg.classList.add('fading'); setTimeout(swap, 140); }
+  vCount.textContent = `${at + 1} / ${shots.length}`;
+  vCaption.textContent = alt;
+  [...vStrip.children].forEach((t, j) => t.setAttribute('aria-current', j === at));
+  vStrip.children[at].scrollIntoView({ block:'nearest', inline:'center', behavior: instant ? 'auto' : 'smooth' });
+  [at - 1, at + 1].forEach(j => { const n = shots[(j + shots.length) % shots.length]; new Image().src = n.dataset.full; });
+}
+viewer.addEventListener('click', e => {
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (act === 'prev') show(at - 1);
+  else if (act === 'next') show(at + 1);
+  else if (act === 'in') zoomTo(zoom * 1.6);
+  else if (act === 'out') zoomTo(zoom / 1.6);
+  else if (act === 'close') viewer.close();
+  else if (e.target === vStage && zoom === 1 && !dragged && downOnBackdrop) viewer.close();
+});
+viewer.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') show(at + 1);
+  else if (e.key === 'ArrowLeft') show(at - 1);
+  else if (e.key === '+' || e.key === '=') zoomTo(zoom * 1.6);
+  else if (e.key === '-') zoomTo(zoom / 1.6);
+  else if (e.key === '0') zoomTo(1);
+  else return;
+  e.preventDefault();
+});
+const boxPoint = (x, y) => {
+  const r = vImg.getBoundingClientRect();
+  return [x - r.left + panX, y - r.top + panY];
+};
+vStage.addEventListener('dblclick', e => {
+  if (e.target.closest('.v-btn')) return;
+  if (zoom > 1) zoomTo(1); else zoomTo(2.5, ...boxPoint(e.clientX, e.clientY));
+});
+vStage.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoomTo(zoom * Math.exp(-e.deltaY * 0.0025), ...boxPoint(e.clientX, e.clientY));
+}, { passive:false });
+
+/* Pointers: one drags (a pan when zoomed, a swipe when not), two pinch. */
+const pts = new Map();
+let gesture = null, dragged = false, downOnBackdrop = false;
+vStage.addEventListener('pointerdown', e => {
+  if (e.target.closest('.v-btn')) return;
+  downOnBackdrop = e.target === vStage;
+  vStage.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, [e.clientX, e.clientY]);
+  const [a, b] = [...pts.values()];
+  gesture = { x:e.clientX, y:e.clientY, panX, panY, zoom,
+            dist: b ? Math.hypot(a[0] - b[0], a[1] - b[1]) : 0, moved:false };
+});
+vStage.addEventListener('pointermove', e => {
+  if (!pts.has(e.pointerId) || !gesture) return;
+  pts.set(e.pointerId, [e.clientX, e.clientY]);
+  const vals = [...pts.values()];
+  if (vals.length === 2 && gesture.dist) {
+    const [a, b] = vals;
+    const [cx, cy] = boxPoint((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+    const next = Math.min(4, Math.max(1, gesture.zoom * Math.hypot(a[0] - b[0], a[1] - b[1]) / gesture.dist));
+    const k = next / zoom;
+    panX = cx - (cx - panX) * k; panY = cy - (cy - panY) * k; zoom = next;
+    clamp(); apply(); gesture.moved = true; return;
+  }
+  const dx = e.clientX - gesture.x, dy = e.clientY - gesture.y;
+  if (Math.abs(dx) + Math.abs(dy) > 6) gesture.moved = true;
+  if (zoom > 1) {
+    vStage.classList.add('dragging');
+    panX = gesture.panX + dx; panY = gesture.panY + dy; clamp(); apply();
+  } else {
+    vImg.style.transform = `translateX(${dx}px)`;
+  }
+});
+const release = e => {
+  if (!pts.has(e.pointerId)) return;
+  pts.delete(e.pointerId);
+  vStage.classList.remove('dragging');
+  if (pts.size || !gesture) return;
+  dragged = gesture.moved;
+  setTimeout(() => { dragged = false; }, 0);
+  const dx = e.clientX - gesture.x;
+  if (zoom === 1) {
+    if (Math.abs(dx) > 60) show(at + (dx < 0 ? 1 : -1)); else apply(true);
+  }
+  gesture = null;
+};
+vStage.addEventListener('pointerup', release);
+vStage.addEventListener('pointercancel', release);
 
 /* ── Demo video ──────────────────────────────────────────────────
    Loads and plays only while on screen. Reduced motion or a data-saver
@@ -1175,22 +1363,26 @@ const navEl = document.querySelector('.nav');
 const navSlot = navEl.querySelector('.brand-slot');
 let from, to, span = 1, queued = false;
 
+const timeline = CSS.supports('animation-timeline: scroll()');
 function placeBrand() {
   queued = false;
-  const y = scrollY;
-  const p = Math.min(1, Math.max(0, y / span));
-  const e = p * p * (3 - 2 * p);
-  const top = Math.max(to.y, from.y - y);
-  const left = from.x + (to.x - from.x) * e;
-  const scale = (from.h + (to.h - from.h) * e) / from.h;
-  fly.style.transform = `translate(${left}px, ${top}px) scale(${scale})`;
-  navEl.classList.toggle('float', p < 0.92);
+  const p = Math.min(1, Math.max(0, scrollY / span));
+  const floating = p < 0.92;
+  if (navEl.classList.contains('float') !== floating) navEl.classList.toggle('float', floating);
+  if (timeline) return;
+  const top = Math.max(to.y, from.y - scrollY);
+  const left = from.x + (to.x - from.x) * p;
+  const scale = (from.h + (to.h - from.h) * p) / from.h;
+  fly.style.transform = `translate3d(${left}px, ${top}px, 0) scale(${scale})`;
 }
 function measureBrand() {
   const hs = heroSlot.getBoundingClientRect(), ns = navSlot.getBoundingClientRect();
   from = { x:hs.left, y:hs.top + scrollY, h:hs.height };
   to = { x:ns.left, y:ns.top, h:ns.height };
   span = Math.max(1, from.y - to.y);
+  const vars = { '--x0':`${from.x}px`, '--y0':`${from.y}px`, '--x1':`${to.x}px`, '--y1':`${to.y}px`,
+                 '--s1':`${to.h / from.h}`, '--span':`${span}px` };
+  for (const k in vars) fly.style.setProperty(k, vars[k]);
   placeBrand();
   fly.classList.add('ready');
 }
