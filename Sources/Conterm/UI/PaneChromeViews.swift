@@ -22,7 +22,12 @@ struct HostInfoButton: View {
                 .font(.system(size: 8.5, weight: .bold))
                 .foregroundStyle(Color.white.opacity(hovering ? 0.95 : 0.72))
                 .frame(width: 18, height: 18)
-                .background(Circle().fill(Theme.paneTitleBar))
+                .background {
+                    if !chipGlassAvailable { Circle().fill(Theme.paneTitleBar) }
+                }
+                .modifier(ChipGlass(shape: Circle(), tint: Theme.paneTitleBar.opacity(0.55)))
+                // The glow is cast by the ring alone, so no shadow is ever
+                // drawn from the glass layer.
                 .overlay(
                     Circle()
                         .strokeBorder(
@@ -31,9 +36,9 @@ struct HostInfoButton: View {
                                 center: .center, angle: .degrees(-40)),
                             lineWidth: 1)
                         .blendMode(light ? .normal : .plusLighter)
+                        .shadow(color: Theme.sshAccent.opacity(hovering ? 0.55 : 0.22),
+                                radius: hovering ? 5 : 3)
                 )
-                .shadow(color: Theme.sshAccent.opacity(hovering ? 0.55 : 0.22),
-                        radius: hovering ? 5 : 3)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -122,26 +127,29 @@ struct PaneTitleBar: View {
                 KeybindChip(label: "⌥\(index)", isActive: isActive, light: collapsed)
             }
         }
+        // On glass the collapsed pill's glyphs dim here; the material
+        // itself is never faded.
+        .opacity(collapsed && !isActive && chipGlassAvailable ? 0.6 : 1)
         .padding(.horizontal, collapsed ? 9 : 12)
         .padding(.vertical, 6)
         .background(
             ZStack {
-                if collapsed {
-                    // Light, solid capsule — the compact state.
-                    Capsule(style: .continuous).fill(Color.white.opacity(0.92))
-                } else {
-                    // Solid (opaque) bed: the pill floats over the opaque
-                    // terminal, so it reads as a solid chip, not glass. The
-                    // cool variant marks an SSH pane statically — no per-frame
-                    // cost over a long remote session.
+                if !chipGlassAvailable {
+                    // Solid beds where Liquid Glass is unavailable: light
+                    // when collapsed, the cool variant marking an SSH pane.
                     Capsule(style: .continuous)
-                        .fill(remoteHost != nil ? Theme.paneRemoteBar : Theme.paneTitleBar)
+                        .fill(collapsed ? Color.white.opacity(0.92)
+                              : remoteHost != nil ? Theme.paneRemoteBar : Theme.paneTitleBar)
+                }
+                if !collapsed {
                     Capsule(style: .continuous)
                         .fill(Color.white.opacity(isActive ? 0.10 : 0.0))
                         .blendMode(.plusLighter)
                 }
             }
         )
+        .modifier(ChipGlass(shape: Capsule(style: .continuous), tint: glassTint,
+                            scheme: collapsed ? .light : .dark))
         // One-shot light sweep on connect — kept out of the tree at rest.
         .overlay {
             if shimmering { connectSweep }
@@ -155,8 +163,9 @@ struct PaneTitleBar: View {
         )
         // Collapsed pill is a bright light capsule, so it must dim on an
         // inactive pane the way the expanded pill does through its colours
-        // — otherwise an unfocused pane still looks lit.
-        .opacity(collapsed && !isActive ? 0.5 : 1)
+        // — otherwise an unfocused pane still looks lit. On glass the
+        // tint and glyphs dim instead (`glassTint`, the opacity above).
+        .opacity(collapsed && !isActive && !chipGlassAvailable ? 0.5 : 1)
         // Tap toggles the compact state. contentShape makes the whole
         // capsule the hit target; the surrounding overlay frame stays
         // empty so clicks elsewhere fall through to the terminal.
@@ -202,6 +211,13 @@ struct PaneTitleBar: View {
         }
     }
 
+    /// Glass tint: a light frost when collapsed, dimmer on an inactive
+    /// pane; otherwise the dark bed, cool while remote.
+    private var glassTint: Color {
+        if collapsed { return Color.white.opacity(isActive ? 0.80 : 0.45) }
+        return (remoteHost != nil ? Theme.paneRemoteBar : Theme.paneTitleBar).opacity(0.55)
+    }
+
     /// Capsule border: cyan while remote, neutral white otherwise; darker
     /// on the collapsed light bed. Flat solid colours only — see the note
     /// on the stroke overlay.
@@ -239,6 +255,34 @@ struct PaneTitleBar: View {
         remoteHost != nil
             ? Color(red: 0.10, green: 0.50, blue: 0.95)
             : Color.black.opacity(0.55)
+    }
+}
+
+/// Liquid Glass for the pane chips needs macOS 26; below it each chip
+/// draws its own solid bed.
+private var chipGlassAvailable: Bool {
+    if #available(macOS 26, *) { return true }
+    return false
+}
+
+/// Frosted Liquid Glass bed for the chips floating on a pane (title pill,
+/// Host Overview button). They sit over the opaque terminal tile, not the
+/// window's glass sheet, so this is never glass nested on glass.
+/// `.regular` frosts the cells behind; the tint and colour scheme keep the
+/// chip's glyphs legible over any terminal theme.
+private struct ChipGlass<S: Shape>: ViewModifier {
+    let shape: S
+    let tint: Color
+    var scheme: ColorScheme = .dark
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content
+                .glassEffect(.regular.tint(tint), in: shape)
+                .environment(\.colorScheme, scheme)
+        } else {
+            content
+        }
     }
 }
 

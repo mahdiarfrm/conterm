@@ -289,7 +289,10 @@ struct OverlayPanelBackground: View {
 // per-frame re-lens AND draws the black-line artifacts AppKit produces when
 // glass stacks on glass. A flat tint instead reads as a lens *on* the sheet:
 // over the top bar the desktop shows through it, over a pane it's a clean
-// dark capsule — and it costs nothing per frame.
+// dark capsule — and it costs nothing per frame. The exception is the chips
+// floating on a pane (`ChipGlass` in `PaneChromeViews.swift`): they sit over
+// the opaque terminal tile, never over the sheet, so their glass is not
+// nested and re-lenses only the small area under each chip.
 
 /// Translucent capsule/rect fill for a chrome control. `selected` lifts it
 /// a touch so an active control reads as more present without changing the
