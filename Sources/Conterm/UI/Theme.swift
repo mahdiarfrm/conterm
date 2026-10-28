@@ -37,12 +37,16 @@ enum Theme {
     /// Solid bed for the pane-floating chips (the dir/title pill, the
     /// command-result badge). Opaque so they read as solid chips over the
     /// terminal, a step lighter than `paneTile` for separation.
-    static let paneTitleBar  = Color(red: 0.12, green: 0.13, blue: 0.16)
+    static let paneTitleBar  = dynamic(
+        light: NSColor(calibratedRed: 0.955, green: 0.950, blue: 0.965, alpha: 1),
+        dark:  NSColor(calibratedRed: 0.12, green: 0.13, blue: 0.16, alpha: 1))
 
     /// Bed for the title pill while the pane is SSH'd. Same lightness as
     /// `paneTitleBar` but pushed cool/blue so a remote pane reads as
     /// remote at a glance, with no per-frame cost.
-    static let paneRemoteBar = Color(red: 0.07, green: 0.13, blue: 0.20)
+    static let paneRemoteBar = dynamic(
+        light: NSColor(calibratedRed: 0.86, green: 0.92, blue: 0.98, alpha: 1),
+        dark:  NSColor(calibratedRed: 0.07, green: 0.13, blue: 0.20, alpha: 1))
 
     /// SSH cyan, on the dark pill bed — the remote-state hue for the
     /// glyph glow, border, and connect sweep.
@@ -62,12 +66,25 @@ enum Theme {
         dark:  NSColor(white: 1.0, alpha: 0.14))
     static let highlight     = Color(red: 0.85, green: 0.95, blue: 1.00)
 
-    /// Non-adaptive accent for chrome that floats over the dark terminal
-    /// in BOTH appearances (pane title pill, suggestion strip). The
-    /// regular `accent` flips near-black in light mode and would vanish
-    /// against the dark bed — this stays the cool near-white.
+    /// Non-adaptive cool near-white for chrome that stays dark in both
+    /// appearances (the suggestion strip). The regular `accent` flips
+    /// near-black in light mode and would vanish on a dark bed.
     static let accentOnDark  = Color(red: 0.92, green: 0.96, blue: 1.00)
-    static let warning       = Color(red: 1.00, green: 0.80, blue: 0.55)
+    /// Ink on the pane chips (title pill, badges, close button): white on
+    /// the dark chip bed, cool near-black once a light tint lightens it.
+    static let onChip        = dynamic(
+        light: NSColor(calibratedRed: 0.10, green: 0.12, blue: 0.16, alpha: 1),
+        dark:  .white)
+    /// `onChip`'s accent: the cool near-white (`accentOnDark`) on the dark
+    /// bed, the same ink as `onChip` on the light one.
+    static let onChipAccent  = dynamic(
+        light: NSColor(calibratedRed: 0.10, green: 0.12, blue: 0.16, alpha: 1),
+        dark:  NSColor(calibratedRed: 0.92, green: 0.96, blue: 1.00, alpha: 1))
+    /// Pale amber on dark glass; a deeper amber under a light tint, where
+    /// the pale one washes out.
+    static let warning       = dynamic(
+        light: NSColor(calibratedRed: 0.66, green: 0.34, blue: 0.00, alpha: 1),
+        dark:  NSColor(calibratedRed: 1.00, green: 0.80, blue: 0.55, alpha: 1))
 
     static let textPrimary   = dynamic(
         light: NSColor(white: 0.0, alpha: 0.88),

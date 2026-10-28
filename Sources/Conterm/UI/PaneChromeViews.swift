@@ -14,18 +14,17 @@ struct HostInfoButton: View {
 
     var body: some View {
         Button(action: action) {
-            // Floats over the terminal bed, which stays dark in both
-            // appearances — adaptive text colors go near-black in light
-            // mode and vanish here, so the glyph keeps fixed on-dark
-            // tones (same rule as the pane title pill).
+            // Floats over the terminal on the chip bed; `onChip` follows
+            // that bed (dark, or light under a light tint).
             Image(systemName: "info")
                 .font(.system(size: 8.5, weight: .bold))
-                .foregroundStyle(Color.white.opacity(hovering ? 0.95 : 0.72))
+                .foregroundStyle(Theme.onChip.opacity(hovering ? 0.95 : 0.72))
                 .frame(width: 18, height: 18)
                 .background {
                     if !chipGlassAvailable { Circle().fill(Theme.paneTitleBar) }
                 }
-                .modifier(ChipGlass(shape: Circle(), tint: Theme.paneTitleBar.opacity(0.55)))
+                .modifier(ChipGlass(shape: Circle(), tint: Theme.paneTitleBar.opacity(0.55),
+                                    scheme: light ? .light : .dark))
                 // The glow is cast by the ring alone, so no shadow is ever
                 // drawn from the glass layer.
                 .overlay(
@@ -95,7 +94,7 @@ struct PaneTitleBar: View {
         if remoteHost != nil {
             return isActive ? Theme.sshAccent : Theme.sshAccent.opacity(0.55)
         }
-        return isActive ? Theme.accentOnDark : Color.white.opacity(0.35)
+        return isActive ? Theme.onChipAccent : Theme.onChip.opacity(0.35)
     }
 
     var body: some View {
@@ -106,7 +105,7 @@ struct PaneTitleBar: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(collapsed
                         ? Theme.sshAccentDeep
-                        : (isActive ? Color.white : Color.white.opacity(0.7)))
+                        : (isActive ? Theme.onChip : Theme.onChip.opacity(0.7)))
                     .shadow(color: (!collapsed && isActive) ? Theme.sshAccent.opacity(0.7) : .clear,
                             radius: 4)
             } else {
@@ -119,7 +118,7 @@ struct PaneTitleBar: View {
             if !collapsed {
                 Text(labelText)
                     .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.6))
+                    .foregroundStyle(isActive ? Theme.onChip : Theme.onChip.opacity(0.6))
                     .lineLimit(1)
                     .truncationMode(.head)
             }
@@ -149,7 +148,7 @@ struct PaneTitleBar: View {
             }
         )
         .modifier(ChipGlass(shape: Capsule(style: .continuous), tint: glassTint,
-                            scheme: collapsed ? .light : .dark))
+                            scheme: collapsed || prefs.lightGlass ? .light : .dark))
         // One-shot light sweep on connect — kept out of the tree at rest.
         .overlay {
             if shimmering { connectSweep }
@@ -226,7 +225,7 @@ struct PaneTitleBar: View {
         if remoteHost != nil {
             return Theme.sshAccent.opacity(isActive ? 0.45 : 0.18)
         }
-        return Color.white.opacity(isActive ? 0.30 : 0.10)
+        return Theme.onChip.opacity(isActive ? 0.30 : 0.10)
     }
 
     /// A narrow band of cyan light that travels left → right across the
@@ -297,7 +296,7 @@ private struct KeybindChip: View {
             .font(.system(size: 11, weight: .semibold, design: .rounded))
             .foregroundStyle(light
                 ? Color.black.opacity(0.7)
-                : (isActive ? Theme.accentOnDark : Color.white.opacity(0.55)))
+                : (isActive ? Theme.onChipAccent : Theme.onChip.opacity(0.55)))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
@@ -348,7 +347,7 @@ struct UploadBadge: View {
             }
             Text(label)
                 .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.9))
+                .foregroundStyle(Theme.onChip.opacity(0.9))
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -377,7 +376,7 @@ struct CommandBadge: View {
     private var unknownExit: Bool { result.exitCode < 0 }
 
     private var tint: Color {
-        if unknownExit { return Color.white.opacity(0.6) }
+        if unknownExit { return Theme.onChip.opacity(0.6) }
         return result.failed ? Drop.bad : Drop.good
     }
     private var icon: String {
@@ -396,7 +395,7 @@ struct CommandBadge: View {
                 .foregroundStyle(tint)
             Text(label)
                 .font(Drop.mono(10.5, .medium))
-                .foregroundStyle(Color.white.opacity(0.9))
+                .foregroundStyle(Theme.onChip.opacity(0.9))
                 .lineLimit(1)
         }
         .padding(.horizontal, 11)

@@ -404,8 +404,8 @@ final class PaneTreeView: NSView {
         // `opaquePanes` flips, so the setting reaches existing panes. The
         // publisher fires before the value commits, so re-apply on the
         // next runloop turn.
-        prefsCancellable = prefs.$opaquePanes
-            .removeDuplicates()
+        prefsCancellable = prefs.$opaquePanes.combineLatest(prefs.$lightGlass)
+            .removeDuplicates { $0 == $1 }
             .sink { [weak self] _ in
                 DispatchQueue.main.async { self?.applyPaneBacking() }
             }
@@ -700,6 +700,18 @@ final class PaneTreeView: NSView {
 /// reparented out of here, so its IOSurface stays attached across splits.
 @MainActor
 final class PaneBox: NSView {
+    /// Tile gradient: top light falling to a deeper floor. Dark anchors on
+    /// Theme.paneTile; light is the same shape in paper whites.
+    static func tileColors(light: Bool) -> [CGColor] {
+        light
+            ? [NSColor(calibratedRed: 0.985, green: 0.985, blue: 0.990, alpha: 1).cgColor,
+               NSColor(calibratedRed: 0.955, green: 0.955, blue: 0.965, alpha: 1).cgColor,
+               NSColor(calibratedRed: 0.930, green: 0.930, blue: 0.945, alpha: 1).cgColor]
+            : [NSColor(calibratedRed: 0.085, green: 0.095, blue: 0.125, alpha: 1).cgColor,
+               NSColor(calibratedRed: 0.050, green: 0.055, blue: 0.075, alpha: 1).cgColor,
+               NSColor(calibratedRed: 0.035, green: 0.040, blue: 0.058, alpha: 1).cgColor]
+    }
+
     let pane: Pane
     let host: Ghostty.SurfaceHostView
     private let prefs: Preferences
@@ -760,11 +772,7 @@ final class PaneBox: NSView {
         // Anchored around Theme.paneTile: a touch of top light falling to
         // a deeper floor, so the tile has depth under a translucent
         // terminal background.
-        tileGradient.colors = [
-            NSColor(calibratedRed: 0.085, green: 0.095, blue: 0.125, alpha: 1).cgColor,
-            NSColor(calibratedRed: 0.050, green: 0.055, blue: 0.075, alpha: 1).cgColor,
-            NSColor(calibratedRed: 0.035, green: 0.040, blue: 0.058, alpha: 1).cgColor,
-        ]
+        tileGradient.colors = Self.tileColors(light: prefs.lightGlass)
         tileGradient.locations = [0, 0.35, 1]
         tileGradient.startPoint = CGPoint(x: 0.5, y: 0)
         tileGradient.endPoint = CGPoint(x: 0.5, y: 1)
@@ -860,6 +868,9 @@ final class PaneBox: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         tileGradient.isHidden = !solid
+        tileGradient.colors = Self.tileColors(light: prefs.lightGlass)
+        tileTopLight.backgroundColor = (prefs.lightGlass ? NSColor.black : .white)
+            .withAlphaComponent(prefs.lightGlass ? 0.04 : 0.07).cgColor
         tileGrain.isHidden = !solid
         tileTopLight.isHidden = !solid
         tileGradient.frame = bounds

@@ -80,6 +80,20 @@ final class SweepRingView: NSView {
         rebuild()
     }
 
+    /// The sweep's hot spot: white on the dark pill. On a light pill white
+    /// vanishes and reads as a gap, so it's a deeper shade of the glow.
+    private var beadColor: NSColor {
+        effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? .white
+            : glowColor.blended(withFraction: 0.3, of: .black) ?? glowColor
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        conicTexture = nil
+        rebuild()
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard let window else { return }
@@ -98,7 +112,9 @@ final class SweepRingView: NSView {
         lastScale = scale
         let pad = Self.haloPad
 
-        if conicTexture == nil { conicTexture = Self.conicImage(color: glowColor) }
+        if conicTexture == nil {
+            conicTexture = Self.conicImage(color: glowColor, bead: beadColor)
+        }
 
         // Manually-added sublayers get CA's default implicit actions;
         // without the guard each reframe animates 0.25 s behind the pill.
@@ -138,8 +154,8 @@ final class SweepRingView: NSView {
         rotor.add(spin, forKey: "sweep")
     }
 
-    /// Conic sweep texture: dark tail → glow → white bead → glow → dark.
-    private static func conicImage(color: NSColor) -> CGImage? {
+    /// Conic sweep texture: dark tail → glow → bead → glow → dark.
+    private static func conicImage(color: NSColor, bead: NSColor) -> CGImage? {
         let g = CAGradientLayer()
         g.type = .conic
         g.startPoint = CGPoint(x: 0.5, y: 0.5)
@@ -147,7 +163,7 @@ final class SweepRingView: NSView {
         g.colors = [color.withAlphaComponent(0).cgColor,
                     color.withAlphaComponent(0).cgColor,
                     color.cgColor,
-                    NSColor.white.cgColor,
+                    bead.cgColor,
                     color.cgColor,
                     color.withAlphaComponent(0).cgColor]
         g.locations = [0, 0.55, 0.78, 0.84, 0.90, 1.0]

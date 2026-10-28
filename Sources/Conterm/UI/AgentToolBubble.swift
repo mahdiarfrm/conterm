@@ -56,17 +56,23 @@ struct AgentToolGlyph: View {
 /// its tool bubbles, the History capsule. Flat and opaque on purpose: these
 /// stay up for as long as an agent runs, over a terminal that is streaming,
 /// so a sampled material would re-render with every frame of output. The
-/// bed and ink are pinned, not adaptive — the chips sit on the terminal in
-/// both appearances.
+/// bed and ink follow the appearance (the glass tint), so the chips go
+/// light with a light theme.
 enum PanePill {
-    static let bed = Color(red: 0.05, green: 0.055, blue: 0.07)
-    static let ink = Color(white: 0.96)
+    static let bed = Theme.dynamic(
+        light: NSColor(calibratedRed: 0.975, green: 0.970, blue: 0.980, alpha: 1),
+        dark:  NSColor(calibratedRed: 0.05, green: 0.055, blue: 0.07, alpha: 1))
+    static let ink = Theme.dynamic(light: NSColor(white: 0.10, alpha: 1),
+                                   dark:  NSColor(white: 0.96, alpha: 1))
 
     /// Light caught on the rim: strongest where the key light lands
     /// (top-leading), nearly gone at the far corner. Neutral, like the
-    /// kit's `Drop.sheen`, but pinned light to match the bed.
+    /// kit's `Drop.sheen`; a soft dark rim on the light bed.
     static var edge: LinearGradient {
-        LinearGradient(colors: [Color.white.opacity(0.34), Color.white.opacity(0.05)],
+        LinearGradient(colors: [Theme.dynamic(light: NSColor(white: 0, alpha: 0.14),
+                                              dark: NSColor(white: 1, alpha: 0.34)),
+                                Theme.dynamic(light: NSColor(white: 0, alpha: 0.05),
+                                              dark: NSColor(white: 1, alpha: 0.05))],
                        startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }

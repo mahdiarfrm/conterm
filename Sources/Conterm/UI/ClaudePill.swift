@@ -44,9 +44,8 @@ struct AgentPill: View {
             mark
             Text(status.label)
                 .font(Drop.display(13, .semibold))
-                // Pinned light, not adaptive: the pill keeps its dark bed in
-                // both appearances (it floats over the dark terminal), so the
-                // label must stay light or it vanishes in light mode.
+                // Follows the bed (PanePill), which is light under a light
+                // tint and dark otherwise.
                 .foregroundStyle(PanePill.ink)
                 .lineLimit(1)
                 .fixedSize()
@@ -56,10 +55,10 @@ struct AgentPill: View {
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 9)
-        // Flat black bed: the pill floats over the opaque terminal, and its
+        // Flat opaque bed (PanePill): the pill floats over the terminal, and its
         // sweep/glow/ring animation is the beauty here — a flat opaque bed
         // is cheapest (no per-frame glass re-lens) and makes the animation
-        // pop against the dark cells.
+        // pop against the cells.
         .background(flatPillBackground)
         // Phase-keyed identity so the ring (a different shape per
         // phase) crossfades on transition instead of popping.
@@ -124,7 +123,7 @@ struct AgentPill: View {
 
     @ViewBuilder
     private var mark: some View {
-        // Pinned light for the same reason as the label — see `body`.
+        // Follows the bed like the label — see `body`.
         let tint = (working || attention) ? glowColor : PanePill.ink.opacity(0.6)
         let templated = status.tool.markIsTemplate
         // Cached decode: `mark` re-evaluates every frame while the sweep
