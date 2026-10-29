@@ -1419,9 +1419,25 @@ struct AboutContent: View {
 private struct ThemePicker: View {
     @EnvironmentObject var themes: ThemeCatalog
     @EnvironmentObject var prefs: Preferences
+    @EnvironmentObject var state: AppState
     @Binding var filter: String
 
+    /// Where a swatch pick lands: every window (the global theme,
+    /// written to the config file), or only the window this Settings
+    /// panel belongs to (`AppState.windowThemeID`).
+    private enum Scope: Hashable { case allWindows, thisWindow }
+    @State private var scope: Scope = .allWindows
+
     private let columns = [GridItem(.adaptive(minimum: 132), spacing: 10)]
+
+    /// The theme the swatch grid should mark selected in the current
+    /// scope: a window override wins in This-window scope, and a
+    /// window without one shows the global pick it is following.
+    private var selectedThemeID: String? {
+        scope == .thisWindow
+            ? (state.windowThemeID ?? themes.current)
+            : themes.current
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1435,7 +1451,7 @@ private struct ThemePicker: View {
                         .foregroundStyle(Theme.textSecondary)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Capsule().fill(Theme.stroke))
-                } else if let cur = themes.current {
+                } else if let cur = selectedThemeID {
                     Text(cur)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(Theme.textSecondary)
@@ -1448,6 +1464,8 @@ private struct ThemePicker: View {
             // config (the picker is disabled and its managed block is
             // removed); OFF lets the swatches below own the palette.
             sourceToggle
+
+            scopeRow
 
             // Only the filter + swatches dim/disable while the config owns
             // the colors — the toggle above stays live so it can be turned
@@ -1485,9 +1503,9 @@ private struct ThemePicker: View {
                             ForEach(filteredThemes, id: \.id) { theme in
                                 ThemeSwatch(
                                     theme: theme,
-                                    isSelected: theme.id == themes.current
+                                    isSelected: theme.id == selectedThemeID
                                 )
-                                .onTapGesture { themes.apply(theme) }
+                                .onTapGesture { pick(theme) }
                             }
                         }
                         .padding(.vertical, 4)
@@ -1498,6 +1516,11 @@ private struct ThemePicker: View {
             .disabled(prefs.themeFromConfig)
             .opacity(prefs.themeFromConfig ? 0.4 : 1)
             .animation(Theme.Spring.snappy, value: prefs.themeFromConfig)
+        }
+        .onAppear {
+            // Land on the scope this window is actually in, so a
+            // themed window doesn't offer a global pick by default.
+            scope = state.windowThemeID != nil ? .thisWindow : .allWindows
         }
     }
 
@@ -1533,6 +1556,60 @@ private struct ThemePicker: View {
         // user picks one.
         .onChange(of: prefs.themeFromConfig) { _, on in
             if on { themes.followConfig() }
+        }
+    }
+
+    /// Scope row: does the next swatch pick retheme every window, or
+    /// only this one? A window with its own theme can drop back to
+    /// following the global pick here. Disabled while the config owns
+    /// the colors, like the swatches below.
+    private var scopeRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Text("Apply to")
+                    .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                Picker("", selection: $scope) {
+                    Text("All windows").tag(Scope.allWindows)
+                    Text("This window").tag(Scope.thisWindow)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                Spacer(minLength: 8)
+                if scope == .thisWindow, state.windowThemeID != nil {
+                    Button("Use global theme") { state.setWindowTheme(nil) }
+                        .font(.system(size: 11, design: .rounded))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.accent)
+                }
+            }
+            if scope == .thisWindow {
+                Text(state.windowThemeID == nil
+                     ? "This window follows the global theme. Pick a swatch to give it its own."
+                     : "Only this window uses this theme. Other windows keep the global theme.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Theme.stroke, lineWidth: 0.5)
+        )
+        .disabled(prefs.themeFromConfig)
+        .opacity(prefs.themeFromConfig ? 0.4 : 1)
+    }
+
+    private func pick(_ theme: ThemeCatalog.Theme) {
+        switch scope {
+        case .allWindows: themes.apply(theme)
+        case .thisWindow: state.setWindowTheme(theme.id)
         }
     }
 
