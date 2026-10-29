@@ -148,6 +148,18 @@ final class AppState: ObservableObject {
     let prefs: Preferences
     let notesStore: NotesStore
 
+    /// This window's own terminal theme (a `ThemeCatalog` theme id).
+    /// Nil = follow the global theme (`ThemeCatalog.current`, or the
+    /// user's config when `prefs.themeFromConfig` is on). Applied to
+    /// this window's surfaces only — see `setWindowTheme` — and
+    /// persisted per window by `SessionStore`.
+    @Published var windowThemeID: String?
+
+    /// The `.contermConfigReloaded` observer. A global reload pushes
+    /// the global config to EVERY surface, so a window holding an
+    /// override re-applies its own theme on top (see init).
+    private var configReloadObserver: NSObjectProtocol?
+
     /// Weak handle to THIS state's NSWindow. Set by WindowController
     /// right after AppState is created. Used by closeTab so we close
     /// the window that owns this state, not whichever window happens
@@ -167,7 +179,19 @@ final class AppState: ObservableObject {
         self.prefs = prefs
         self.ghostty = ghostty
         self.notesStore = notesStore
+        self.windowThemeID = restore?.themeID
         self.launchOverlayVisible = showLaunchOverlay
+        // A global config reload (theme pick, font change, blur
+        // slider…) pushes the global config to every surface,
+        // clobbering this window's theme. Re-apply the override on
+        // top. Registered before any surface exists; the surfaces a
+        // restored window creates later pick the theme up in
+        // `makePaneSurface` instead.
+        configReloadObserver = NotificationCenter.default.addObserver(
+            forName: .contermConfigReloaded, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyWindowTheme() }
+        }
         if let r = restore, !r.tabs.isEmpty {
             // Rehydrate every saved tab. Each tab gets a fresh PaneTree
             // with one leaf seeded to the saved cwd. Pane splits aren't
@@ -262,6 +286,44 @@ final class AppState: ObservableObject {
     func dismissLaunchOverlay() {
         launchOverlayVisible = false
         prefs.hasLaunched = true
+    }
+
+    isolated deinit {
+        if let configReloadObserver {
+            NotificationCenter.default.removeObserver(configReloadObserver)
+        }
+    }
+
+    // MARK: - Per-window theme
+
+    /// Set (or clear, with nil) this window's terminal theme and push
+    /// it to every live pane in the window. Other windows keep the
+    /// global theme (`ThemeCatalog.current`). Persisted per window by
+    /// `SessionStore`, so a themed window reopens themed.
+    func setWindowTheme(_ id: String?) {
+        windowThemeID = id
+        guard let ghostty else { return }
+        // While the user's config owns the colors, push the plain
+        // chain instead — the config wins, matching the global
+        // picker's disabled state.
+        ghostty.applyTheme(prefs.themeFromConfig ? nil : id,
+                           to: liveControllers)
+    }
+
+    /// Re-apply this window's override after a global reload pushed
+    /// the global config to every surface. Windows without an
+    /// override already hold the right config, so they skip the
+    /// rebuild entirely.
+    func applyWindowTheme() {
+        guard let id = windowThemeID, !prefs.themeFromConfig,
+              let ghostty else { return }
+        ghostty.applyTheme(id, to: liveControllers)
+    }
+
+    /// Every live pane surface in this window.
+    private var liveControllers: [Ghostty.SurfaceController] {
+        tabs.flatMap { $0.paneTree.root.leaves() }
+            .compactMap(\.controller)
     }
 
     func toggleSettings() {

@@ -159,7 +159,9 @@ final class ThemeCatalog: ObservableObject {
     /// `key = value` except `theme`/`config-file` (which a theme file
     /// can't set anyway). Emitted into the user config so the theme's
     /// colors land as explicit keys that override a hardcoded palette.
-    nonisolated private static func colorLines(forThemeID id: String) -> [String] {
+    /// Also used by `Ghostty.App.makeConfig(themeID:)` to build a
+    /// per-window config variant without touching the global file.
+    nonisolated static func colorLines(forThemeID id: String) -> [String] {
         guard let dir = Bundle.main.resourceURL?
             .appendingPathComponent("ghostty/themes") else { return [] }
         let path = dir.appendingPathComponent(id).path

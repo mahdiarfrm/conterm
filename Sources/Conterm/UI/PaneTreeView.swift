@@ -250,6 +250,12 @@ func makePaneSurface(pane: Pane,
     }
 
     _ = controller.start(view: view)
+    // A fresh surface starts from the app-level (global) config. If
+    // this window carries its own theme, layer it on now — splits
+    // and new tabs in a themed window open themed, not global.
+    if let themeID = state.windowThemeID, !state.prefs.themeFromConfig {
+        app.applyTheme(themeID, to: [controller])
+    }
     pane.startingDir = nil
     state.syncSurfaceOcclusion()
 
