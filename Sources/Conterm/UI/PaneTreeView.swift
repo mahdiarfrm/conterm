@@ -1173,7 +1173,7 @@ struct PaneChrome: View {
                     .help("Open this session in Orbit")
                     .background(GeometryReader { g in
                         Color.clear.preference(key: PillHeightKey.self, value: g.size.height)
-                    })
+                    }.allowsHitTesting(false))
                     ForEach(liveBubbles.items) { item in
                         toolBubble(item)
                             .transition(chipTransition(pillEdge: .leading))
@@ -1184,7 +1184,7 @@ struct PaneChrome: View {
                 }
                 .background(GeometryReader { g in
                     Color.clear.preference(key: ClusterWidthKey.self, value: g.size.width)
-                })
+                }.allowsHitTesting(false))
                 .onPreferenceChange(ClusterWidthKey.self) { w in
                     if abs(w - clusterWidth) > 0.5 { clusterWidth = w }
                 }
@@ -1233,7 +1233,7 @@ struct PaneChrome: View {
                 }
                 .background(GeometryReader { g in
                     Color.clear.preference(key: TitleWidthKey.self, value: g.size.width)
-                })
+                }.allowsHitTesting(false))
                 .onPreferenceChange(TitleWidthKey.self) { w in
                     if abs(w - titleWidth) > 0.5 { titleWidth = w }
                 }
@@ -1243,7 +1243,7 @@ struct PaneChrome: View {
         }
         .background(GeometryReader { g in
             Color.clear.preference(key: ChromeWidthKey.self, value: g.size.width)
-        })
+        }.allowsHitTesting(false))
         .onPreferenceChange(ChromeWidthKey.self) { w in
             if abs(w - chromeWidth) > 0.5 { chromeWidth = w }
         }
