@@ -93,26 +93,26 @@ struct TabBar: View {
         }
     }
 
-    /// Natural width of everything the bar must seat — labelled pills
-    /// at `TabPill.idealWidth` plus the strip's gap after each, tray
-    /// tags, the measured cluster, fixed chrome. Full pills keep their
-    /// badge and close slot, both hidden by opacity rather than removed.
-    /// Under "Fit tabs to titles" every pill counts at its fitted width
-    /// except one, which counts full — the costliest one, not the one
-    /// selected, so whether the bar shows labels or numbers depends on
-    /// the tabs and not on which is selected. A cluster measurement of 0
-    /// means the preference hasn't landed yet, so assume a typical
-    /// cluster rather than none. The base covers the bar margins, new-tab
-    /// disc, and collapse chevron.
+    /// Narrowest width the bar can seat with every pill labelled — each
+    /// at `TabPill.minimumWidth`, its title shortened as far as it goes,
+    /// plus the strip's gap after each — with tray tags, the measured
+    /// cluster and fixed chrome. Full pills keep their badge and close
+    /// slot, both hidden by opacity rather than removed. Under "Fit tabs
+    /// to titles" every pill counts fitted except one, which counts full
+    /// — the costliest one, not the one selected, so whether the bar
+    /// shows labels or numbers depends on the tabs and not on which is
+    /// selected. A cluster measurement of 0 means the preference hasn't
+    /// landed yet, so assume a typical cluster rather than none. The base
+    /// covers the bar margins, new-tab disc, and collapse chevron.
     private func neededWidth() -> CGFloat {
         var needed: CGFloat = 90
         needed += trailingWidth
         var selectedExtra: CGFloat = 0
         for (i, tab) in state.tabs.enumerated() {
             let title = tab.title.isEmpty ? "shell" : tab.title
-            let full = TabPill.idealWidth(title: title, index: i + 1, fitted: false)
+            let full = TabPill.minimumWidth(title: title, index: i + 1, fitted: false)
             if prefs.fitTabsToTitles {
-                let fitted = TabPill.idealWidth(title: title, index: i + 1, fitted: true)
+                let fitted = TabPill.minimumWidth(title: title, index: i + 1, fitted: true)
                 needed += fitted
                 selectedExtra = max(selectedExtra, full - fitted)
             } else {
@@ -135,11 +135,11 @@ struct TabBar: View {
     }
 
     /// Number-only tab pills: when the bar can't give every tab a
-    /// labelled pill, all pills collapse at once to dot + number
-    /// instead of truncating titles into blank slivers. Flips a touch
-    /// before true exhaustion — a pill showing its number beats one
-    /// showing three letters of its title. Read once per body: it sums
-    /// every pill's measured width.
+    /// labelled pill, even with titles shortened to six characters, all
+    /// pills collapse at once to dot + number. Flips a touch before true
+    /// exhaustion — a pill showing its number beats one showing three
+    /// letters of its title. Read once per body: it sums every pill's
+    /// measured width.
     private var miniPills: Bool {
         barWidth > 0 && neededWidth() > barWidth - 24
     }
@@ -151,15 +151,19 @@ struct TabBar: View {
     /// tray boundary (a tray counts as one child, starving its pills) —
     /// except under "Fit tabs to titles", where pills keep their ideal
     /// widths and the spare stays at the bar's end. Under-supply
-    /// compresses proportionally instead; the per-pill number rule and
-    /// the global mini flip take over from there.
+    /// shortens titles instead, to the length `titleCap` finds; when even
+    /// the shortest titles don't fit, pills compress proportionally and
+    /// the per-pill number rule and the global mini flip take over.
     private func pillWidths(mini: Bool) -> [UUID: CGFloat] {
-        guard barWidth > 0, !mini else { return [:] }
-        var ideals: [(UUID, CGFloat)] = []
-        for (i, tab) in state.tabs.enumerated() {
-            let title = tab.title.isEmpty ? "shell" : tab.title
-            ideals.append((tab.id, TabPill.idealWidth(title: title, index: i + 1,
-                                                      fitted: fitsTitle(tab))))
+        guard barWidth > 0 else { return [:] }
+        if mini { return miniPillWidths() }
+        let pills = state.tabs.enumerated().map { i, tab in
+            (title: tab.title.isEmpty ? "shell" : tab.title, index: i + 1,
+             fitted: fitsTitle(tab))
+        }
+        let ids = state.tabs.map(\.id)
+        var ideals: [(UUID, CGFloat)] = zip(ids, pills).map { id, p in
+            (id, TabPill.idealWidth(title: p.title, index: p.index, fitted: p.fitted))
         }
         let total = ideals.reduce(0) { $0 + $1.1 }
         var chrome: CGFloat = 90
@@ -178,8 +182,64 @@ struct TabBar: View {
             let bonus = (available - total) / CGFloat(ideals.count)
             return Dictionary(uniqueKeysWithValues: ideals.map { ($0, $1 + bonus) })
         }
+        if let cap = Self.titleCap(for: pills, available: available) {
+            ideals = zip(ids, pills).map { id, p in
+                (id, TabPill.idealWidth(
+                    title: p.title, index: p.index, fitted: p.fitted,
+                    titleCap: max(cap, TabPill.shortestTitleWidth(p.title, fitted: p.fitted))))
+            }
+            return Dictionary(uniqueKeysWithValues: ideals)
+        }
         let scale = available / total
         return Dictionary(uniqueKeysWithValues: ideals.map { ($0, $1 * scale) })
+    }
+
+    /// Number-only pills stretch to fill the bar instead of bunching at
+    /// its start: every pill gets the same share of the free width, and
+    /// none drops below `TabPill.miniWidth`. Same chrome as the labelled
+    /// case — the margins, tray tags and the gap after each pill.
+    private func miniPillWidths() -> [UUID: CGFloat] {
+        var chrome: CGFloat = 90 + trailingWidth + CGFloat(state.tabs.count) * Theme.ui(6)
+        for g in tabGroups.groups
+        where state.tabs.contains(where: { $0.groupID == g.id }) {
+            chrome += TabPill.textWidth(g.name, size: Theme.ui(11)) + Theme.ui(56)
+        }
+        let share = Self.miniShare(available: barWidth - chrome, count: state.tabs.count)
+        return Dictionary(uniqueKeysWithValues: state.tabs.enumerated().map { i, tab in
+            (tab.id, max(share, TabPill.miniWidth(index: i + 1)))
+        })
+    }
+
+    /// Each number-only pill's even share of `available`, rounded down
+    /// to a whole point so the shares never sum past it.
+    static func miniShare(available: CGFloat, count: Int) -> CGFloat {
+        guard count > 0, available > 0 else { return 0 }
+        return floor(available / CGFloat(count))
+    }
+
+    /// The title width to cut long titles to so every pill fits in
+    /// `available`: titles shorter than it stay whole, and none is cut
+    /// below `TabPill.shortestTitleWidth`. Nil when even the shortest
+    /// titles don't fit.
+    static func titleCap(for pills: [(title: String, index: Int, fitted: Bool)],
+                         available: CGFloat) -> CGFloat? {
+        func total(_ cap: CGFloat) -> CGFloat {
+            pills.reduce(0) { sum, p in
+                sum + TabPill.idealWidth(
+                    title: p.title, index: p.index, fitted: p.fitted,
+                    titleCap: max(cap, TabPill.shortestTitleWidth(p.title, fitted: p.fitted)))
+            }
+        }
+        guard total(0) <= available else { return nil }
+        // `total` only grows with the cap, so halve the range until it's
+        // within a hundredth of a point.
+        var lo: CGFloat = 0
+        var hi = pills.map { TabPill.titleWidth($0.title, fitted: $0.fitted) }.max() ?? 0
+        while hi - lo > 0.01 {
+            let mid = (lo + hi) / 2
+            if total(mid) <= available { lo = mid } else { hi = mid }
+        }
+        return lo
     }
 
     var body: some View {
