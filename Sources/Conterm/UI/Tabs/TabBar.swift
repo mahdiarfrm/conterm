@@ -164,7 +164,7 @@ struct TabBar: View {
         let total = ideals.reduce(0) { $0 + $1.1 }
         var chrome: CGFloat = 90
         chrome += trailingWidth
-        chrome += CGFloat(ideals.count) * 6
+        chrome += CGFloat(ideals.count) * Theme.ui(6)
         for g in tabGroups.groups
         where state.tabs.contains(where: { $0.groupID == g.id }) {
             chrome += TabPill.textWidth(g.name, size: Theme.ui(11)) + Theme.ui(56)
