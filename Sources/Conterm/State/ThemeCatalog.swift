@@ -190,6 +190,26 @@ final class ThemeCatalog: ObservableObject {
               !colorLines(forThemeID: id).isEmpty else { return nil }
         return id
     }
+
+    /// Whether macOS itself is in Dark Mode. Read from the global
+    /// defaults domain: the app's own appearance is forced by the
+    /// glass tint, so `NSApp.effectiveAppearance` can't answer this.
+    nonisolated static var systemIsDark: Bool {
+        UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+    }
+
+    /// The theme a window actually renders: its fixed theme, or —
+    /// when following macOS — the slot for the current appearance,
+    /// falling back to the other slot so a half-filled pair still
+    /// themes the window. Nil = follow the global theme.
+    nonisolated static func effectiveThemeID(fixed: String?,
+                                             light: String?,
+                                             dark: String?,
+                                             followsSystem: Bool,
+                                             isDark: Bool) -> String? {
+        guard followsSystem else { return fixed }
+        return isDark ? (dark ?? light) : (light ?? dark)
+    }
 }
 
 // MARK: - Color helpers

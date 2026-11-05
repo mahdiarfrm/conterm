@@ -257,7 +257,8 @@ func makePaneSurface(pane: Pane,
     // so `AppState.liveControllers` never re-themes them; they stay
     // on the global theme rather than freezing at creation time.
     if owningTab != nil,
-       let themeID = state.windowThemeID, !state.prefs.themeFromConfig {
+       let themeID = state.effectiveWindowThemeID,
+       !state.prefs.themeFromConfig {
         app.applyTheme(themeID, to: [controller])
     }
     pane.startingDir = nil
