@@ -272,7 +272,9 @@ struct ClassicSettingsPanel: View {
                         .disabled(prefs.glassMode == .solid)
                 }
                 SettingsRow(title: "Tint",
-                            subtitle: "Cool dark or cool light.") {
+                            subtitle: prefs.followSystemAppearance
+                                ? "Follows macOS Light and Dark (Theme ▸ Follow system appearance)."
+                                : "Cool dark or cool light.") {
                     Picker("", selection: $prefs.lightGlass.withSound()) {
                         Text("Dark").tag(false)
                         Text("Light").tag(true)
@@ -280,6 +282,7 @@ struct ClassicSettingsPanel: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(width: 150)
+                    .disabled(prefs.followSystemAppearance)
                 }
                 SettingsRow(title: "Frost",
                             subtitle: "How clear the glass reads. Clear shows the desktop through the top bar and gaps; frost it up for more privacy on a busy wallpaper. Does not change its cost.") {
@@ -1403,6 +1406,8 @@ private struct ThemePicker: View {
     @EnvironmentObject var themes: ThemeCatalog
     @EnvironmentObject var prefs: Preferences
     @Binding var filter: String
+    /// Which appearance a swatch tap assigns while following macOS.
+    @State private var editingLight = Preferences.systemIsLight
 
     private let columns = [GridItem(.adaptive(minimum: 132), spacing: 10)]
 
@@ -1431,6 +1436,7 @@ private struct ThemePicker: View {
             // config (the picker is disabled and its managed block is
             // removed); OFF lets the swatches below own the palette.
             sourceToggle
+            followToggle
 
             // Only the filter + swatches dim/disable while the config owns
             // the colors — the toggle above stays live so it can be turned
@@ -1468,9 +1474,12 @@ private struct ThemePicker: View {
                             ForEach(filteredThemes, id: \.id) { theme in
                                 ThemeSwatch(
                                     theme: theme,
-                                    isSelected: theme.id == themes.current
+                                    isSelected: theme.id == themes.selectedID(
+                                        editingLight: editingLight, prefs: prefs)
                                 )
-                                .onTapGesture { themes.apply(theme) }
+                                .onTapGesture {
+                                    themes.pick(theme, editingLight: editingLight, prefs: prefs)
+                                }
                             }
                         }
                         .padding(.vertical, 4)
@@ -1517,6 +1526,46 @@ private struct ThemePicker: View {
         .onChange(of: prefs.themeFromConfig) { _, on in
             if on { themes.followConfig() }
         }
+    }
+
+    /// Follow-macOS row. On: Light and Dark slots; a swatch tap fills the
+    /// slot being edited and the terminal + glass switch with macOS.
+    private var followToggle: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Follow system appearance")
+                        .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(prefs.followSystemAppearance
+                         ? "Theme and glass tint switch with macOS Light and Dark. Pick a theme for each."
+                         : "Turn on to pair a Light and a Dark theme that switch with macOS.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Toggle("", isOn: $prefs.followSystemAppearance)
+                    .labelsHidden()
+            }
+            if prefs.followSystemAppearance {
+                Picker("", selection: $editingLight.withSound()) {
+                    Text("Light: \(prefs.lightThemeID ?? "—")").tag(true)
+                    Text("Dark: \(prefs.darkThemeID ?? "—")").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Theme.stroke, lineWidth: 0.5)
+        )
     }
 
     private var filteredThemes: [ThemeCatalog.Theme] {

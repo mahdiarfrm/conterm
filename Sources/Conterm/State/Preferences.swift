@@ -89,8 +89,53 @@ final class Preferences: ObservableObject {
     }
     /// Light vs dark glass tint. OFF (default) = dark glass, which the
     /// chrome's text colors are tuned for. ON = a light tint.
+    /// While following macOS this tracks the system; a write from any
+    /// other control (Tint, the palette toggle) snaps back to it.
     @Published var lightGlass: Bool {
-        didSet { ud.set(lightGlass, forKey: K.lightGlass) }
+        didSet {
+            if followSystemAppearance, lightGlass != Self.systemIsLight {
+                lightGlass = Self.systemIsLight
+                return
+            }
+            ud.set(lightGlass, forKey: K.lightGlass)
+        }
+    }
+    /// Follow macOS light/dark: drives `lightGlass` from the system, and
+    /// `ThemeCatalog` rewrites the theme block with `lightThemeID` or
+    /// `darkThemeID` whenever macOS switches.
+    @Published var followSystemAppearance: Bool {
+        didSet {
+            guard followSystemAppearance != oldValue else { return }
+            ud.set(followSystemAppearance, forKey: K.followSystemAppearance)
+            if followSystemAppearance {
+                // Remember the manual tint so turning this off restores it.
+                ud.set(lightGlass, forKey: K.manualLightGlass)
+                syncLightGlassToSystem()
+            } else if let manual = ud.object(forKey: K.manualLightGlass) as? Bool {
+                lightGlass = manual
+            }
+        }
+    }
+    /// Picker theme ids for each appearance while following the system.
+    @Published var lightThemeID: String? {
+        didSet { ud.set(lightThemeID, forKey: K.lightThemeID) }
+    }
+    @Published var darkThemeID: String? {
+        didSet { ud.set(darkThemeID, forKey: K.darkThemeID) }
+    }
+    /// True when macOS is in Light mode. Read from NSApp, not a window:
+    /// Conterm pins its windows' appearance to the glass tint.
+    static var systemIsLight: Bool {
+        // NSApp is nil outside a running app (unit tests): treat as light.
+        NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) != .darkAqua
+    }
+
+    /// Called at launch and, through `ThemeCatalog.bind`, on every macOS
+    /// appearance change.
+    func syncLightGlassToSystem() {
+        guard followSystemAppearance else { return }
+        let light = Self.systemIsLight
+        if lightGlass != light { lightGlass = light }
     }
     /// Theme source. OFF (default): the Settings ▸ Appearance picker owns
     /// the terminal colors (written as a managed block in the conterm
@@ -504,6 +549,10 @@ final class Preferences: ObservableObject {
         static let useDefaultConfig = "conterm.useDefaultConfig"
         static let lightGlass       = "conterm.lightGlass"
         static let themeFromConfig  = "conterm.themeFromConfig"
+        static let followSystemAppearance = "conterm.followSystemAppearance"
+        static let lightThemeID     = "conterm.lightThemeID"
+        static let darkThemeID      = "conterm.darkThemeID"
+        static let manualLightGlass = "conterm.manualLightGlass"
         static let solidGlass        = "conterm.solidGlass"   // pre-glassMode migration source
         static let glassMode         = "conterm.glassMode"
         static let interfaceStyle    = "conterm.interfaceStyle"
@@ -659,6 +708,9 @@ final class Preferences: ObservableObject {
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
         self.lightGlass             = ud.object(forKey: K.lightGlass) as? Bool ?? false
         self.themeFromConfig        = ud.object(forKey: K.themeFromConfig) as? Bool ?? false
+        self.followSystemAppearance = ud.object(forKey: K.followSystemAppearance) as? Bool ?? false
+        self.lightThemeID           = ud.string(forKey: K.lightThemeID)
+        self.darkThemeID            = ud.string(forKey: K.darkThemeID)
         self.glassMode              = GlassMode(rawValue: ud.string(forKey: K.glassMode) ?? "")
             ?? (ud.object(forKey: K.solidGlass) as? Bool).map { $0 ? GlassMode.solid : .glass }
             ?? .blur
@@ -675,6 +727,7 @@ final class Preferences: ObservableObject {
         self.opaquePanes            = ud.object(forKey: K.opaquePanes) as? Bool ?? false
         self.diagnosticLogging      = ud.object(forKey: K.diagnosticLogging) as? Bool ?? false
         refreshPaneBlurFromConfig()
+        syncLightGlassToSystem()
         // `didSet` doesn't fire during init, so the services these settings
         // drive are handed their values once here.
         Briefing.shared.enabled = briefingEnabled

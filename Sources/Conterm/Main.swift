@@ -100,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // from any previous run are unconsumable.
         KubeContextWatch.sweepSessionFiles()
         themes = ThemeCatalog()
+        themes.bind(prefs)
         fonts = FontCatalog()
         notifications = NotificationStore()
         AnsibleCenter.shared.notifications = notifications
