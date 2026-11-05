@@ -10,14 +10,14 @@ GHOSTTY_KIT_REPO="thdxg/ghostty"
 # Fork release tag of the prebuilt xcframework. Daily tags get pruned
 # after a few weeks; the mirror below outlives them. Override with
 # GHOSTTY_KIT_TAG only while validating a new pin.
-GHOSTTY_KIT_TAG="${GHOSTTY_KIT_TAG:-build-2026-07-01}"
+GHOSTTY_KIT_TAG="${GHOSTTY_KIT_TAG:-v1.4.0}"
 # `<semver>-<branch>-+<commit>` marker embedded in the static library.
-GHOSTTY_KIT_VERSION="1.3.2-main-+24c5671"
+GHOSTTY_KIT_VERSION="1.4.0-main-+83fb956"
 # Source commit the pinned build was produced from (the short hash is
 # the version marker's suffix).
-GHOSTTY_KIT_COMMIT="24c56716f0dfe55911f6f81ee76198a95423851e"
-# Zig toolchain the fork's CI builds the pin with.
-GHOSTTY_KIT_ZIG="0.15.2"
+GHOSTTY_KIT_COMMIT="83fb95624b0439ee660c2679b43b38c8b63769cd"
+# Zig toolchain the pin builds with (v1.4.0 needs at least 0.17.0).
+GHOSTTY_KIT_ZIG="0.17.0"
 # Durable mirror of the pinned tarball, attached to a Conterm release —
 # the pin must not depend on the upstream URL surviving. When bumping
 # the pin: attach the new tarball to a release (gh release upload) and

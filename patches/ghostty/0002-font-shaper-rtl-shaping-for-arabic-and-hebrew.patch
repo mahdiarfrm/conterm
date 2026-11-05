@@ -1,5 +1,8 @@
 Upstream: https://github.com/ghostty-org/ghostty/pull/11079
   "font/shaper: add RTL shaping for Arabic and Hebrew" (open, unmerged)
+  Ported from the PR head 0d4ba38 onto v1.4.0. itijah gets the
+  singleton `uucode_mod` from SharedDeps instead of a second uucode
+  module instance, and the bidi fields join the `runtime` uucode table.
 
 Arabic-script text — Persian included — needs two things a terminal
 usually lacks: contextual letterforms, so letters join, and a visual
@@ -14,12 +17,12 @@ Carried here because it is unmerged upstream. Drop this file when the
 pin reaches a commit that already has it.
 
 diff --git a/build.zig.zon b/build.zig.zon
-index e7a8747f7d1..edf55cdec38 100644
+index f5d4d4f..98a07da 100644
 --- a/build.zig.zon
 +++ b/build.zig.zon
-@@ -42,6 +42,12 @@
-             .url = "https://deps.files.ghostty.org/uucode-0.2.0-ZZjBPqZVVABQepOqZHR7vV_NcaN-wats0IB6o-Exj6m9.tar.gz",
-             .hash = "uucode-0.2.0-ZZjBPqZVVABQepOqZHR7vV_NcaN-wats0IB6o-Exj6m9",
+@@ -45,6 +45,12 @@
+             .url = "https://deps.files.ghostty.org/uucode-ea62149739404a73c202b48a33bf6dd2af4bd9b0.tar.gz",
+             .hash = "uucode-0.2.0-ZZjBPoGFVgCiflJNFc6Io8xzC67B6PA5bUkk4LT0kCxg",
          },
 +        .itijah = .{
 +            // DiaaEddin/itijah v0.2.1
@@ -29,100 +32,76 @@ index e7a8747f7d1..edf55cdec38 100644
 +        },
          .zig_wayland = .{
              // codeberg ifreund/zig-wayland
-             .url = "https://deps.files.ghostty.org/zig_wayland-1b5c038ec10da20ed3a15b0b2a6db1c21383e8ea.tar.gz",
+             .url = "https://deps.files.ghostty.org/zig_wayland-27dda01712ddf3cb46ebd93380d88b01a7c828f8.tar.gz",
 diff --git a/src/build/GhosttyZig.zig b/src/build/GhosttyZig.zig
-index e63120e7467..46575a580ce 100644
+index 9d98724..48d85f2 100644
 --- a/src/build/GhosttyZig.zig
 +++ b/src/build/GhosttyZig.zig
-@@ -74,7 +74,8 @@ fn initVt(
-     deps.unicode_tables.addModuleImport(vt);
+@@ -138,6 +138,7 @@ fn initVt(
  
      // We need uucode for grapheme break support
--    deps.addUucode(b, vt, cfg.target, cfg.optimize);
-+    const uucode_mod = deps.addUucode(b, vt, cfg.target, cfg.optimize);
-+    deps.addItijah(b, vt, cfg.target, cfg.optimize, uucode_mod);
+     vt.addImport("uucode", deps.uucode_mod);
++    deps.addItijah(b, vt, cfg.target, cfg.optimize, deps.uucode_mod);
  
-     // If SIMD is enabled, add all our SIMD dependencies.
-     if (cfg.simd) {
+     // We need wuffs for Kitty graphics pixel operations (format
+     // conversion and alpha blending). Unlike pure Zig dependencies
 diff --git a/src/build/SharedDeps.zig b/src/build/SharedDeps.zig
-index 9276c99145f..a6e187fd1c9 100644
+index 8f4e239..ec70bf4 100644
 --- a/src/build/SharedDeps.zig
 +++ b/src/build/SharedDeps.zig
-@@ -412,7 +412,14 @@ pub fn add(
+@@ -538,6 +538,7 @@ pub fn add(
      })) |dep| {
          step.root_module.addImport("z2d", dep.module("z2d"));
      }
--    self.addUucode(b, step.root_module, target, optimize);
-+    const uucode_mod = self.addUucode(b, step.root_module, target, optimize);
-+    self.addItijah(
-+        b,
-+        step.root_module,
-+        target,
-+        optimize,
-+        uucode_mod,
-+    );
++    self.addItijah(b, step.root_module, target, optimize, self.uucode_mod);
      if (b.lazyDependency("zf", .{
          .target = target,
          .optimize = optimize,
-@@ -879,15 +886,38 @@ pub fn addUucode(
-     module: *std.Build.Module,
-     target: std.Build.ResolvedTarget,
-     optimize: std.builtin.OptimizeMode,
--) void {
-+) ?*std.Build.Module {
-     if (b.lazyDependency("uucode", .{
-         .target = target,
-         .optimize = optimize,
-         .tables_path = self.uucode_tables,
-         .build_config_path = b.path("src/build/uucode_config.zig"),
-     })) |dep| {
--        module.addImport("uucode", dep.module("uucode"));
-+        const uucode_mod = dep.module("uucode");
-+        module.addImport("uucode", uucode_mod);
-+        return uucode_mod;
-     }
-+
-+    return null;
-+}
-+
+@@ -1184,6 +1185,26 @@ fn gtkDistResourcesUncached(b: *std.Build) GtkResources {
+     };
+ }
+ 
++/// itijah (bidi layout for RTL shaping) imports uucode; it gets the
++/// singleton `uucode_mod` so every importer shares one module instance.
 +pub fn addItijah(
 +    _: *const SharedDeps,
 +    b: *std.Build,
 +    module: *std.Build.Module,
 +    target: std.Build.ResolvedTarget,
 +    optimize: std.builtin.OptimizeMode,
-+    uucode_mod: ?*std.Build.Module,
++    uucode_mod: *std.Build.Module,
 +) void {
-+    const uucode_ = uucode_mod orelse return;
 +    const itijah_dep = b.lazyDependency("itijah", .{}) orelse return;
 +    const itijah_mod = b.createModule(.{
 +        .root_source_file = itijah_dep.path("src/lib.zig"),
 +        .target = target,
 +        .optimize = optimize,
 +    });
-+    itijah_mod.addImport("uucode", uucode_);
++    itijah_mod.addImport("uucode", uucode_mod);
 +    module.addImport("itijah", itijah_mod);
- }
- 
++}
++
  // For dynamic linking, we prefer dynamic linking and to search by
+ // mode first. Mode first will search all paths for a dynamic library
+ // before falling back to static.
 diff --git a/src/build/uucode_config.zig b/src/build/uucode_config.zig
-index 2bb0d4508b0..d4ab19fae62 100644
+index 20c4255..a89aa8e 100644
 --- a/src/build/uucode_config.zig
 +++ b/src/build/uucode_config.zig
-@@ -88,6 +88,10 @@ pub const tables = [_]config.Table{
+@@ -34,6 +34,10 @@ pub const tables = [_]config.Table{
          .fields = &.{
-             d.field("is_emoji_presentation"),
-             d.field("case_folding_full"),
-+            d.field("bidi_class"),
-+            d.field("bidi_paired_bracket"),
-+            d.field("joining_type"),
-+            d.field("is_bidi_mirrored"),
+             "is_emoji_presentation",
+             "case_folding_full",
++            "bidi_class",
++            "bidi_paired_bracket",
++            "joining_type",
++            "is_bidi_mirrored",
          },
      },
      .{
 diff --git a/src/font/shaper/bidi_helpers.zig b/src/font/shaper/bidi_helpers.zig
 new file mode 100644
-index 00000000000..de8cbf83f82
+index 0000000..de8cbf8
 --- /dev/null
 +++ b/src/font/shaper/bidi_helpers.zig
 @@ -0,0 +1,18 @@
@@ -145,7 +124,7 @@ index 00000000000..de8cbf83f82
 +    };
 +}
 diff --git a/src/font/shaper/coretext.zig b/src/font/shaper/coretext.zig
-index 5a8a6ccbf42..91ce357fda7 100644
+index 6960c32..7ce5f96 100644
 --- a/src/font/shaper/coretext.zig
 +++ b/src/font/shaper/coretext.zig
 @@ -3,6 +3,8 @@ const builtin = @import("builtin");
@@ -157,7 +136,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
  const font = @import("../main.zig");
  const os = @import("../../os/main.zig");
  const terminal = @import("../../terminal/main.zig");
-@@ -50,11 +52,17 @@ pub const Shaper = struct {
+@@ -51,11 +53,17 @@ pub const Shaper = struct {
  
      /// The shared memory used for shaping results.
      cell_buf: CellBuf,
@@ -175,7 +154,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
  
      /// List where we cache fonts, so we don't have to remake them for
      /// every single shaping operation.
-@@ -78,6 +86,9 @@ pub const Shaper = struct {
+@@ -79,6 +87,9 @@ pub const Shaper = struct {
      cf_release_thread: *CFReleaseThread,
      cf_release_thr: std.Thread,
  
@@ -185,7 +164,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
      const CellBuf = std.ArrayListUnmanaged(font.shape.Cell);
      const CodepointList = std.ArrayListUnmanaged(Codepoint);
      const Codepoint = struct {
-@@ -172,27 +183,20 @@ pub const Shaper = struct {
+@@ -173,27 +184,20 @@ pub const Shaper = struct {
          var run_state = RunState.init();
          errdefer run_state.deinit(alloc);
  
@@ -223,7 +202,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
              defer num.release();
              break :dict try macos.foundation.Dictionary.create(
                  &.{macos.c.kCTTypesetterOptionForcedEmbeddingLevel},
-@@ -201,6 +205,16 @@ pub const Shaper = struct {
+@@ -202,6 +206,16 @@ pub const Shaper = struct {
          };
          errdefer typesetter_attr_dict.release();
  
@@ -240,20 +219,20 @@ index 5a8a6ccbf42..91ce357fda7 100644
          // Create the CF release thread.
          var cf_release_thread = try alloc.create(CFReleaseThread);
          errdefer alloc.destroy(cf_release_thread);
-@@ -218,10 +232,12 @@ pub const Shaper = struct {
+@@ -219,10 +233,12 @@ pub const Shaper = struct {
          return .{
              .alloc = alloc,
-             .cell_buf = .{},
-+            .cluster_anchor_x = .{},
+             .cell_buf = .empty,
++            .cluster_anchor_x = .empty,
              .run_state = run_state,
              .features = features,
              .features_no_default = features_no_default,
              .typesetter_attr_dict = typesetter_attr_dict,
 +            .typesetter_attr_dict_rtl = typesetter_attr_dict_rtl,
-             .cached_fonts = .{},
+             .cached_fonts = .empty,
              .cached_font_grid = 0,
-             .cf_release_pool = .{},
-@@ -232,10 +248,13 @@ pub const Shaper = struct {
+             .cf_release_pool = .empty,
+@@ -233,10 +249,13 @@ pub const Shaper = struct {
  
      pub fn deinit(self: *Shaper) void {
          self.cell_buf.deinit(self.alloc);
@@ -267,7 +246,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
  
          {
              for (self.cached_fonts.items) |ft| {
-@@ -370,12 +389,16 @@ pub const Shaper = struct {
+@@ -371,12 +390,16 @@ pub const Shaper = struct {
          );
          self.cf_release_pool.appendAssumeCapacity(attr_str);
  
@@ -287,7 +266,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
              );
          self.cf_release_pool.appendAssumeCapacity(typesetter);
  
-@@ -389,6 +412,9 @@ pub const Shaper = struct {
+@@ -390,6 +413,9 @@ pub const Shaper = struct {
  
          // This keeps track of the cell starting x and cluster.
          var cell_offset: Offset = .{};
@@ -297,7 +276,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
  
          // For debugging positions, turn this on:
          //var run_offset_y: f64 = 0.0;
-@@ -433,9 +459,14 @@ pub const Shaper = struct {
+@@ -434,9 +460,14 @@ pub const Shaper = struct {
                  positions,
                  indices,
              ) |glyph, advance, position, index| {
@@ -314,7 +293,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
                  if (cell_offset.cluster != cluster) {
                      // We previously asserted that the new cluster is greater
                      // than cell_offset.cluster, but this isn't always true.
-@@ -485,16 +516,92 @@ pub const Shaper = struct {
+@@ -486,16 +517,92 @@ pub const Shaper = struct {
                      // exceptions to this heuristic for detecting ligatures,
                      // but using the logging below seems to show it works
                      // well.)
@@ -417,7 +396,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
                      }
                  }
  
-@@ -520,12 +627,10 @@ pub const Shaper = struct {
+@@ -521,12 +628,10 @@ pub const Shaper = struct {
              }
          }
  
@@ -434,7 +413,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
              @branchHint(.cold);
              std.mem.sort(
                  font.shape.Cell,
-@@ -684,6 +789,10 @@ pub const Shaper = struct {
+@@ -685,6 +790,10 @@ pub const Shaper = struct {
          pub fn finalize(self: RunIteratorHook) void {
              _ = self;
          }
@@ -445,7 +424,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
      };
  
      fn debugPositions(
-@@ -1822,13 +1931,8 @@ test "shape Chakma vowel sign with ligature (vowel sign renders first)" {
+@@ -1823,13 +1932,8 @@ test "shape Chakma vowel sign with ligature (vowel sign renders first)" {
          const cells = try shaper.shape(run);
          try testing.expectEqual(@as(usize, 4), cells.len);
          try testing.expectEqual(@as(u16, 0), cells[0].x);
@@ -461,7 +440,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
  
          // The vowel sign U renders before the TAA:
          try testing.expect(cells[1].x_offset < cells[2].x_offset);
-@@ -1892,18 +1996,18 @@ test "shape Bengali ligatures with out of order vowels" {
+@@ -1893,18 +1997,18 @@ test "shape Bengali ligatures with out of order vowels" {
  
          const cells = try shaper.shape(run);
          try testing.expectEqual(@as(usize, 8), cells.len);
@@ -492,7 +471,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
  
          // The vowel sign E renders before the SSA:
          try testing.expect(cells[2].x_offset < cells[3].x_offset);
-@@ -1911,6 +2015,126 @@ test "shape Bengali ligatures with out of order vowels" {
+@@ -1912,6 +2016,126 @@ test "shape Bengali ligatures with out of order vowels" {
      try testing.expectEqual(@as(usize, 1), count);
  }
  
@@ -619,7 +598,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
  test "shape box glyphs" {
      const testing = std.testing;
      const alloc = testing.allocator;
-@@ -2515,6 +2739,450 @@ test "shape high plane sprite font codepoint" {
+@@ -2516,6 +2740,450 @@ test "shape high plane sprite font codepoint" {
      try testing.expectEqual(null, try it.next(alloc));
  }
  
@@ -1070,7 +1049,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
  const TestShaper = struct {
      alloc: Allocator,
      shaper: Shaper,
-@@ -2530,10 +3198,12 @@ const TestShaper = struct {
+@@ -2531,10 +3199,12 @@ const TestShaper = struct {
  };
  
  const TestFont = enum {
@@ -1083,7 +1062,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
      monaspace_neon,
      nerd_font,
  };
-@@ -2547,10 +3217,12 @@ fn testShaperWithFont(alloc: Allocator, font_req: TestFont) !TestShaper {
+@@ -2548,10 +3218,12 @@ fn testShaperWithFont(alloc: Allocator, font_req: TestFont) !TestShaper {
      const testEmoji = font.embedded.emoji;
      const testEmojiText = font.embedded.emoji_text;
      const testFont = switch (font_req) {
@@ -1097,7 +1076,7 @@ index 5a8a6ccbf42..91ce357fda7 100644
          .nerd_font => font.embedded.test_nerd_font,
      };
 diff --git a/src/font/shaper/harfbuzz.zig b/src/font/shaper/harfbuzz.zig
-index b1126dd4e7d..7d0c938c476 100644
+index 11f9fd2..c7a8db1 100644
 --- a/src/font/shaper/harfbuzz.zig
 +++ b/src/font/shaper/harfbuzz.zig
 @@ -2,6 +2,8 @@ const std = @import("std");
@@ -1109,21 +1088,21 @@ index b1126dd4e7d..7d0c938c476 100644
  const font = @import("../main.zig");
  const terminal = @import("../../terminal/main.zig");
  const unicode = @import("../../unicode/main.zig");
-@@ -37,6 +39,13 @@ pub const Shaper = struct {
+@@ -38,6 +40,13 @@ pub const Shaper = struct {
      /// these separately because after shaping, HarfBuzz replaces codepoints
      /// with glyph indices in the buffer.
-     codepoints: std.ArrayListUnmanaged(Codepoint) = .{},
+     codepoints: std.ArrayList(Codepoint) = .empty,
 +    /// Per-cluster x anchors captured when a cluster first establishes its
 +    /// cell offset. This lets out-of-order combining marks re-anchor to the
 +    /// correct base cluster.
-+    cluster_anchor_x: std.ArrayListUnmanaged(i32) = .{},
++    cluster_anchor_x: std.ArrayList(i32) = .empty,
 +
 +    /// Scratch reused for terminal bidi layout resolution.
 +    bidi_layout_scratch: itijah.VisualLayoutScratch = .{},
  
      const Codepoint = struct {
          cluster: u32,
-@@ -97,6 +106,8 @@ pub const Shaper = struct {
+@@ -98,6 +107,8 @@ pub const Shaper = struct {
          self.cell_buf.deinit(self.alloc);
          self.alloc.free(self.hb_feats);
          self.codepoints.deinit(self.alloc);
@@ -1132,7 +1111,7 @@ index b1126dd4e7d..7d0c938c476 100644
      }
  
      pub fn endFrame(self: *const Shaper) void {
-@@ -128,6 +139,15 @@ pub const Shaper = struct {
+@@ -129,6 +140,15 @@ pub const Shaper = struct {
      ///
      /// If there is not enough space in the cell buffer, an error is returned.
      pub fn shape(self: *Shaper, run: font.shape.TextRun) ![]const font.shape.Cell {
@@ -1148,7 +1127,7 @@ index b1126dd4e7d..7d0c938c476 100644
          // We only do shaping if the font is not a special-case. For special-case
          // fonts, the codepoint == glyph_index so we don't need to run any shaping.
          if (run.font_index.special() == null) {
-@@ -164,6 +184,9 @@ pub const Shaper = struct {
+@@ -165,6 +185,9 @@ pub const Shaper = struct {
  
          // This keeps track of the cell starting x and cluster.
          var cell_offset: CellOffset = .{};
@@ -1158,7 +1137,7 @@ index b1126dd4e7d..7d0c938c476 100644
  
          // Convert all our info/pos to cells and set it.
          self.cell_buf.clearRetainingCapacity();
-@@ -171,9 +194,15 @@ pub const Shaper = struct {
+@@ -172,9 +195,15 @@ pub const Shaper = struct {
              // info_v.cluster is the index into our codepoints array. We use it
              // to get the original cluster.
              const index = info_v.cluster;
@@ -1176,7 +1155,7 @@ index b1126dd4e7d..7d0c938c476 100644
              if (cell_offset.cluster != cluster) {
                  const is_after_glyph_from_current_or_next_clusters =
                      cluster <= run_offset.cluster;
-@@ -215,13 +244,62 @@ pub const Shaper = struct {
+@@ -216,13 +245,62 @@ pub const Shaper = struct {
                  // exceptions to this heuristic for detecting ligatures,
                  // but using the logging below seems to show it works
                  // well.)
@@ -1246,7 +1225,7 @@ index b1126dd4e7d..7d0c938c476 100644
                  }
              }
  
-@@ -255,6 +333,16 @@ pub const Shaper = struct {
+@@ -256,6 +334,16 @@ pub const Shaper = struct {
          }
          //log.warn("----------------", .{});
  
@@ -1263,7 +1242,7 @@ index b1126dd4e7d..7d0c938c476 100644
          return self.cell_buf.items;
      }
  
-@@ -274,9 +362,7 @@ pub const Shaper = struct {
+@@ -275,9 +363,7 @@ pub const Shaper = struct {
  
              self.shaper.codepoints.clearRetainingCapacity();
  
@@ -1274,7 +1253,7 @@ index b1126dd4e7d..7d0c938c476 100644
              self.shaper.hb_buf.setDirection(.ltr);
          }
  
-@@ -296,6 +382,10 @@ pub const Shaper = struct {
+@@ -297,6 +383,10 @@ pub const Shaper = struct {
          pub fn finalize(self: RunIteratorHook) void {
              self.shaper.hb_buf.guessSegmentProperties();
          }
@@ -1285,7 +1264,7 @@ index b1126dd4e7d..7d0c938c476 100644
      };
  
      fn debugPositions(
-@@ -716,11 +806,7 @@ test "shape monaspace ligs" {
+@@ -722,11 +812,7 @@ test "shape monaspace ligs" {
      }
  }
  
@@ -1297,26 +1276,28 @@ index b1126dd4e7d..7d0c938c476 100644
 +test "shape arabic RTL" {
      const testing = std.testing;
      const alloc = testing.allocator;
- 
-@@ -746,20 +832,446 @@ test "shape arabic forced LTR" {
+     const io = testing.io;
+@@ -753,20 +839,446 @@ test "shape arabic forced LTR" {
      var count: usize = 0;
      while (try it.next(alloc)) |run| {
          count += 1;
 -        try testing.expectEqual(@as(usize, 25), run.cells);
 +        try testing.expect(run.rtl);
-+
-+        const cells = try shaper.shape(run);
+ 
+         const cells = try shaper.shape(run);
+-        try testing.expectEqual(@as(usize, 25), cells.len);
 +        try testing.expect(cells.len > 1);
-+
-+        var x: u16 = cells[0].x;
-+        for (cells[1..]) |cell| {
+ 
+         var x: u16 = cells[0].x;
+         for (cells[1..]) |cell| {
+-            try testing.expectEqual(x + 1, cell.x);
 +            try testing.expect(cell.x >= x);
-+            x = cell.x;
-+        }
-+    }
-+    try testing.expectEqual(@as(usize, 1), count);
-+}
-+
+             x = cell.x;
+         }
+     }
+     try testing.expectEqual(@as(usize, 1), count);
+ }
+ 
 +test "shape hebrew RTL" {
 +    const testing = std.testing;
 +    const alloc = testing.allocator;
@@ -1346,23 +1327,21 @@ index b1126dd4e7d..7d0c938c476 100644
 +        count += 1;
 +        try testing.expect(run.rtl);
 +        try testing.expectEqual(@as(u16, 9), run.cells);
- 
-         const cells = try shaper.shape(run);
--        try testing.expectEqual(@as(usize, 25), cells.len);
++
++        const cells = try shaper.shape(run);
 +        try testing.expect(cells.len > 1);
- 
-         var x: u16 = cells[0].x;
++
++        var x: u16 = cells[0].x;
 +        try testing.expect(x < run.cells);
-         for (cells[1..]) |cell| {
--            try testing.expectEqual(x + 1, cell.x);
++        for (cells[1..]) |cell| {
 +            try testing.expect(cell.x < run.cells);
 +            try testing.expect(cell.x >= x);
-             x = cell.x;
-         }
-     }
-     try testing.expectEqual(@as(usize, 1), count);
- }
- 
++            x = cell.x;
++        }
++    }
++    try testing.expectEqual(@as(usize, 1), count);
++}
++
 +test "shape arabic with tashkeel on middle letters" {
 +    const testing = std.testing;
 +    const alloc = testing.allocator;
@@ -1748,7 +1727,7 @@ index b1126dd4e7d..7d0c938c476 100644
  test "shape emoji width" {
      const testing = std.testing;
      const alloc = testing.allocator;
-@@ -1460,6 +1972,126 @@ test "shape Bengali ligatures with out of order vowels" {
+@@ -1527,6 +2039,126 @@ test "shape Bengali ligatures with out of order vowels" {
      try testing.expectEqual(@as(usize, 1), count);
  }
  
@@ -1875,7 +1854,7 @@ index b1126dd4e7d..7d0c938c476 100644
  test "shape box glyphs" {
      const testing = std.testing;
      const alloc = testing.allocator;
-@@ -2014,6 +2646,7 @@ const TestShaper = struct {
+@@ -2087,6 +2719,7 @@ const TestShaper = struct {
  
  const TestFont = enum {
      inconsolata,
@@ -1883,7 +1862,7 @@ index b1126dd4e7d..7d0c938c476 100644
      monaspace_neon,
      arabic,
  };
-@@ -2028,6 +2661,7 @@ fn testShaperWithFont(alloc: Allocator, font_req: TestFont) !TestShaper {
+@@ -2101,6 +2734,7 @@ fn testShaperWithFont(alloc: Allocator, font_req: TestFont) !TestShaper {
      const testEmojiText = font.embedded.emoji_text;
      const testFont = switch (font_req) {
          .inconsolata => font.embedded.inconsolata,
@@ -1892,7 +1871,7 @@ index b1126dd4e7d..7d0c938c476 100644
          .arabic => font.embedded.arabic,
      };
 diff --git a/src/font/shaper/noop.zig b/src/font/shaper/noop.zig
-index e5a08653f5d..ff2289ffffc 100644
+index e5a0865..ff2289f 100644
 --- a/src/font/shaper/noop.zig
 +++ b/src/font/shaper/noop.zig
 @@ -1,5 +1,6 @@
@@ -1932,7 +1911,7 @@ index e5a08653f5d..ff2289ffffc 100644
  };
  
 diff --git a/src/font/shaper/run.zig b/src/font/shaper/run.zig
-index 45c5d38ca51..79b1e506e7b 100644
+index 9f33ba3..a8009b5 100644
 --- a/src/font/shaper/run.zig
 +++ b/src/font/shaper/run.zig
 @@ -4,8 +4,20 @@ const Allocator = std.mem.Allocator;
@@ -2266,21 +2245,21 @@ index 45c5d38ca51..79b1e506e7b 100644
                      cell,
 -                    graphemes[j],
 -                    font_style,
--                    presentation,
++                    graphemes[logical_j],
++                    run_font_style,
+                     presentation,
 -                )) |idx| break :font_info .{ .idx = idx };
--
++                );
+ 
 -                // Otherwise we need a fallback character. Prefer the
 -                // official replacement character.
 -                if (try self.opts.grid.getIndex(
 -                    alloc,
 -                    0xFFFD, // replacement char
 -                    font_style,
-+                    graphemes[logical_j],
-+                    run_font_style,
-                     presentation,
+-                    presentation,
 -                )) |idx| break :font_info .{ .idx = idx, .fallback = 0xFFFD };
-+                );
- 
+-
 -                // Fallback to space
 -                if (try self.opts.grid.getIndex(
 -                    alloc,
@@ -2490,7 +2469,7 @@ index 45c5d38ca51..79b1e506e7b 100644
      }
  
      fn addCodepoint(self: *RunIterator, hasher: anytype, cp: u32, cluster: u32) !void {
-@@ -393,8 +450,72 @@ pub const RunIterator = struct {
+@@ -380,8 +437,72 @@ pub const RunIterator = struct {
  
          return null;
      }
@@ -2564,7 +2543,7 @@ index 45c5d38ca51..79b1e506e7b 100644
  /// continue.
  fn comparableStyle(style: terminal.Style) terminal.Style {
 diff --git a/src/font/shaper/web_canvas.zig b/src/font/shaper/web_canvas.zig
-index 590c1d2a302..53445225970 100644
+index d16bd96..9008145 100644
 --- a/src/font/shaper/web_canvas.zig
 +++ b/src/font/shaper/web_canvas.zig
 @@ -1,6 +1,7 @@
