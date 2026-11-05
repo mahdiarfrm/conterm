@@ -1384,8 +1384,8 @@ struct AboutContent: View {
         }
     }
 
-    /// The version without its build metadata: `1.3.2-main-+24c5671` reads
-    /// as `1.3.2-main`, and a long git SHA can't overflow the column.
+    /// The version without its build metadata: `1.4.0-main+83fb956` reads
+    /// as `1.4.0-main`, and a long git SHA can't overflow the column.
     private func libghosttyVersion(_ raw: String) -> String {
         let core = raw.split(separator: "+", maxSplits: 1).first.map(String.init) ?? raw
         let trimmed = core.trimmingCharacters(in: CharacterSet(charactersIn: "-"))

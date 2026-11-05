@@ -11,8 +11,9 @@ GHOSTTY_KIT_REPO="thdxg/ghostty"
 # after a few weeks; the mirror below outlives them. Override with
 # GHOSTTY_KIT_TAG only while validating a new pin.
 GHOSTTY_KIT_TAG="${GHOSTTY_KIT_TAG:-v1.4.0}"
-# `<semver>-<branch>-+<commit>` marker embedded in the static library.
-GHOSTTY_KIT_VERSION="1.4.0-main-+83fb956"
+# `<semver>-<branch>+<commit>` marker embedded in the static library
+# (builds before 1.4 wrote `<semver>-<branch>-+<commit>`).
+GHOSTTY_KIT_VERSION="1.4.0-main+83fb956"
 # Source commit the pinned build was produced from (the short hash is
 # the version marker's suffix).
 GHOSTTY_KIT_COMMIT="83fb95624b0439ee660c2679b43b38c8b63769cd"
@@ -24,7 +25,7 @@ GHOSTTY_KIT_ZIG="0.17.0"
 # update this URL with the constants above.
 GHOSTTY_KIT_MIRROR="https://github.com/mahdiarfrm/conterm/releases/download/v3.2.2/GhosttyKit-${GHOSTTY_KIT_TAG}.tar.gz"
 
-# Embedded `<semver>-<branch>-+<commit>` marker in the macOS slice's
+# Embedded `<semver>-<branch>+<commit>` marker in the macOS slice's
 # static library (name varies across fork builds: libghostty.a,
 # libghostty-internal.a, …).
 # The macOS slice directory is named for what it contains:

@@ -113,7 +113,7 @@ echo "==> zig build (ReleaseFast, ${XCF_TARGET} xcframework) — this takes a wh
 
 normalize_lib_prefix "$OUT"
 # Prefix match: the hash suffix's width varies with git's abbreviation,
-# so `…-+24c5671` and `…-+24c56716f` are the same pin.
+# so `…+83fb956` and `…+83fb9562` are the same pin.
 FOUND="$(kit_version "$OUT")"
 if [[ "$FOUND" == "$GHOSTTY_KIT_VERSION"* || "$GHOSTTY_KIT_VERSION" == "$FOUND"* ]]; then
     echo "OK: built ${FOUND} at ${OUT}"
