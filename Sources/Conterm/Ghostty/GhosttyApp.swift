@@ -700,15 +700,24 @@ extension Ghostty {
         }
 
         // Surface-scoped callbacks: userdata is the SurfaceController.
-        private static let cbReadClipboard: @convention(c) (UnsafeMutableRawPointer?, ghostty_clipboard_e, UnsafeMutableRawPointer?) -> Bool = { ud, _, state in
-            guard let ud, let state else { return false }
+        private static let cbReadClipboard: @convention(c) (UnsafeMutableRawPointer?, ghostty_clipboard_e, UnsafeMutableRawPointer?, UnsafePointer<UnsafePointer<CChar>?>?, Int, Bool) -> ghostty_clipboard_read_result_e = { ud, _, state, mimes, mimesLen, list in
+            guard let ud, let state else { return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED }
             // userdata is a weak box (SurfaceUserdata): resolve the
             // controller weakly so a surface mid-teardown — alive in its
             // deferred-free window after its controller was freed — yields
             // nil here instead of dereferencing freed memory. The strong
             // load also pins a live controller across the main hop.
             guard let controller = Unmanaged<SurfaceUserdata>
-                .fromOpaque(ud).takeUnretainedValue().controller else { return false }
+                .fromOpaque(ud).takeUnretainedValue().controller else {
+                return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED
+            }
+            // Text is the only representation served: pastes and OSC 52
+            // ask for `text/plain`, Kitty clipboard reads may ask for
+            // others, and a listing (`list`) asks for none.
+            let wantsText = (0..<mimesLen).contains { i in
+                mimes?[i].map { String(cString: $0) } == "text/plain"
+            }
+            guard wantsText || list else { return GHOSTTY_CLIPBOARD_READ_UNAVAILABLE }
             // NSPasteboard isn't thread-safe and the surface handle is
             // main-actor state; libghostty calls this off the main thread.
             // Complete asynchronously on main (the `state` token defers the
@@ -729,28 +738,72 @@ extension Ghostty {
                 // image drop, including the scp offer for SSH panes.
                 // Copies that carry text alongside a bitmap rendition
                 // (office apps) keep pasting their text.
-                if text.isEmpty,
+                if wantsText, text.isEmpty,
                    let path = ImagePaste.materializePNG(from: pb, prefix: "paste"),
                    controller.onFileDrop?([path]) != true {
                     text = ImagePaste.shellQuote(path) + " "
                 }
-                text.withCString { ptr in
-                    ghostty_surface_complete_clipboard_request(h, ptr, st, false)
-                }
+                completeRead(h, text: wantsText && !text.isEmpty ? text : nil,
+                             listText: list && !text.isEmpty, state: st)
             }
-            return true
+            return GHOSTTY_CLIPBOARD_READ_STARTED
         }
 
-        private static let cbConfirmReadClipboard: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?, UnsafeMutableRawPointer?, ghostty_clipboard_request_e) -> Void = { _, _, _, _ in }
+        /// Answers a started clipboard read with at most one `text/plain`
+        /// representation. No contents is a read that found nothing,
+        /// which libghostty treats the same as an unavailable clipboard.
+        private static func completeRead(_ h: ghostty_surface_t, text: String?, listText: Bool,
+                                         state: UnsafeMutableRawPointer) {
+            let bytes = Array((text ?? "").utf8)
+            "text/plain".withCString { mime in
+                bytes.withUnsafeBufferPointer { buf in
+                    var contents: [ghostty_clipboard_content_s] = []
+                    if text != nil {
+                        contents.append(ghostty_clipboard_content_s(
+                            mime: mime,
+                            data: UnsafeRawPointer(buf.baseAddress)?.assumingMemoryBound(to: CChar.self),
+                            len: buf.count))
+                    }
+                    let available: [UnsafePointer<CChar>?] = listText ? [mime] : []
+                    contents.withUnsafeBufferPointer { c in
+                        available.withUnsafeBufferPointer { a in
+                            var complete = ghostty_clipboard_complete_s(
+                                contents: c.baseAddress, contents_len: c.count,
+                                available: a.baseAddress, available_len: a.count,
+                                confirmed: false, remember: false)
+                            ghostty_surface_complete_clipboard_request(h, &complete, state)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Reads that need the user's approval (`clipboard-read = ask`,
+        // unsafe pastes under `clipboard-paste-protection`) are refused:
+        // Conterm has no approval prompt. Denying answers the request,
+        // so an OSC 52 reader gets an empty reply instead of waiting.
+        private static let cbConfirmReadClipboard: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<ghostty_clipboard_confirm_s>?, UnsafeMutableRawPointer?, ghostty_clipboard_request_e) -> Void = { ud, _, state, _ in
+            guard let ud, let state,
+                  let controller = Unmanaged<SurfaceUserdata>
+                    .fromOpaque(ud).takeUnretainedValue().controller else { return }
+            let stateToken = Int(bitPattern: state)
+            DispatchQueue.main.async {
+                guard let st = UnsafeMutableRawPointer(bitPattern: stateToken),
+                      let h = controller.handle else { return }
+                ghostty_surface_deny_clipboard_request(h, st)
+            }
+        }
 
         private static let cbWriteClipboard: @convention(c) (UnsafeMutableRawPointer?, ghostty_clipboard_e, UnsafePointer<ghostty_clipboard_content_s>?, Int, Bool) -> Void = { _, _, content, len, _ in
             guard let content, len > 0 else { return }
-            // Honor the first text/plain entry.
+            // Honor the first text/plain entry. Contents carry an explicit
+            // length and need not be NUL-terminated.
             for i in 0..<len {
                 let item = content[i]
                 let mime = item.mime.map { String(cString: $0) } ?? ""
                 if mime == "text/plain", let data = item.data {
-                    let str = String(cString: data)
+                    let str = String(decoding: UnsafeRawBufferPointer(start: data, count: item.len),
+                                     as: UTF8.self)
                     DispatchQueue.main.async {
                         let pb = NSPasteboard.general
                         pb.clearContents()
