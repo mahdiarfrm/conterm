@@ -180,6 +180,16 @@ final class ThemeCatalog: ObservableObject {
         }
         return out
     }
+
+    /// `id` if it still resolves to a readable theme file, else nil.
+    /// A restored per-window theme whose file is gone must drop to
+    /// following the global theme — keeping the dead id would leave
+    /// the picker showing a selection nothing can render.
+    nonisolated static func validatedThemeID(_ id: String?) -> String? {
+        guard let id, !id.isEmpty,
+              !colorLines(forThemeID: id).isEmpty else { return nil }
+        return id
+    }
 }
 
 // MARK: - Color helpers

@@ -179,7 +179,15 @@ final class AppState: ObservableObject {
         self.prefs = prefs
         self.ghostty = ghostty
         self.notesStore = notesStore
-        self.windowThemeID = restore?.themeID
+        // Drop a saved theme whose file is gone (renamed/removed
+        // theme, older build): the window follows the global theme
+        // and the picker shows no dead selection.
+        let restoredThemeID = ThemeCatalog.validatedThemeID(restore?.themeID)
+        self.windowThemeID = restoredThemeID
+        if restore?.themeID != nil, restoredThemeID == nil {
+            clog("conterm: saved window theme '\(restore?.themeID ?? "")' "
+                 + "no longer exists — following the global theme")
+        }
         self.launchOverlayVisible = showLaunchOverlay
         // A global config reload (theme pick, font change, blur
         // slider…) pushes the global config to every surface,
@@ -187,8 +195,14 @@ final class AppState: ObservableObject {
         // top. Registered before any surface exists; the surfaces a
         // restored window creates later pick the theme up in
         // `makePaneSurface` instead.
+        //
+        // Deliberately synchronous (no queue): `reloadConfig` posts
+        // this from the main actor, and the re-apply must land in the
+        // same turn — queued for the next runloop pass, a themed
+        // window renders one frame of global colors on every reload
+        // (visible as a flash while dragging the blur slider).
         configReloadObserver = NotificationCenter.default.addObserver(
-            forName: .contermConfigReloaded, object: nil, queue: .main
+            forName: .contermConfigReloaded, object: nil, queue: nil
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.applyWindowTheme() }
         }
