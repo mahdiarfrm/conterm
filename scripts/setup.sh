@@ -72,7 +72,22 @@ fi
 GHOSTTY_APP="${GHOSTTY_APP:-/Applications/Ghostty.app}"
 GHOSTTY_RES="$GHOSTTY_APP/Contents/Resources/ghostty"
 GHOSTTY_TERMINFO="$GHOSTTY_APP/Contents/Resources/terminfo"
-if [[ -d "$GHOSTTY_RES" ]]; then
+# These resources must match the libghostty they ship with, so they are
+# only refreshed from a Ghostty.app of the pinned version. Any other
+# version leaves the existing copies in place.
+GHOSTTY_PIN_SEMVER="${GHOSTTY_KIT_VERSION%%-*}"
+GHOSTTY_APP_SEMVER=""
+if [[ -x "$GHOSTTY_APP/Contents/MacOS/ghostty" ]]; then
+    GHOSTTY_APP_SEMVER="$("$GHOSTTY_APP/Contents/MacOS/ghostty" +version 2>/dev/null \
+        | sed -n 's/^Ghostty \([0-9][0-9.]*\).*/\1/p' | head -1)"
+fi
+GHOSTTY_RES_REFRESH=1
+if [[ "$GHOSTTY_APP_SEMVER" != "$GHOSTTY_PIN_SEMVER" ]]; then
+    GHOSTTY_RES_REFRESH=
+    echo "WARN: $GHOSTTY_APP is Ghostty ${GHOSTTY_APP_SEMVER:-unknown}, the pin is ${GHOSTTY_PIN_SEMVER}; keeping the existing shell integration, terminfo and default config." >&2
+    echo "WARN: set GHOSTTY_APP to a Ghostty ${GHOSTTY_PIN_SEMVER} app (a mounted release DMG works) to refresh them." >&2
+fi
+if [[ -n "$GHOSTTY_RES_REFRESH" && -d "$GHOSTTY_RES" ]]; then
     rm -rf Resources/ghostty
     cp -R "$GHOSTTY_RES" Resources/ghostty
     echo "OK: copied shell-integration from $GHOSTTY_RES ($(du -sh Resources/ghostty | cut -f1))"
@@ -86,7 +101,7 @@ if [[ -d "$GHOSTTY_RES" ]]; then
         Resources/ghostty/shell-integration/elvish/lib/ghostty-integration.elv \
         Resources/ghostty/shell-integration/nushell/vendor/autoload/ghostty.nu 2>/dev/null || true
     echo "OK: stripped 'Setting up xterm-ghostty terminfo' progress echo from wrappers"
-else
+elif [[ -n "$GHOSTTY_RES_REFRESH" ]]; then
     echo "WARN: $GHOSTTY_RES not found — install the Ghostty app once so we can borrow its shell-integration scripts. Cursor & title reporting will be broken without it."
 fi
 
@@ -97,11 +112,11 @@ fi
 # libghostty emits for modified keys. Symptoms: zsh plugins
 # misfiring on key presses (`e` typing 4×), garbage like `;7;13~`
 # when pressing Ctrl+Opt+Up, OSC 7 emits getting corrupted.
-if [[ -d "$GHOSTTY_TERMINFO" ]]; then
+if [[ -n "$GHOSTTY_RES_REFRESH" && -d "$GHOSTTY_TERMINFO" ]]; then
     rm -rf Resources/terminfo
     cp -R "$GHOSTTY_TERMINFO" Resources/terminfo
     echo "OK: copied terminfo from $GHOSTTY_TERMINFO ($(du -sh Resources/terminfo | cut -f1))"
-else
+elif [[ -n "$GHOSTTY_RES_REFRESH" ]]; then
     echo "WARN: $GHOSTTY_TERMINFO not found — modified-key handling will be broken without it."
 fi
 
@@ -116,7 +131,7 @@ fi
 GHOSTTY_BIN="$GHOSTTY_APP/Contents/MacOS/ghostty"
 # Keys a theme file may set (colors and contrast). See the filter below.
 THEME_KEYS_RE='^(background|foreground|palette|cursor-color|cursor-text|selection-background|selection-foreground|minimum-contrast|bold-color|split-divider-color|unfocused-split-fill|window-titlebar-background|window-titlebar-foreground|search-foreground|search-background|search-selected-foreground|search-selected-background) ='
-if [[ -x "$GHOSTTY_BIN" ]]; then
+if [[ -n "$GHOSTTY_RES_REFRESH" && -x "$GHOSTTY_BIN" ]]; then
     _gd_tmp="$(mktemp)"
     "$GHOSTTY_BIN" +show-config --default > "$_gd_tmp"
     {
@@ -136,6 +151,6 @@ if [[ -x "$GHOSTTY_BIN" ]]; then
     } > Resources/ghostty-default.conf
     rm -f "$_gd_tmp"
     echo "OK: extracted Ghostty default → Resources/ghostty-default.conf ($(wc -l < Resources/ghostty-default.conf | tr -d ' ') lines)"
-else
+elif [[ -n "$GHOSTTY_RES_REFRESH" ]]; then
     echo "WARN: $GHOSTTY_BIN not found — keeping existing Resources/ghostty-default.conf if present."
 fi
