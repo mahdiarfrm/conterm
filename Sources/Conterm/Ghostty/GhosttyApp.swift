@@ -75,17 +75,19 @@ extension Ghostty {
             //   1) Conterm's bundled defaults
             //   2) ~/.config/conterm/config (the only file we name)
 
-            // 1) Base = Ghostty's GENUINE default config, bundled from
-            //    `ghostty +show-config --default` (scripts/setup.sh).
-            //    This is a real, machine-independent Ghostty default —
-            //    not anyone's personal config. If the file is somehow
+            // 1) Base = Ghostty's default config, bundled from
+            //    `ghostty +show-config --default` (scripts/setup.sh) with
+            //    the keys a theme sets stripped out, so a user `theme =`
+            //    isn't shadowed by explicit default colors. Keep them out
+            //    if you regenerate this file. Machine-independent, not
+            //    anyone's personal config. If the file is somehow
             //    absent, the empty embedded fallback lets libghostty's
             //    own compiled defaults stand (still the genuine default).
             let bundledPath = Bundle.main.path(forResource: "ghostty-default",
                                                ofType: "conf")
             if let bundled = bundledPath, fm.fileExists(atPath: bundled) {
                 bundled.withCString { ghostty_config_load_file(cfg, $0) }
-                clog("conterm: loaded genuine Ghostty default \(bundled)")
+                clog("conterm: loaded bundled Ghostty default \(bundled)")
             } else {
                 clog("conterm: ghostty-default.conf not found — relying on libghostty compiled defaults")
                 let tmp = NSTemporaryDirectory() + "conterm-defaults.conf"
@@ -164,20 +166,7 @@ extension Ghostty {
 
             ghostty_config_finalize(cfg)
 
-            // Dump diagnostics — silent parse errors would mean the user's
-            // config "doesn't work" without any visible feedback.
-            let nDiag = ghostty_config_diagnostics_count(cfg)
-            if nDiag > 0 {
-                clog("conterm: \(nDiag) config diagnostic(s):")
-                for i in 0..<nDiag {
-                    let d = ghostty_config_get_diagnostic(cfg, i)
-                    if let m = d.message {
-                        clog("conterm:   - \(String(cString: m))")
-                    }
-                }
-            } else {
-                clog("conterm: config finalized clean (no diagnostics)")
-            }
+            App.logDiagnostics(cfg)
 
             // Echo a few resolved values so we can debug. Limit to keys
             // we KNOW are stored as char* (enums). Other types crash the
@@ -278,6 +267,7 @@ extension Ghostty {
             guard let newCfg = ghostty_config_new() else { return }
             App.applyConfigChain(newCfg)
             ghostty_config_finalize(newCfg)
+            App.logDiagnostics(newCfg)
             // Reaches every live surface too: libghostty's App.updateConfig
             // sends each one `change_config`, which runs the same
             // Surface.updateConfig as `ghostty_surface_update_config`.
@@ -292,6 +282,23 @@ extension Ghostty {
             // in the pane-area backdrop).
             NotificationCenter.default.post(name: .contermConfigReloaded,
                                             object: nil)
+        }
+
+        /// Dump diagnostics — silent parse errors would mean the user's
+        /// config "doesn't work" without any visible feedback.
+        static func logDiagnostics(_ cfg: ghostty_config_t) {
+            let nDiag = ghostty_config_diagnostics_count(cfg)
+            if nDiag > 0 {
+                clog("conterm: \(nDiag) config diagnostic(s):")
+                for i in 0..<nDiag {
+                    let d = ghostty_config_get_diagnostic(cfg, i)
+                    if let m = d.message {
+                        clog("conterm:   - \(String(cString: m))")
+                    }
+                }
+            } else {
+                clog("conterm: config finalized clean (no diagnostics)")
+            }
         }
 
         /// Replays the same load order as init() onto an already-allocated
@@ -587,7 +594,7 @@ extension Ghostty {
             // Mirror init()'s load order exactly so a reload rebuilds the
             // SAME config — otherwise a theme/font change would resolve
             // against a different chain than the one the app booted on.
-            // 1) Base = genuine Ghostty default (bundled).
+            // 1) Base = Ghostty default (bundled), theme keys stripped.
             if let bundled = Bundle.main.path(forResource: "ghostty-default",
                                               ofType: "conf"),
                fm.fileExists(atPath: bundled) {
