@@ -66,8 +66,12 @@ fi
 # libghostty injects ZDOTDIR / ENV pointing at this directory.
 # Runs every setup (not just first-time) so a Ghostty.app update brings
 # fresh integration scripts with it.
-GHOSTTY_RES="/Applications/Ghostty.app/Contents/Resources/ghostty"
-GHOSTTY_TERMINFO="/Applications/Ghostty.app/Contents/Resources/terminfo"
+# GHOSTTY_APP points at another copy (e.g. a mounted release DMG) when the
+# installed Ghostty.app is not the pinned version: these resources, the
+# terminfo and the default config below all come from it.
+GHOSTTY_APP="${GHOSTTY_APP:-/Applications/Ghostty.app}"
+GHOSTTY_RES="$GHOSTTY_APP/Contents/Resources/ghostty"
+GHOSTTY_TERMINFO="$GHOSTTY_APP/Contents/Resources/terminfo"
 if [[ -d "$GHOSTTY_RES" ]]; then
     rm -rf Resources/ghostty
     cp -R "$GHOSTTY_RES" Resources/ghostty
@@ -109,7 +113,7 @@ fi
 # config. Build-time extraction from the Ghostty binary itself (no
 # runtime network; Ghostty publishes no canonical default-config URL —
 # the binary is the source of truth).
-GHOSTTY_BIN="/Applications/Ghostty.app/Contents/MacOS/ghostty"
+GHOSTTY_BIN="$GHOSTTY_APP/Contents/MacOS/ghostty"
 # Keys a theme file may set (colors and contrast). See the filter below.
 THEME_KEYS_RE='^(background|foreground|palette|cursor-color|cursor-text|selection-background|selection-foreground|minimum-contrast|bold-color|split-divider-color|unfocused-split-fill|window-titlebar-background|window-titlebar-foreground|search-foreground|search-background|search-selected-foreground|search-selected-background) ='
 if [[ -x "$GHOSTTY_BIN" ]]; then
