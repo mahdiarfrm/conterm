@@ -116,6 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // bug-fix update takes effect on next launch without the user
         // having to re-toggle the setting.
         AgentHooks.refreshIfInstalled()
+        ClaudeUsageTap.refreshIfInstalled()
         OpenCodeIntegration.refreshIfInstalled()
 
         MainMenu.install(delegate: self)
