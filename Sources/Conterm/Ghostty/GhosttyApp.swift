@@ -362,6 +362,12 @@ extension Ghostty {
             # to `false` in user config to restore the platform glyph
             # composition (⌥e e → é).
             macos-option-as-alt = true
+
+            # Selecting text copies it to the system clipboard. Ghostty's
+            # macOS default is `none`; `clipboard` keeps the system
+            # clipboard (and Clipboard History, fed by the write callback)
+            # in step with the selection.
+            copy-on-select = clipboard
             """
         }
 
