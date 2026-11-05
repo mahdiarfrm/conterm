@@ -230,9 +230,12 @@ enum AgentHooks {
             NSLog("conterm: \(spec.settingsPath) isn't a readable JSON object; hooks not installed")
             return
         }
-        // Back up the user's original once.
+        // Back up the user's original once. A symlinked file is backed up
+        // by its contents; copying the link would back up a pointer to the
+        // file about to change.
         if exists, !FileManager.default.fileExists(atPath: spec.backupPath) {
-            try? FileManager.default.copyItem(atPath: spec.settingsPath, toPath: spec.backupPath)
+            try? FileManager.default.copyItem(atPath: linkTarget(of: spec.settingsPath),
+                                              toPath: spec.backupPath)
         }
         var root = existing ?? [:]
         var hooks = root["hooks"] as? [String: Any] ?? [:]
@@ -339,7 +342,26 @@ enum AgentHooks {
             withJSONObject: root,
             options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         ) else { return }
-        try? data.write(to: URL(fileURLWithPath: spec.settingsPath), options: .atomic)
+        try? data.write(to: URL(fileURLWithPath: linkTarget(of: spec.settingsPath)),
+                        options: .atomic)
+    }
+
+    /// The file a write to `path` lands in. An atomic write renames a new
+    /// file over its destination, so writing to a symlink would replace the
+    /// link (a dotfiles checkout) with a plain file; writing to the final
+    /// target keeps the link. Relative links resolve against their own
+    /// directory, and the hop limit matches the kernel's MAXSYMLINKS.
+    nonisolated static func linkTarget(of path: String) -> String {
+        let fm = FileManager.default
+        var p = path
+        for _ in 0..<32 {
+            guard let dest = try? fm.destinationOfSymbolicLink(atPath: p) else { break }
+            p = dest.hasPrefix("/")
+                ? dest
+                : ((p as NSString).deletingLastPathComponent as NSString)
+                    .appendingPathComponent(dest)
+        }
+        return p
     }
 }
 
