@@ -391,9 +391,11 @@ final class AppState: ObservableObject {
             }
             windowThemeFollowsSystem = true
         } else {
+            // Unconditionally: an older fixed theme must not come
+            // back over the pair theme currently on screen.
             let shown = effectiveWindowThemeID
             windowThemeFollowsSystem = false
-            if windowThemeID == nil { windowThemeID = shown }
+            windowThemeID = shown
         }
         pushWindowTheme()
     }
