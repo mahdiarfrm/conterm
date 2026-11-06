@@ -352,6 +352,12 @@ struct SettingsPanel: View {
                         set: { prefs.tabOrientation = $0 }
                     ).withSound(), options: Preferences.TabOrientation.allCases.map { ($0, $0.label) })
                 }
+                SettingsRow(title: "Fit tabs to titles",
+                            subtitle: "Top bar only. Each tab is as wide as its title, and spare width stays at the end of the bar. Fits more named tabs before they switch to numbers. The close button shows over a tab's end when you hover it.") {
+                    Toggle("", isOn: $prefs.fitTabsToTitles.withSound())
+                        .toggleStyle(.drop)
+                        .labelsHidden()
+                }
                 SettingsRow(title: "Widgets",
                             subtitle: "Stats, clock, git, GitHub, ping, notes, pixel pet, and more — enable and reorder them in the Widgets tab.") {
                     Button("Widgets…") {

@@ -387,6 +387,13 @@ final class Preferences: ObservableObject {
     @Published var showToolbarCollapse: Bool {
         didSet { ud.set(showToolbarCollapse, forKey: K.showToolbarCollapse) }
     }
+    /// Horizontal tab pills hug their titles: no share of the bar's spare
+    /// width, and no space kept for the ⌘N badge and close button on tabs
+    /// that aren't selected — the close button shows over the pill's end
+    /// on hover instead. More labelled tabs fit before they turn to numbers.
+    @Published var fitTabsToTitles: Bool {
+        didSet { ud.set(fitTabsToTitles, forKey: K.fitTabsToTitles) }
+    }
     /// Stop libghostty presenting the terminal on every display refresh
     /// (`window-vsync = false`). Conterm's window is non-opaque so the
     /// glass backdrop shows through; every surface present then makes
@@ -500,6 +507,7 @@ final class Preferences: ObservableObject {
         static let autoHideSidebar  = "conterm.autoHideSidebar"
         static let toolbarCollapsed = "conterm.toolbarCollapsed"
         static let showToolbarCollapse = "conterm.showToolbarCollapse"
+        static let fitTabsToTitles  = "conterm.fitTabsToTitles"
         static let lowPowerRendering = "conterm.lowPowerRendering"
         static let useDefaultConfig = "conterm.useDefaultConfig"
         static let lightGlass       = "conterm.lightGlass"
@@ -655,6 +663,7 @@ final class Preferences: ObservableObject {
         self.autoHideSidebar        = ud.object(forKey: K.autoHideSidebar) as? Bool ?? false
         self.toolbarCollapsed       = ud.object(forKey: K.toolbarCollapsed) as? Bool ?? true
         self.showToolbarCollapse    = ud.object(forKey: K.showToolbarCollapse) as? Bool ?? true
+        self.fitTabsToTitles        = ud.object(forKey: K.fitTabsToTitles) as? Bool ?? false
         self.lowPowerRendering      = ud.object(forKey: K.lowPowerRendering) as? Bool ?? true
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
         self.lightGlass             = ud.object(forKey: K.lightGlass) as? Bool ?? false

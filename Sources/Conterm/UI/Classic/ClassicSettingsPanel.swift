@@ -407,6 +407,12 @@ struct ClassicSettingsPanel: View {
                     .frame(width: 200)
                     .labelsHidden()
                 }
+                SettingsRow(title: "Fit tabs to titles",
+                            subtitle: "Top bar only. Each tab is as wide as its title, and spare width stays at the end of the bar. Fits more named tabs before they switch to numbers. The close button shows over a tab's end when you hover it.") {
+                    Toggle("", isOn: $prefs.fitTabsToTitles.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
                 SettingsRow(title: "Widgets",
                             subtitle: "Stats, clock, git, GitHub, ping, notes, pixel pet, and more — enable and reorder them in the Widgets tab.") {
                     Button("Widgets…") {
