@@ -136,10 +136,9 @@ struct TabBar: View {
 
     /// Number-only tab pills: when the bar can't give every tab a
     /// labelled pill, even with titles shortened to six characters, all
-    /// pills collapse at once to dot + number. Flips a touch before true
-    /// exhaustion — a pill showing its number beats one showing three
-    /// letters of its title. Read once per body: it sums every pill's
-    /// measured width.
+    /// pills collapse at once to dot + number. Flips with 24 points of
+    /// the bar still free rather than at its exact edge. Read once per
+    /// body: it sums every pill's measured width.
     private var miniPills: Bool {
         barWidth > 0 && neededWidth() > barWidth - 24
     }
@@ -663,8 +662,9 @@ struct TabBar: View {
             // Same zero minimum as a fitted pill (see `pillCell`): a
             // tray of one short fitted pill is wide for its tag but has
             // almost no give, so without it the strip would size the tray
-            // first, from a share under its width.
-            .frame(minWidth: prefs.fitTabsToTitles && !widths.isEmpty ? 0 : nil)
+            // first, from a share under its width. Not in number mode,
+            // where the tray must not shrink its pills under their numbers.
+            .frame(minWidth: prefs.fitTabsToTitles && !mini && !widths.isEmpty ? 0 : nil)
             // The tray holding the selected pill needs the same head
             // start as a bare selected pill (see `pillCell`): the strip
             // sizes the tray as one child.
@@ -787,7 +787,10 @@ struct TabBar: View {
         // with little give is sized early and takes a share under the
         // width it was dealt. From zero, every child's give is its
         // width: narrow ones go first and each gets what it was dealt.
-        .frame(minWidth: prefs.fitTabsToTitles && width != nil ? 0 : nil,
+        // Number pills keep their content's minimum: from zero, a share
+        // under `TabPill.miniWidth` would squeeze a pill under its dot and
+        // number, and the number would draw over the next pill.
+        .frame(minWidth: prefs.fitTabsToTitles && !mini && width != nil ? 0 : nil,
                idealWidth: width, maxWidth: width)
         // Classic's glow travels by matchedGeometry; Liquid Drop's drop is
         // drawn once by the strip, under the pill reported here.
