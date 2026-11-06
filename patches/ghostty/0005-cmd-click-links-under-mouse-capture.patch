@@ -17,14 +17,15 @@ tmux sends a drag the program never saw start. Keeps the local
 `mouseLinksActiveFor` split so the modifier/capture truth table stays
 unit-tested.
 
+Regenerated against libghostty 1.4.0 (83fb956), on top of 0002–0004.
 Carried here because it is unmerged upstream. Drop this file when the
 pin reaches a commit that already has it.
 
 diff --git a/src/Surface.zig b/src/Surface.zig
-index 3badf59..4c15150 100644
+index 369bb23..4c5d7e2 100644
 --- a/src/Surface.zig
 +++ b/src/Surface.zig
-@@ -244,6 +244,11 @@ const Mouse = struct {
+@@ -257,6 +257,11 @@ const Mouse = struct {
      /// True if the mouse position is currently over a link.
      over_link: bool = false,
  
@@ -36,7 +37,7 @@ index 3badf59..4c15150 100644
      /// The last x/y in the cursor position for links. We use this to
      /// only process link hover events when the mouse actually moves cells.
      link_point: ?terminal.point.Coordinate = null,
-@@ -2697,13 +2702,7 @@ pub fn keyCallback(
+@@ -2862,13 +2867,7 @@ pub fn keyCallback(
          // Update our modifiers, this will update mouse mods too
          self.modsChanged(event.mods);
  
@@ -50,8 +51,8 @@ index 3badf59..4c15150 100644
 +        if (self.mouseLinksActive()) {
              // Refresh our link state
              const pos = self.rt_surface.getCursorPos() catch break :mouse_mods;
-             self.renderer_state.mutex.lock();
-@@ -3714,6 +3713,42 @@ fn mouseShiftCapture(self: *const Surface, lock: bool) bool {
+             self.renderer_state.mutex.lockUncancelable(global.io());
+@@ -3904,6 +3903,42 @@ fn mouseShiftCapture(self: *const Surface, lock: bool) bool {
      };
  }
  
@@ -94,9 +95,9 @@ index 3badf59..4c15150 100644
  /// Returns true if the mouse is currently captured by the terminal
  /// (i.e. reporting events).
  pub fn mouseCaptured(self: *Surface) bool {
-@@ -3745,6 +3780,11 @@ pub fn mouseButtonCallback(
+@@ -3935,6 +3970,11 @@ pub fn mouseButtonCallback(
      // Always record our latest mouse state
-     self.mouse.click_state[@intCast(@intFromEnum(button))] = action;
+     self.mouse.click_state[@intCast(@backingInt(button))] = action;
  
 +    // Whether this release ends a link press. Clear it here because the
 +    // link handling below can return early.
@@ -106,9 +107,9 @@ index 3badf59..4c15150 100644
      // Always show the mouse again if it is hidden
      if (self.mouse.hidden) self.showMouse();
  
-@@ -3878,10 +3918,25 @@ pub fn mouseButtonCallback(
-         self.renderer_state.mutex.lock();
-         defer self.renderer_state.mutex.unlock();
+@@ -4059,10 +4099,25 @@ pub fn mouseButtonCallback(
+         self.renderer_state.mutex.lockUncancelable(global.io());
+         defer self.renderer_state.mutex.unlock(global.io());
          if (self.isMouseReporting()) report: {
 +            if (link_release) return true;
 +
@@ -132,7 +133,7 @@ index 3badf59..4c15150 100644
              // In any other mouse button scenario without shift pressed we
              // clear the selection since the underlying application can handle
              // that in any way (i.e. "scrolling").
-@@ -4562,21 +4617,13 @@ pub fn cursorPosCallback(
+@@ -4754,21 +4809,13 @@ pub fn cursorPosCallback(
          try self.queueRender();
      }
  
@@ -158,7 +159,7 @@ index 3badf59..4c15150 100644
      {
          // If we were previously over a link, we always update. We do this so that if the text
          // changed underneath us, even if the mouse didn't move, we update the URL hints and state
-@@ -4585,6 +4632,8 @@ pub fn cursorPosCallback(
+@@ -4777,6 +4824,8 @@ pub fn cursorPosCallback(
  
      // Do a mouse report
      if (self.isMouseReporting()) report: {
