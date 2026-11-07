@@ -1332,8 +1332,7 @@ private struct PillHeightKey: PreferenceKey {
 /// Reports a view's size through a preference key. Measuring readers
 /// must never take hits: PaneChrome overlays the whole pane, and a
 /// hit-testable reader makes its NSHostingView claim every click, so
-/// the SurfaceView below never sees mouseDown — drag-select,
-/// double-click and cmd-click links all die. Always measure through
+/// the SurfaceView below never receives mouse events. Always measure through
 /// this modifier; never add a bare GeometryReader background in
 /// PaneChrome.
 private struct MeasureSize<K: PreferenceKey>: ViewModifier

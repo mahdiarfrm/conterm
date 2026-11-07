@@ -17,9 +17,8 @@ struct WindowThemeTests {
                  showLaunchOverlay: false)
     }
 
-    /// Review case: fixed A, Follow on (A seeds a slot), other slot
-    /// filled and shown, Follow off must keep what's on screen —
-    /// not resurrect A.
+    /// Fixed A, Follow on (A seeds a slot), the other slot filled and
+    /// shown: Follow off keeps what's on screen, not A.
     @Test func turningFollowOffKeepsOnScreenTheme() {
         let state = makeState()
         state.setWindowTheme("A")

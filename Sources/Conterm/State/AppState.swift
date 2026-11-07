@@ -234,8 +234,7 @@ final class AppState: ObservableObject {
         // Deliberately synchronous (no queue): `reloadConfig` posts
         // this from the main actor, and the re-apply must land in the
         // same turn — queued for the next runloop pass, a themed
-        // window renders one frame of global colors on every reload
-        // (visible as a flash while dragging the blur slider).
+        // window renders one frame of global colors on every reload.
         configReloadObserver = NotificationCenter.default.addObserver(
             forName: .contermConfigReloaded, object: nil, queue: nil
         ) { [weak self] _ in
