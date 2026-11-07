@@ -1182,9 +1182,7 @@ struct PaneChrome: View {
                     }
                     .buttonStyle(.plain)
                     .help("Open this session in Orbit")
-                    .background(GeometryReader { g in
-                        Color.clear.preference(key: PillHeightKey.self, value: g.size.height)
-                    })
+                    .measureSize(PillHeightKey.self) { $0.height }
                     ForEach(liveBubbles.items) { item in
                         toolBubble(item)
                             .transition(chipTransition(pillEdge: .leading))
@@ -1193,9 +1191,7 @@ struct PaneChrome: View {
                 .onPreferenceChange(PillHeightKey.self) { h in
                     if h > 0, abs(h - pillHeight) > 0.5 { pillHeight = h }
                 }
-                .background(GeometryReader { g in
-                    Color.clear.preference(key: ClusterWidthKey.self, value: g.size.width)
-                })
+                .measureSize(ClusterWidthKey.self) { $0.width }
                 .onPreferenceChange(ClusterWidthKey.self) { w in
                     if abs(w - clusterWidth) > 0.5 { clusterWidth = w }
                 }
@@ -1242,9 +1238,7 @@ struct PaneChrome: View {
                                  index: index, isActive: isActive,
                                  dragPayload: PaneDrag.payload(for: pane.id))
                 }
-                .background(GeometryReader { g in
-                    Color.clear.preference(key: TitleWidthKey.self, value: g.size.width)
-                })
+                .measureSize(TitleWidthKey.self) { $0.width }
                 .onPreferenceChange(TitleWidthKey.self) { w in
                     if abs(w - titleWidth) > 0.5 { titleWidth = w }
                 }
@@ -1252,9 +1246,7 @@ struct PaneChrome: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
         }
-        .background(GeometryReader { g in
-            Color.clear.preference(key: ChromeWidthKey.self, value: g.size.width)
-        })
+        .measureSize(ChromeWidthKey.self) { $0.width }
         .onPreferenceChange(ChromeWidthKey.self) { w in
             if abs(w - chromeWidth) > 0.5 { chromeWidth = w }
         }
@@ -1334,6 +1326,33 @@ private struct PillHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+/// Reports a view's size through a preference key. Measuring readers
+/// must never take hits: PaneChrome overlays the whole pane, and a
+/// hit-testable reader makes its NSHostingView claim every click, so
+/// the SurfaceView below never sees mouseDown — drag-select,
+/// double-click and cmd-click links all die. Always measure through
+/// this modifier; never add a bare GeometryReader background in
+/// PaneChrome.
+private struct MeasureSize<K: PreferenceKey>: ViewModifier
+    where K.Value == CGFloat {
+    let key: K.Type
+    let dimension: (CGSize) -> CGFloat
+
+    func body(content: Content) -> some View {
+        content.background(GeometryReader { g in
+            Color.clear.preference(key: key, value: dimension(g.size))
+        }.allowsHitTesting(false))
+    }
+}
+
+private extension View {
+    func measureSize<K: PreferenceKey>(
+        _ key: K.Type, _ dimension: @escaping (CGSize) -> CGFloat
+    ) -> some View where K.Value == CGFloat {
+        modifier(MeasureSize(key: key, dimension: dimension))
     }
 }
 
