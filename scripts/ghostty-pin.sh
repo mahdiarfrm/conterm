@@ -8,9 +8,11 @@
 
 GHOSTTY_KIT_REPO="thdxg/ghostty"
 # Fork release tag of the prebuilt xcframework. Daily tags get pruned
-# after a few weeks; the mirror below outlives them. Override with
-# GHOSTTY_KIT_TAG only while validating a new pin.
-GHOSTTY_KIT_TAG="${GHOSTTY_KIT_TAG:-v1.4.0}"
+# after a few weeks; the mirror below outlives them. A `-pN` suffix
+# names a kit built with patches/ghostty through 000N; it exists only
+# on the mirror. Override with GHOSTTY_KIT_TAG only while validating a
+# new pin.
+GHOSTTY_KIT_TAG="${GHOSTTY_KIT_TAG:-v1.4.0-p5}"
 # `<semver>-<branch>+<commit>` marker embedded in the static library
 # (builds before 1.4 wrote `<semver>-<branch>-+<commit>`).
 GHOSTTY_KIT_VERSION="1.4.0-main+83fb956"
