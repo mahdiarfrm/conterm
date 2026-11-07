@@ -137,10 +137,11 @@ struct TabBar: View {
     /// Number-only tab pills: when the bar can't give every tab a
     /// labelled pill, even with titles shortened to six characters, all
     /// pills collapse at once to dot + number. Flips with 24 points of
-    /// the bar still free rather than at its exact edge. Read once per
-    /// body: it sums every pill's measured width.
+    /// the bar still free rather than at its exact edge. Always on under
+    /// "Show tabs as numbers". Read once per body: it sums every pill's
+    /// measured width.
     private var miniPills: Bool {
-        barWidth > 0 && neededWidth() > barWidth - 24
+        prefs.tabNumbersOnly || (barWidth > 0 && neededWidth() > barWidth - 24)
     }
 
     /// Explicit per-pill widths, starting from each pill's
@@ -154,6 +155,10 @@ struct TabBar: View {
     /// the shortest titles don't fit, pills compress proportionally and
     /// the per-pill number rule and the global mini flip take over.
     private func pillWidths(mini: Bool) -> [UUID: CGFloat] {
+        // Ahead of the bar-width guard: a number pill without a width
+        // fills whatever it is offered, so it needs one from the first
+        // frame.
+        if prefs.tabNumbersOnly { return numberPillWidths() }
         guard barWidth > 0 else { return [:] }
         if mini { return miniPillWidths() }
         let pills = state.tabs.enumerated().map { i, tab in
@@ -206,6 +211,14 @@ struct TabBar: View {
         let share = Self.miniShare(available: barWidth - chrome, count: state.tabs.count)
         return Dictionary(uniqueKeysWithValues: state.tabs.enumerated().map { i, tab in
             (tab.id, max(share, TabPill.miniWidth(index: i + 1)))
+        })
+    }
+
+    /// "Show tabs as numbers": every pill at its dot + number width, with
+    /// spare width left at the bar's end.
+    private func numberPillWidths() -> [UUID: CGFloat] {
+        Dictionary(uniqueKeysWithValues: state.tabs.enumerated().map { i, tab in
+            (tab.id, TabPill.miniWidth(index: i + 1))
         })
     }
 

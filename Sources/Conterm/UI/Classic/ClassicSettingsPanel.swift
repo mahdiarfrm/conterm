@@ -407,11 +407,18 @@ struct ClassicSettingsPanel: View {
                     .frame(width: 200)
                     .labelsHidden()
                 }
+                SettingsRow(title: "Show tabs as numbers",
+                            subtitle: "Top bar only. Each tab shows its status dot and number instead of its title.") {
+                    Toggle("", isOn: $prefs.tabNumbersOnly.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
                 SettingsRow(title: "Fit tabs to titles",
                             subtitle: "Top bar only. Each tab is as wide as its title, and spare width stays at the end of the bar. Fits more named tabs before they switch to numbers. The close button shows over a tab's end when you hover it.") {
                     Toggle("", isOn: $prefs.fitTabsToTitles.withSound())
                         .toggleStyle(.switch)
                         .labelsHidden()
+                        .disabled(prefs.tabNumbersOnly)
                 }
                 SettingsRow(title: "Widgets",
                             subtitle: "Stats, clock, git, GitHub, ping, notes, pixel pet, and more — enable and reorder them in the Widgets tab.") {

@@ -394,6 +394,11 @@ final class Preferences: ObservableObject {
     @Published var fitTabsToTitles: Bool {
         didSet { ud.set(fitTabsToTitles, forKey: K.fitTabsToTitles) }
     }
+    /// Horizontal tab pills always show a status dot and number instead
+    /// of the title, each at its number's width, however wide the bar.
+    @Published var tabNumbersOnly: Bool {
+        didSet { ud.set(tabNumbersOnly, forKey: K.tabNumbersOnly) }
+    }
     /// Stop libghostty presenting the terminal on every display refresh
     /// (`window-vsync = false`). Conterm's window is non-opaque so the
     /// glass backdrop shows through; every surface present then makes
@@ -508,6 +513,7 @@ final class Preferences: ObservableObject {
         static let toolbarCollapsed = "conterm.toolbarCollapsed"
         static let showToolbarCollapse = "conterm.showToolbarCollapse"
         static let fitTabsToTitles  = "conterm.fitTabsToTitles"
+        static let tabNumbersOnly   = "conterm.tabNumbersOnly"
         static let lowPowerRendering = "conterm.lowPowerRendering"
         static let useDefaultConfig = "conterm.useDefaultConfig"
         static let lightGlass       = "conterm.lightGlass"
@@ -664,6 +670,7 @@ final class Preferences: ObservableObject {
         self.toolbarCollapsed       = ud.object(forKey: K.toolbarCollapsed) as? Bool ?? true
         self.showToolbarCollapse    = ud.object(forKey: K.showToolbarCollapse) as? Bool ?? true
         self.fitTabsToTitles        = ud.object(forKey: K.fitTabsToTitles) as? Bool ?? false
+        self.tabNumbersOnly         = ud.object(forKey: K.tabNumbersOnly) as? Bool ?? false
         self.lowPowerRendering      = ud.object(forKey: K.lowPowerRendering) as? Bool ?? true
         self.useDefaultConfig       = ud.object(forKey: K.useDefaultConfig) as? Bool ?? false
         self.lightGlass             = ud.object(forKey: K.lightGlass) as? Bool ?? false
