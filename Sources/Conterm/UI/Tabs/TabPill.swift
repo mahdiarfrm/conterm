@@ -115,22 +115,72 @@ struct TabPill: View {
     /// is never the selected one; a full one at semibold, its upper bound.
     /// Rounded up to a whole point: off the 1.0 scale the parts land on
     /// half points, and a 1x display lays the pill out a point wider.
-    static func idealWidth(title: String, index: Int, fitted: Bool) -> CGFloat {
+    /// `titleCap` limits the title's share, for a title shortened with
+    /// "…" to fit a crowded bar.
+    static func idealWidth(title: String, index: Int, fitted: Bool,
+                           titleCap: CGFloat = .infinity) -> CGFloat {
+        ceil(chromeWidth(index: index, fitted: fitted)
+             + min(titleWidth(title, fitted: fitted), titleCap))
+    }
+
+    /// Narrowest width that still shows a label: the title cut to its
+    /// first six characters and "…". Titles of seven characters or
+    /// fewer stay whole. Below this the pill shows its number instead.
+    static func minimumWidth(title: String, index: Int, fitted: Bool) -> CGFloat {
+        idealWidth(title: title, index: index, fitted: fitted,
+                   titleCap: shortestTitleWidth(title, fitted: fitted))
+    }
+
+    static func titleWidth(_ title: String, fitted: Bool) -> CGFloat {
+        textWidth(title, size: Theme.ui(12), weight: fitted ? .regular : .semibold)
+    }
+
+    /// The point on top keeps the sixth character: without it, Text cuts
+    /// some titles one character shorter ("deplo…" for "deploy — prod").
+    static func shortestTitleWidth(_ title: String, fitted: Bool) -> CGFloat {
+        guard title.count > 7 else { return titleWidth(title, fitted: fitted) }
+        return titleWidth(String(title.prefix(6)) + "…", fitted: fitted) + 1
+    }
+
+    /// Everything in a labelled pill but its title.
+    static func chromeWidth(index: Int, fitted: Bool) -> CGFloat {
         let lead = 2 * Theme.ui(11) + Theme.ui(6) + rowGap
-        if fitted {
-            return ceil(lead + textWidth(title, size: Theme.ui(12), weight: .regular))
-        }
-        var w = lead + textWidth(title, size: Theme.ui(12))
-              + 2 * rowGap + Theme.ui(18)   // gaps either side of the Spacer, close slot
+        if fitted { return lead }
+        var w = lead + 2 * rowGap + Theme.ui(18)   // gaps either side of the Spacer, close slot
         if index <= 9 {
             w += rowGap + textWidth("⌘\(index)", size: Theme.ui(9.5), design: .monospaced)
                + 2 * Theme.ui(5)
         }
-        return ceil(w)
+        return w
     }
 
-    /// The bar squeezed this pill below what its title needs, so the
-    /// text gives way to the tab number. Display-only: the layout keeps
+    /// Width of a number-only pill: padding, status dot, number and the
+    /// gap before its (empty) title slot. The number is measured as
+    /// zeros: `monospacedDigit` sets every digit at the width of a 0.
+    static func miniWidth(index: Int) -> CGFloat {
+        let digits = String(repeating: "0", count: String(index).count)
+        return ceil(2 * Theme.ui(9) + Theme.ui(6) + 2 * 5
+                    + textWidth(digits, size: Theme.ui(11)))
+    }
+
+    /// Narrowest title a number-only pill shows beside its number: three
+    /// characters and "…", or the whole title if it's no longer than four.
+    static func miniTitleWidth(_ title: String) -> CGFloat {
+        let shown = title.count > 4 ? String(title.prefix(3)) + "…" : title
+        return textWidth(shown, size: Theme.ui(11), weight: .regular) + 1
+    }
+
+    /// A number-only pill the bar stretched wide enough to also show the
+    /// start of its title.
+    private var miniShowsTitle: Bool {
+        guard mini, measured.width > 0 else { return false }
+        let title = tab.title.isEmpty ? "shell" : tab.title
+        return measured.width >= Self.miniWidth(index: index) + Self.miniTitleWidth(title)
+    }
+
+    /// The bar squeezed this pill below `minimumWidth`, too narrow for
+    /// even a shortened title, so the text gives way to the tab number.
+    /// Above it, the title shortens itself with "…". Display-only: the layout keeps
     /// carrying the (invisibly truncated) title, so entering number
     /// mode never changes the pill's size — the width signal stays
     /// honest in both directions and can't oscillate. A width laid out
@@ -141,7 +191,7 @@ struct TabPill: View {
         guard !mini, !compact, !isSessionCard, measured.width > 0,
               measured.fitted == fitted else { return false }
         let title = tab.title.isEmpty ? "shell" : tab.title
-        return measured.width < Self.idealWidth(title: title, index: index, fitted: fitted)
+        return measured.width < Self.minimumWidth(title: title, index: index, fitted: fitted)
     }
 
     /// The hover close button a fitted pill draws over its title's end.
@@ -168,6 +218,17 @@ struct TabPill: View {
                     .monospacedDigit()
                     .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
                     .fixedSize()
+                // Fills the width TabBar deals a number-only pill, which
+                // stretches them across the bar. Shown only once at least
+                // three characters fit; hidden, it still fills, so the
+                // pill's size never depends on whether it shows.
+                Text(tab.title.isEmpty ? "shell" : tab.title)
+                    .font(.system(size: Theme.ui(11), weight: .regular, design: .rounded))
+                    .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    .opacity(miniShowsTitle ? 1 : 0)
             } else if isSessionCard {
                 PaneMapThumb(tree: tab.paneTree, isSelected: isSelected,
                              agentPhase: tab.agentPhase)
