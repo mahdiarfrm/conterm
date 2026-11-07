@@ -301,6 +301,56 @@ extension Ghostty {
             }
         }
 
+        /// Build a finalized config for one terminal theme: the
+        /// canonical chain, with the theme's color lines layered LAST
+        /// so they win over anything the chain set (the same trick the
+        /// global picker's managed block plays in the config file).
+        /// `themeID == nil` (or an unreadable theme file) yields the
+        /// plain global chain. The caller owns the result and must
+        /// `ghostty_config_free` it once libghostty has copied it.
+        func makeConfig(themeID: String?) -> ghostty_config_t? {
+            guard let cfg = ghostty_config_new() else { return nil }
+            App.applyConfigChain(cfg)
+            if let themeID, !themeID.isEmpty {
+                let lines = ThemeCatalog.colorLines(forThemeID: themeID)
+                if !lines.isEmpty {
+                    // Unique temp file: several windows can hold
+                    // different themes, and their configs are built
+                    // independently of each other. The load parses the
+                    // file synchronously, so it can go straight away.
+                    let path = NSTemporaryDirectory()
+                        + "conterm-window-theme-\(UUID().uuidString).conf"
+                    if (try? lines.joined(separator: "\n")
+                        .write(toFile: path, atomically: true,
+                               encoding: .utf8)) != nil {
+                        path.withCString { ghostty_config_load_file(cfg, $0) }
+                        try? FileManager.default.removeItem(atPath: path)
+                    }
+                }
+            }
+            ghostty_config_finalize(cfg)
+            return cfg
+        }
+
+        /// Push a theme variant to ONE window's surfaces (every pane in
+        /// it), leaving the app-level config — and therefore every
+        /// other window — untouched. `themeID == nil` re-applies the
+        /// global chain, which is how a window drops its override and
+        /// follows the global theme again. New surfaces created later
+        /// still start from the app config; `makePaneSurface`
+        /// re-applies the window theme right after creation.
+        func applyTheme(_ themeID: String?,
+                        to controllers: [Ghostty.SurfaceController]) {
+            guard !controllers.isEmpty,
+                  let cfg = makeConfig(themeID: themeID) else { return }
+            defer { ghostty_config_free(cfg) }
+            for ctrl in controllers {
+                if let h = ctrl.handle {
+                    ghostty_surface_update_config(h, cfg)
+                }
+            }
+        }
+
         /// Replays the same load order as init() onto an already-allocated
         /// ghostty_config_t. Lets reloadConfig() reuse the canonical
         /// chain without duplicating it.

@@ -38,6 +38,15 @@ enum SessionStore {
         var frame: String          // NSStringFromRect-encoded
         var tabs: [Tab]
         var selectedIndex: Int     // 0-based, into `tabs`
+        /// Per-window terminal theme (a `ThemeCatalog` theme id).
+        /// Nil = the window follows the global theme. Optional so
+        /// session files written before per-window themes decode.
+        var themeID: String? = nil
+        /// Follow macOS Light/Dark with the pair below instead of
+        /// the fixed `themeID`. Optional for older session files.
+        var themeFollowsSystem: Bool? = nil
+        var lightThemeID: String? = nil
+        var darkThemeID: String? = nil
     }
 
     struct Tab: Codable {
@@ -142,7 +151,11 @@ enum SessionStore {
             snap.windows.append(Window(
                 frame: NSStringFromRect(wc.window.frame),
                 tabs: tabs,
-                selectedIndex: selected
+                selectedIndex: selected,
+                themeID: wc.state.windowThemeID,
+                themeFollowsSystem: wc.state.windowThemeFollowsSystem,
+                lightThemeID: wc.state.windowLightThemeID,
+                darkThemeID: wc.state.windowDarkThemeID
             ))
         }
         // Skip if there's nothing to remember (don't clobber a previous

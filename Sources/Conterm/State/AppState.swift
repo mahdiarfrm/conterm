@@ -148,6 +148,45 @@ final class AppState: ObservableObject {
     let prefs: Preferences
     let notesStore: NotesStore
 
+    /// This window's own terminal theme (a `ThemeCatalog` theme id).
+    /// Nil = follow the global theme (`ThemeCatalog.current`, or the
+    /// user's config when `prefs.themeFromConfig` is on). Applied to
+    /// this window's surfaces only — see `setWindowTheme` — and
+    /// persisted per window by `SessionStore`.
+    @Published var windowThemeID: String?
+
+    /// When true, this window ignores `windowThemeID` and themes
+    /// itself from the light/dark pair below, switching live with
+    /// macOS appearance. Both slots nil = follow the global theme.
+    @Published var windowThemeFollowsSystem: Bool = false
+    @Published var windowLightThemeID: String?
+    @Published var windowDarkThemeID: String?
+
+    /// The theme this window renders right now (nil = global).
+    var effectiveWindowThemeID: String? {
+        ThemeCatalog.effectiveThemeID(
+            fixed: windowThemeID, light: windowLightThemeID,
+            dark: windowDarkThemeID,
+            followsSystem: windowThemeFollowsSystem,
+            isDark: ThemeCatalog.systemIsDark)
+    }
+
+    /// True when the window carries any theme of its own, fixed or
+    /// following macOS — drives the picker's scope and reset button.
+    var hasWindowTheme: Bool {
+        windowThemeID != nil || windowLightThemeID != nil
+            || windowDarkThemeID != nil
+    }
+
+    /// The `.contermConfigReloaded` observer. A global reload pushes
+    /// the global config to EVERY surface, so a window holding an
+    /// override re-applies its own theme on top (see init).
+    private var configReloadObserver: NSObjectProtocol?
+
+    /// Fires when macOS switches Light/Dark; a following window
+    /// re-themes itself (see `systemAppearanceChanged`).
+    private var appearanceObserver: NSObjectProtocol?
+
     /// Weak handle to THIS state's NSWindow. Set by WindowController
     /// right after AppState is created. Used by closeTab so we close
     /// the window that owns this state, not whichever window happens
@@ -167,7 +206,51 @@ final class AppState: ObservableObject {
         self.prefs = prefs
         self.ghostty = ghostty
         self.notesStore = notesStore
+        // Drop a saved theme whose file is gone (renamed/removed
+        // theme, older build): the window follows the global theme
+        // and the picker shows no dead selection.
+        let restoredThemeID = ThemeCatalog.validatedThemeID(restore?.themeID)
+        self.windowThemeID = restoredThemeID
+        if restore?.themeID != nil, restoredThemeID == nil {
+            clog("conterm: saved window theme '\(restore?.themeID ?? "")' "
+                 + "no longer exists — following the global theme")
+        }
+        // Same validation for the follow-macOS pair; following with
+        // both slots gone is no override at all, so drop that too.
+        let restoredLight = ThemeCatalog.validatedThemeID(restore?.lightThemeID)
+        let restoredDark = ThemeCatalog.validatedThemeID(restore?.darkThemeID)
+        self.windowLightThemeID = restoredLight
+        self.windowDarkThemeID = restoredDark
+        self.windowThemeFollowsSystem = restore?.themeFollowsSystem == true
+            && (restoredLight != nil || restoredDark != nil)
         self.launchOverlayVisible = showLaunchOverlay
+        // A global config reload (theme pick, font change, blur
+        // slider…) pushes the global config to every surface,
+        // clobbering this window's theme. Re-apply the override on
+        // top. Registered before any surface exists; the surfaces a
+        // restored window creates later pick the theme up in
+        // `makePaneSurface` instead.
+        //
+        // Deliberately synchronous (no queue): `reloadConfig` posts
+        // this from the main actor, and the re-apply must land in the
+        // same turn — queued for the next runloop pass, a themed
+        // window renders one frame of global colors on every reload
+        // (visible as a flash while dragging the blur slider).
+        configReloadObserver = NotificationCenter.default.addObserver(
+            forName: .contermConfigReloaded, object: nil, queue: nil
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyWindowTheme() }
+        }
+        appearanceObserver = DistributedNotificationCenter.default()
+            .addObserver(
+                forName: NSNotification.Name(
+                    "AppleInterfaceThemeChangedNotification"),
+                object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.systemAppearanceChanged()
+                }
+            }
         if let r = restore, !r.tabs.isEmpty {
             // Rehydrate every saved tab. Each tab gets a fresh PaneTree
             // with one leaf seeded to the saved cwd. Pane splits aren't
@@ -262,6 +345,101 @@ final class AppState: ObservableObject {
     func dismissLaunchOverlay() {
         launchOverlayVisible = false
         prefs.hasLaunched = true
+    }
+
+    isolated deinit {
+        if let configReloadObserver {
+            NotificationCenter.default.removeObserver(configReloadObserver)
+        }
+        if let appearanceObserver {
+            DistributedNotificationCenter.default()
+                .removeObserver(appearanceObserver)
+        }
+    }
+
+    // MARK: - Per-window theme
+
+    /// Set this window's fixed terminal theme and push it to every
+    /// live pane in the window; nil drops the whole override (fixed,
+    /// follow-macOS, and both slots) back to the global theme. Other
+    /// windows keep the global theme (`ThemeCatalog.current`).
+    /// Persisted per window by `SessionStore`.
+    func setWindowTheme(_ id: String?) {
+        windowThemeID = id
+        windowThemeFollowsSystem = false
+        if id == nil {
+            windowLightThemeID = nil
+            windowDarkThemeID = nil
+        }
+        pushWindowTheme()
+    }
+
+    /// Switch this window between its fixed theme and following
+    /// macOS Light/Dark. Turning follow on seeds the current
+    /// appearance's slot from the fixed theme when the pair is
+    /// empty; turning it off keeps the theme currently on screen
+    /// as the fixed one, so the window doesn't jump.
+    func setWindowThemeFollowsSystem(_ on: Bool) {
+        if on {
+            if windowLightThemeID == nil, windowDarkThemeID == nil,
+               let fixed = windowThemeID {
+                if ThemeCatalog.systemIsDark {
+                    windowDarkThemeID = fixed
+                } else {
+                    windowLightThemeID = fixed
+                }
+            }
+            windowThemeFollowsSystem = true
+        } else {
+            // Unconditionally: an older fixed theme must not come
+            // back over the pair theme currently on screen.
+            let shown = effectiveWindowThemeID
+            windowThemeFollowsSystem = false
+            windowThemeID = shown
+        }
+        pushWindowTheme()
+    }
+
+    /// Fill one follow-macOS slot (the picker's Light/Dark chips
+    /// choose which) and push the result.
+    func setWindowSlotTheme(_ id: String?, dark: Bool) {
+        if dark { windowDarkThemeID = id } else { windowLightThemeID = id }
+        pushWindowTheme()
+    }
+
+    /// macOS switched Light/Dark: a following window swaps themes.
+    /// (Queued delivery is fine here — the system animates its own
+    /// transition, unlike the reload path's flash constraint.)
+    func systemAppearanceChanged() {
+        guard windowThemeFollowsSystem else { return }
+        applyWindowTheme()
+    }
+
+    /// Push the effective theme to this window's surfaces. While
+    /// the user's config owns the colors, push the plain chain
+    /// instead — the config wins, matching the picker's disabled
+    /// state.
+    private func pushWindowTheme() {
+        guard let ghostty else { return }
+        ghostty.applyTheme(
+            prefs.themeFromConfig ? nil : effectiveWindowThemeID,
+            to: liveControllers)
+    }
+
+    /// Re-apply this window's override after a global reload pushed
+    /// the global config to every surface. Windows without an
+    /// override already hold the right config, so they skip the
+    /// rebuild entirely.
+    func applyWindowTheme() {
+        guard let id = effectiveWindowThemeID, !prefs.themeFromConfig,
+              let ghostty else { return }
+        ghostty.applyTheme(id, to: liveControllers)
+    }
+
+    /// Every live pane surface in this window.
+    private var liveControllers: [Ghostty.SurfaceController] {
+        tabs.flatMap { $0.paneTree.root.leaves() }
+            .compactMap(\.controller)
     }
 
     func toggleSettings() {
