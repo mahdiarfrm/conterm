@@ -36,10 +36,10 @@ func makePaneSurface(pane: Pane,
     let scrollback = pane.pendingScrollback
     pane.pendingAgentResume = nil
     pane.pendingScrollback = nil
-    let pendingRestore = restoreCommandLine(resumeSession: resumeSession,
-                                            scrollback: scrollback,
-                                            cwd: pane.cwd)
-        .map { PendingRestore(command: $0, controller: controller) }
+    let handoff = RestoreHandoff.make(resumeSession: resumeSession,
+                                      scrollback: scrollback, cwd: pane.cwd)
+    controller.restoreEnvironment = handoff?.environment
+    let pendingRestore = handoff.map { PendingRestore(handoff: $0, controller: controller) }
 
     controller.onPwdChange = { [weak pane, weak owningTab] newPwd in
         DispatchQueue.main.async {
@@ -264,22 +264,112 @@ func makePaneSurface(pane: Pane,
     pane.startingDir = nil
     state.syncSurfaceOcclusion()
 
-    // Session restore, driven through the input path (same as a paste): once
-    // the shell is up, type a setup line. For an agent pane that resumes the
-    // session (`claude --resume`); otherwise it replays the saved scrollback.
-    // cwd alone (working_directory) covers a plain pane. The surface `command`
-    // config would replace the shell (`/bin/sh -c`, wait-after-command forced)
-    // rather than run a line inside it, so the input path stays the mechanism.
-    //
-    // The prompt report above is the real trigger. This is the backstop for a
-    // shell that never sends one — no integration, or a login shell that
-    // fails its rc — and it honours the same preference the palette's
-    // run-in-a-new-tab path uses, so a slow machine can be given longer.
+    // Session restore. The shell takes the handoff itself when Conterm's zsh
+    // integration runs (see `RestoreHandoff`); otherwise the line is typed
+    // once the shell is up. The prompt report above is the real trigger for
+    // that. This is the backstop for a shell that never sends one — no
+    // integration, or a login shell that fails its rc — and it honours the
+    // same preference the palette's run-in-a-new-tab path uses, so a slow
+    // machine can be given longer.
     pendingRestore?.armFallback()
     return controller
 }
 
-/// A restore line waiting for the shell that will run it.
+/// What a restored pane does once its shell is up: print the saved
+/// scrollback, or resume the Claude session that was running. Handed to the
+/// shell as a file named in its environment. Conterm's zsh integration
+/// prints the scrollback before the rc files draw anything and runs the
+/// resume at the first prompt, so nothing is typed and nothing lands in the
+/// shell's history. A shell without the integration leaves the file in
+/// place, and `PendingRestore` types the line instead. Whichever side
+/// renames the file first owns it, so the two never both act on it.
+///
+/// The surface `command` config isn't the mechanism: it replaces the shell
+/// (`/bin/sh -c`, wait-after-command forced) rather than run inside it.
+@MainActor
+struct RestoreHandoff {
+    enum Kind { case scrollback, command }
+    let kind: Kind
+    let path: String
+
+    /// The variable conterm-integration.zsh reads.
+    var environment: (String, String) {
+        (kind == .scrollback ? "CONTERM_RESTORE_SCROLLBACK" : "CONTERM_RESTORE_COMMAND", path)
+    }
+
+    /// Resume the agent if one was running, else replay the saved
+    /// scrollback. nil for a plain pane (cwd alone covers it) or when the
+    /// file can't be written.
+    static func make(resumeSession: String?, scrollback: String?,
+                     cwd: String?) -> RestoreHandoff? {
+        if let id = resumeSession, !id.isEmpty {
+            // The session's own directory, from its transcript — not the
+            // pane's. Claude runs full-screen and the shell emits no OSC 7
+            // while it does, so `cwd` here is wherever you were before it
+            // started, and resuming there stops on the trust prompt for a
+            // folder you did not mean.
+            let dir = ClaudeProjects.directory(forSession: id) ?? cwd ?? InstanceState.userHome
+            let line = "cd \(shellQuote(dir)) && claude --resume \(shellQuote(id))"
+            return write(line, ext: "cmd").map { RestoreHandoff(kind: .command, path: $0) }
+        }
+        if let sb = scrollback, !sb.isEmpty {
+            // Ends on a newline so the shell's first prompt starts its own line.
+            return write(sb + "\n", ext: "txt").map { RestoreHandoff(kind: .scrollback, path: $0) }
+        }
+        return nil
+    }
+
+    /// Take the file for the typed fallback. nil when the shell already
+    /// took it.
+    func claimLine() -> String? {
+        let claimed = path + ".typed"
+        guard rename(path, claimed) == 0 else { return nil }
+        switch kind {
+        case .scrollback:
+            return "cat \(shellQuote(claimed)) && rm -f \(shellQuote(claimed))"
+        case .command:
+            defer { try? FileManager.default.removeItem(atPath: claimed) }
+            return (try? String(contentsOfFile: claimed, encoding: .utf8))
+                .flatMap { $0.isEmpty ? nil : $0 }
+        }
+    }
+
+    private static var directory: URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return base.appendingPathComponent("conterm/restore", isDirectory: true)
+    }
+
+    private static func write(_ text: String, ext: String) -> String? {
+        let dir = directory
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("\(UUID().uuidString).\(ext)")
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            return url.path
+        } catch {
+            return nil
+        }
+    }
+
+    /// Drop handoffs no shell took: a pane closed before its shell
+    /// started leaves its file behind.
+    static func removeStale(olderThan age: TimeInterval = 24 * 3600) {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: directory.path) else { return }
+        let cutoff = Date().addingTimeInterval(-age)
+        for name in names {
+            let path = directory.appendingPathComponent(name).path
+            if let modified = (try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date,
+               modified < cutoff {
+                try? fm.removeItem(atPath: path)
+            }
+        }
+    }
+}
+
+/// A restore handoff waiting for the shell, for the case the shell doesn't
+/// take it itself (see `RestoreHandoff`): its line is typed instead.
 ///
 /// A fixed delay would be a guess about how long an rc file takes, and
 /// after a restart it is the wrong guess — cold caches, a prompt framework
@@ -291,20 +381,20 @@ func makePaneSurface(pane: Pane,
 /// Fires once, whichever trigger gets there first.
 @MainActor
 final class PendingRestore {
-    private var command: String?
+    private var handoff: RestoreHandoff?
     private weak var controller: Ghostty.SurfaceController?
     /// A prompt report can arrive before the shell can act on input — an
     /// instant-prompt framework draws one while its rc is still running.
     private static let floor: TimeInterval = 0.4
     private let armedAt = Date()
 
-    init(command: String, controller: Ghostty.SurfaceController) {
-        self.command = command
+    init(handoff: RestoreHandoff, controller: Ghostty.SurfaceController) {
+        self.handoff = handoff
         self.controller = controller
     }
 
     func fire() {
-        guard command != nil else { return }
+        guard handoff != nil else { return }
         let waited = Date().timeIntervalSince(armedAt)
         guard waited >= Self.floor else {
             DispatchQueue.main.asyncAfter(deadline: .now() + (Self.floor - waited)) {
@@ -312,55 +402,25 @@ final class PendingRestore {
             }
             return
         }
-        guard let cmd = command else { return }
-        command = nil
+        guard let handoff else { return }
+        self.handoff = nil
+        guard let line = handoff.claimLine() else { return }
         // Send the whole line in one paste (atomic) then a real Return —
         // char-by-char typeText raced libghostty's input and dropped
         // characters (corrupted the path).
-        controller?.sendText(cmd)
+        controller?.sendText(line)
         controller?.sendReturn()
     }
 
+    /// Generous: a shell with the integration takes the handoff itself, and
+    /// one without integration usually still reports its prompt, so this
+    /// only decides for a shell that does neither. Typed too early, it
+    /// would race a shell slowed by many panes starting at once.
     func armFallback() {
-        let delay = max(Preferences.resolvedLaunchDelay, 0.8)
+        let delay = max(Preferences.resolvedLaunchDelay, 3)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             self?.fire()
         }
-    }
-}
-
-/// The setup line typed into a freshly-restored pane: resume the agent if one
-/// was running, else replay the saved scrollback. nil for a plain pane.
-@MainActor
-private func restoreCommandLine(resumeSession: String?,
-                                scrollback: String?, cwd: String?) -> String? {
-    if let id = resumeSession, !id.isEmpty {
-        // The session's own directory, from its transcript — not the pane's.
-        // Claude runs full-screen and the shell emits no OSC 7 while it does,
-        // so `cwd` here is wherever you were before it started, and resuming
-        // there stops on the trust prompt for a folder you did not mean.
-        let dir = ClaudeProjects.directory(forSession: id) ?? cwd ?? InstanceState.userHome
-        return "cd \(shellQuote(dir)) && claude --resume \(shellQuote(id))"
-    }
-    if let sb = scrollback, !sb.isEmpty, let path = writeRestoreScrollback(sb) {
-        return "cat \(shellQuote(path)) && rm -f \(shellQuote(path))"
-    }
-    return nil
-}
-
-/// Write the saved scrollback to a cache file for the restore `cat` to print.
-@MainActor
-private func writeRestoreScrollback(_ text: String) -> String? {
-    let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-        ?? URL(fileURLWithPath: NSTemporaryDirectory())
-    let dir = base.appendingPathComponent("conterm/restore", isDirectory: true)
-    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    let url = dir.appendingPathComponent("\(UUID().uuidString).txt")
-    do {
-        try text.write(to: url, atomically: true, encoding: .utf8)
-        return url.path
-    } catch {
-        return nil
     }
 }
 

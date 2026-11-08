@@ -121,9 +121,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         MainMenu.install(delegate: self)
 
         // Leftovers from the last run: agent records of sessions that ended
-        // with it.
+        // with it, and restore files no shell took.
         if InstanceState.ownsSession {
             AgentSessionRecord.removeStale()
+            RestoreHandoff.removeStale()
         }
 
         // Try to rehydrate the prior session (if the user enabled

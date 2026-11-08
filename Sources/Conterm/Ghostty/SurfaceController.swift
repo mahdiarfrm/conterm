@@ -138,6 +138,9 @@ extension Ghostty {
         /// switch). Set before `start(view:)`; read once at surface
         /// creation.
         var paneID: UUID?
+        /// A restored pane's handoff variable (`RestoreHandoff`), exported
+        /// into the shell at start.
+        var restoreEnvironment: (String, String)?
 
         /// Pane identity for the diagnostic log — the UUID's first
         /// field, which is unique enough to follow one pane through a
@@ -203,6 +206,7 @@ extension Ghostty {
             // `~/.conterm` and the rest of the user's files live.
             var env: [(String, String)] = []
             if let paneID { env.append(("CONTERM_PANE_ID", paneID.uuidString)) }
+            if let restoreEnvironment { env.append(restoreEnvironment) }
             if InstanceState.stagedUserHome {
                 env.append(("CONTERM_USER_HOME", InstanceState.userHome))
             }
