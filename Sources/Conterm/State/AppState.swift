@@ -1554,6 +1554,42 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Open the palette straight into one of its lists, as the matching
+    /// palette command does from the root.
+    func openPalette(mode: PaletteMode) {
+        if !paletteOpen { togglePalette() }
+        withAnimation(Theme.Spring.soft) { paletteMode = mode }
+        paletteFocusedIndex = 0
+    }
+
+    enum OpenTarget { case finder, cursor, vscode }
+
+    /// Open the active pane's directory in Finder or an editor. Beeps when
+    /// the pane has no directory.
+    func openCurrentDir(in target: OpenTarget) {
+        guard let cwd = selectedTab?.paneTree.activePane?.cwd, !cwd.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        switch target {
+        case .finder:
+            NSWorkspace.shared.open(URL(fileURLWithPath: cwd))
+        case .cursor:
+            // The `cursor` CLI on PATH when it's installed, else the app.
+            let task = Process()
+            task.launchPath = "/usr/bin/env"
+            task.arguments = ["sh", "-c",
+                "cursor \(shellQuote(cwd)) 2>/dev/null || open -a Cursor \(shellQuote(cwd))"]
+            try? task.run()
+        case .vscode:
+            let task = Process()
+            task.launchPath = "/usr/bin/env"
+            task.arguments = ["sh", "-c",
+                "code \(shellQuote(cwd)) 2>/dev/null || open -a 'Visual Studio Code' \(shellQuote(cwd))"]
+            try? task.run()
+        }
+    }
+
     func renameTab(_ tab: Tab, to name: String) {
         tab.title = name
         tab.customTitle = true
