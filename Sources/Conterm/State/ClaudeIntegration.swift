@@ -162,6 +162,37 @@ enum AgentHooks {
         done
     }
 
+    # Session record, for restore: the pane (CONTERM_PANE_ID, inherited from
+    # its shell) keeps the agent, its pid and its current transcript in a
+    # file. The OSC 9 below can be lost (libghostty passes one per second
+    # app-wide); the file can't. SessionEnd removes it. The pid is the
+    # nearest ancestor that isn't a shell (the agent runs each hook through
+    # one), so the app can tell a session that ended without SessionEnd.
+    if [ -n "$CONTERM_PANE_ID" ]; then
+        recdir="$HOME/.conterm/agents"
+        rec="$recdir/pane-$CONTERM_PANE_ID"
+        case "$event" in
+            SessionEnd) rm -f "$rec" 2>/dev/null ;;
+            SessionStart|UserPromptSubmit|Stop|Notification|PermissionRequest)
+                tp=$(jfield transcript_path first)
+                if [ -n "$tp" ]; then
+                    apid=; p=$PPID; n=0
+                    while [ "$n" -lt 6 ]; do
+                        case "$p" in ''|*[!0-9]*|0|1) break;; esac
+                        case "$(ps -o comm= -p "$p" 2>/dev/null)" in
+                            ''|sh|*/sh|bash|*/bash|zsh|*/zsh|dash|*/dash|-*) ;;
+                            *) apid=$p; break ;;
+                        esac
+                        p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')
+                        n=$((n+1))
+                    done
+                    mkdir -p "$recdir" 2>/dev/null
+                    printf '%s\n%s\n%s\n' "$agent" "$apid" "$tp" > "$rec.$$" 2>/dev/null \
+                        && mv -f "$rec.$$" "$rec" 2>/dev/null
+                fi ;;
+        esac
+    fi
+
     tty=$(find_tty)
     [ -n "$tty" ] || exit 0
     send() { printf '\033]9;conterm-agent:%s:%s\a' "$agent" "$1" >> "$tty" 2>/dev/null; }

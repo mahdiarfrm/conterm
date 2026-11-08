@@ -338,7 +338,14 @@ final class PaneNode: ObservableObject, Identifiable {
     /// The Claude session id for a pane with a running Claude agent, taken
     /// from its transcript filename — used to `claude --resume` on restore.
     /// nil when no agent is running / it's opencode / the hook gave no path.
+    /// The hook's per-pane record decides when there is one; the pane's
+    /// agent state, fed by OSC 9 events that can be dropped, is the
+    /// fallback for agents whose hook writes no record (a remote host).
     static func agentSessionID(for p: Pane) -> String? {
+        if let record = AgentSessionRecord.read(paneID: p.id) {
+            guard record.agent == "claude", record.isAlive else { return nil }
+            return record.sessionID
+        }
         guard p.agent.phase != .idle, p.agent.tool == .claude,
               let tp = p.agentTranscriptPath, tp.hasSuffix(".jsonl") else { return nil }
         let name = (tp as NSString).lastPathComponent

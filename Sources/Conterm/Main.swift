@@ -120,6 +120,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         MainMenu.install(delegate: self)
 
+        // Leftovers from the last run: agent records of sessions that ended
+        // with it.
+        if InstanceState.ownsSession {
+            AgentSessionRecord.removeStale()
+        }
+
         // Try to rehydrate the prior session (if the user enabled
         // "remember windows" + we have a snapshot on disk). Falls
         // through to a single fresh window when nothing's saved or
