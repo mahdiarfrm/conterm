@@ -802,7 +802,10 @@ extension Ghostty {
         /// Answers a started clipboard read with at most one `text/plain`
         /// representation. No contents is a read that found nothing,
         /// which libghostty treats the same as an unavailable clipboard.
+        /// `confirmed` answers a confirmation request (see
+        /// `cbConfirmReadClipboard`) with the user's yes.
         private static func completeRead(_ h: ghostty_surface_t, text: String?, listText: Bool,
+                                         confirmed: Bool = false,
                                          state: UnsafeMutableRawPointer) {
             let bytes = Array((text ?? "").utf8)
             "text/plain".withCString { mime in
@@ -820,7 +823,7 @@ extension Ghostty {
                             var complete = ghostty_clipboard_complete_s(
                                 contents: c.baseAddress, contents_len: c.count,
                                 available: a.baseAddress, available_len: a.count,
-                                confirmed: false, remember: false)
+                                confirmed: confirmed, remember: false)
                             ghostty_surface_complete_clipboard_request(h, &complete, state)
                         }
                     }
@@ -828,20 +831,75 @@ extension Ghostty {
             }
         }
 
-        // Reads that need the user's approval (`clipboard-read = ask`,
-        // unsafe pastes under `clipboard-paste-protection`) are refused:
-        // Conterm has no approval prompt. Denying answers the request,
-        // so an OSC 52 reader gets an empty reply instead of waiting.
-        private static let cbConfirmReadClipboard: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<ghostty_clipboard_confirm_s>?, UnsafeMutableRawPointer?, ghostty_clipboard_request_e) -> Void = { ud, _, state, _ in
+        // Reads that need the user's approval. A paste that
+        // `clipboard-paste-protection` holds back asks first (`confirmPaste`)
+        // and goes through on a yes. Other requests (`clipboard-read = ask`)
+        // are refused; denying answers the request, so an OSC 52 reader gets
+        // an empty reply instead of waiting.
+        private static let cbConfirmReadClipboard: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<ghostty_clipboard_confirm_s>?, UnsafeMutableRawPointer?, ghostty_clipboard_request_e) -> Void = { ud, confirm, state, request in
             guard let ud, let state,
                   let controller = Unmanaged<SurfaceUserdata>
                     .fromOpaque(ud).takeUnretainedValue().controller else { return }
+            // The payload lives only for this call: copy the paste out now.
+            let paste = request == GHOSTTY_CLIPBOARD_REQUEST_PASTE
+                ? confirm.flatMap { plainText(in: $0.pointee) } : nil
             let stateToken = Int(bitPattern: state)
             DispatchQueue.main.async {
                 guard let st = UnsafeMutableRawPointer(bitPattern: stateToken),
                       let h = controller.handle else { return }
-                ghostty_surface_deny_clipboard_request(h, st)
+                guard let paste, !pastePromptOpen else {
+                    ghostty_surface_deny_clipboard_request(h, st)
+                    return
+                }
+                pastePromptOpen = true
+                confirmPaste(paste) { ok in
+                    pastePromptOpen = false
+                    // The pane may have closed while the question was up.
+                    guard let h = controller.handle else { return }
+                    if ok {
+                        completeRead(h, text: paste, listText: false, confirmed: true, state: st)
+                    } else {
+                        ghostty_surface_deny_clipboard_request(h, st)
+                    }
+                }
             }
+        }
+
+        /// One paste question at a time: a second held-back paste while
+        /// one is asking is refused rather than queued behind it.
+        @MainActor private static var pastePromptOpen = false
+
+        /// The first `text/plain` entry of a confirmation payload.
+        private static func plainText(in confirm: ghostty_clipboard_confirm_s) -> String? {
+            guard let contents = confirm.contents else { return nil }
+            for i in 0..<confirm.contents_len {
+                let item = contents[i]
+                guard let mime = item.mime, String(cString: mime) == "text/plain",
+                      let data = item.data else { continue }
+                return String(decoding: UnsafeRawBufferPointer(start: data, count: item.len),
+                              as: UTF8.self)
+            }
+            return nil
+        }
+
+        /// Ask before pasting text the terminal treats as unsafe — line
+        /// breaks a program without bracketed paste would run as typed, or
+        /// control sequences. Shows the first lines of what would land.
+        @MainActor
+        private static func confirmPaste(_ text: String, answer: @escaping (Bool) -> Void) {
+            let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+            var preview = lines.prefix(6).map { line in
+                line.count > 80 ? String(line.prefix(79)) + "…" : String(line)
+            }.joined(separator: "\n")
+            if lines.count > 6 { preview += "\n… \(lines.count - 6) more lines" }
+            DropAlert(topic: "Paste",
+                      title: "Paste \(lines.count == 1 ? "this text" : "\(lines.count) lines")?",
+                      message: "This paste can run commands as it lands.",
+                      detail: preview,
+                      tone: .warn,
+                      buttons: ["Paste", "Cancel"],
+                      returnAnswers: false)
+                .ask { answer($0 == 0) }
         }
 
         private static let cbWriteClipboard: @convention(c) (UnsafeMutableRawPointer?, ghostty_clipboard_e, UnsafePointer<ghostty_clipboard_content_s>?, Int, Bool) -> Void = { _, _, content, len, _ in
