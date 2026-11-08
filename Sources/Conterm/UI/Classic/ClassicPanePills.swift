@@ -25,7 +25,6 @@ struct ClassicAgentPill: View {
     /// recomposites, so a non-key pane must stay at zero render cost.
     @Environment(\.controlActiveState) private var activeState
 
-    @State private var pulse = false
     /// Mirrors `SystemPressure.wantsLowAnimation` (Low Power Mode or
     /// thermal pressure) so a hot machine sheds the sweep first.
     @State private var systemLite = false
@@ -92,10 +91,6 @@ struct ClassicAgentPill: View {
         // capsule relayout on every OSC update — that overlapping-spring
         // storm drove a continuous AppKit layout / CA-commit load.
         .animation(Theme.Spring.snappy, value: status.phase)
-        .onAppear { startAnimations() }
-        .onChange(of: status.phase) { _, _ in startAnimations() }
-        .onChange(of: lite) { _, _ in startAnimations() }
-        .onChange(of: windowIsKey) { _, _ in startAnimations() }
         .onReceive(SystemPressure.shared.$wantsLowAnimation) { systemLite = $0 }
     }
 
@@ -117,13 +112,20 @@ struct ClassicAgentPill: View {
     /// state still pulses so a needs-you is still noticeable.
     @ViewBuilder
     private var liteRing: some View {
-        let color: Color = (working || attention) ? glowColor
-                                                  : Color.white.opacity(0.16)
-        let opacity: Double = attention ? (pulse ? 0.85 : 0.40)
-                                        : (working ? 0.75 : 1.0)
-        Capsule(style: .continuous)
-            .strokeBorder(color.opacity(opacity), lineWidth: 1.2)
-            .allowsHitTesting(false)
+        if attention, windowIsKey {
+            AttentionPulse(layers: [
+                .init(shape: .capsule, color: NSColor(glowColor), lineWidth: 1.2,
+                      opacity: 0.40...0.85),
+            ], period: 2.2)
+        } else {
+            let color: Color = (working || attention) ? glowColor
+                                                      : Color.white.opacity(0.16)
+            let opacity: Double = attention ? 0.40
+                                            : (working ? 0.75 : 1.0)
+            Capsule(style: .continuous)
+                .strokeBorder(color.opacity(opacity), lineWidth: 1.2)
+                .allowsHitTesting(false)
+        }
     }
 
     // MARK: - Agent mark (left)
@@ -180,12 +182,13 @@ struct ClassicAgentPill: View {
             SweepRing(color: glowColor)
                 .allowsHitTesting(false)
         } else if attention {
-            Capsule(style: .continuous)
-                .strokeBorder(glowColor.opacity(pulse ? 0.85 : 0.40),
-                              lineWidth: 1.4)
-                .shadow(color: glowColor.opacity(pulse ? 0.6 : 0.25),
-                        radius: pulse ? 10 : 4)
-                .allowsHitTesting(false)
+            // Stroke 0.40 → 0.85, glow 0.25 → 0.6 at radius 4 → 10 (the
+            // glow's opacity is relative to the stroke's), played by the
+            // render server (see `AttentionPulse`).
+            AttentionPulse(layers: [
+                .init(shape: .capsule, color: NSColor(glowColor), lineWidth: 1.4,
+                      opacity: 0.40...0.85, glowOpacity: 0.625...0.706, glowRadius: 4...10),
+            ], period: 1.8)
         } else {
             // ready: a soft, static rim so it still reads as "alive".
             Capsule(style: .continuous)
@@ -194,39 +197,6 @@ struct ClassicAgentPill: View {
         }
     }
 
-    private func startAnimations() {
-        // Bail out early when this window isn't key — no repeatForever
-        // gets a chance to start. The animation re-arms via the
-        // .onChange(of: windowIsKey) handler when focus returns.
-        guard windowIsKey else {
-            pulse = false
-            return
-        }
-        if lite {
-            // Lite mode: no working-state animation. Only attention
-            // pulses, so a needs-you is still noticeable.
-            if attention {
-                pulse = false
-                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                    pulse = true
-                }
-            } else {
-                pulse = false
-            }
-            return
-        }
-        if working {
-            // No SwiftUI-driven animation while working — the CA ring
-            // self-animates and per-frame ViewGraph churn is the cost.
-        } else if attention {
-            pulse = false
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        } else {
-            pulse = false
-        }
-    }
 }
 
 /// Classic interface style. One kind of call in flight as a bubble: the mark, monochrome on the

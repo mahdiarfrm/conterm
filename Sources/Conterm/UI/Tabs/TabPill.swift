@@ -516,10 +516,13 @@ struct TabPill: View {
             // spot it from another tab. Loop scoped to the attention state, so
             // it only runs while a tab is actually waiting.
             if attention, pulsesOnAttention {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-                    let pulse = 0.5 + 0.5 * sin(tl.date.timeIntervalSinceReferenceDate * 3.6)
-                    attentionDot(color, phase: pulse)
-                }
+                // `attentionDot` through its whole cycle, played by the
+                // render server (see `AttentionPulse`).
+                AttentionPulse(layers: [
+                    .init(shape: .circle, color: NSColor(color), opacity: 0.5...1.0,
+                          glowOpacity: 0.35...0.90, glowRadius: 2...7),
+                ], period: 2 * .pi / 3.6)
+                .frame(width: Theme.ui(6), height: Theme.ui(6))
             } else if attention, prefs.blinkOnAttention {
                 // Pulse gated off — hold mid-cycle so the signal survives
                 // without a render loop.

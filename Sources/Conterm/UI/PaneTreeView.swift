@@ -1126,13 +1126,25 @@ struct PaneChrome: View {
             .padding(inset)
     }
 
+    private static let attentionAmber = NSColor(red: 1.0, green: 0.62, blue: 0.18, alpha: 1)
+
     /// The "needs you" rim at a given point in its cycle — `phase` 0…1.
     private func attentionRim(_ phase: Double) -> some View {
-        let amber = Color(red: 1.0, green: 0.62, blue: 0.18)
+        let amber = Color(nsColor: Self.attentionAmber)
         return ZStack {
             rim(amber.opacity(0.10 + 0.30 * phase), width: 3.5, inset: 1.75)
             rim(amber.opacity(0.35 + 0.55 * phase), width: 1.6, inset: 0.8)
         }
+    }
+
+    /// `attentionRim` swinging through its whole cycle, played by the
+    /// render server (see `AttentionPulse`).
+    private var attentionPulse: some View {
+        let corner = AttentionPulse.Layer.Shape.roundedRect(cornerRadius: Theme.paneCorner)
+        return AttentionPulse(layers: [
+            .init(shape: corner, color: Self.attentionAmber, lineWidth: 3.5, opacity: 0.10...0.40),
+            .init(shape: corner, color: Self.attentionAmber, lineWidth: 1.6, opacity: 0.35...0.90),
+        ], period: 2 * .pi / 3.4)
     }
 
     /// How far the agent cluster moves left of centre to clear the pane
@@ -1187,9 +1199,7 @@ struct PaneChrome: View {
                 // signal survives without a render loop.
                 if pane.agent.phase == .attention, prefs.blinkOnAttention {
                     if pulsesOnAttention {
-                        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-                            attentionRim(0.5 + 0.5 * sin(tl.date.timeIntervalSinceReferenceDate * 3.4))
-                        }
+                        attentionPulse
                     } else {
                         attentionRim(0.5)
                     }
