@@ -147,6 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         installShortcutMonitor()
         installTitleBarDoubleClickMonitor()
         installOcclusionCoordinator()
+        startSessionAutosave()
         runLaunchScaleIn()
 
         NSApp.activate(ignoringOtherApps: true)
@@ -1137,6 +1138,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// best-effort save doesn't re-write a session the user just chose
     /// to discard.
     private var sessionDecisionMade = false
+
+    /// Saves the session once a minute while windows are open, so a crash
+    /// or a forced quit restores the last minute rather than the last clean
+    /// quit. Unchanged snapshots aren't rewritten (`SessionStore.write`).
+    private var sessionAutosave: Timer?
+
+    private func startSessionAutosave() {
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.autosaveSession() }
+        }
+        timer.tolerance = 15
+        RunLoop.main.add(timer, forMode: .common)
+        sessionAutosave = timer
+    }
+
+    private func autosaveSession() {
+        // Stand down once a quit or a closing window has decided what the
+        // file holds, including "don't save".
+        guard prefs?.rememberWindowState == true, !sessionDecisionMade,
+              !suppressAutoSaveOnce, !windows.isEmpty else { return }
+        SessionStore.save(windows: windows)
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         // Snapshot HERE — not in applicationWillTerminate. By the time

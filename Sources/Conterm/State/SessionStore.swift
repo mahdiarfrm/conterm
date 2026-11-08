@@ -1,17 +1,12 @@
 import AppKit
 import Foundation
 
-/// Window/tab restoration. Snapshots every window (frame + tab list +
-/// per-tab cwd) on quit; rehydrates on next launch when
-/// `prefs.rememberWindowState` is true. Stored as JSON at
-/// ~/.config/conterm/sessions.json so it's both human-inspectable and
-/// trivially nukable.
-///
-/// What we DON'T restore (yet):
-/// - Pane splits within a tab (only the active pane's cwd survives)
-/// - Scrollback content
-/// - Selected tab per window (we always select the last one saved as
-///   selected, falling back to first)
+/// Window/tab restoration. Snapshots every window (frame, tabs, pane
+/// splits, each pane's cwd and recent scrollback or Claude session) on
+/// quit, on a window close, and once a minute while windows are open;
+/// rehydrates on next launch when `prefs.rememberWindowState` is true.
+/// Stored as JSON at ~/.config/conterm/sessions.json so it's both
+/// human-inspectable and trivially nukable.
 @MainActor
 enum SessionStore {
     /// Test seam: when set, all IO happens at this path instead of the
@@ -167,16 +162,27 @@ enum SessionStore {
 
     /// Encode + atomically write a snapshot. The IO half of `save`,
     /// split out so the round-trip is exercisable without live windows.
+    /// A snapshot identical to the last one written to the same path is
+    /// skipped, so the periodic autosave costs no disk write while nothing
+    /// changes.
     static func write(_ snap: Snapshot) {
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? enc.encode(snap) else { return }
+        if let last = lastWritten, last.path == path, last.data == data,
+           FileManager.default.fileExists(atPath: path) { return }
         let dir = (path as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir,
                                                   withIntermediateDirectories: true)
-        let enc = JSONEncoder()
-        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? enc.encode(snap) {
-            try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+        do {
+            try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+            lastWritten = (path, data)
+        } catch {
+            lastWritten = nil
         }
     }
+
+    private static var lastWritten: (path: String, data: Data)?
 
     static func load() -> Snapshot? {
         // Another instance owns these windows and is still in them: open
@@ -196,5 +202,6 @@ enum SessionStore {
     static func clear() {
         guard InstanceState.ownsSession else { return }
         try? FileManager.default.removeItem(atPath: path)
+        lastWritten = nil
     }
 }
