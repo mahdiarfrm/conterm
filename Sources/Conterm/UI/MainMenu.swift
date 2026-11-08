@@ -35,6 +35,9 @@ enum MainMenu {
                              action: #selector(AppDelegate.openSettings(_:)),
                              key: ",", target: delegate)
         menu.addItem(settings)
+        menu.addItem(item("Reload Configuration",
+                          action: #selector(AppDelegate.reloadConfiguration(_:)),
+                          key: ",", modifiers: [.command, .shift], target: delegate))
         menu.addItem(.separator())
         menu.addItem(item("Hide Conterm",
                           action: #selector(NSApplication.hide(_:)), key: "h"))
@@ -77,6 +80,15 @@ enum MainMenu {
         menu.addItem(item("Rename Tab…",
                           action: #selector(AppDelegate.renameTab(_:)),
                           target: delegate))
+        menu.addItem(.separator())
+        let openIn = NSMenu(title: "Open Directory In")
+        openIn.addItem(item("Finder", action: #selector(AppDelegate.openInFinder(_:)),
+                            target: delegate))
+        openIn.addItem(item("Cursor", action: #selector(AppDelegate.openInCursor(_:)),
+                            target: delegate))
+        openIn.addItem(item("VS Code", action: #selector(AppDelegate.openInVSCode(_:)),
+                            target: delegate))
+        menu.addItem(submenu("Open Directory In", openIn))
         menu.addItem(.separator())
         menu.addItem(item("Close Tab/Pane",
                           action: #selector(AppDelegate.closeActive(_:)),
@@ -148,9 +160,7 @@ enum MainMenu {
                             target: delegate)
         autoHide.tag = MenuTag.autoHideSidebar.rawValue
         layout.addItem(autoHide)
-        let layoutRoot = NSMenuItem(title: "Layout", action: nil, keyEquivalent: "")
-        layoutRoot.submenu = layout
-        menu.addItem(layoutRoot)
+        menu.addItem(submenu("Layout", layout))
 
         let style = NSMenu(title: "Interface")
         for (title, tag) in [("Liquid Drop", MenuTag.styleLiquidDrop),
@@ -159,9 +169,7 @@ enum MainMenu {
             mi.tag = tag.rawValue
             style.addItem(mi)
         }
-        let styleRoot = NSMenuItem(title: "Interface", action: nil, keyEquivalent: "")
-        styleRoot.submenu = style
-        menu.addItem(styleRoot)
+        menu.addItem(submenu("Interface", style))
 
         let orbit = item("Orbit",
                          action: #selector(AppDelegate.toggleOrbit(_:)),
@@ -177,6 +185,14 @@ enum MainMenu {
         menu.addItem(item("Next Prompt",
                           action: #selector(AppDelegate.nextPrompt(_:)), target: delegate))
         menu.addItem(.separator())
+        // The active pane's text size, through libghostty's own bindings.
+        menu.addItem(item("Bigger",
+                          action: #selector(AppDelegate.biggerText(_:)), key: "=", target: delegate))
+        menu.addItem(item("Smaller",
+                          action: #selector(AppDelegate.smallerText(_:)), key: "-", target: delegate))
+        menu.addItem(item("Actual Size",
+                          action: #selector(AppDelegate.actualSizeText(_:)), key: "0", target: delegate))
+        menu.addItem(.separator())
         menu.addItem(item("Enter Full Screen",
                           action: #selector(NSWindow.toggleFullScreen(_:)),
                           key: "f", modifiers: [.command, .control]))
@@ -184,9 +200,9 @@ enum MainMenu {
         return root
     }
 
-    /// The pages that report on work: what happened while away, what an
-    /// agent did and changed, what the last Ansible run and Terraform plan
-    /// said, and a command across hosts.
+    /// The pages that report on work (what happened while away, what an
+    /// agent did and changed, the last Ansible run and Terraform plan), the
+    /// ways to reach hosts, and the palette's history and notes lists.
     private static func makeToolsMenu(delegate: AppDelegate) -> NSMenuItem {
         let root = NSMenuItem()
         let menu = NSMenu(title: "Tools")
@@ -203,8 +219,20 @@ enum MainMenu {
         menu.addItem(item("Last Terraform Plan",
                           action: #selector(AppDelegate.showTerraformPlan(_:)), target: delegate))
         menu.addItem(.separator())
+        menu.addItem(item("Connect to Host…",
+                          action: #selector(AppDelegate.connectToHost(_:)), target: delegate))
         menu.addItem(item("Fleet Run…",
                           action: #selector(AppDelegate.showFleetRun(_:)), target: delegate))
+        menu.addItem(.separator())
+        menu.addItem(item("Clipboard History",
+                          action: #selector(AppDelegate.showClipboardHistory(_:)), target: delegate))
+        menu.addItem(item("Shell History",
+                          action: #selector(AppDelegate.showShellHistory(_:)), target: delegate))
+        menu.addItem(.separator())
+        menu.addItem(item("Notes",
+                          action: #selector(AppDelegate.showNotes(_:)), target: delegate))
+        menu.addItem(item("New Note",
+                          action: #selector(AppDelegate.newNote(_:)), target: delegate))
         root.submenu = menu
         return root
     }
@@ -223,6 +251,15 @@ enum MainMenu {
         menu.addItem(item("Show Previous Tab",
                           action: #selector(AppDelegate.selectPreviousTab(_:)),
                           key: "[", modifiers: [.command, .shift], target: delegate))
+        menu.addItem(submenu("Select Tab", LiveMenu.tabs(delegate: delegate)))
+        menu.addItem(submenu("Select Pane", LiveMenu.panes(delegate: delegate)))
+        menu.addItem(item("Tab Groups…",
+                          action: #selector(AppDelegate.showTabGroups(_:)), target: delegate))
+        menu.addItem(.separator())
+        menu.addItem(item("Jump to Pane…",
+                          action: #selector(AppDelegate.jumpToPane(_:)), target: delegate))
+        menu.addItem(item("Next Blocked Agent",
+                          action: #selector(AppDelegate.nextBlockedAgent(_:)), target: delegate))
         menu.addItem(.separator())
         menu.addItem(item("Bring All to Front",
                           action: #selector(NSApplication.arrangeInFront(_:))))
@@ -250,6 +287,12 @@ enum MainMenu {
 
     // MARK: - Helpers
 
+    private static func submenu(_ title: String, _ menu: NSMenu) -> NSMenuItem {
+        let root = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        root.submenu = menu
+        return root
+    }
+
     private static func item(_ title: String,
                               action: Selector?,
                               key: String = "",
@@ -259,6 +302,75 @@ enum MainMenu {
         if !key.isEmpty { mi.keyEquivalentModifierMask = modifiers }
         if let target { mi.target = target }
         return mi
+    }
+}
+
+/// A submenu rebuilt from the key window's state each time it opens: its
+/// tabs, or the panes of its current tab. The first nine carry the ⌘ / ⌥
+/// digit their shortcut uses. Those chords belong to the shortcut monitor,
+/// so the menu is never searched for them.
+@MainActor
+final class LiveMenu: NSObject, NSMenuDelegate {
+    private let build: (NSMenu) -> Void
+    /// Menus hold their delegate weakly.
+    private static var retained: [LiveMenu] = []
+
+    private init(_ build: @escaping (NSMenu) -> Void) { self.build = build }
+
+    private static func make(_ title: String, _ build: @escaping (NSMenu) -> Void) -> NSMenu {
+        let source = LiveMenu(build)
+        retained.append(source)
+        let menu = NSMenu(title: title)
+        menu.delegate = source
+        return menu
+    }
+
+    static func tabs(delegate: AppDelegate) -> NSMenu {
+        make("Select Tab") { [weak delegate] menu in
+            guard let state = delegate?.state else { return }
+            for (i, tab) in state.tabs.enumerated() {
+                let mi = NSMenuItem(title: tab.title.isEmpty ? "Tab \(i + 1)" : tab.title,
+                                    action: #selector(AppDelegate.selectTabFromMenu(_:)),
+                                    keyEquivalent: i < 9 ? "\(i + 1)" : "")
+                mi.keyEquivalentModifierMask = [.command]
+                mi.target = delegate
+                mi.representedObject = tab.id
+                mi.state = tab.id == state.selectedID ? .on : .off
+                menu.addItem(mi)
+            }
+        }
+    }
+
+    static func panes(delegate: AppDelegate) -> NSMenu {
+        make("Select Pane") { [weak delegate] menu in
+            guard let state = delegate?.state, let tab = state.selectedTab else { return }
+            for (i, pane) in tab.paneTree.root.leaves().enumerated() {
+                let mi = NSMenuItem(title: OrbitModel.paneLabel(pane),
+                                    action: #selector(AppDelegate.selectPaneFromMenu(_:)),
+                                    keyEquivalent: i < 9 ? "\(i + 1)" : "")
+                mi.keyEquivalentModifierMask = [.option]
+                mi.target = delegate
+                mi.representedObject = i + 1
+                mi.state = pane.id == tab.paneTree.activePaneID ? .on : .off
+                menu.addItem(mi)
+            }
+        }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        build(menu)
+        if menu.items.isEmpty {
+            let none = NSMenuItem(title: "None", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            menu.addItem(none)
+        }
+    }
+
+    func menuHasKeyEquivalent(_ menu: NSMenu, for event: NSEvent,
+                              target: AutoreleasingUnsafeMutablePointer<AnyObject?>,
+                              action: UnsafeMutablePointer<Selector?>) -> Bool {
+        false
     }
 }
 

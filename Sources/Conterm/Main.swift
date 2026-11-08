@@ -503,6 +503,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         state.openFleetRun()
         NSApp.keyWindow?.makeFirstResponder(nil)
     }
+    @objc func biggerText(_ sender: Any?)     { fontBinding("increase_font_size:1") }
+    @objc func smallerText(_ sender: Any?)    { fontBinding("decrease_font_size:1") }
+    @objc func actualSizeText(_ sender: Any?) { fontBinding("reset_font_size") }
+    private func fontBinding(_ action: String) {
+        _ = state.selectedTab?.paneTree.activePane?.controller?.performBindingAction(action)
+    }
+    @objc func reloadConfiguration(_ sender: Any?) { reloadConfigAndReapplyBlur() }
+    @objc func selectTabFromMenu(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        state.select(id)
+    }
+    @objc func selectPaneFromMenu(_ sender: NSMenuItem) {
+        guard let index = sender.representedObject as? Int else { return }
+        state.selectPaneByIndex(index)
+    }
+    @objc func jumpToPane(_ sender: Any?)       { openPalette(.sessions) }
+    @objc func nextBlockedAgent(_ sender: Any?) { AgentCenter.shared.jumpToNextAttention() }
+    @objc func showTabGroups(_ sender: Any?)    { openPalette(.groups) }
+    @objc func connectToHost(_ sender: Any?)    { openPalette(.sshHosts) }
+    @objc func showClipboardHistory(_ sender: Any?) { openPalette(.clipboard) }
+    @objc func showShellHistory(_ sender: Any?) { openPalette(.shellHistory) }
+    @objc func showNotes(_ sender: Any?)        { openPalette(.notesList) }
+    @objc func newNote(_ sender: Any?) {
+        openPalette(.noteEdit(noteID: state.notes.create().id))
+    }
+    private func openPalette(_ mode: AppState.PaletteMode) {
+        state.openPalette(mode: mode)
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+    @objc func openInFinder(_ sender: Any?)  { state.openCurrentDir(in: .finder) }
+    @objc func openInCursor(_ sender: Any?)  { state.openCurrentDir(in: .cursor) }
+    @objc func openInVSCode(_ sender: Any?)  { state.openCurrentDir(in: .vscode) }
     @objc func showShortcuts(_ sender: Any?) {
         state.openSettings(section: SettingsPanel.Section.shortcuts.rawValue)
         NSApp.keyWindow?.makeFirstResponder(nil)
