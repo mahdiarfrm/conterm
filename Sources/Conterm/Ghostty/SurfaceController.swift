@@ -461,20 +461,33 @@ extension Ghostty {
             ghostty_surface_set_content_scale(h, x, y)
         }
 
-        /// Read the surface's full text (scrollback + viewport) as plain text,
-        /// trimmed to the last `maxBytes`. Best-effort session-restore capture;
-        /// returns nil when the surface is gone or empty.
-        func captureScrollback(maxBytes: Int = 16_384) -> String? {
+        /// Read the surface's last `maxRows` rows (scrollback + viewport) as
+        /// plain text, trimmed to the last `maxBytes`. Best-effort
+        /// session-restore capture; returns nil when the surface is gone or
+        /// empty. Reading from a row near the end keeps the cost independent
+        /// of how much scrollback the pane holds; before the first scrollbar
+        /// report the read starts at the top.
+        func captureScrollback(maxBytes: Int = 16_384, maxRows: UInt64 = 600) -> String? {
             guard let h = handle else { return nil }
-            let pt = { (coord: ghostty_point_coord_e) in
-                ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: coord, x: 0, y: 0)
+            func read(from first: UInt64, into text: inout ghostty_text_s) -> Bool {
+                var sel = ghostty_selection_s()
+                sel.top_left = first > 0
+                    ? ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_EXACT,
+                                      x: 0, y: UInt32(clamping: first))
+                    : ghostty_point_s(tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_TOP_LEFT,
+                                      x: 0, y: 0)
+                sel.bottom_right = ghostty_point_s(tag: GHOSTTY_POINT_SCREEN,
+                                                   coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT,
+                                                   x: 0, y: 0)
+                sel.rectangle = false
+                return ghostty_surface_read_text(h, sel, &text)
             }
-            var sel = ghostty_selection_s()
-            sel.top_left = pt(GHOSTTY_POINT_COORD_TOP_LEFT)
-            sel.bottom_right = pt(GHOSTTY_POINT_COORD_BOTTOM_RIGHT)
-            sel.rectangle = false
             var text = ghostty_text_s()
-            guard ghostty_surface_read_text(h, sel, &text) else { return nil }
+            let first = screenRows > maxRows ? screenRows - maxRows : 0
+            // A row count from before the screen shrank (a clear) can point
+            // past its end; the read then fails and starts over at the top.
+            guard read(from: first, into: &text) || (first > 0 && read(from: 0, into: &text))
+            else { return nil }
             defer { ghostty_surface_free_text(h, &text) }
             guard let ptr = text.text, text.text_len > 0 else { return nil }
             let data = Data(bytes: ptr, count: Int(text.text_len))
@@ -573,6 +586,9 @@ extension Ghostty {
 
         /// Latest scrollbar geometry, kept for search recentering.
         private var scrollOffset: UInt64 = 0
+        /// Rows in the screen, scrollback included, from the last
+        /// scrollbar report. 0 until the first one.
+        private var screenRows: UInt64 = 0
         /// Deadline of the post-jump recenter window; a viewport move
         /// inside it is treated as the engine jumping to a match.
         private var recenterUntil: CFTimeInterval = 0
@@ -607,7 +623,7 @@ extension Ghostty {
         /// rows, and an upward nudge could push it off-screen), and one
         /// landing on row zero (nothing above to reveal).
         private func recenterIfNeeded(total: UInt64, offset: UInt64, len: UInt64) {
-            defer { scrollOffset = offset }
+            defer { scrollOffset = offset; screenRows = total }
             if recentering { recentering = false; return }
             guard CACurrentMediaTime() < recenterUntil,
                   offset != scrollOffset else { return }
