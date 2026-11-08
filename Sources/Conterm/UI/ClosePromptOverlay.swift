@@ -30,18 +30,25 @@ struct ClosePromptOverlay: View {
                 DropWell(padding: 0) {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Restore tabs & panes on next launch")
+                            Text(InstanceState.ownsSession
+                                 ? "Restore tabs & panes on next launch"
+                                 : "Tabs & panes won't be restored")
                                 .font(Drop.display(12.5, .medium))
                                 .foregroundStyle(Theme.textPrimary)
-                            Text("Layout, working directories and scrollback come back as they are.")
+                            Text(InstanceState.ownsSession
+                                 ? "Layout, working directories and scrollback come back as they are."
+                                 : AppDelegate.sessionOwnedElsewhere)
                                 .font(Drop.display(10.5, .regular))
                                 .foregroundStyle(Theme.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 8)
-                        Toggle("", isOn: $state.closePromptRestore.withSound())
-                            .toggleStyle(.drop)
-                            .labelsHidden()
+                        // Only the copy holding the session lock saves one.
+                        if InstanceState.ownsSession {
+                            Toggle("", isOn: $state.closePromptRestore.withSound())
+                                .toggleStyle(.drop)
+                                .labelsHidden()
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 13)

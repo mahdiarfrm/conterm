@@ -1117,15 +1117,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .warning
+        // Only the copy holding the session lock saves one; a second copy
+        // says so instead of offering a choice that does nothing.
         let save = NSButton(checkboxWithTitle: "Restore tabs & panes on next launch",
                             target: nil, action: nil)
-        save.state = restore ? .on : .off
-        alert.accessoryView = save
+        if InstanceState.ownsSession {
+            save.state = restore ? .on : .off
+            alert.accessoryView = save
+        } else {
+            alert.informativeText = message + "\n\n" + sessionOwnedElsewhere
+        }
         alert.addButton(withTitle: confirm)    // .alertFirstButtonReturn
         alert.addButton(withTitle: "Cancel")   // .alertSecondButtonReturn
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        return save.state == .on
+        return InstanceState.ownsSession && save.state == .on
     }
+
+    /// Why a second running copy of Conterm neither restores nor saves tabs.
+    static let sessionOwnedElsewhere =
+        "Another copy of Conterm is running and keeps the session, so this one's tabs aren't saved."
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         // Defensive: only terminate when WE have zero windows left.
