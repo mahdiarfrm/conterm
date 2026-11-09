@@ -5,6 +5,11 @@ import SwiftUI
 @main
 struct ContermApp {
     static func main() {
+        // Started as `ghostty +<action>` (the `ghostty` link beside this
+        // binary): a libghostty CLI action, run before anything of the app.
+        if CommandLine.arguments.dropFirst().first?.hasPrefix("+") == true {
+            Ghostty.runCLIAction()
+        }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
