@@ -26,10 +26,6 @@ enum ClaudeUsageTap {
         case ok
         /// settings.json exists but isn't a JSON object: left untouched.
         case unreadableSettings
-        /// The tap is installed but its saved original is gone (an install
-        /// from an earlier build whose `~/.conterm` was removed): left as is
-        /// rather than dropping the user's status line.
-        case originalMissing
     }
 
     nonisolated static func dir(home: String) -> String { "\(home)/.conterm" }
@@ -40,12 +36,6 @@ enum ClaudeUsageTap {
     nonisolated static func settingsSpec(home: String) -> AgentHookSpec {
         // Same file as `AgentHooks.claude`; the tap never touches events.
         AgentHookSpec(identity: "claude", settingsPath: "\(home)/.claude/settings.json", events: [])
-    }
-    /// Files an earlier build of the tap kept the original and readings in.
-    nonisolated private static func legacyPaths(home: String) -> (original: String, others: [String]) {
-        let d = dir(home: home)
-        return ("\(d)/claude-statusline.orig.json",
-                ["\(d)/claude-statusline.orig", "\(d)/claude-rate-limits.json"])
     }
 
     nonisolated static let script = #"""
@@ -69,24 +59,30 @@ enum ClaudeUsageTap {
     cmd=$(printf '%s' "${1:-}" | /usr/bin/base64 -D 2>/dev/null \
           | /usr/bin/plutil -extract command raw -o - - 2>/dev/null)
     if [ -n "$cmd" ]; then
-        printf '%s' "$in" | exec sh -c "$cmd"
+        # Trailing newline so a command that loops on `read` gets its last line.
+        printf '%s\n' "$in" | exec sh -c "$cmd"
     fi
     exit 0
     """#
 
-    /// `sh "<script>" <base64 original> # conterm`. `$HOME` for the real
-    /// home so a synced settings.json works on another Mac.
+    /// Runs the script ($0) with the original ($1); when the script can't be
+    /// read (settings.json synced to a Mac without Conterm), runs the decoded
+    /// original directly, or prints nothing when there is none.
+    nonisolated private static let launcher = #"if [ -r "$0" ]; then exec sh "$0" "$1"; fi; c=$(printf %s "$1" | /usr/bin/base64 -D 2>/dev/null | /usr/bin/plutil -extract command raw -o - - 2>/dev/null); if [ -n "$c" ]; then exec sh -c "$c"; fi"#
+
+    /// `sh -c '<launcher>' "<script>" <base64 original> # conterm`. `$HOME`
+    /// for the real home so a synced settings.json works on another Mac.
     nonisolated static func command(original: [String: Any], home: String) -> String {
         let data = (try? JSONSerialization.data(withJSONObject: original, options: [.sortedKeys]))
             ?? Data("{}".utf8)
         let path = home == NSHomeDirectory()
             ? "$HOME/.conterm/claude-statusline.sh"
             : scriptPath(home: home)
-        return "sh \"\(path)\" \(data.base64EncodedString()) \(sentinel)"
+        return "sh -c '\(launcher)' \"\(path)\" \(data.base64EncodedString()) \(sentinel)"
     }
 
     /// The previous `statusLine` carried in an installed command; nil when
-    /// the command has none (an earlier build's install).
+    /// the command has none (hand-edited).
     nonisolated static func original(inCommand command: String) -> [String: Any]? {
         let parts = command.components(separatedBy: " ")
         guard let hash = parts.lastIndex(of: "#"), hash > 0,
@@ -142,26 +138,18 @@ enum ClaudeUsageTap {
     static func uninstall(home: String = InstanceState.userHome) -> Outcome {
         let spec = settingsSpec(home: home)
         let fm = FileManager.default
-        let legacy = legacyPaths(home: home)
         let root = AgentHooks.readJSON(spec)
         if fm.fileExists(atPath: spec.settingsPath) && root == nil {
             NSLog("conterm: \(spec.settingsPath) isn't a readable JSON object; usage tap left installed")
             return .unreadableSettings
         }
         if var root, let cmd = installedCommand(root) {
-            let saved = original(inCommand: cmd)
-                ?? (try? Data(contentsOf: URL(fileURLWithPath: legacy.original)))
-                    .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-            guard let saved else {
-                NSLog("conterm: usage tap's original status line is missing; leaving statusLine as is")
-                return .originalMissing
-            }
+            let saved = original(inCommand: cmd) ?? [:]
             if saved.isEmpty { root.removeValue(forKey: "statusLine") }
             else { root["statusLine"] = saved }
             AgentHooks.writeJSON(root, spec)
         }
-        let files = [scriptPath(home: home), legacy.original] + legacy.others
-            + windows.map { dataPath($0, home: home) }
+        let files = [scriptPath(home: home)] + windows.map { dataPath($0, home: home) }
         for path in files { try? fm.removeItem(atPath: path) }
         return .ok
     }
@@ -185,8 +173,6 @@ enum ClaudeUsageTap {
         switch problem {
         case .unreadableSettings?:
             return "~/.claude/settings.json isn't valid JSON, so it was left untouched. Fix the file and try again."
-        case .originalMissing?:
-            return "Your previous status line couldn't be found, so it was left in place. Edit statusLine in ~/.claude/settings.json to remove it."
         default:
             break
         }

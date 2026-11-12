@@ -73,19 +73,23 @@ struct UsageLimitsTests {
         return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
-    /// Run the installed status line command the way Claude Code does.
+    /// Run the installed status line command the way Claude Code does; it
+    /// must exit 0 and stay quiet on stderr.
     private func runStatusLine(_ home: String, input: String) throws -> String {
         let cmd = try #require((try settings(home)["statusLine"] as? [String: Any])?["command"] as? String)
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
         p.arguments = ["-c", cmd]
-        let stdin = Pipe(), stdout = Pipe()
+        let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
         p.standardInput = stdin
         p.standardOutput = stdout
+        p.standardError = stderr
         try p.run()
         stdin.fileHandleForWriting.write(Data(input.utf8))
         try stdin.fileHandleForWriting.close()
         p.waitUntilExit()
+        #expect(p.terminationStatus == 0)
+        #expect(stderr.fileHandleForReading.readDataToEndOfFile().isEmpty)
         return String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
     }
 
@@ -130,6 +134,9 @@ struct UsageLimitsTests {
         try withHome(#"{"model":"opus"}"#) { home in
             #expect(ClaudeUsageTap.install(home: home) == .ok)
             #expect(try runStatusLine(home, input: "{}") == "")
+            // Script gone and nothing to fall back to: still blank, exit 0.
+            try FileManager.default.removeItem(atPath: ClaudeUsageTap.scriptPath(home: home))
+            #expect(try runStatusLine(home, input: "{}") == "")
             #expect(ClaudeUsageTap.uninstall(home: home) == .ok)
             let s = try settings(home)
             #expect(s["statusLine"] == nil)
@@ -148,13 +155,23 @@ struct UsageLimitsTests {
         }
     }
 
-    @Test func missingOriginalIsNotDropped() throws {
-        // An earlier build's install: no original in the command, and its
-        // saved copy in ~/.conterm is gone.
-        let legacy = #"{"statusLine":{"type":"command","command":"sh \"$HOME/.conterm/claude-statusline.sh\" # conterm"}}"#
-        try withHome(legacy) { home in
-            #expect(ClaudeUsageTap.uninstall(home: home) == .originalMissing)
-            #expect(ClaudeUsageTap.isInstalled(home: home))
+    @Test func originalGetsItsLastLine() throws {
+        // `in=$(cat)` drops the trailing newline; a `read` loop still needs it.
+        let original = #"{"statusLine":{"type":"command","command":"while read -r l; do echo \"got $l\"; done"}}"#
+        try withHome(original) { home in
+            #expect(ClaudeUsageTap.install(home: home) == .ok)
+            let out = try runStatusLine(home, input: "a\nlast")
+            #expect(out == "got a\ngot last\n")
+        }
+    }
+
+    @Test func missingScriptFallsBackToTheOriginal() throws {
+        // settings.json synced to a Mac without Conterm: no ~/.conterm.
+        let original = #"{"statusLine":{"type":"command","command":"cat; echo \" $0\""}}"#
+        try withHome(original) { home in
+            #expect(ClaudeUsageTap.install(home: home) == .ok)
+            try FileManager.default.removeItem(atPath: ClaudeUsageTap.dir(home: home))
+            #expect(try runStatusLine(home, input: "a\nlast") == "a\nlast sh\n")
         }
     }
 }
