@@ -407,6 +407,19 @@ struct ClassicSettingsPanel: View {
                     .frame(width: 200)
                     .labelsHidden()
                 }
+                SettingsRow(title: "Show tabs as numbers",
+                            subtitle: "Top bar only. Each tab shows its status dot and number instead of its title.") {
+                    Toggle("", isOn: $prefs.tabNumbersOnly.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+                SettingsRow(title: "Fit tabs to titles",
+                            subtitle: "Top bar only. Each tab is as wide as its title, and spare width stays at the end of the bar. Fits more named tabs before they switch to numbers. The close button shows over a tab's end when you hover it.") {
+                    Toggle("", isOn: $prefs.fitTabsToTitles.withSound())
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .disabled(prefs.tabNumbersOnly)
+                }
                 SettingsRow(title: "Widgets",
                             subtitle: "Stats, clock, git, GitHub, ping, notes, pixel pet, and more — enable and reorder them in the Widgets tab.") {
                     Button("Widgets…") {
@@ -1402,9 +1415,42 @@ struct ClassicAboutContent: View {
 private struct ThemePicker: View {
     @EnvironmentObject var themes: ThemeCatalog
     @EnvironmentObject var prefs: Preferences
+    @EnvironmentObject var state: AppState
     @Binding var filter: String
 
+    /// Where a swatch pick lands: every window (the global theme,
+    /// written to the config file), or only the window this Settings
+    /// panel belongs to (`AppState.windowThemeID`).
+    private enum Scope: Hashable { case allWindows, thisWindow }
+    @State private var scope: Scope = .allWindows
+    /// Which follow-macOS slot a swatch pick fills (This-window
+    /// scope with Follow on). Defaults to the current appearance.
+    @State private var editingDark: Bool = ThemeCatalog.systemIsDark
+
     private let columns = [GridItem(.adaptive(minimum: 132), spacing: 10)]
+
+    /// The theme the swatch grid should mark selected in the current
+    /// scope: a window override wins in This-window scope, and a
+    /// window without one shows the global pick it is following.
+    private var selectedThemeID: String? {
+        guard scope == .thisWindow else { return themes.current }
+        if state.windowThemeFollowsSystem {
+            return editingDark ? state.windowDarkThemeID
+                               : state.windowLightThemeID
+        }
+        return state.windowThemeID ?? themes.current
+    }
+
+    /// Follow-macOS toggle for a window with its own theme: fixed
+    /// theme, or the Light/Dark pair switching with the system.
+    private var followBinding: Binding<Bool> {
+        Binding(
+            get: { state.windowThemeFollowsSystem },
+            set: { on in
+                if on { editingDark = ThemeCatalog.systemIsDark }
+                state.setWindowThemeFollowsSystem(on)
+            })
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1418,7 +1464,7 @@ private struct ThemePicker: View {
                         .foregroundStyle(Theme.textSecondary)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Capsule().fill(Theme.stroke))
-                } else if let cur = themes.current {
+                } else if let cur = selectedThemeID {
                     Text(cur)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(Theme.textSecondary)
@@ -1431,6 +1477,8 @@ private struct ThemePicker: View {
             // config (the picker is disabled and its managed block is
             // removed); OFF lets the swatches below own the palette.
             sourceToggle
+
+            scopeRow
 
             // Only the filter + swatches dim/disable while the config owns
             // the colors — the toggle above stays live so it can be turned
@@ -1468,9 +1516,9 @@ private struct ThemePicker: View {
                             ForEach(filteredThemes, id: \.id) { theme in
                                 ThemeSwatch(
                                     theme: theme,
-                                    isSelected: theme.id == themes.current
+                                    isSelected: theme.id == selectedThemeID
                                 )
-                                .onTapGesture { themes.apply(theme) }
+                                .onTapGesture { pick(theme) }
                             }
                         }
                         .padding(.vertical, 4)
@@ -1481,6 +1529,11 @@ private struct ThemePicker: View {
             .disabled(prefs.themeFromConfig)
             .opacity(prefs.themeFromConfig ? 0.4 : 1)
             .animation(Theme.Spring.snappy, value: prefs.themeFromConfig)
+        }
+        .onAppear {
+            // Land on the scope this window is actually in, so a
+            // themed window doesn't offer a global pick by default.
+            scope = state.hasWindowTheme ? .thisWindow : .allWindows
         }
     }
 
@@ -1517,6 +1570,120 @@ private struct ThemePicker: View {
         .onChange(of: prefs.themeFromConfig) { _, on in
             if on { themes.followConfig() }
         }
+    }
+
+    /// Scope row: does the next swatch pick retheme every window, or
+    /// only this one? A window with its own theme can drop back to
+    /// following the global pick here. Disabled while the config owns
+    /// the colors, like the swatches below.
+    private var scopeRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Text("Apply to")
+                    .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                Picker("", selection: $scope) {
+                    Text("All windows").tag(Scope.allWindows)
+                    Text("This window").tag(Scope.thisWindow)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                Spacer(minLength: 8)
+                if scope == .thisWindow, state.hasWindowTheme {
+                    Button("Use global theme") { state.setWindowTheme(nil) }
+                        .font(.system(size: 11, design: .rounded))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.accent)
+                }
+            }
+            if scope == .thisWindow {
+                HStack(spacing: 10) {
+                    Text("Follow macOS light/dark")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(Theme.textPrimary)
+                    Spacer(minLength: 8)
+                    Toggle("", isOn: followBinding)
+                        .labelsHidden()
+                }
+                if state.windowThemeFollowsSystem {
+                    HStack(spacing: 6) {
+                        slotChip(title: "Light",
+                                 themeID: state.windowLightThemeID,
+                                 dark: false)
+                        slotChip(title: "Dark",
+                                 themeID: state.windowDarkThemeID,
+                                 dark: true)
+                        Spacer(minLength: 0)
+                    }
+                }
+                Text(windowCaption)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Theme.stroke, lineWidth: 0.5)
+        )
+        .disabled(prefs.themeFromConfig)
+        .opacity(prefs.themeFromConfig ? 0.4 : 1)
+    }
+
+    private func pick(_ theme: ThemeCatalog.Theme) {
+        switch scope {
+        case .allWindows:
+            themes.apply(theme)
+        case .thisWindow:
+            if state.windowThemeFollowsSystem {
+                state.setWindowSlotTheme(theme.id, dark: editingDark)
+            } else {
+                state.setWindowTheme(theme.id)
+            }
+        }
+    }
+
+    private var windowCaption: String {
+        if state.windowThemeFollowsSystem {
+            return "This window switches with macOS. Pick a swatch to "
+                + "fill the Light or Dark slot."
+        }
+        return state.hasWindowTheme
+            ? "Only this window uses this theme. Other windows keep the global theme."
+            : "This window follows the global theme. Pick a swatch to give it its own."
+    }
+
+    /// One follow-macOS slot: shows its theme and takes the swatch
+    /// picks while selected.
+    private func slotChip(title: String, themeID: String?,
+                          dark: Bool) -> some View {
+        let selected = editingDark == dark
+        return Button { editingDark = dark } label: {
+            Text("\(title): \(themeID ?? "—")")
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(selected ? Theme.textPrimary
+                                          : Theme.textSecondary)
+                .lineLimit(1)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(selected ? Theme.selectionFill
+                                       : Color.white.opacity(0.04))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(selected ? Theme.accent : Theme.stroke,
+                                      lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+        .help("Pick swatches for the \(title) appearance")
     }
 
     private var filteredThemes: [ThemeCatalog.Theme] {

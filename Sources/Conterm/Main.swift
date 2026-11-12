@@ -5,6 +5,11 @@ import SwiftUI
 @main
 struct ContermApp {
     static func main() {
+        // Started as `ghostty +<action>` (the `ghostty` link beside this
+        // binary): a libghostty CLI action, run before anything of the app.
+        if CommandLine.arguments.dropFirst().first?.hasPrefix("+") == true {
+            Ghostty.runCLIAction()
+        }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -120,6 +125,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
         MainMenu.install(delegate: self)
 
+        // Leftovers from the last run: agent records of sessions that ended
+        // with it, and restore files no shell took.
+        if InstanceState.ownsSession {
+            AgentSessionRecord.removeStale()
+            RestoreHandoff.removeStale()
+        }
+
         // Try to rehydrate the prior session (if the user enabled
         // "remember windows" + we have a snapshot on disk). Falls
         // through to a single fresh window when nothing's saved or
@@ -147,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         installShortcutMonitor()
         installTitleBarDoubleClickMonitor()
         installOcclusionCoordinator()
+        startSessionAutosave()
         runLaunchScaleIn()
 
         NSApp.activate(ignoringOtherApps: true)
@@ -495,6 +508,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         state.openFleetRun()
         NSApp.keyWindow?.makeFirstResponder(nil)
     }
+    @objc func biggerText(_ sender: Any?)     { fontBinding("increase_font_size:1") }
+    @objc func smallerText(_ sender: Any?)    { fontBinding("decrease_font_size:1") }
+    @objc func actualSizeText(_ sender: Any?) { fontBinding("reset_font_size") }
+    private func fontBinding(_ action: String) {
+        _ = state.selectedTab?.paneTree.activePane?.controller?.performBindingAction(action)
+    }
+    @objc func reloadConfiguration(_ sender: Any?) { reloadConfigAndReapplyBlur() }
+    @objc func selectTabFromMenu(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        state.select(id)
+    }
+    @objc func selectPaneFromMenu(_ sender: NSMenuItem) {
+        guard let index = sender.representedObject as? Int else { return }
+        state.selectPaneByIndex(index)
+    }
+    @objc func jumpToPane(_ sender: Any?)       { openPalette(.sessions) }
+    @objc func nextBlockedAgent(_ sender: Any?) { AgentCenter.shared.jumpToNextAttention() }
+    @objc func showTabGroups(_ sender: Any?)    { openPalette(.groups) }
+    @objc func connectToHost(_ sender: Any?)    { openPalette(.sshHosts) }
+    @objc func showClipboardHistory(_ sender: Any?) { openPalette(.clipboard) }
+    @objc func showShellHistory(_ sender: Any?) { openPalette(.shellHistory) }
+    @objc func showNotes(_ sender: Any?)        { openPalette(.notesList) }
+    @objc func newNote(_ sender: Any?) {
+        openPalette(.noteEdit(noteID: state.notes.create().id))
+    }
+    private func openPalette(_ mode: AppState.PaletteMode) {
+        state.openPalette(mode: mode)
+        NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+    @objc func openInFinder(_ sender: Any?)  { state.openCurrentDir(in: .finder) }
+    @objc func openInCursor(_ sender: Any?)  { state.openCurrentDir(in: .cursor) }
+    @objc func openInVSCode(_ sender: Any?)  { state.openCurrentDir(in: .vscode) }
     @objc func showShortcuts(_ sender: Any?) {
         state.openSettings(section: SettingsPanel.Section.shortcuts.rawValue)
         NSApp.keyWindow?.makeFirstResponder(nil)
@@ -1109,15 +1154,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .warning
+        // Only the copy holding the session lock saves one; a second copy
+        // says so instead of offering a choice that does nothing.
         let save = NSButton(checkboxWithTitle: "Restore tabs & panes on next launch",
                             target: nil, action: nil)
-        save.state = restore ? .on : .off
-        alert.accessoryView = save
+        if InstanceState.ownsSession {
+            save.state = restore ? .on : .off
+            alert.accessoryView = save
+        } else {
+            alert.informativeText = message + "\n\n" + sessionOwnedElsewhere
+        }
         alert.addButton(withTitle: confirm)    // .alertFirstButtonReturn
         alert.addButton(withTitle: "Cancel")   // .alertSecondButtonReturn
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        return save.state == .on
+        return InstanceState.ownsSession && save.state == .on
     }
+
+    /// Why a second running copy of Conterm neither restores nor saves tabs.
+    static let sessionOwnedElsewhere =
+        "Another copy of Conterm is running and keeps the session, so this one's tabs aren't saved."
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         // Defensive: only terminate when WE have zero windows left.
@@ -1137,6 +1192,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     /// best-effort save doesn't re-write a session the user just chose
     /// to discard.
     private var sessionDecisionMade = false
+
+    /// Saves the session once a minute while windows are open, so a crash
+    /// or a forced quit restores the last minute rather than the last clean
+    /// quit. Unchanged snapshots aren't rewritten (`SessionStore.write`).
+    private var sessionAutosave: Timer?
+
+    private func startSessionAutosave() {
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.autosaveSession() }
+        }
+        timer.tolerance = 15
+        RunLoop.main.add(timer, forMode: .common)
+        sessionAutosave = timer
+    }
+
+    private func autosaveSession() {
+        // Stand down once a quit or a closing window has decided what the
+        // file holds, including "don't save".
+        guard prefs?.rememberWindowState == true, !sessionDecisionMade,
+              !suppressAutoSaveOnce, !windows.isEmpty else { return }
+        SessionStore.save(windows: windows)
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         // Snapshot HERE — not in applicationWillTerminate. By the time

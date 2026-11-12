@@ -9,32 +9,11 @@ The CoreText shaper moves such a glyph to the leftmost of its cells
 and marks how many it spans; the CoreText face widens the glyph so its
 advance fills them. Only cells no other glyph is drawn in are claimed.
 
-diff --git a/src/font/SharedGrid.zig b/src/font/SharedGrid.zig
-index 5fd729b..2cae11e 100644
---- a/src/font/SharedGrid.zig
-+++ b/src/font/SharedGrid.zig
-@@ -373,7 +373,7 @@ const GlyphKey = struct {
-             thicken: bool,
-             thicken_strength: u8,
-             constraint_width: u2,
--            _padding: u3 = 0,
-+            stretch_cells: u3,
-         },
- 
-         inline fn from(key: GlyphKey) Packed {
-@@ -385,6 +385,7 @@ const GlyphKey = struct {
-                     .thicken = key.opts.thicken,
-                     .thicken_strength = key.opts.thicken_strength,
-                     .constraint_width = key.opts.constraint_width,
-+                    .stretch_cells = key.opts.stretch_cells,
-                 },
-             };
-         }
-diff --git a/src/font/face.zig b/src/font/face.zig
-index d77253a..8c8573a 100644
---- a/src/font/face.zig
-+++ b/src/font/face.zig
-@@ -125,6 +125,13 @@ pub const RenderOptions = struct {
+diff --git a/src/font/Glyph.zig b/src/font/Glyph.zig
+index 62c44e2..8b2eac0 100644
+--- a/src/font/Glyph.zig
++++ b/src/font/Glyph.zig
+@@ -64,6 +64,13 @@ pub const RenderOptions = struct {
      /// there's whitespace to the right of the cell then it can be 2.
      constraint_width: u2 = 1,
  
@@ -48,8 +27,29 @@ index d77253a..8c8573a 100644
      /// Thicken the glyph. This draws the glyph with a thicker stroke width.
      /// This is purely an aesthetic setting.
      ///
+diff --git a/src/font/SharedGrid.zig b/src/font/SharedGrid.zig
+index 81b7d77..76e6a6f 100644
+--- a/src/font/SharedGrid.zig
++++ b/src/font/SharedGrid.zig
+@@ -506,7 +506,7 @@ const GlyphKey = packed struct(u64) {
+         thicken: bool,
+         thicken_strength: u8,
+         constraint_width: u2,
+-        _padding: u3 = 0,
++        stretch_cells: u3,
+     },
+ 
+     const Context = struct {
+@@ -533,6 +533,7 @@ const GlyphKey = packed struct(u64) {
+                 .thicken = k.opts.thicken,
+                 .thicken_strength = k.opts.thicken_strength,
+                 .constraint_width = k.opts.constraint_width,
++                .stretch_cells = k.opts.stretch_cells,
+             },
+         };
+     }
 diff --git a/src/font/face/coretext.zig b/src/font/face/coretext.zig
-index 1d13338..7ad580a 100644
+index f9fd78e..a8a8e75 100644
 --- a/src/font/face/coretext.zig
 +++ b/src/font/face/coretext.zig
 @@ -360,14 +360,29 @@ pub const Face = struct {
@@ -105,10 +105,10 @@ index bc19c1f..d11415a 100644
  
  /// Options for shapers.
 diff --git a/src/font/shaper/coretext.zig b/src/font/shaper/coretext.zig
-index 27ed762..ff0a622 100644
+index 7ce5f96..bee19d0 100644
 --- a/src/font/shaper/coretext.zig
 +++ b/src/font/shaper/coretext.zig
-@@ -56,6 +56,10 @@ pub const Shaper = struct {
+@@ -57,6 +57,10 @@ pub const Shaper = struct {
      /// cell offset. This lets out-of-order combining marks re-anchor to the
      /// correct base cluster.
      cluster_anchor_x: std.ArrayListUnmanaged(f64),
@@ -119,15 +119,15 @@ index 27ed762..ff0a622 100644
  
      /// Cached attributes dict for creating CTTypesetter objects.
      /// The values in this never change so we can avoid overhead
-@@ -233,6 +237,7 @@ pub const Shaper = struct {
+@@ -234,6 +238,7 @@ pub const Shaper = struct {
              .alloc = alloc,
-             .cell_buf = .{},
-             .cluster_anchor_x = .{},
-+            .cell_string_index = .{},
+             .cell_buf = .empty,
+             .cluster_anchor_x = .empty,
++            .cell_string_index = .empty,
              .run_state = run_state,
              .features = features,
              .features_no_default = features_no_default,
-@@ -249,6 +254,7 @@ pub const Shaper = struct {
+@@ -250,6 +255,7 @@ pub const Shaper = struct {
      pub fn deinit(self: *Shaper) void {
          self.cell_buf.deinit(self.alloc);
          self.cluster_anchor_x.deinit(self.alloc);
@@ -135,7 +135,7 @@ index 27ed762..ff0a622 100644
          self.run_state.deinit(self.alloc);
          self.features.release();
          self.features_no_default.release();
-@@ -425,6 +431,8 @@ pub const Shaper = struct {
+@@ -426,6 +432,8 @@ pub const Shaper = struct {
          // instead of maybe allocating.
          self.cell_buf.clearRetainingCapacity();
          try self.cell_buf.ensureTotalCapacity(self.alloc, line.getGlyphCount());
@@ -144,7 +144,7 @@ index 27ed762..ff0a622 100644
  
          // CoreText, despite our insistence with an enforced embedding level,
          // may sometimes output runs that are non-monotonic. In order to fix
-@@ -616,6 +624,7 @@ pub const Shaper = struct {
+@@ -617,6 +625,7 @@ pub const Shaper = struct {
                      .y_offset = @intFromFloat(@round(position.y)),
                      .glyph_index = glyph,
                  });
@@ -152,7 +152,7 @@ index 27ed762..ff0a622 100644
  
                  // Add our advances to keep track of our run offsets.
                  // Advances apply to the NEXT cell.
-@@ -627,6 +636,9 @@ pub const Shaper = struct {
+@@ -628,6 +637,9 @@ pub const Shaper = struct {
              }
          }
  
@@ -162,7 +162,7 @@ index 27ed762..ff0a622 100644
          // CoreText may return RTL or otherwise non-monotonic glyph runs. The
          // renderer expects cells sorted by increasing terminal x, so normalize
          // the order after all per-glyph offsets have been computed.
-@@ -647,6 +659,71 @@ pub const Shaper = struct {
+@@ -648,6 +660,71 @@ pub const Shaper = struct {
          return self.cell_buf.items;
      }
  
@@ -235,10 +235,10 @@ index 27ed762..ff0a622 100644
      /// These items are cached, do not retain or release them.
      fn getFont(
 diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
-index 0f4a294..7702539 100644
+index df70aa3..242048b 100644
 --- a/src/renderer/generic.zig
 +++ b/src/renderer/generic.zig
-@@ -3195,6 +3195,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+@@ -3510,6 +3510,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                          x,
                          cols,
                      ),

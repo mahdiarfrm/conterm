@@ -159,7 +159,9 @@ final class ThemeCatalog: ObservableObject {
     /// `key = value` except `theme`/`config-file` (which a theme file
     /// can't set anyway). Emitted into the user config so the theme's
     /// colors land as explicit keys that override a hardcoded palette.
-    nonisolated private static func colorLines(forThemeID id: String) -> [String] {
+    /// Also used by `Ghostty.App.makeConfig(themeID:)` to build a
+    /// per-window config variant without touching the global file.
+    nonisolated static func colorLines(forThemeID id: String) -> [String] {
         guard let dir = Bundle.main.resourceURL?
             .appendingPathComponent("ghostty/themes") else { return [] }
         let path = dir.appendingPathComponent(id).path
@@ -177,6 +179,36 @@ final class ThemeCatalog: ObservableObject {
             out.append("\(key) = \(value)")
         }
         return out
+    }
+
+    /// `id` if it still resolves to a readable theme file, else nil.
+    /// A restored per-window theme whose file is gone must drop to
+    /// following the global theme — keeping the dead id would leave
+    /// the picker showing a selection nothing can render.
+    nonisolated static func validatedThemeID(_ id: String?) -> String? {
+        guard let id, !id.isEmpty,
+              !colorLines(forThemeID: id).isEmpty else { return nil }
+        return id
+    }
+
+    /// Whether macOS itself is in Dark Mode. Read from the global
+    /// defaults domain: the app's own appearance is forced by the
+    /// glass tint, so `NSApp.effectiveAppearance` can't answer this.
+    nonisolated static var systemIsDark: Bool {
+        UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+    }
+
+    /// The theme a window actually renders: its fixed theme, or —
+    /// when following macOS — the slot for the current appearance,
+    /// falling back to the other slot so a half-filled pair still
+    /// themes the window. Nil = follow the global theme.
+    nonisolated static func effectiveThemeID(fixed: String?,
+                                             light: String?,
+                                             dark: String?,
+                                             followsSystem: Bool,
+                                             isDark: Bool) -> String? {
+        guard followsSystem else { return fixed }
+        return isDark ? (dark ?? light) : (light ?? dark)
     }
 }
 

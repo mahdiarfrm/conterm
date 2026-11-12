@@ -35,6 +35,10 @@ struct TabPill: View {
     /// small dim counterpart of the sidebar card's second line. TabBar
     /// grants it globally while the bar has room for every pill's line.
     var showDir: Bool = false
+    /// "Fit tabs to titles": sized to its title alone, with no slot for
+    /// the ⌘N badge or close button. TabBar sets it on labelled
+    /// horizontal pills that aren't selected.
+    var fitted: Bool = false
 
     @EnvironmentObject var tabGroups: TabGroupStore
     @EnvironmentObject var state: AppState
@@ -42,7 +46,12 @@ struct TabPill: View {
     @State private var hovering = false
     @State private var hoveringClose = false
     /// Live rendered width (horizontal pills only) — drives `squeezed`.
-    @State private var pillWidth: CGFloat = 0
+    @State private var measured = Measure(width: 0, fitted: false)
+    /// A rendered width and the `fitted` value it was laid out under.
+    private struct Measure: Equatable {
+        var width: CGFloat
+        var fitted: Bool
+    }
 
     /// `.key` only when this view's window is key and the app is frontmost.
     /// The attention pulse is gated on it: an off-screen animation still
@@ -68,18 +77,19 @@ struct TabPill: View {
     /// of strings is measured over and over as the map animates.
     nonisolated(unsafe) private static var widthCache: [String: CGFloat] = [:]
 
-    /// Width of `s` in the pills' system font, semibold — the selected weight,
-    /// so the measure is the upper bound.
+    /// Width of `s` in the pills' system font, semibold by default — the
+    /// selected weight, so the measure is the upper bound.
     static func textWidth(_ s: String, size: CGFloat,
-                          design: NSFontDescriptor.SystemDesign = .rounded) -> CGFloat {
-        let key = "\(size)|\(design.rawValue)|\(s)"
+                          design: NSFontDescriptor.SystemDesign = .rounded,
+                          weight: NSFont.Weight = .semibold) -> CGFloat {
+        let key = "\(size)|\(design.rawValue)|\(weight.rawValue)|\(s)"
         if let w = widthCache[key] { return w }
-        let fontKey = "\(size)|\(design.rawValue)"
+        let fontKey = "\(size)|\(design.rawValue)|\(weight.rawValue)"
         let font: NSFont
         if let f = fontCache[fontKey] {
             font = f
         } else {
-            var made = NSFont.systemFont(ofSize: size, weight: .semibold)
+            var made = NSFont.systemFont(ofSize: size, weight: weight)
             if let d = made.fontDescriptor.withDesign(design) {
                 made = NSFont(descriptor: d, size: size) ?? made
             }
@@ -94,18 +104,98 @@ struct TabPill: View {
         return w
     }
 
-    /// The bar squeezed this pill below what its title needs, so the
-    /// text gives way to the tab number. Display-only: the layout keeps
+    /// Gap between a horizontal pill's parts. Not UI-scaled, so
+    /// `idealWidth` adds it as is.
+    static let rowGap: CGFloat = 7
+
+    /// Width a labelled horizontal pill needs to show its whole title:
+    /// padding, status dot, and title, plus, unless fitted, the ⌘N badge
+    /// (first nine tabs) and the close slot, with a gap between each.
+    /// A fitted title is measured at regular weight, since a fitted pill
+    /// is never the selected one; a full one at semibold, its upper bound.
+    /// Rounded up to a whole point: off the 1.0 scale the parts land on
+    /// half points, and a 1x display lays the pill out a point wider.
+    /// `titleCap` limits the title's share, for a title shortened with
+    /// "…" to fit a crowded bar.
+    static func idealWidth(title: String, index: Int, fitted: Bool,
+                           titleCap: CGFloat = .infinity) -> CGFloat {
+        ceil(chromeWidth(index: index, fitted: fitted)
+             + min(titleWidth(title, fitted: fitted), titleCap))
+    }
+
+    /// Narrowest width that still shows a label: the title cut to its
+    /// first six characters and "…". Titles of seven characters or
+    /// fewer stay whole. Below this the pill shows its number instead.
+    static func minimumWidth(title: String, index: Int, fitted: Bool) -> CGFloat {
+        idealWidth(title: title, index: index, fitted: fitted,
+                   titleCap: shortestTitleWidth(title, fitted: fitted))
+    }
+
+    static func titleWidth(_ title: String, fitted: Bool) -> CGFloat {
+        textWidth(title, size: Theme.ui(12), weight: fitted ? .regular : .semibold)
+    }
+
+    /// The point on top keeps the sixth character: without it, Text cuts
+    /// some titles one character shorter ("deplo…" for "deploy — prod").
+    static func shortestTitleWidth(_ title: String, fitted: Bool) -> CGFloat {
+        guard title.count > 7 else { return titleWidth(title, fitted: fitted) }
+        return titleWidth(String(title.prefix(6)) + "…", fitted: fitted) + 1
+    }
+
+    /// Everything in a labelled pill but its title.
+    static func chromeWidth(index: Int, fitted: Bool) -> CGFloat {
+        let lead = 2 * Theme.ui(11) + Theme.ui(6) + rowGap
+        if fitted { return lead }
+        var w = lead + 2 * rowGap + Theme.ui(18)   // gaps either side of the Spacer, close slot
+        if index <= 9 {
+            w += rowGap + textWidth("⌘\(index)", size: Theme.ui(9.5), design: .monospaced)
+               + 2 * Theme.ui(5)
+        }
+        return w
+    }
+
+    /// Width of a number-only pill: padding, status dot, number and the
+    /// gap before its (empty) title slot. The number is measured as
+    /// zeros: `monospacedDigit` sets every digit at the width of a 0.
+    static func miniWidth(index: Int) -> CGFloat {
+        let digits = String(repeating: "0", count: String(index).count)
+        return ceil(2 * Theme.ui(9) + Theme.ui(6) + 2 * 5
+                    + textWidth(digits, size: Theme.ui(11)))
+    }
+
+    /// Narrowest title a number-only pill shows beside its number: three
+    /// characters and "…", or the whole title if it's no longer than four.
+    static func miniTitleWidth(_ title: String) -> CGFloat {
+        let shown = title.count > 4 ? String(title.prefix(3)) + "…" : title
+        return textWidth(shown, size: Theme.ui(11), weight: .regular) + 1
+    }
+
+    /// A number-only pill the bar stretched wide enough to also show the
+    /// start of its title.
+    private var miniShowsTitle: Bool {
+        guard mini, measured.width > 0 else { return false }
+        let title = tab.title.isEmpty ? "shell" : tab.title
+        return measured.width >= Self.miniWidth(index: index) + Self.miniTitleWidth(title)
+    }
+
+    /// The bar squeezed this pill below `minimumWidth`, too narrow for
+    /// even a shortened title, so the text gives way to the tab number.
+    /// Above it, the title shortens itself with "…". Display-only: the layout keeps
     /// carrying the (invisibly truncated) title, so entering number
     /// mode never changes the pill's size — the width signal stays
-    /// honest in both directions and can't oscillate.
+    /// honest in both directions and can't oscillate. A width laid out
+    /// under the other `fitted` value is stale — the selection just
+    /// moved — and isn't compared, so the title doesn't blink to its
+    /// number for the frame before the new width lands.
     private var squeezed: Bool {
-        guard !mini, !compact, !isSessionCard, pillWidth > 0 else { return false }
+        guard !mini, !compact, !isSessionCard, measured.width > 0,
+              measured.fitted == fitted else { return false }
         let title = tab.title.isEmpty ? "shell" : tab.title
-        let needed = Self.textWidth(title, size: Theme.ui(12)) + Theme.ui(64)
-                   + (index <= 9 ? Theme.ui(41) : 0)
-        return pillWidth < needed
+        return measured.width < Self.minimumWidth(title: title, index: index, fitted: fitted)
     }
+
+    /// The hover close button a fitted pill draws over its title's end.
+    private var showsFittedClose: Bool { fitted && hovering && !squeezed }
 
     /// Resolved group for this tab (looked up via TabGroupStore).
     /// Re-evaluated on every body so changes propagate.
@@ -120,7 +210,7 @@ struct TabPill: View {
     }
 
     var body: some View {
-        HStack(spacing: mini ? 5 : (compact ? 7 : (isSessionCard ? 8 : 7))) {
+        HStack(spacing: mini ? 5 : (compact ? 7 : (isSessionCard ? 8 : Self.rowGap))) {
             if mini {
                 statusDot
                 Text("\(index)")
@@ -128,6 +218,17 @@ struct TabPill: View {
                     .monospacedDigit()
                     .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
                     .fixedSize()
+                // Fills the width TabBar deals a number-only pill, which
+                // stretches them across the bar. Shown only once at least
+                // three characters fit; hidden, it still fills, so the
+                // pill's size never depends on whether it shows.
+                Text(tab.title.isEmpty ? "shell" : tab.title)
+                    .font(.system(size: Theme.ui(11), weight: .regular, design: .rounded))
+                    .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                    .opacity(miniShowsTitle ? 1 : 0)
             } else if isSessionCard {
                 PaneMapThumb(tree: tab.paneTree, isSelected: isSelected,
                              agentPhase: tab.agentPhase)
@@ -147,9 +248,15 @@ struct TabPill: View {
                                        size: Theme.ui(8.5), dimmed: true)
                     }
                 }
+                // A fitted pill has no trailing Spacer, so the title
+                // column is what fills the width TabBar deals it. Left to
+                // hug, the pill comes out narrower than `idealWidth` (the
+                // text measure is rounded up) and `squeezed` swaps every
+                // title for its number.
+                .frame(maxWidth: fitted ? .infinity : nil, alignment: .leading)
                 .opacity(squeezed ? 0 : 1)
             }
-            if !mini {
+            if !mini && !fitted {
                 if compact || isSessionCard {
                     // Sidebar rows fill a fixed column width — push the
                     // trailing controls to the row's edge.
@@ -182,8 +289,9 @@ struct TabPill: View {
         .padding(.vertical, Theme.ui(mini ? 7 : (isSessionCard ? 6 : (compact ? 6
             : (showDir ? 4 : 7)))))
         .background(GeometryReader { proxy in
-            Color.clear.onChange(of: proxy.size.width, initial: true) { _, w in
-                pillWidth = w
+            Color.clear.onChange(of: Measure(width: proxy.size.width, fitted: fitted),
+                                 initial: true) { _, m in
+                measured = m
             }
         })
         .background(pillBackground)
@@ -200,23 +308,40 @@ struct TabPill: View {
             }
         }
         .animation(Theme.Spring.snappy, value: squeezed)
+        // A fit-to-title pill keeps no slot for its close button, so the
+        // button shows over the pill's trailing end on hover — where the
+        // click catcher's trailing zone routes clicks to close.
+        .overlay(alignment: .trailing) {
+            if showsFittedClose {
+                closeButton
+                    // Opaque enough to read over the title it covers.
+                    .background(.regularMaterial, in: Circle())
+                    // Tight to the edge: the close zone below spans the
+                    // X and this margin, so the margin is kept small.
+                    .padding(.trailing, Theme.ui(2))
+                    .transition(.opacity)
+            }
+        }
         // (The selected-tab halo now travels: it's a single shared
         //  glow rendered by TabBar via matchedGeometry, so switching
         //  tabs glides the light across instead of snapping it.)
         .contentShape(RoundedRectangle(cornerRadius: Theme.pillCorner,
                                         style: .continuous))
         // AppKit-level click handling — no double-click disambiguation
-        // delay. Single click selects; double click renames. Trailing
-        // ~24 pt zone (where the close X sits when hovering) fires the
-        // close action instead of select, so the close button stays
-        // hit-testable rather than being swallowed by the hover catcher.
+        // delay. Single click selects; double click renames. A click
+        // released in the trailing zone (where the close X sits when
+        // hovering) closes instead of selecting, so the close button
+        // stays hit-testable rather than being swallowed by the catcher.
         .overlay {
             ClickCatcher(
                 // Single-click selects. Double-click is a no-op (it
                 // used to start rename and fought double-click-to-zoom).
                 onSingle: onSelect,
                 onDouble: {},
-                trailingZoneWidth: (hovering && !mini) ? 24 : 0,
+                // A fitted pill's zone covers only its overlaid X (16pt
+                // circle + 2pt margin), and only while the X shows.
+                trailingZoneWidth: fitted ? (showsFittedClose ? Theme.ui(18) : 0)
+                                          : (hovering && !mini ? 24 : 0),
                 onTrailingClick: onClose,
                 dragPayload: draggable ? TabDrag.payload(for: tab.id) : nil,
                 dragCornerRadius: Theme.pillCorner
@@ -391,10 +516,13 @@ struct TabPill: View {
             // spot it from another tab. Loop scoped to the attention state, so
             // it only runs while a tab is actually waiting.
             if attention, pulsesOnAttention {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { tl in
-                    let pulse = 0.5 + 0.5 * sin(tl.date.timeIntervalSinceReferenceDate * 3.6)
-                    attentionDot(color, phase: pulse)
-                }
+                // `attentionDot` through its whole cycle, played by the
+                // render server (see `AttentionPulse`).
+                AttentionPulse(layers: [
+                    .init(shape: .circle, color: NSColor(color), opacity: 0.5...1.0,
+                          glowOpacity: 0.35...0.90, glowRadius: 2...7),
+                ], period: 2 * .pi / 3.6)
+                .frame(width: Theme.ui(6), height: Theme.ui(6))
             } else if attention, prefs.blinkOnAttention {
                 // Pulse gated off — hold mid-cycle so the signal survives
                 // without a render loop.

@@ -162,6 +162,37 @@ enum AgentHooks {
         done
     }
 
+    # Session record, for restore: the pane (CONTERM_PANE_ID, inherited from
+    # its shell) keeps the agent, its pid and its current transcript in a
+    # file. The OSC 9 below can be lost (libghostty passes one per second
+    # app-wide); the file can't. SessionEnd removes it. The pid is the
+    # nearest ancestor that isn't a shell (the agent runs each hook through
+    # one), so the app can tell a session that ended without SessionEnd.
+    if [ -n "$CONTERM_PANE_ID" ]; then
+        recdir="$HOME/.conterm/agents"
+        rec="$recdir/pane-$CONTERM_PANE_ID"
+        case "$event" in
+            SessionEnd) rm -f "$rec" 2>/dev/null ;;
+            SessionStart|UserPromptSubmit|Stop|Notification|PermissionRequest)
+                tp=$(jfield transcript_path first)
+                if [ -n "$tp" ]; then
+                    apid=; p=$PPID; n=0
+                    while [ "$n" -lt 6 ]; do
+                        case "$p" in ''|*[!0-9]*|0|1) break;; esac
+                        case "$(ps -o comm= -p "$p" 2>/dev/null)" in
+                            ''|sh|*/sh|bash|*/bash|zsh|*/zsh|dash|*/dash|-*) ;;
+                            *) apid=$p; break ;;
+                        esac
+                        p=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')
+                        n=$((n+1))
+                    done
+                    mkdir -p "$recdir" 2>/dev/null
+                    printf '%s\n%s\n%s\n' "$agent" "$apid" "$tp" > "$rec.$$" 2>/dev/null \
+                        && mv -f "$rec.$$" "$rec" 2>/dev/null
+                fi ;;
+        esac
+    fi
+
     tty=$(find_tty)
     [ -n "$tty" ] || exit 0
     send() { printf '\033]9;conterm-agent:%s:%s\a' "$agent" "$1" >> "$tty" 2>/dev/null; }
@@ -222,12 +253,22 @@ enum AgentHooks {
         writeScript()
         let dir = (spec.settingsPath as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        // Back up the user's original once.
-        if FileManager.default.fileExists(atPath: spec.settingsPath),
-           !FileManager.default.fileExists(atPath: spec.backupPath) {
-            try? FileManager.default.copyItem(atPath: spec.settingsPath, toPath: spec.backupPath)
+        let exists = FileManager.default.fileExists(atPath: spec.settingsPath)
+        // A settings file that exists but doesn't read as a JSON object is
+        // left untouched: writing back would replace every key in it.
+        let existing = readJSON(spec)
+        if exists && existing == nil {
+            NSLog("conterm: \(spec.settingsPath) isn't a readable JSON object; hooks not installed")
+            return
         }
-        var root = readJSON(spec) ?? [:]
+        // Back up the user's original once. A symlinked file is backed up
+        // by its contents; copying the link would back up a pointer to the
+        // file about to change.
+        if exists, !FileManager.default.fileExists(atPath: spec.backupPath) {
+            try? FileManager.default.copyItem(atPath: linkTarget(of: spec.settingsPath),
+                                              toPath: spec.backupPath)
+        }
+        var root = existing ?? [:]
         var hooks = root["hooks"] as? [String: Any] ?? [:]
         for event in spec.events {
             var groups = hooks[event] as? [[String: Any]] ?? []
@@ -332,7 +373,26 @@ enum AgentHooks {
             withJSONObject: root,
             options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         ) else { return }
-        try? data.write(to: URL(fileURLWithPath: spec.settingsPath), options: .atomic)
+        try? data.write(to: URL(fileURLWithPath: linkTarget(of: spec.settingsPath)),
+                        options: .atomic)
+    }
+
+    /// The file a write to `path` lands in. An atomic write renames a new
+    /// file over its destination, so writing to a symlink would replace the
+    /// link (a dotfiles checkout) with a plain file; writing to the final
+    /// target keeps the link. Relative links resolve against their own
+    /// directory, and the hop limit matches the kernel's MAXSYMLINKS.
+    nonisolated static func linkTarget(of path: String) -> String {
+        let fm = FileManager.default
+        var p = path
+        for _ in 0..<32 {
+            guard let dest = try? fm.destinationOfSymbolicLink(atPath: p) else { break }
+            p = dest.hasPrefix("/")
+                ? dest
+                : ((p as NSString).deletingLastPathComponent as NSString)
+                    .appendingPathComponent(dest)
+        }
+        return p
     }
 }
 

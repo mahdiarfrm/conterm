@@ -81,7 +81,9 @@ struct InstanceStateTests {
         let path = dir.appendingPathComponent(".session.lock").path
 
         func claim() -> Int32? {
-            let fd = open(path, O_CREAT | O_RDWR, 0o644)
+            // As the app opens it: tests that spawn processes run alongside
+            // this one, and an inherited descriptor would keep the lock.
+            let fd = open(path, O_CREAT | O_RDWR | O_CLOEXEC, 0o644)
             guard fd >= 0 else { return nil }
             guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { close(fd); return nil }
             return fd

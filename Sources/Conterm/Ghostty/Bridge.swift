@@ -54,6 +54,18 @@ extension Ghostty {
         }
     }
 
+    /// Run the libghostty CLI action this process was started with and
+    /// exit with its status. The shell integration's `ssh` wrapper runs
+    /// `"$GHOSTTY_BIN_DIR/ghostty" +ssh …`; GHOSTTY_BIN_DIR is this binary's
+    /// directory, where the bundle links `ghostty` to it.
+    static func runCLIAction() -> Never {
+        _ = ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv)
+        ghostty_cli_try_action()
+        // Reached only when libghostty found no action in the arguments.
+        FileHandle.standardError.write(Data("conterm: unknown action \(CommandLine.arguments.dropFirst().first ?? "")\n".utf8))
+        exit(1)
+    }
+
     /// Library build info — useful for an about panel.
     static var buildInfo: (mode: ghostty_build_mode_e, version: String) {
         let raw = ghostty_info()

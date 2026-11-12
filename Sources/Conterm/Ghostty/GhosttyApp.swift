@@ -75,17 +75,19 @@ extension Ghostty {
             //   1) Conterm's bundled defaults
             //   2) ~/.config/conterm/config (the only file we name)
 
-            // 1) Base = Ghostty's GENUINE default config, bundled from
-            //    `ghostty +show-config --default` (scripts/setup.sh).
-            //    This is a real, machine-independent Ghostty default —
-            //    not anyone's personal config. If the file is somehow
+            // 1) Base = Ghostty's default config, bundled from
+            //    `ghostty +show-config --default` (scripts/setup.sh) with
+            //    the keys a theme sets stripped out, so a user `theme =`
+            //    isn't shadowed by explicit default colors. Keep them out
+            //    if you regenerate this file. Machine-independent, not
+            //    anyone's personal config. If the file is somehow
             //    absent, the empty embedded fallback lets libghostty's
             //    own compiled defaults stand (still the genuine default).
             let bundledPath = Bundle.main.path(forResource: "ghostty-default",
                                                ofType: "conf")
             if let bundled = bundledPath, fm.fileExists(atPath: bundled) {
                 bundled.withCString { ghostty_config_load_file(cfg, $0) }
-                clog("conterm: loaded genuine Ghostty default \(bundled)")
+                clog("conterm: loaded bundled Ghostty default \(bundled)")
             } else {
                 clog("conterm: ghostty-default.conf not found — relying on libghostty compiled defaults")
                 let tmp = NSTemporaryDirectory() + "conterm-defaults.conf"
@@ -164,20 +166,7 @@ extension Ghostty {
 
             ghostty_config_finalize(cfg)
 
-            // Dump diagnostics — silent parse errors would mean the user's
-            // config "doesn't work" without any visible feedback.
-            let nDiag = ghostty_config_diagnostics_count(cfg)
-            if nDiag > 0 {
-                clog("conterm: \(nDiag) config diagnostic(s):")
-                for i in 0..<nDiag {
-                    let d = ghostty_config_get_diagnostic(cfg, i)
-                    if let m = d.message {
-                        clog("conterm:   - \(String(cString: m))")
-                    }
-                }
-            } else {
-                clog("conterm: config finalized clean (no diagnostics)")
-            }
+            App.logDiagnostics(cfg)
 
             // Echo a few resolved values so we can debug. Limit to keys
             // we KNOW are stored as char* (enums). Other types crash the
@@ -278,14 +267,11 @@ extension Ghostty {
             guard let newCfg = ghostty_config_new() else { return }
             App.applyConfigChain(newCfg)
             ghostty_config_finalize(newCfg)
+            App.logDiagnostics(newCfg)
+            // Reaches every live surface too: libghostty's App.updateConfig
+            // sends each one `change_config`, which runs the same
+            // Surface.updateConfig as `ghostty_surface_update_config`.
             ghostty_app_update_config(handle, newCfg)
-            // Push to every surface so live panes pick up the new
-            // colors/font without a relaunch.
-            for ctrl in SurfaceRegistry.allControllers() {
-                if let h = ctrl.handle {
-                    ghostty_surface_update_config(h, newCfg)
-                }
-            }
             inheritWorkingDirectory = App.readInheritWorkingDirectory(newCfg)
             // Free the ephemeral config — both app + surfaces have
             // copied what they need internally.
@@ -296,6 +282,73 @@ extension Ghostty {
             // in the pane-area backdrop).
             NotificationCenter.default.post(name: .contermConfigReloaded,
                                             object: nil)
+        }
+
+        /// Dump diagnostics — silent parse errors would mean the user's
+        /// config "doesn't work" without any visible feedback.
+        static func logDiagnostics(_ cfg: ghostty_config_t) {
+            let nDiag = ghostty_config_diagnostics_count(cfg)
+            if nDiag > 0 {
+                clog("conterm: \(nDiag) config diagnostic(s):")
+                for i in 0..<nDiag {
+                    let d = ghostty_config_get_diagnostic(cfg, i)
+                    if let m = d.message {
+                        clog("conterm:   - \(String(cString: m))")
+                    }
+                }
+            } else {
+                clog("conterm: config finalized clean (no diagnostics)")
+            }
+        }
+
+        /// Build a finalized config for one terminal theme: the
+        /// canonical chain, with the theme's color lines layered LAST
+        /// so they win over anything the chain set (the same trick the
+        /// global picker's managed block plays in the config file).
+        /// `themeID == nil` (or an unreadable theme file) yields the
+        /// plain global chain. The caller owns the result and must
+        /// `ghostty_config_free` it once libghostty has copied it.
+        func makeConfig(themeID: String?) -> ghostty_config_t? {
+            guard let cfg = ghostty_config_new() else { return nil }
+            App.applyConfigChain(cfg)
+            if let themeID, !themeID.isEmpty {
+                let lines = ThemeCatalog.colorLines(forThemeID: themeID)
+                if !lines.isEmpty {
+                    // Unique temp file: several windows can hold
+                    // different themes, and their configs are built
+                    // independently of each other. The load parses the
+                    // file synchronously, so it can go straight away.
+                    let path = NSTemporaryDirectory()
+                        + "conterm-window-theme-\(UUID().uuidString).conf"
+                    if (try? lines.joined(separator: "\n")
+                        .write(toFile: path, atomically: true,
+                               encoding: .utf8)) != nil {
+                        path.withCString { ghostty_config_load_file(cfg, $0) }
+                        try? FileManager.default.removeItem(atPath: path)
+                    }
+                }
+            }
+            ghostty_config_finalize(cfg)
+            return cfg
+        }
+
+        /// Push a theme variant to ONE window's surfaces (every pane in
+        /// it), leaving the app-level config — and therefore every
+        /// other window — untouched. `themeID == nil` re-applies the
+        /// global chain, which is how a window drops its override and
+        /// follows the global theme again. New surfaces created later
+        /// still start from the app config; `makePaneSurface`
+        /// re-applies the window theme right after creation.
+        func applyTheme(_ themeID: String?,
+                        to controllers: [Ghostty.SurfaceController]) {
+            guard !controllers.isEmpty,
+                  let cfg = makeConfig(themeID: themeID) else { return }
+            defer { ghostty_config_free(cfg) }
+            for ctrl in controllers {
+                if let h = ctrl.handle {
+                    ghostty_surface_update_config(h, cfg)
+                }
+            }
         }
 
         /// Replays the same load order as init() onto an already-allocated
@@ -359,6 +412,12 @@ extension Ghostty {
             # to `false` in user config to restore the platform glyph
             # composition (⌥e e → é).
             macos-option-as-alt = true
+
+            # Selecting text copies it to the system clipboard. Ghostty's
+            # macOS default is `none`; `clipboard` keeps the system
+            # clipboard (and Clipboard History, fed by the write callback)
+            # in step with the selection.
+            copy-on-select = clipboard
             """
         }
 
@@ -591,7 +650,7 @@ extension Ghostty {
             // Mirror init()'s load order exactly so a reload rebuilds the
             // SAME config — otherwise a theme/font change would resolve
             // against a different chain than the one the app booted on.
-            // 1) Base = genuine Ghostty default (bundled).
+            // 1) Base = Ghostty default (bundled), theme keys stripped.
             if let bundled = Bundle.main.path(forResource: "ghostty-default",
                                               ofType: "conf"),
                fm.fileExists(atPath: bundled) {
@@ -691,15 +750,24 @@ extension Ghostty {
         }
 
         // Surface-scoped callbacks: userdata is the SurfaceController.
-        private static let cbReadClipboard: @convention(c) (UnsafeMutableRawPointer?, ghostty_clipboard_e, UnsafeMutableRawPointer?) -> Bool = { ud, _, state in
-            guard let ud, let state else { return false }
+        private static let cbReadClipboard: @convention(c) (UnsafeMutableRawPointer?, ghostty_clipboard_e, UnsafeMutableRawPointer?, UnsafePointer<UnsafePointer<CChar>?>?, Int, Bool) -> ghostty_clipboard_read_result_e = { ud, _, state, mimes, mimesLen, list in
+            guard let ud, let state else { return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED }
             // userdata is a weak box (SurfaceUserdata): resolve the
             // controller weakly so a surface mid-teardown — alive in its
             // deferred-free window after its controller was freed — yields
             // nil here instead of dereferencing freed memory. The strong
             // load also pins a live controller across the main hop.
             guard let controller = Unmanaged<SurfaceUserdata>
-                .fromOpaque(ud).takeUnretainedValue().controller else { return false }
+                .fromOpaque(ud).takeUnretainedValue().controller else {
+                return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED
+            }
+            // Text is the only representation served: pastes and OSC 52
+            // ask for `text/plain`, Kitty clipboard reads may ask for
+            // others, and a listing (`list`) asks for none.
+            let wantsText = (0..<mimesLen).contains { i in
+                mimes?[i].map { String(cString: $0) } == "text/plain"
+            }
+            guard wantsText || list else { return GHOSTTY_CLIPBOARD_READ_UNAVAILABLE }
             // NSPasteboard isn't thread-safe and the surface handle is
             // main-actor state; libghostty calls this off the main thread.
             // Complete asynchronously on main (the `state` token defers the
@@ -720,28 +788,130 @@ extension Ghostty {
                 // image drop, including the scp offer for SSH panes.
                 // Copies that carry text alongside a bitmap rendition
                 // (office apps) keep pasting their text.
-                if text.isEmpty,
+                if wantsText, text.isEmpty,
                    let path = ImagePaste.materializePNG(from: pb, prefix: "paste"),
                    controller.onFileDrop?([path]) != true {
                     text = ImagePaste.shellQuote(path) + " "
                 }
-                text.withCString { ptr in
-                    ghostty_surface_complete_clipboard_request(h, ptr, st, false)
-                }
+                completeRead(h, text: wantsText && !text.isEmpty ? text : nil,
+                             listText: list && !text.isEmpty, state: st)
             }
-            return true
+            return GHOSTTY_CLIPBOARD_READ_STARTED
         }
 
-        private static let cbConfirmReadClipboard: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?, UnsafeMutableRawPointer?, ghostty_clipboard_request_e) -> Void = { _, _, _, _ in }
+        /// Answers a started clipboard read with at most one `text/plain`
+        /// representation. No contents is a read that found nothing,
+        /// which libghostty treats the same as an unavailable clipboard.
+        /// `confirmed` answers a confirmation request (see
+        /// `cbConfirmReadClipboard`) with the user's yes.
+        private static func completeRead(_ h: ghostty_surface_t, text: String?, listText: Bool,
+                                         confirmed: Bool = false,
+                                         state: UnsafeMutableRawPointer) {
+            let bytes = Array((text ?? "").utf8)
+            "text/plain".withCString { mime in
+                bytes.withUnsafeBufferPointer { buf in
+                    var contents: [ghostty_clipboard_content_s] = []
+                    if text != nil {
+                        contents.append(ghostty_clipboard_content_s(
+                            mime: mime,
+                            data: UnsafeRawPointer(buf.baseAddress)?.assumingMemoryBound(to: CChar.self),
+                            len: buf.count))
+                    }
+                    let available: [UnsafePointer<CChar>?] = listText ? [mime] : []
+                    contents.withUnsafeBufferPointer { c in
+                        available.withUnsafeBufferPointer { a in
+                            var complete = ghostty_clipboard_complete_s(
+                                contents: c.baseAddress, contents_len: c.count,
+                                available: a.baseAddress, available_len: a.count,
+                                confirmed: confirmed, remember: false)
+                            ghostty_surface_complete_clipboard_request(h, &complete, state)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Reads that need the user's approval. A paste that
+        // `clipboard-paste-protection` holds back asks first (`confirmPaste`)
+        // and goes through on a yes. Other requests (`clipboard-read = ask`)
+        // are refused; denying answers the request, so an OSC 52 reader gets
+        // an empty reply instead of waiting.
+        private static let cbConfirmReadClipboard: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<ghostty_clipboard_confirm_s>?, UnsafeMutableRawPointer?, ghostty_clipboard_request_e) -> Void = { ud, confirm, state, request in
+            guard let ud, let state,
+                  let controller = Unmanaged<SurfaceUserdata>
+                    .fromOpaque(ud).takeUnretainedValue().controller else { return }
+            // The payload lives only for this call: copy the paste out now.
+            let paste = request == GHOSTTY_CLIPBOARD_REQUEST_PASTE
+                ? confirm.flatMap { plainText(in: $0.pointee) } : nil
+            let stateToken = Int(bitPattern: state)
+            DispatchQueue.main.async {
+                guard let st = UnsafeMutableRawPointer(bitPattern: stateToken),
+                      let h = controller.handle else { return }
+                guard let paste, !pastePromptOpen else {
+                    ghostty_surface_deny_clipboard_request(h, st)
+                    return
+                }
+                pastePromptOpen = true
+                confirmPaste(paste) { ok in
+                    pastePromptOpen = false
+                    // The pane may have closed while the question was up.
+                    guard let h = controller.handle else { return }
+                    if ok {
+                        completeRead(h, text: paste, listText: false, confirmed: true, state: st)
+                    } else {
+                        ghostty_surface_deny_clipboard_request(h, st)
+                    }
+                }
+            }
+        }
+
+        /// One paste question at a time: a second held-back paste while
+        /// one is asking is refused rather than queued behind it.
+        @MainActor private static var pastePromptOpen = false
+
+        /// The first `text/plain` entry of a confirmation payload.
+        private static func plainText(in confirm: ghostty_clipboard_confirm_s) -> String? {
+            guard let contents = confirm.contents else { return nil }
+            for i in 0..<confirm.contents_len {
+                let item = contents[i]
+                guard let mime = item.mime, String(cString: mime) == "text/plain",
+                      let data = item.data else { continue }
+                return String(decoding: UnsafeRawBufferPointer(start: data, count: item.len),
+                              as: UTF8.self)
+            }
+            return nil
+        }
+
+        /// Ask before pasting text the terminal treats as unsafe — line
+        /// breaks a program without bracketed paste would run as typed, or
+        /// control sequences. Shows the first lines of what would land.
+        @MainActor
+        private static func confirmPaste(_ text: String, answer: @escaping (Bool) -> Void) {
+            let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+            var preview = lines.prefix(6).map { line in
+                line.count > 80 ? String(line.prefix(79)) + "…" : String(line)
+            }.joined(separator: "\n")
+            if lines.count > 6 { preview += "\n… \(lines.count - 6) more lines" }
+            DropAlert(topic: "Paste",
+                      title: "Paste \(lines.count == 1 ? "this text" : "\(lines.count) lines")?",
+                      message: "This paste can run commands as it lands.",
+                      detail: preview,
+                      tone: .warn,
+                      buttons: ["Paste", "Cancel"],
+                      returnAnswers: false)
+                .ask { answer($0 == 0) }
+        }
 
         private static let cbWriteClipboard: @convention(c) (UnsafeMutableRawPointer?, ghostty_clipboard_e, UnsafePointer<ghostty_clipboard_content_s>?, Int, Bool) -> Void = { _, _, content, len, _ in
             guard let content, len > 0 else { return }
-            // Honor the first text/plain entry.
+            // Honor the first text/plain entry. Contents carry an explicit
+            // length and need not be NUL-terminated.
             for i in 0..<len {
                 let item = content[i]
                 let mime = item.mime.map { String(cString: $0) } ?? ""
                 if mime == "text/plain", let data = item.data {
-                    let str = String(cString: data)
+                    let str = String(decoding: UnsafeRawBufferPointer(start: data, count: item.len),
+                                     as: UTF8.self)
                     DispatchQueue.main.async {
                         let pb = NSPasteboard.general
                         pb.clearContents()

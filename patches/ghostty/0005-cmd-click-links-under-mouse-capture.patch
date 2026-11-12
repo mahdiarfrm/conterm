@@ -1,0 +1,170 @@
+Upstream: https://github.com/ghostty-org/ghostty/pull/14849
+  "core: let cmd-click open links while the mouse is captured" (open,
+  unmerged at the pinned commit; upstream commit efff3c72)
+
+While a program captures the mouse (tmux, Claude Code fullscreen, and
+similar TUIs), the pinned core only refreshes link state for the shift
+bypass. A plain Command-click therefore never marks a link as hovered
+and is reported to the program, which cannot distinguish it from a
+plain click because mouse reports cannot encode Super.
+
+Rebased on the current upstream PR, which adds `link_press`: Super
+activates link detection under capture, and a Super-press on a link
+stays out of the mouse report entirely — press, motion, and release —
+with the selection gesture reset, so the existing release path opens
+the link. Without it, a cmd-click with a little trackpad drift inside
+tmux sends a drag the program never saw start. Keeps the local
+`mouseLinksActiveFor` split so the modifier/capture truth table stays
+unit-tested.
+
+Regenerated against libghostty 1.4.0 (83fb956), on top of 0002–0004.
+Carried here because it is unmerged upstream. Drop this file when the
+pin reaches a commit that already has it.
+
+diff --git a/src/Surface.zig b/src/Surface.zig
+index 369bb23..4c5d7e2 100644
+--- a/src/Surface.zig
++++ b/src/Surface.zig
+@@ -257,6 +257,11 @@ const Mouse = struct {
+     /// True if the mouse position is currently over a link.
+     over_link: bool = false,
+ 
++    /// True while the left button is held after a press on a link that
++    /// wasn't reported to the program, so its motion and release aren't
++    /// either.
++    link_press: bool = false,
++
+     /// The last x/y in the cursor position for links. We use this to
+     /// only process link hover events when the mouse actually moves cells.
+     link_point: ?terminal.point.Coordinate = null,
+@@ -2862,13 +2867,7 @@ pub fn keyCallback(
+         // Update our modifiers, this will update mouse mods too
+         self.modsChanged(event.mods);
+ 
+-        // We only refresh links if
+-        // 1. mouse reporting is off
+-        // OR
+-        // 2. mouse reporting is on and we are not reporting shift to the terminal
+-        if (self.io.terminal.flags.mouse_event == .none or
+-            (self.mouse.mods.shift and !self.mouseShiftCapture(false)))
+-        {
++        if (self.mouseLinksActive()) {
+             // Refresh our link state
+             const pos = self.rt_surface.getCursorPos() catch break :mouse_mods;
+             self.renderer_state.mutex.lockUncancelable(global.io());
+@@ -3904,6 +3903,42 @@ fn mouseShiftCapture(self: *const Surface, lock: bool) bool {
+     };
+ }
+ 
++/// Returns true if links under the mouse should be detected. While a
++/// program captures the mouse, detection needs a modifier that bypasses
++/// capture: shift when the program does not capture it, or super, which
++/// mouse reports cannot encode.
++fn mouseLinksActive(self: *const Surface) bool {
++    return mouseLinksActiveFor(
++        self.io.terminal.flags.mouse_event,
++        self.mouse.mods,
++        self.mouseShiftCapture(false),
++    );
++}
++
++fn mouseLinksActiveFor(
++    mouse_event: terminal.MouseEvent,
++    mods: input.Mods,
++    shift_capture: bool,
++) bool {
++    return mouse_event == .none or mods.super or
++        (mods.shift and !shift_capture);
++}
++
++test "mouse link activation under mouse capture" {
++    const testing = std.testing;
++
++    // Without capture, links are active regardless of modifiers.
++    try testing.expect(mouseLinksActiveFor(.none, .{}, true));
++
++    // Under capture, super bypasses capture because mouse reports cannot
++    // encode it; shift only bypasses capture when it is not itself captured.
++    try testing.expect(mouseLinksActiveFor(.any, .{ .super = true }, true));
++    try testing.expect(mouseLinksActiveFor(.any, .{ .shift = true }, false));
++    try testing.expect(!mouseLinksActiveFor(.any, .{ .shift = true }, true));
++    try testing.expect(!mouseLinksActiveFor(.any, .{}, false));
++    try testing.expect(!mouseLinksActiveFor(.any, .{ .ctrl = true }, false));
++}
++
+ /// Returns true if the mouse is currently captured by the terminal
+ /// (i.e. reporting events).
+ pub fn mouseCaptured(self: *Surface) bool {
+@@ -3935,6 +3970,11 @@ pub fn mouseButtonCallback(
+     // Always record our latest mouse state
+     self.mouse.click_state[@intCast(@backingInt(button))] = action;
+ 
++    // Whether this release ends a link press. Clear it here because the
++    // link handling below can return early.
++    const link_release = button == .left and action == .release and self.mouse.link_press;
++    if (link_release) self.mouse.link_press = false;
++
+     // Always show the mouse again if it is hidden
+     if (self.mouse.hidden) self.showMouse();
+ 
+@@ -4059,10 +4099,25 @@ pub fn mouseButtonCallback(
+         self.renderer_state.mutex.lockUncancelable(global.io());
+         defer self.renderer_state.mutex.unlock(global.io());
+         if (self.isMouseReporting()) report: {
++            if (link_release) return true;
++
+             // If we have shift-pressed and we aren't allowed to capture it,
+             // then we do not do a mouse report.
+             if (mods.shift and !shift_capture) break :report;
+ 
++            // Super-clicks on links open them instead of being reported.
++            // Mouse reports cannot encode super, so the program cannot
++            // distinguish them from plain clicks. Reset the gesture so
++            // this doesn't start a selection and no stale drag blocks
++            // the link.
++            if (button == .left and action == .press) {
++                self.mouse.link_press = mods.super and self.mouse.over_link;
++                if (self.mouse.link_press) {
++                    self.mouse.selection_gesture.reset(self.renderer_state.terminal);
++                    return true;
++                }
++            }
++
+             // In any other mouse button scenario without shift pressed we
+             // clear the selection since the underlying application can handle
+             // that in any way (i.e. "scrolling").
+@@ -4754,21 +4809,13 @@ pub fn cursorPosCallback(
+         try self.queueRender();
+     }
+ 
+-    // Handle link hovering
+-    // We refresh links when
+-    // 1. we were previously over a link
+-    // OR
+-    // 2. the cursor position has changed (either we have no previous state, or the state has
+-    //    changed)
+-    // AND
+-    // 1. mouse reporting is off
+-    // OR
+-    // 2. mouse reporting is on and we are not reporting shift to the terminal
++    // Handle link hovering. We refresh links when the previous state or
++    // cursor cell changed, and links are active for the current modifiers
++    // (see mouseLinksActive).
+     if ((over_link or
+         self.mouse.link_point == null or
+         (self.mouse.link_point != null and !self.mouse.link_point.?.eql(pos_vp))) and
+-        (self.io.terminal.flags.mouse_event == .none or
+-            (self.mouse.mods.shift and !self.mouseShiftCapture(false))))
++        self.mouseLinksActive())
+     {
+         // If we were previously over a link, we always update. We do this so that if the text
+         // changed underneath us, even if the mouse didn't move, we update the URL hints and state
+@@ -4777,6 +4824,8 @@ pub fn cursorPosCallback(
+ 
+     // Do a mouse report
+     if (self.isMouseReporting()) report: {
++        if (self.mouse.link_press) return;
++
+         // Shift overrides mouse "grabbing" in the window, taken from Kitty.
+         // This only applies if there is a mouse button pressed so that
+         // movement reports are not affected.
