@@ -10,7 +10,7 @@ import SwiftUI
 enum WidgetKind: String, CaseIterable, Identifiable {
     case systemStats, clock, battery, gitStatus
     case notes, ping, sessionStats, kubernetes, containers, ansible, terraform, github, pixelPet
-    case publicIP
+    case publicIP, usageLimits
     var id: String { rawValue }
 
     var title: String {
@@ -29,6 +29,7 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .github:       return "GitHub"
         case .pixelPet:     return "Pixel pet"
         case .publicIP:     return "Public IP"
+        case .usageLimits:  return "Usage limits"
         }
     }
     var subtitle: String {
@@ -47,6 +48,7 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .github:       return "PR review + checks for the active repo (uses gh)."
         case .pixelPet:     return "A tiny companion that naps, blinks, and watches your agents."
         case .publicIP:     return "Your public IP, VPN-aware; re-checks on network changes and notifies when it moves."
+        case .usageLimits:  return "Claude and Codex 5-hour + weekly limits while their sessions are open (needs their integration in Settings ▸ Config)."
         }
     }
     /// Bundled monochrome mark (template-tinted) that replaces the SF
@@ -72,6 +74,7 @@ enum WidgetKind: String, CaseIterable, Identifiable {
         case .github:       return "checkmark.seal"
         case .pixelPet:     return "pawprint"
         case .publicIP:     return "globe"
+        case .usageLimits:  return "gauge.with.dots.needle.50percent"
         }
     }
 }
@@ -124,6 +127,7 @@ struct WidgetRail: View {
         case .github:       GitHubWidget(compact: compact)
         case .pixelPet:     PixelPetWidget(compact: compact)
         case .publicIP:     PublicIPWidget(compact: compact)
+        case .usageLimits:  UsageLimitsWidget(compact: compact)
         }
     }
 }
