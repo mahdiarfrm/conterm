@@ -25,6 +25,12 @@ func makePaneSurface(pane: Pane,
     controller.paneID = pane.id
     controller.fontSize = fontSize
     pane.controller = controller
+    if pane.terminalIsLight != app.backgroundIsLight {
+        pane.terminalIsLight = app.backgroundIsLight
+    }
+    controller.onBackgroundChange = { [weak pane] light in
+        if pane?.terminalIsLight != light { pane?.terminalIsLight = light }
+    }
 
     let owningTab = state.tabs.first { tab in
         tab.paneTree.root.leaves().contains { $0.id == pane.id }
@@ -771,6 +777,19 @@ final class PaneTreeView: NSView {
 /// reparented out of here, so its IOSurface stays attached across splits.
 @MainActor
 final class PaneBox: NSView {
+    /// Tile gradient: top light falling to a deeper floor. Dark anchors on
+    /// Theme.paneTile; light is the same shape in paper whites, for a light
+    /// terminal background (the tile backs the terminal, not the glass).
+    static func tileColors(light: Bool) -> [CGColor] {
+        light
+            ? [NSColor(calibratedRed: 0.985, green: 0.985, blue: 0.990, alpha: 1).cgColor,
+               NSColor(calibratedRed: 0.955, green: 0.955, blue: 0.965, alpha: 1).cgColor,
+               NSColor(calibratedRed: 0.930, green: 0.930, blue: 0.945, alpha: 1).cgColor]
+            : [NSColor(calibratedRed: 0.085, green: 0.095, blue: 0.125, alpha: 1).cgColor,
+               NSColor(calibratedRed: 0.050, green: 0.055, blue: 0.075, alpha: 1).cgColor,
+               NSColor(calibratedRed: 0.035, green: 0.040, blue: 0.058, alpha: 1).cgColor]
+    }
+
     let pane: Pane
     let host: Ghostty.SurfaceHostView
     private let prefs: Preferences
@@ -797,6 +816,9 @@ final class PaneBox: NSView {
     private let tileGradient = CAGradientLayer()
     private let tileGrain = CALayer()
     private let tileTopLight = CALayer()
+    /// Which bed the tile and chrome were last given; nil before the first.
+    private var toneIsLight: Bool?
+    private var toneCancellable: AnyCancellable?
 
     init(pane: Pane, host: Ghostty.SurfaceHostView, prefs: Preferences, tab: Tab?) {
         self.pane = pane
@@ -831,11 +853,6 @@ final class PaneBox: NSView {
         // Anchored around Theme.paneTile: a touch of top light falling to
         // a deeper floor, so the tile has depth under a translucent
         // terminal background.
-        tileGradient.colors = [
-            NSColor(calibratedRed: 0.085, green: 0.095, blue: 0.125, alpha: 1).cgColor,
-            NSColor(calibratedRed: 0.050, green: 0.055, blue: 0.075, alpha: 1).cgColor,
-            NSColor(calibratedRed: 0.035, green: 0.040, blue: 0.058, alpha: 1).cgColor,
-        ]
         tileGradient.locations = [0, 0.35, 1]
         tileGradient.startPoint = CGPoint(x: 0.5, y: 0)
         tileGradient.endPoint = CGPoint(x: 0.5, y: 1)
@@ -848,8 +865,15 @@ final class PaneBox: NSView {
         tileGrain.opacity = 0.045
         layer?.insertSublayer(tileGrain, above: tileGradient)
 
-        tileTopLight.backgroundColor = NSColor.white.withAlphaComponent(0.07).cgColor
         layer?.insertSublayer(tileTopLight, above: tileGrain)
+        applyTone(light: pane.terminalIsLight)
+        // Not in `layout()`: that runs every frame of a live resize.
+        toneCancellable = pane.$terminalIsLight
+            .removeDuplicates()
+            .sink { [weak self] light in
+                // Published on the main actor (the surface's callbacks hop there).
+                MainActor.assumeIsolated { self?.applyTone(light: light) }
+            }
 
         host.wantsLayer = true
         // Sits 1 pt inside the tile (see `layout`), so it sheds 1 pt of
@@ -949,6 +973,22 @@ final class PaneBox: NSView {
         // Lent out to a preview: leave it alone rather than fight for its frame.
         if host.superview === self { host.frame = bounds.insetBy(dx: 1, dy: 1) }
         chrome.frame = bounds
+    }
+
+    /// Light or dark tile and chips, keyed off this pane's terminal
+    /// background. The chrome's appearance drives every dynamic chip colour
+    /// (and AppKit pieces like the sweep ring) without touching the glass.
+    /// Reassigns only when the tone flips.
+    func applyTone(light: Bool) {
+        guard light != toneIsLight else { return }
+        toneIsLight = light
+        chrome.appearance = NSAppearance(named: light ? .aqua : .darkAqua)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        tileGradient.colors = Self.tileColors(light: light)
+        tileTopLight.backgroundColor = (light ? NSColor.black : .white)
+            .withAlphaComponent(light ? 0.04 : 0.07).cgColor
+        CATransaction.commit()
     }
 
     private func refreshChrome() {
@@ -1301,7 +1341,7 @@ struct PaneChrome: View {
                 HStack(spacing: 6) {
                     if pane.remoteHost != nil {
                         HostInfoButton(action: { pane.controller?.onHostOverview?() },
-                                       light: prefs.lightGlass)
+                                       light: pane.terminalIsLight)
                     }
                     PaneTitleBar(dirLabel: friendlyDirLabel(for: pane.cwd),
                                  remoteHost: pane.remoteHost,
@@ -1316,6 +1356,9 @@ struct PaneChrome: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             }
         }
+        // Chips sit on the terminal, not the glass: they take its light or
+        // dark bed whatever the glass tint (PaneBox sets the AppKit side).
+        .environment(\.colorScheme, pane.terminalIsLight ? .light : .dark)
         .measureSize(ChromeWidthKey.self) { $0.width }
         .onPreferenceChange(ChromeWidthKey.self) { w in
             if abs(w - chromeWidth) > 0.5 { chromeWidth = w }

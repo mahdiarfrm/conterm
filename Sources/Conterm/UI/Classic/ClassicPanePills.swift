@@ -48,10 +48,9 @@ struct ClassicAgentPill: View {
             mark
             Text(status.label)
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
-                // Pinned light, not adaptive: the pill keeps its dark bed in
-                // both appearances (it floats over the dark terminal), so the
-                // label must stay light or it vanishes in light mode.
-                .foregroundStyle(Color(white: 0.96))
+                // Follows the bed (PanePill), which is light under a light
+                // tint and dark otherwise.
+                .foregroundStyle(PanePill.ink)
                 .lineLimit(1)
                 .fixedSize()
                 // Crossfade the words instead of a hard swap, so
@@ -60,10 +59,10 @@ struct ClassicAgentPill: View {
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 9)
-        // Flat black bed: the pill floats over the opaque terminal, and its
+        // Flat opaque bed (PanePill): the pill floats over the terminal, and its
         // sweep/glow/ring animation is the beauty here — a flat opaque bed
         // is cheapest (no per-frame glass re-lens) and makes the animation
-        // pop against the dark cells.
+        // pop against the cells.
         .background(flatPillBackground)
         // Phase-keyed identity so the ring (a different shape per
         // phase) crossfades on transition instead of popping.
@@ -94,15 +93,15 @@ struct ClassicAgentPill: View {
         .onReceive(SystemPressure.shared.$wantsLowAnimation) { systemLite = $0 }
     }
 
-    /// Flat near-black capsule bed — opaque so the streaming terminal
+    /// Flat capsule bed (PanePill.bed) — opaque so the streaming terminal
     /// behind costs nothing, with a hairline rim for definition when the
     /// animated ring is quiet.
     private var flatPillBackground: some View {
         Capsule(style: .continuous)
-            .fill(Color(red: 0.05, green: 0.055, blue: 0.07))
+            .fill(PanePill.bed)
             .overlay(
                 Capsule(style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                    .strokeBorder(Theme.onChip.opacity(0.12), lineWidth: 0.5)
             )
     }
 
@@ -119,7 +118,7 @@ struct ClassicAgentPill: View {
             ], period: 2.2)
         } else {
             let color: Color = (working || attention) ? glowColor
-                                                      : Color.white.opacity(0.16)
+                                                      : Theme.onChip.opacity(0.16)
             let opacity: Double = attention ? 0.40
                                             : (working ? 0.75 : 1.0)
             Capsule(style: .continuous)
@@ -132,8 +131,8 @@ struct ClassicAgentPill: View {
 
     @ViewBuilder
     private var mark: some View {
-        // Pinned light for the same reason as the label — see `body`.
-        let tint = (working || attention) ? glowColor : Color.white.opacity(0.6)
+        // Follows the bed like the label — see `body`.
+        let tint = (working || attention) ? glowColor : PanePill.ink.opacity(0.6)
         let templated = status.tool.markIsTemplate
         // Cached decode: `mark` re-evaluates every frame while the sweep
         // animates, so reading the PNG here uncached hit the disk per frame.
@@ -192,7 +191,7 @@ struct ClassicAgentPill: View {
         } else {
             // ready: a soft, static rim so it still reads as "alive".
             Capsule(style: .continuous)
-                .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.75)
+                .strokeBorder(Theme.onChip.opacity(0.16), lineWidth: 0.75)
                 .allowsHitTesting(false)
         }
     }
@@ -218,12 +217,11 @@ struct ClassicAgentToolBubble: View {
     @State private var systemLite = false
     @State private var hovering = false
 
-    private var color: Color { run.kind.color }
+    private var color: Color { run.kind.chipColor }
     private static let failColor = Color(red: 1.0, green: 0.42, blue: 0.42)
-    private static let bed = Color(red: 0.05, green: 0.055, blue: 0.07)
-    /// Pinned light like the pill's label: the bubble floats over the dark
-    /// terminal in both appearances.
-    private static let ink = Color(white: 0.96)
+    private static let bed = PanePill.bed
+    /// Follows the bed, like the pill's label.
+    private static let ink = PanePill.ink
 
     private var sweeps: Bool {
         run.isRunning && activeState == .key && !reduceMotion && !systemLite
@@ -238,7 +236,7 @@ struct ClassicAgentToolBubble: View {
         Button(action: action) {
             ZStack {
                 Circle().fill(Self.bed)
-                Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
+                Circle().strokeBorder(Theme.onChip.opacity(0.12), lineWidth: 0.5)
                 AgentToolGlyph(kind: run.kind,
                                color: Self.ink.opacity(run.isRunning || hovering ? 1 : 0.75),
                                size: size * 0.52)
@@ -307,8 +305,11 @@ struct ClassicAgentToolHistoryButton: View {
     @EnvironmentObject var prefs: Preferences
     @State private var hovering = false
 
+    /// Follows the pane chrome's scheme, which tracks the terminal
+    /// background rather than the glass tint.
+    @Environment(\.colorScheme) private var scheme
     private var ink: Color {
-        prefs.lightGlass ? Color.black.opacity(0.82) : Color.white.opacity(0.92)
+        scheme == .light ? Color.black.opacity(0.82) : Color.white.opacity(0.92)
     }
 
     var body: some View {
@@ -346,7 +347,7 @@ struct ClassicAgentToolHistoryButton: View {
     private var glass: some View {
         if #available(macOS 26, *) {
             PaneLiquidGlass(cornerRadius: height / 2, frostiness: 0.35,
-                            light: prefs.lightGlass)
+                            light: scheme == .light)
                 .clipShape(Capsule(style: .continuous))
         } else {
             Capsule(style: .continuous).fill(.ultraThinMaterial)
@@ -357,13 +358,17 @@ struct ClassicAgentToolHistoryButton: View {
 struct ClassicCommandBadge: View {
     let result: Pane.CommandResult
     @EnvironmentObject var prefs: Preferences
+    @Environment(\.colorScheme) private var scheme
+    /// The success green, deeper on the light bed.
+    private static let good = Theme.onChipTone(Color(red: 0.45, green: 0.86, blue: 0.55),
+        light: NSColor(srgbRed: 0.10, green: 0.58, blue: 0.30, alpha: 1))
 
     private var unknownExit: Bool { result.exitCode < 0 }
 
     private var tint: Color {
-        if unknownExit { return Color.white.opacity(0.6) }
+        if unknownExit { return Theme.onChip.opacity(0.6) }
         return result.failed ? Color(red: 1.0, green: 0.42, blue: 0.42)
-                             : Color(red: 0.45, green: 0.86, blue: 0.55)
+                             : Self.good
     }
     private var icon: String {
         if unknownExit { return "clock" }
@@ -381,7 +386,7 @@ struct ClassicCommandBadge: View {
                 .foregroundStyle(tint)
             Text(label)
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(Color.white.opacity(0.9))
+                .foregroundStyle(Theme.onChip.opacity(0.9))
                 .lineLimit(1)
         }
         .padding(.horizontal, 10)
@@ -390,8 +395,8 @@ struct ClassicCommandBadge: View {
             ZStack {
                 Capsule(style: .continuous).fill(Theme.paneTitleBar)
                 Capsule(style: .continuous)
-                    .fill(tint.opacity(0.16))
-                    .blendMode(.plusLighter)
+                    .fill(tint.opacity(scheme == .light ? 0.10 : 0.16))
+                    .blendMode(scheme == .light ? .normal : .plusLighter)
             }
         )
         .overlay(

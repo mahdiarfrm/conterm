@@ -45,6 +45,11 @@ final class Pane: ObservableObject, Identifiable {
     /// `exit` the ssh session).
     @Published var remoteHost: String?
 
+    /// The pane's terminal background is light (by luminance), so the
+    /// chips and tile floating on it take their light bed. Follows the
+    /// surface's resolved config (global or window theme) and OSC 11.
+    @Published var terminalIsLight = false
+
     /// How that session was dialled, when the pane saw the `ssh` command
     /// line go by. `remoteHost` follows the far end's self-reported
     /// hostname once a prompt or OSC 7 arrives, and that name is not

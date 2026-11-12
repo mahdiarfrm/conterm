@@ -14,18 +14,17 @@ struct HostInfoButton: View {
 
     var body: some View {
         Button(action: action) {
-            // Floats over the terminal bed, which stays dark in both
-            // appearances — adaptive text colors go near-black in light
-            // mode and vanish here, so the glyph keeps fixed on-dark
-            // tones (same rule as the pane title pill).
+            // Floats over the terminal on the chip bed; `onChip` follows
+            // that bed (dark, or light under a light tint).
             Image(systemName: "info")
                 .font(.system(size: 8.5, weight: .bold))
-                .foregroundStyle(Color.white.opacity(hovering ? 0.95 : 0.72))
+                .foregroundStyle(Theme.onChip.opacity(hovering ? 0.95 : 0.72))
                 .frame(width: 18, height: 18)
                 .background {
                     if !chipGlassAvailable { Circle().fill(Theme.paneTitleBar) }
                 }
-                .modifier(ChipGlass(shape: Circle(), tint: Theme.paneTitleBar.opacity(0.55)))
+                .modifier(ChipGlass(shape: Circle(), tint: Theme.paneTitleBar.opacity(0.55),
+                                    scheme: light ? .light : .dark))
                 // The glow is cast by the ring alone, so no shadow is ever
                 // drawn from the glass layer.
                 .overlay(
@@ -36,7 +35,7 @@ struct HostInfoButton: View {
                                 center: .center, angle: .degrees(-40)),
                             lineWidth: 1)
                         .blendMode(light ? .normal : .plusLighter)
-                        .shadow(color: Theme.sshAccent.opacity(hovering ? 0.55 : 0.22),
+                        .shadow(color: Theme.sshOnChip.opacity(hovering ? 0.55 : 0.22),
                                 radius: hovering ? 5 : 3)
                 )
                 .contentShape(Circle())
@@ -63,6 +62,8 @@ struct PaneTitleBar: View {
     /// click still toggles the compact state.
     var dragPayload: String? = nil
     @EnvironmentObject var prefs: Preferences
+    /// The pane chrome's scheme: light over a light terminal background.
+    @Environment(\.colorScheme) private var scheme
     /// Collapsed: a small light capsule showing only the logo (status dot
     /// or ssh glyph) + the ⌥N keybind. Click the pill to toggle. Per-pane,
     /// transient — not persisted.
@@ -93,9 +94,9 @@ struct PaneTitleBar: View {
     /// a glance which panes are remote.
     private var dotColor: Color {
         if remoteHost != nil {
-            return isActive ? Theme.sshAccent : Theme.sshAccent.opacity(0.55)
+            return isActive ? Theme.sshOnChip : Theme.sshOnChip.opacity(0.55)
         }
-        return isActive ? Theme.accentOnDark : Color.white.opacity(0.35)
+        return isActive ? Theme.onChipAccent : Theme.onChip.opacity(0.35)
     }
 
     var body: some View {
@@ -106,8 +107,8 @@ struct PaneTitleBar: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(collapsed
                         ? Theme.sshAccentDeep
-                        : (isActive ? Color.white : Color.white.opacity(0.7)))
-                    .shadow(color: (!collapsed && isActive) ? Theme.sshAccent.opacity(0.7) : .clear,
+                        : (isActive ? Theme.onChip : Theme.onChip.opacity(0.7)))
+                    .shadow(color: (!collapsed && isActive) ? Theme.sshOnChip.opacity(0.7) : .clear,
                             radius: 4)
             } else {
                 Circle()
@@ -119,7 +120,7 @@ struct PaneTitleBar: View {
             if !collapsed {
                 Text(labelText)
                     .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.6))
+                    .foregroundStyle(isActive ? Theme.onChip : Theme.onChip.opacity(0.6))
                     .lineLimit(1)
                     .truncationMode(.head)
             }
@@ -142,14 +143,17 @@ struct PaneTitleBar: View {
                               : remoteHost != nil ? Theme.paneRemoteBar : Theme.paneTitleBar)
                 }
                 if !collapsed {
+                    // The active lift: additive on the dark bed; on the
+                    // light bed additive white saturates away, so a plain
+                    // white wash lifts it instead.
                     Capsule(style: .continuous)
-                        .fill(Color.white.opacity(isActive ? 0.10 : 0.0))
-                        .blendMode(.plusLighter)
+                        .fill(Color.white.opacity(isActive ? (scheme == .light ? 0.55 : 0.10) : 0.0))
+                        .blendMode(scheme == .light ? .normal : .plusLighter)
                 }
             }
         )
         .modifier(ChipGlass(shape: Capsule(style: .continuous), tint: glassTint,
-                            scheme: collapsed ? .light : .dark))
+                            scheme: collapsed ? .light : scheme))
         // One-shot light sweep on connect — kept out of the tree at rest.
         .overlay {
             if shimmering { connectSweep }
@@ -224,9 +228,9 @@ struct PaneTitleBar: View {
     private var borderColor: Color {
         if collapsed { return Color.black.opacity(0.12) }
         if remoteHost != nil {
-            return Theme.sshAccent.opacity(isActive ? 0.45 : 0.18)
+            return Theme.sshOnChip.opacity(isActive ? 0.45 : 0.18)
         }
-        return Color.white.opacity(isActive ? 0.30 : 0.10)
+        return Theme.onChip.opacity(isActive ? 0.30 : 0.10)
     }
 
     /// A narrow band of cyan light that travels left → right across the
@@ -238,12 +242,13 @@ struct PaneTitleBar: View {
             Capsule(style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [.clear, Theme.sshAccent.opacity(0.55), .clear],
+                        colors: [.clear, Theme.sshOnChip.opacity(scheme == .light ? 0.35 : 0.55), .clear],
                         startPoint: .leading, endPoint: .trailing)
                 )
                 .frame(width: w * 0.4)
                 .offset(x: -0.45 * w + shimmerPhase * 1.5 * w)
-                .blendMode(.plusLighter)
+                // Additive light can't brighten a light bed; paint it there.
+                .blendMode(scheme == .light ? .normal : .plusLighter)
         }
         .clipShape(Capsule(style: .continuous))
         .allowsHitTesting(false)
@@ -297,14 +302,14 @@ private struct KeybindChip: View {
             .font(.system(size: 11, weight: .semibold, design: .rounded))
             .foregroundStyle(light
                 ? Color.black.opacity(0.7)
-                : (isActive ? Theme.accentOnDark : Color.white.opacity(0.55)))
+                : (isActive ? Theme.onChipAccent : Theme.onChip.opacity(0.55)))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
                 Capsule(style: .continuous)
                     .fill(light
                         ? Color.black.opacity(0.08)
-                        : Color.white.opacity(isActive ? 0.18 : 0.06))
+                        : Theme.onChip.opacity(isActive ? 0.18 : 0.06))
             )
     }
 }
@@ -317,10 +322,11 @@ private struct KeybindChip: View {
 /// transfer runs, then a brief verdict flash.
 struct UploadBadge: View {
     let upload: Pane.Upload
+    @Environment(\.colorScheme) private var scheme
 
     private var tint: Color {
         switch upload.phase {
-        case .uploading: return Theme.sshAccent
+        case .uploading: return Theme.sshOnChip
         case .done:      return Color(red: 0.45, green: 0.86, blue: 0.55)
         case .failed:    return Color(red: 1.0, green: 0.42, blue: 0.42)
         }
@@ -348,7 +354,7 @@ struct UploadBadge: View {
             }
             Text(label)
                 .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.9))
+                .foregroundStyle(Theme.onChip.opacity(0.9))
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -358,8 +364,8 @@ struct UploadBadge: View {
             ZStack {
                 Capsule(style: .continuous).fill(Theme.paneTitleBar)
                 Capsule(style: .continuous)
-                    .fill(tint.opacity(0.16))
-                    .blendMode(.plusLighter)
+                    .fill(tint.opacity(scheme == .light ? 0.10 : 0.16))
+                    .blendMode(scheme == .light ? .normal : .plusLighter)
             }
         )
         .overlay(
@@ -373,13 +379,17 @@ struct UploadBadge: View {
 struct CommandBadge: View {
     let result: Pane.CommandResult
     @EnvironmentObject var prefs: Preferences
+    @Environment(\.colorScheme) private var scheme
 
     private var unknownExit: Bool { result.exitCode < 0 }
 
     private var tint: Color {
-        if unknownExit { return Color.white.opacity(0.6) }
-        return result.failed ? Drop.bad : Drop.good
+        if unknownExit { return Theme.onChip.opacity(0.6) }
+        return result.failed ? Drop.bad : Self.good
     }
+    /// The success check: `Drop.good` on the dark bed, deeper on the light.
+    private static let good = Theme.onChipTone(Drop.good,
+        light: NSColor(srgbRed: 0.10, green: 0.58, blue: 0.30, alpha: 1))
     private var icon: String {
         if unknownExit { return "clock" }
         return result.failed ? "xmark.circle.fill" : "checkmark.circle.fill"
@@ -396,7 +406,7 @@ struct CommandBadge: View {
                 .foregroundStyle(tint)
             Text(label)
                 .font(Drop.mono(10.5, .medium))
-                .foregroundStyle(Color.white.opacity(0.9))
+                .foregroundStyle(Theme.onChip.opacity(0.9))
                 .lineLimit(1)
         }
         .padding(.horizontal, 11)
@@ -405,8 +415,8 @@ struct CommandBadge: View {
             ZStack {
                 Capsule(style: .continuous).fill(Theme.paneTitleBar)
                 Capsule(style: .continuous)
-                    .fill(tint.opacity(0.16))
-                    .blendMode(.plusLighter)
+                    .fill(tint.opacity(scheme == .light ? 0.10 : 0.16))
+                    .blendMode(scheme == .light ? .normal : .plusLighter)
             }
         )
         // Rim lit from the top-leading corner in the result's colour, like
