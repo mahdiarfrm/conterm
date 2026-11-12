@@ -35,7 +35,7 @@ struct HostInfoButton: View {
                                 center: .center, angle: .degrees(-40)),
                             lineWidth: 1)
                         .blendMode(light ? .normal : .plusLighter)
-                        .shadow(color: Theme.sshAccent.opacity(hovering ? 0.55 : 0.22),
+                        .shadow(color: Theme.sshOnChip.opacity(hovering ? 0.55 : 0.22),
                                 radius: hovering ? 5 : 3)
                 )
                 .contentShape(Circle())
@@ -62,6 +62,8 @@ struct PaneTitleBar: View {
     /// click still toggles the compact state.
     var dragPayload: String? = nil
     @EnvironmentObject var prefs: Preferences
+    /// The pane chrome's scheme: light over a light terminal background.
+    @Environment(\.colorScheme) private var scheme
     /// Collapsed: a small light capsule showing only the logo (status dot
     /// or ssh glyph) + the ⌥N keybind. Click the pill to toggle. Per-pane,
     /// transient — not persisted.
@@ -92,7 +94,7 @@ struct PaneTitleBar: View {
     /// a glance which panes are remote.
     private var dotColor: Color {
         if remoteHost != nil {
-            return isActive ? Theme.sshAccent : Theme.sshAccent.opacity(0.55)
+            return isActive ? Theme.sshOnChip : Theme.sshOnChip.opacity(0.55)
         }
         return isActive ? Theme.onChipAccent : Theme.onChip.opacity(0.35)
     }
@@ -106,7 +108,7 @@ struct PaneTitleBar: View {
                     .foregroundStyle(collapsed
                         ? Theme.sshAccentDeep
                         : (isActive ? Theme.onChip : Theme.onChip.opacity(0.7)))
-                    .shadow(color: (!collapsed && isActive) ? Theme.sshAccent.opacity(0.7) : .clear,
+                    .shadow(color: (!collapsed && isActive) ? Theme.sshOnChip.opacity(0.7) : .clear,
                             radius: 4)
             } else {
                 Circle()
@@ -141,14 +143,17 @@ struct PaneTitleBar: View {
                               : remoteHost != nil ? Theme.paneRemoteBar : Theme.paneTitleBar)
                 }
                 if !collapsed {
+                    // The active lift: additive on the dark bed; on the
+                    // light bed additive white saturates away, so a plain
+                    // white wash lifts it instead.
                     Capsule(style: .continuous)
-                        .fill(Color.white.opacity(isActive ? 0.10 : 0.0))
-                        .blendMode(.plusLighter)
+                        .fill(Color.white.opacity(isActive ? (scheme == .light ? 0.55 : 0.10) : 0.0))
+                        .blendMode(scheme == .light ? .normal : .plusLighter)
                 }
             }
         )
         .modifier(ChipGlass(shape: Capsule(style: .continuous), tint: glassTint,
-                            scheme: collapsed || prefs.lightGlass ? .light : .dark))
+                            scheme: collapsed ? .light : scheme))
         // One-shot light sweep on connect — kept out of the tree at rest.
         .overlay {
             if shimmering { connectSweep }
@@ -223,7 +228,7 @@ struct PaneTitleBar: View {
     private var borderColor: Color {
         if collapsed { return Color.black.opacity(0.12) }
         if remoteHost != nil {
-            return Theme.sshAccent.opacity(isActive ? 0.45 : 0.18)
+            return Theme.sshOnChip.opacity(isActive ? 0.45 : 0.18)
         }
         return Theme.onChip.opacity(isActive ? 0.30 : 0.10)
     }
@@ -237,12 +242,13 @@ struct PaneTitleBar: View {
             Capsule(style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [.clear, Theme.sshAccent.opacity(0.55), .clear],
+                        colors: [.clear, Theme.sshOnChip.opacity(scheme == .light ? 0.35 : 0.55), .clear],
                         startPoint: .leading, endPoint: .trailing)
                 )
                 .frame(width: w * 0.4)
                 .offset(x: -0.45 * w + shimmerPhase * 1.5 * w)
-                .blendMode(.plusLighter)
+                // Additive light can't brighten a light bed; paint it there.
+                .blendMode(scheme == .light ? .normal : .plusLighter)
         }
         .clipShape(Capsule(style: .continuous))
         .allowsHitTesting(false)
@@ -303,7 +309,7 @@ private struct KeybindChip: View {
                 Capsule(style: .continuous)
                     .fill(light
                         ? Color.black.opacity(0.08)
-                        : Color.white.opacity(isActive ? 0.18 : 0.06))
+                        : Theme.onChip.opacity(isActive ? 0.18 : 0.06))
             )
     }
 }
@@ -316,10 +322,11 @@ private struct KeybindChip: View {
 /// transfer runs, then a brief verdict flash.
 struct UploadBadge: View {
     let upload: Pane.Upload
+    @Environment(\.colorScheme) private var scheme
 
     private var tint: Color {
         switch upload.phase {
-        case .uploading: return Theme.sshAccent
+        case .uploading: return Theme.sshOnChip
         case .done:      return Color(red: 0.45, green: 0.86, blue: 0.55)
         case .failed:    return Color(red: 1.0, green: 0.42, blue: 0.42)
         }
@@ -357,8 +364,8 @@ struct UploadBadge: View {
             ZStack {
                 Capsule(style: .continuous).fill(Theme.paneTitleBar)
                 Capsule(style: .continuous)
-                    .fill(tint.opacity(0.16))
-                    .blendMode(.plusLighter)
+                    .fill(tint.opacity(scheme == .light ? 0.10 : 0.16))
+                    .blendMode(scheme == .light ? .normal : .plusLighter)
             }
         )
         .overlay(
@@ -372,13 +379,17 @@ struct UploadBadge: View {
 struct CommandBadge: View {
     let result: Pane.CommandResult
     @EnvironmentObject var prefs: Preferences
+    @Environment(\.colorScheme) private var scheme
 
     private var unknownExit: Bool { result.exitCode < 0 }
 
     private var tint: Color {
         if unknownExit { return Theme.onChip.opacity(0.6) }
-        return result.failed ? Drop.bad : Drop.good
+        return result.failed ? Drop.bad : Self.good
     }
+    /// The success check: `Drop.good` on the dark bed, deeper on the light.
+    private static let good = Theme.onChipTone(Drop.good,
+        light: NSColor(srgbRed: 0.10, green: 0.58, blue: 0.30, alpha: 1))
     private var icon: String {
         if unknownExit { return "clock" }
         return result.failed ? "xmark.circle.fill" : "checkmark.circle.fill"
@@ -404,8 +415,8 @@ struct CommandBadge: View {
             ZStack {
                 Capsule(style: .continuous).fill(Theme.paneTitleBar)
                 Capsule(style: .continuous)
-                    .fill(tint.opacity(0.16))
-                    .blendMode(.plusLighter)
+                    .fill(tint.opacity(scheme == .light ? 0.10 : 0.16))
+                    .blendMode(scheme == .light ? .normal : .plusLighter)
             }
         )
         // Rim lit from the top-leading corner in the result's colour, like

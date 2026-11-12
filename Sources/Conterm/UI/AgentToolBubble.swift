@@ -56,25 +56,49 @@ struct AgentToolGlyph: View {
 /// its tool bubbles, the History capsule. Flat and opaque on purpose: these
 /// stay up for as long as an agent runs, over a terminal that is streaming,
 /// so a sampled material would re-render with every frame of output. The
-/// bed and ink follow the appearance (the glass tint), so the chips go
-/// light with a light theme.
+/// bed and ink follow the pane chrome's appearance, which is keyed off the
+/// terminal background (see PaneBox), so the chips go light only over a
+/// light terminal.
 enum PanePill {
     static let bed = Theme.dynamic(
-        light: NSColor(calibratedRed: 0.975, green: 0.970, blue: 0.980, alpha: 1),
-        dark:  NSColor(calibratedRed: 0.05, green: 0.055, blue: 0.07, alpha: 1))
-    static let ink = Theme.dynamic(light: NSColor(white: 0.10, alpha: 1),
-                                   dark:  NSColor(white: 0.96, alpha: 1))
+        light: NSColor(srgbRed: 0.975, green: 0.970, blue: 0.980, alpha: 1),
+        dark:  NSColor(srgbRed: 0.05, green: 0.055, blue: 0.07, alpha: 1))
+    static let ink = Theme.dynamic(light: NSColor(srgbRed: 0.10, green: 0.10, blue: 0.10, alpha: 1),
+                                   dark:  NSColor(srgbRed: 0.96, green: 0.96, blue: 0.96, alpha: 1))
 
     /// Light caught on the rim: strongest where the key light lands
     /// (top-leading), nearly gone at the far corner. Neutral, like the
     /// kit's `Drop.sheen`; a soft dark rim on the light bed.
-    static var edge: LinearGradient {
-        LinearGradient(colors: [Theme.dynamic(light: NSColor(white: 0, alpha: 0.14),
-                                              dark: NSColor(white: 1, alpha: 0.34)),
-                                Theme.dynamic(light: NSColor(white: 0, alpha: 0.05),
-                                              dark: NSColor(white: 1, alpha: 0.05))],
-                       startPoint: .topLeading, endPoint: .bottomTrailing)
+    static let edge = LinearGradient(
+        colors: [Theme.dynamic(light: NSColor(white: 0, alpha: 0.14),
+                               dark: NSColor(white: 1, alpha: 0.34)),
+                 Theme.dynamic(light: NSColor(white: 0, alpha: 0.05),
+                               dark: NSColor(white: 1, alpha: 0.05))],
+        startPoint: .topLeading, endPoint: .bottomTrailing)
+}
+
+extension AgentToolKind {
+    /// The kind's colour on a pane chip. The pale ones, tuned for the
+    /// near-black bed, take a deeper shade on the light bed.
+    var chipColor: Color {
+        switch self {
+        case .ssh:    return Theme.sshOnChip
+        case .github: return ChipTones.github
+        case .shell:  return ChipTones.shell
+        case .todo:   return ChipTones.todo
+        default:      return color
+        }
     }
+}
+
+/// Built once: a dynamic colour per access would rebuild on every redraw.
+private enum ChipTones {
+    static let github = Theme.onChipTone(AgentToolKind.github.color,
+        light: NSColor(srgbRed: 0.28, green: 0.33, blue: 0.42, alpha: 1))
+    static let shell = Theme.onChipTone(AgentToolKind.shell.color,
+        light: NSColor(srgbRed: 0.38, green: 0.38, blue: 0.40, alpha: 1))
+    static let todo = Theme.onChipTone(AgentToolKind.todo.color,
+        light: NSColor(srgbRed: 0.78, green: 0.52, blue: 0.00, alpha: 1))
 }
 
 /// One kind of call in flight as a bubble: the mark, monochrome on the
@@ -96,7 +120,7 @@ struct AgentToolBubble: View {
     @State private var systemLite = false
     @State private var hovering = false
 
-    private var color: Color { run.kind.color }
+    private var color: Color { run.kind.chipColor }
     private static let failColor = Drop.bad
     private static let bed = PanePill.bed
     private static let ink = PanePill.ink

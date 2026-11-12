@@ -143,6 +143,15 @@ extension Ghostty {
                     decoded = .openURL(String(decoding: Data(bytes: c, count: Int(u.len)),
                                               as: UTF8.self))
                 } else { decoded = nil }
+            case GHOSTTY_ACTION_CONFIG_CHANGE:
+                // The config is libghostty's, alive only for this call.
+                decoded = action.action.config_change.config
+                    .flatMap(Ghostty.App.backgroundColor)
+                    .map { .background(r: $0.r, g: $0.g, b: $0.b) }
+            case GHOSTTY_ACTION_COLOR_CHANGE:
+                let c = action.action.color_change
+                decoded = c.kind == GHOSTTY_ACTION_COLOR_KIND_BACKGROUND
+                    ? .background(r: c.r, g: c.g, b: c.b) : nil
             default:
                 decoded = nil
             }

@@ -217,7 +217,7 @@ struct ClassicAgentToolBubble: View {
     @State private var systemLite = false
     @State private var hovering = false
 
-    private var color: Color { run.kind.color }
+    private var color: Color { run.kind.chipColor }
     private static let failColor = Color(red: 1.0, green: 0.42, blue: 0.42)
     private static let bed = PanePill.bed
     /// Follows the bed, like the pill's label.
@@ -305,8 +305,11 @@ struct ClassicAgentToolHistoryButton: View {
     @EnvironmentObject var prefs: Preferences
     @State private var hovering = false
 
+    /// Follows the pane chrome's scheme, which tracks the terminal
+    /// background rather than the glass tint.
+    @Environment(\.colorScheme) private var scheme
     private var ink: Color {
-        prefs.lightGlass ? Color.black.opacity(0.82) : Color.white.opacity(0.92)
+        scheme == .light ? Color.black.opacity(0.82) : Color.white.opacity(0.92)
     }
 
     var body: some View {
@@ -344,7 +347,7 @@ struct ClassicAgentToolHistoryButton: View {
     private var glass: some View {
         if #available(macOS 26, *) {
             PaneLiquidGlass(cornerRadius: height / 2, frostiness: 0.35,
-                            light: prefs.lightGlass)
+                            light: scheme == .light)
                 .clipShape(Capsule(style: .continuous))
         } else {
             Capsule(style: .continuous).fill(.ultraThinMaterial)
@@ -355,13 +358,17 @@ struct ClassicAgentToolHistoryButton: View {
 struct ClassicCommandBadge: View {
     let result: Pane.CommandResult
     @EnvironmentObject var prefs: Preferences
+    @Environment(\.colorScheme) private var scheme
+    /// The success green, deeper on the light bed.
+    private static let good = Theme.onChipTone(Color(red: 0.45, green: 0.86, blue: 0.55),
+        light: NSColor(srgbRed: 0.10, green: 0.58, blue: 0.30, alpha: 1))
 
     private var unknownExit: Bool { result.exitCode < 0 }
 
     private var tint: Color {
         if unknownExit { return Theme.onChip.opacity(0.6) }
         return result.failed ? Color(red: 1.0, green: 0.42, blue: 0.42)
-                             : Color(red: 0.45, green: 0.86, blue: 0.55)
+                             : Self.good
     }
     private var icon: String {
         if unknownExit { return "clock" }
@@ -388,8 +395,8 @@ struct ClassicCommandBadge: View {
             ZStack {
                 Capsule(style: .continuous).fill(Theme.paneTitleBar)
                 Capsule(style: .continuous)
-                    .fill(tint.opacity(0.16))
-                    .blendMode(.plusLighter)
+                    .fill(tint.opacity(scheme == .light ? 0.10 : 0.16))
+                    .blendMode(scheme == .light ? .normal : .plusLighter)
             }
         )
         .overlay(

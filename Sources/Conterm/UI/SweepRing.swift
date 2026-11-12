@@ -113,7 +113,11 @@ final class SweepRingView: NSView {
         let pad = Self.haloPad
 
         if conicTexture == nil {
-            conicTexture = Self.conicImage(color: glowColor, bead: beadColor)
+            // Resolve a dynamic glow against this view's appearance (the
+            // pane chrome's, keyed off the terminal), not the app's.
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                conicTexture = Self.conicImage(color: glowColor, bead: beadColor)
+            }
         }
 
         // Manually-added sublayers get CA's default implicit actions;
