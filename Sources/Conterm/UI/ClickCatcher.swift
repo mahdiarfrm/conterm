@@ -150,7 +150,9 @@ struct ClickCatcher: NSViewRepresentable {
     /// Optional: clicks within `trailingZoneWidth` of the right edge
     /// fire `onTrailingClick` instead of `onSingle`. Used by tabs so
     /// the close-X area is still hit-testable even though the catcher
-    /// overlay covers it.
+    /// overlay covers it. Like a button, it fires on mouse-up inside the
+    /// zone: releasing outside cancels it, and a press that travels
+    /// starts a drag instead.
     var trailingZoneWidth: CGFloat = 0
     var onTrailingClick: (() -> Void)? = nil
     /// Optional: a press that travels a few points starts an AppKit
@@ -202,19 +204,23 @@ struct ClickCatcher: NSViewRepresentable {
         var clickOnMouseUp: Bool = false
         var dragCornerRadius: CGFloat = 0
         private var pressEvent: NSEvent?
+        /// The press began in the trailing zone; resolved on mouse-up.
+        private var trailingPress = false
 
         override var mouseDownCanMoveWindow: Bool { false }
+
+        private func inTrailingZone(_ event: NSEvent) -> Bool {
+            let local = convert(event.locationInWindow, from: nil)
+            return trailingZoneWidth > 0 && bounds.contains(local)
+                && local.x >= bounds.width - trailingZoneWidth
+        }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
         override func mouseDown(with event: NSEvent) {
-            // Convert to local. AppKit gives us window-coords; we
-            // want this view's space.
-            let local = convert(event.locationInWindow, from: nil)
             // Trailing zone takeover (e.g. close-X area on a tab).
-            if let trailing = onTrailingClick,
-               trailingZoneWidth > 0,
-               local.x >= bounds.width - trailingZoneWidth {
-                trailing()
+            if onTrailingClick != nil, inTrailingZone(event) {
+                trailingPress = true
+                if dragPayload != nil { pressEvent = event }
                 return
             }
             if event.clickCount >= 2 {
@@ -229,6 +235,12 @@ struct ClickCatcher: NSViewRepresentable {
         }
 
         override func mouseUp(with event: NSEvent) {
+            if trailingPress {
+                trailingPress = false
+                pressEvent = nil
+                if inTrailingZone(event) { onTrailingClick?() }
+                return
+            }
             if clickOnMouseUp, pressEvent != nil { onSingle() }
             pressEvent = nil
         }
@@ -239,6 +251,7 @@ struct ClickCatcher: NSViewRepresentable {
             let dy = event.locationInWindow.y - press.locationInWindow.y
             guard dx * dx + dy * dy > 9 else { return }
             pressEvent = nil
+            trailingPress = false
 
             let item = NSPasteboardItem()
             item.setString(payload, forType: dragType)

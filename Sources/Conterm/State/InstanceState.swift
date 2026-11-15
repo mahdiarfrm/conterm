@@ -170,7 +170,9 @@ enum InstanceState {
     static let ownsSession: Bool = {
         let fm = FileManager.default
         try? fm.createDirectory(atPath: configDir, withIntermediateDirectories: true)
-        let fd = open("\(configDir)/.session.lock", O_CREAT | O_RDWR, 0o644)
+        // Close-on-exec: a child that inherited the descriptor would hold
+        // the lock past this process's exit.
+        let fd = open("\(configDir)/.session.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0o644)
         // No lock file means no way to tell; behave as the only instance
         // rather than silently refusing to restore.
         guard fd >= 0 else { return true }

@@ -254,7 +254,7 @@ import GhosttyKit
     // MARK: - Firstword block
 
     /// Firstword carries Conterm's overridable defaults. It must parse
-    /// clean and set ⌥-as-Alt on.
+    /// clean, set ⌥-as-Alt on, and copy selections to the system clipboard.
     @Test func firstwordParsesCleanAndSetsOptionAsAlt() {
         guard let cfg = loadConfig([Ghostty.App.firstwordText()]) else {
             Issue.record("ghostty_config_new failed")
@@ -263,6 +263,7 @@ import GhosttyKit
         defer { ghostty_config_free(cfg) }
         #expect(diagnostics(cfg).isEmpty, "\(diagnostics(cfg))")
         #expect(stringValue(cfg, "macos-option-as-alt") == "true")
+        #expect(stringValue(cfg, "copy-on-select") == "clipboard")
     }
 
     /// `macos-option-as-alt` must stay in firstword, never lastword:

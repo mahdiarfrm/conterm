@@ -38,7 +38,11 @@ import Foundation
         ]
         return SessionStore.Snapshot(windows: [
             SessionStore.Window(frame: "{{100, 200}, {1100, 700}}",
-                                tabs: tabs, selectedIndex: 1),
+                                tabs: tabs, selectedIndex: 1,
+                                themeID: "Tokyo Night",
+                                themeFollowsSystem: true,
+                                lightThemeID: "GitHub Light",
+                                darkThemeID: "Tokyo Night"),
         ])
     }
 
@@ -63,6 +67,10 @@ import Foundation
             let win = loaded?.windows.first
             #expect(win?.frame == "{{100, 200}, {1100, 700}}")
             #expect(win?.selectedIndex == 1)
+            #expect(win?.themeID == "Tokyo Night")
+            #expect(win?.themeFollowsSystem == true)
+            #expect(win?.lightThemeID == "GitHub Light")
+            #expect(win?.darkThemeID == "Tokyo Night")
             #expect(win?.tabs.count == 2)
 
             let tab = win?.tabs.first
@@ -135,6 +143,10 @@ import Foundation
             try? legacy.write(toFile: path, atomically: true, encoding: .utf8)
 
             let loaded = SessionStore.load()
+            #expect(loaded?.windows.first?.themeID == nil)
+            #expect(loaded?.windows.first?.themeFollowsSystem == nil)
+            #expect(loaded?.windows.first?.lightThemeID == nil)
+            #expect(loaded?.windows.first?.darkThemeID == nil)
             let tab = loaded?.windows.first?.tabs.first
             #expect(tab?.title == "old tab")
             #expect(tab?.cwd == "/srv")

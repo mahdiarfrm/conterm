@@ -400,19 +400,19 @@ extension CommandPalette {
                     title: "Open in Finder",
                     subtitle: "Open this pane's directory in Finder",
                     shortcut: "",
-                    run: { openCurrentDir(in: .finder) }),
+                    run: { state.openCurrentDir(in: .finder) }),
             Command(id: "open_cursor", icon: "cursorarrow",
                     assetName: "cursor-mark",
                     title: "Open in Cursor",
                     subtitle: "Open this pane's directory in Cursor",
                     shortcut: "",
-                    run: { openCurrentDir(in: .cursor) }),
+                    run: { state.openCurrentDir(in: .cursor) }),
             Command(id: "open_vscode", icon: "chevron.left.forwardslash.chevron.right",
                     assetName: "vscode-mark",
                     title: "Open in VS Code",
                     subtitle: "Open this pane's directory in VS Code",
                     shortcut: "",
-                    run: { openCurrentDir(in: .vscode) }),
+                    run: { state.openCurrentDir(in: .vscode) }),
             Command(id: "sessions", icon: "rectangle.3.group",
                     title: "Sessions",
                     subtitle: "Jump to any pane in any window",
@@ -642,38 +642,6 @@ extension CommandPalette {
         var i = state.paletteFocusedIndex % list.count
         if i < 0 { i += list.count }
         runCommand(list[i])
-    }
-
-    // MARK: - Open-current-dir actions
-
-    enum OpenTarget { case finder, cursor, vscode }
-
-    func openCurrentDir(in target: OpenTarget) {
-        // Pull cwd from the active pane in the active tab.
-        guard let cwd = state.selectedTab?.paneTree.activePane?.cwd,
-              !cwd.isEmpty else {
-            NSSound.beep()
-            return
-        }
-        let url = URL(fileURLWithPath: cwd)
-        switch target {
-        case .finder:
-            NSWorkspace.shared.open(url)
-        case .cursor:
-            // Prefer the `cursor` CLI on PATH; fall back to `open -a Cursor`
-            // so users without the shell shim still get launched.
-            let task = Process()
-            task.launchPath = "/usr/bin/env"
-            task.arguments = ["sh", "-c",
-                "cursor \(shellQuote(cwd)) 2>/dev/null || open -a Cursor \(shellQuote(cwd))"]
-            try? task.run()
-        case .vscode:
-            let task = Process()
-            task.launchPath = "/usr/bin/env"
-            task.arguments = ["sh", "-c",
-                "code \(shellQuote(cwd)) 2>/dev/null || open -a 'Visual Studio Code' \(shellQuote(cwd))"]
-            try? task.run()
-        }
     }
 
 }

@@ -61,6 +61,21 @@ extension Ghostty {
             target: ghostty_target_s,
             action: ghostty_action_s
         ) -> Bool {
+            // The `reload_config` keybind (⌘⇧,) asks for a hard reload:
+            // re-read the files through the same path Settings uses, so
+            // `background-blur` edits apply too. Soft reloads (sent after a
+            // light/dark change) are ignored: the theme picker writes
+            // explicit colors rather than a `light:/dark:` theme.
+            if action.tag == GHOSTTY_ACTION_RELOAD_CONFIG {
+                guard !action.action.reload_config.soft else { return true }
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        (NSApp.delegate as? AppDelegate)?.reloadConfigAndReapplyBlur()
+                    }
+                }
+                return true
+            }
+
             let surfaceHandle: UnsafeMutableRawPointer?
             if target.tag == GHOSTTY_TARGET_SURFACE {
                 surfaceHandle = target.target.surface

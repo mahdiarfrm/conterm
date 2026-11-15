@@ -238,63 +238,65 @@ import Foundation
     }
 }
 
-/// The chrome scale multiplies hundreds of hardcoded point sizes, so its
-/// clamping and rounding are the two things that decide whether the result is
-/// usable or blurry.
-/// Serialized: these share one process-wide cache and one defaults key, so
-/// running them alongside each other has them clearing the scale out from under
-/// one another.
-@Suite(.serialized) struct ChromeScaleTests {
-    private func withScale(_ v: Double?, _ body: () -> Void) {
-        let key = "conterm.uiScale"
-        let old = UserDefaults.standard.object(forKey: key)
-        if let v { UserDefaults.standard.set(v, forKey: key) }
-        else { UserDefaults.standard.removeObject(forKey: key) }
-        Theme.reloadUIScale()
-        body()
-        if let old { UserDefaults.standard.set(old, forKey: key) }
-        else { UserDefaults.standard.removeObject(forKey: key) }
-        Theme.reloadUIScale()
-    }
-
-    @Test func unsetMeansUnchanged() {
-        withScale(nil) {
-            #expect(Theme.uiScale == 1)
-            #expect(Theme.ui(11.5) == 11.5)
+extension UIScaleSuites {
+    /// The chrome scale multiplies hundreds of hardcoded point sizes, so its
+    /// clamping and rounding are the two things that decide whether the result is
+    /// usable or blurry.
+    /// Under `UIScaleSuites`: these share one process-wide cache and one
+    /// defaults key, so running them alongside each other has them
+    /// clearing the scale out from under one another.
+    @Suite struct ChromeScaleTests {
+        private func withScale(_ v: Double?, _ body: () -> Void) {
+            let key = "conterm.uiScale"
+            let old = UserDefaults.standard.object(forKey: key)
+            if let v { UserDefaults.standard.set(v, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+            Theme.reloadUIScale()
+            body()
+            if let old { UserDefaults.standard.set(old, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+            Theme.reloadUIScale()
         }
-    }
 
-    @Test func clampsBeyondTheTunedRange() {
-        // Chrome is tuned against fixed hit targets and bar heights; a wild
-        // scale doesn't shrink the UI, it breaks it.
-        withScale(0.2) { #expect(Theme.uiScale == 0.85) }
-        withScale(4) { #expect(Theme.uiScale == 1.25) }
-    }
-
-    @Test func roundsToAHalfPoint() {
-        // A fractional baseline is how a naive UI scale ends up looking cheap.
-        withScale(0.9) {
-            #expect(Theme.ui(11) == 10.0)      // 9.9 → 10.0
-            #expect(Theme.ui(13.5) == 12.0)    // 12.15 → 12.0
+        @Test func unsetMeansUnchanged() {
+            withScale(nil) {
+                #expect(Theme.uiScale == 1)
+                #expect(Theme.ui(11.5) == 11.5)
+            }
         }
-    }
 
-    @Test func sharedChromeMetricsFollowTheScale() {
-        // The bar height and the pill corner are read by layout code that never
-        // sees a font size, so they have to scale at their source or the chrome
-        // shrinks around bars that don't.
-        withScale(nil) {
-            #expect(Theme.tabBarHeight == 42)
-            #expect(Theme.pillCorner == 18)
+        @Test func clampsBeyondTheTunedRange() {
+            // Chrome is tuned against fixed hit targets and bar heights; a wild
+            // scale doesn't shrink the UI, it breaks it.
+            withScale(0.2) { #expect(Theme.uiScale == 0.85) }
+            withScale(4) { #expect(Theme.uiScale == 1.25) }
         }
-        withScale(1.25) {
-            #expect(Theme.tabBarHeight == 52.5)
-            #expect(Theme.pillCorner == 22.5)
-        }
-    }
 
-    @Test func scalesUpAndDownFromTheSameSource() {
-        withScale(1.25) { #expect(Theme.ui(12) == 15) }
-        withScale(0.85) { #expect(Theme.ui(20) == 17) }
+        @Test func roundsToAHalfPoint() {
+            // A fractional baseline is how a naive UI scale ends up looking cheap.
+            withScale(0.9) {
+                #expect(Theme.ui(11) == 10.0)      // 9.9 → 10.0
+                #expect(Theme.ui(13.5) == 12.0)    // 12.15 → 12.0
+            }
+        }
+
+        @Test func sharedChromeMetricsFollowTheScale() {
+            // The bar height and the pill corner are read by layout code that never
+            // sees a font size, so they have to scale at their source or the chrome
+            // shrinks around bars that don't.
+            withScale(nil) {
+                #expect(Theme.tabBarHeight == 42)
+                #expect(Theme.pillCorner == 18)
+            }
+            withScale(1.25) {
+                #expect(Theme.tabBarHeight == 52.5)
+                #expect(Theme.pillCorner == 22.5)
+            }
+        }
+
+        @Test func scalesUpAndDownFromTheSameSource() {
+            withScale(1.25) { #expect(Theme.ui(12) == 15) }
+            withScale(0.85) { #expect(Theme.ui(20) == 17) }
+        }
     }
 }

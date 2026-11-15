@@ -11,6 +11,38 @@ if [[ -n "$CONTERM_USER_HOME" && -d "$CONTERM_USER_HOME" ]]; then
     export ZDOTDIR="$CONTERM_USER_HOME"
 fi
 
+
+# Session restore (RestoreHandoff in the app). A restored pane's saved
+# scrollback is printed here, before the rc files draw anything. A Claude
+# session that was running resumes at the first prompt, ahead of every other
+# precmd hook. Each file is taken by renaming it, since the app types the
+# line itself for a shell that leaves the file in place, and the variables
+# are dropped so shells started from this one don't act on them again.
+if [[ -n "$CONTERM_RESTORE_SCROLLBACK" ]]; then
+    if command mv -f -- "$CONTERM_RESTORE_SCROLLBACK" "$CONTERM_RESTORE_SCROLLBACK.zsh" 2>/dev/null; then
+        command cat -- "$CONTERM_RESTORE_SCROLLBACK.zsh"
+        command rm -f -- "$CONTERM_RESTORE_SCROLLBACK.zsh"
+    fi
+fi
+builtin unset CONTERM_RESTORE_SCROLLBACK
+if [[ -n "$CONTERM_RESTORE_COMMAND" ]]; then
+    builtin typeset -g _conterm_restore_file="$CONTERM_RESTORE_COMMAND"
+    _conterm_restore_precmd() {
+        precmd_functions=(${precmd_functions:#_conterm_restore_precmd})
+        local f="$_conterm_restore_file" cmd
+        builtin unset _conterm_restore_file
+        if command mv -f -- "$f" "$f.zsh" 2>/dev/null; then
+            cmd="$(<"$f.zsh")"
+            command rm -f -- "$f.zsh"
+            [[ -n "$cmd" ]] && builtin eval "$cmd"
+        fi
+        builtin unfunction _conterm_restore_precmd
+    }
+    builtin typeset -ag precmd_functions
+    precmd_functions=(_conterm_restore_precmd $precmd_functions)
+fi
+builtin unset CONTERM_RESTORE_COMMAND
+
 #
 # Silent kubectl session switch: the Kubernetes widget writes a one-shot
 # file holding a KUBECONFIG value for this pane; it's applied here right

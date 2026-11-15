@@ -25,6 +25,9 @@ echo "==> assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$EXE" "$APP/Contents/MacOS/Conterm"
+# libghostty's shell integration calls "$GHOSTTY_BIN_DIR/ghostty +ssh" (and
+# other `+` actions); the binary runs those itself (ContermApp.main).
+ln -s Conterm "$APP/Contents/MacOS/ghostty"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/PrivacyInfo.xcprivacy "$APP/Contents/Resources/PrivacyInfo.xcprivacy"
 echo -n "APPL????" > "$APP/Contents/PkgInfo"
