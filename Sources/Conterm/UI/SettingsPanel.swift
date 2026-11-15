@@ -235,9 +235,12 @@ struct SettingsPanel: View {
                         .disabled(prefs.glassMode == .solid)
                 }
                 SettingsRow(title: "Tint",
-                            subtitle: "Cool dark or cool light.") {
+                            subtitle: prefs.followSystemAppearance
+                                ? "Follows macOS Light and Dark (Theme ▸ Follow system appearance)."
+                                : "Cool dark or cool light.") {
                     DropChoice(selection: $prefs.lightGlass.withSound(),
                                options: [(false, "Dark"), (true, "Light")])
+                        .disabled(prefs.followSystemAppearance)
                 }
                 SettingsRow(title: "Frost",
                             subtitle: "How clear the glass reads. Clear shows the desktop through the top bar and gaps; frost it up for more privacy on a busy wallpaper. Does not change its cost.") {
@@ -1434,6 +1437,8 @@ private struct ThemePicker: View {
     @EnvironmentObject var prefs: Preferences
     @EnvironmentObject var state: AppState
     @Binding var filter: String
+    /// Which appearance a swatch tap assigns while following macOS.
+    @State private var editingLight = Preferences.systemIsLight
 
     /// Where a swatch pick lands: every window (the global theme,
     /// written to the config file), or only the window this Settings
@@ -1450,7 +1455,9 @@ private struct ThemePicker: View {
     /// scope: a window override wins in This-window scope, and a
     /// window without one shows the global pick it is following.
     private var selectedThemeID: String? {
-        guard scope == .thisWindow else { return themes.current }
+        guard scope == .thisWindow else {
+            return themes.selectedID(editingLight: editingLight, prefs: prefs)
+        }
         if state.windowThemeFollowsSystem {
             return editingDark ? state.windowDarkThemeID
                                : state.windowLightThemeID
@@ -1496,6 +1503,7 @@ private struct ThemePicker: View {
             sourceToggle
 
             scopeRow
+            if scope == .allWindows { followToggle }
 
             // Only the filter + swatches dim/disable while the config owns
             // the colors — the toggle above stays live so it can be turned
@@ -1589,6 +1597,44 @@ private struct ThemePicker: View {
         }
     }
 
+    /// Follow-macOS row. On: two slots (Light, Dark); a swatch tap fills
+    /// the slot being edited and the terminal + glass switch with macOS.
+    private var followToggle: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Follow system appearance")
+                        .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(prefs.followSystemAppearance
+                         ? "Theme and glass tint switch with macOS Light and Dark. Pick a theme for each."
+                         : "Turn on to pair a Light and a Dark theme that switch with macOS.")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Toggle("", isOn: $prefs.followSystemAppearance)
+                    .labelsHidden()
+            }
+            if prefs.followSystemAppearance {
+                DropChoice(selection: $editingLight.withSound(), options: [
+                    (true, "Light: \(prefs.lightThemeID ?? "—")"),
+                    (false, "Dark: \(prefs.darkThemeID ?? "—")"),
+                ])
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Theme.stroke, lineWidth: 0.5)
+        )
+    }
+
     /// Scope row: does the next swatch pick retheme every window, or
     /// only this one? A window with its own theme can drop back to
     /// following the global pick here. Disabled while the config owns
@@ -1656,7 +1702,7 @@ private struct ThemePicker: View {
     private func pick(_ theme: ThemeCatalog.Theme) {
         switch scope {
         case .allWindows:
-            themes.apply(theme)
+            themes.pick(theme, editingLight: editingLight, prefs: prefs)
         case .thisWindow:
             if state.windowThemeFollowsSystem {
                 state.setWindowSlotTheme(theme.id, dark: editingDark)
