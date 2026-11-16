@@ -20,6 +20,12 @@ struct ClassicSettingsPanel: View {
     @State private var codexIntegrationOn = false
     @State private var codexAwaitsTrust = false
     @State private var openCodeIntegrationOn = false
+    @State private var museIntegrationOn = false
+    @State private var antigravityIntegrationOn = false
+    @State private var piIntegrationOn = false
+    @State private var ompIntegrationOn = false
+    @State private var remoteInstallHost: String = ""
+    @State private var remoteInstallStatus: String = ""
     @State private var themeFilter: String = ""
 
     /// Shared with the Liquid Drop panel, so a section requested by raw
@@ -50,6 +56,10 @@ struct ClassicSettingsPanel: View {
             codexIntegrationOn = CodexIntegration.isInstalled
             codexAwaitsTrust = CodexIntegration.awaitsTrust
             openCodeIntegrationOn = OpenCodeIntegration.isInstalled
+            museIntegrationOn = MuseIntegration.isInstalled
+            antigravityIntegrationOn = AntigravityIntegration.isInstalled
+            piIntegrationOn = PiIntegration.isInstalled
+            ompIntegrationOn = OmpIntegration.isInstalled
             // Jump to the section a palette settings result asked for.
             applyRequestedSection()
         }
@@ -966,6 +976,79 @@ struct ClassicSettingsPanel: View {
                     ).withSound())
                     .toggleStyle(.switch)
                     .labelsHidden()
+                }
+                SettingsRow(title: "Muse Code integration",
+                            subtitle: "Add hooks to ~/.config/muse/settings.json so a running Muse shows ready / thinking / needs-input in its pane. Your other hooks are preserved.") {
+                    Toggle("", isOn: Binding(
+                        get: { museIntegrationOn },
+                        set: { on in
+                            if on { MuseIntegration.install() }
+                            else  { MuseIntegration.uninstall() }
+                            museIntegrationOn = MuseIntegration.isInstalled
+                        }
+                    ).withSound())
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+                SettingsRow(title: "Antigravity integration",
+                            subtitle: "Add Conterm's hook group to ~/.gemini/config/hooks.json so a running Antigravity (CLI or IDE) shows ready / thinking and tool bubbles. Your other hook groups are preserved.") {
+                    Toggle("", isOn: Binding(
+                        get: { antigravityIntegrationOn },
+                        set: { on in
+                            if on { AntigravityIntegration.install() }
+                            else  { AntigravityIntegration.uninstall() }
+                            antigravityIntegrationOn = AntigravityIntegration.isInstalled
+                        }
+                    ).withSound())
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+                SettingsRow(title: "Pi integration",
+                            subtitle: "Install a Pi extension (~/.pi/agent/extensions/) that drives the same status pill and tool bubbles. Your other extensions are untouched.") {
+                    Toggle("", isOn: Binding(
+                        get: { piIntegrationOn },
+                        set: { on in
+                            if on { PiIntegration.install() }
+                            else  { PiIntegration.uninstall() }
+                            piIntegrationOn = PiIntegration.isInstalled
+                        }
+                    ).withSound())
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+                SettingsRow(title: "OMP integration",
+                            subtitle: "Install an OMP extension (~/.omp/agent/extensions/) that drives the same status pill and tool bubbles. Your other extensions are untouched.") {
+                    Toggle("", isOn: Binding(
+                        get: { ompIntegrationOn },
+                        set: { on in
+                            if on { OmpIntegration.install() }
+                            else  { OmpIntegration.uninstall() }
+                            ompIntegrationOn = OmpIntegration.isInstalled
+                        }
+                    ).withSound())
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+                SettingsRow(title: "Agent integration on an SSH host",
+                            subtitle: remoteInstallStatus.isEmpty
+                                ? "Install the same hooks on a remote host or Coder workspace (key/agent auth only — no password prompt). Then plain ssh from a pane forwards agent status back, tmux included."
+                                : remoteInstallStatus) {
+                    HStack(spacing: 8) {
+                        TextField("host", text: $remoteInstallHost)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 130)
+                        Button("Install") {
+                            let host = remoteInstallHost
+                                .trimmingCharacters(in: .whitespaces)
+                            guard !host.isEmpty else { return }
+                            remoteInstallStatus = "Installing on \(host)…"
+                            RemoteAgentInstall.install(host: host) { out in
+                                remoteInstallStatus = out
+                            }
+                        }
+                        .disabled(remoteInstallHost
+                            .trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
                 }
                 SettingsRow(title: "Diagnostic logging",
                             subtitle: "Write internal events to ~/Library/Logs/Conterm/conterm.log. A development aid; off by default.") {

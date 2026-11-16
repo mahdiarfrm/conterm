@@ -171,6 +171,24 @@ struct SSHDial: Equatable, Sendable {
         if let jump, !jump.isEmpty { out += ["-J", jump] }
         return out
     }
+
+    /// The same flags in `ssh` spelling, for reconnecting the way
+    /// the shell did (transcript tails, remote resume).
+    var sshFlags: [String] {
+        var out: [String] = []
+        if let port, !port.isEmpty { out += ["-p", port] }
+        if let identity, !identity.isEmpty {
+            out += ["-i", (identity as NSString).expandingTildeInPath]
+        }
+        if let jump, !jump.isEmpty { out += ["-J", jump] }
+        return out
+    }
+
+    /// `ssh -t [flags] [user@]host` as one string — the prefix of a
+    /// remote-resume line typed into a restored pane.
+    var sshResumePrefix: String {
+        (["ssh", "-t"] + sshFlags + [target]).joined(separator: " ")
+    }
 }
 
 /// If the title looks like a command line that starts with `ssh`
