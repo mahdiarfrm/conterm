@@ -251,13 +251,14 @@ func makePaneSurface(pane: Pane,
 
     _ = controller.start(view: view)
     // A fresh surface starts from the app-level (global) config. If
-    // this window carries its own theme, layer it on now — splits
-    // and new tabs in a themed window open themed, not global.
+    // this pane's tab carries an effective theme (its own, else the
+    // window's), layer it on now — splits and new tabs in a themed
+    // tab open themed, not global.
     // Tab panes only: Orbit's floating terminals belong to no tab,
     // so `AppState.liveControllers` never re-themes them; they stay
     // on the global theme rather than freezing at creation time.
-    if owningTab != nil,
-       let themeID = state.effectiveWindowThemeID,
+    if let owningTab,
+       let themeID = state.effectiveThemeID(for: owningTab),
        !state.prefs.themeFromConfig {
         app.applyTheme(themeID, to: [controller])
     }
