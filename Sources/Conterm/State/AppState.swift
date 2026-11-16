@@ -281,6 +281,13 @@ final class AppState: ObservableObject {
                 if let gid = entry.groupID, let uuid = UUID(uuidString: gid) {
                     tab.groupID = uuid
                 }
+                // Per-tab theme, validated like the window's: a saved
+                // id whose theme file is gone drops to inheriting.
+                tab.themeID = ThemeCatalog.validatedThemeID(entry.themeID)
+                tab.lightThemeID = ThemeCatalog.validatedThemeID(entry.lightThemeID)
+                tab.darkThemeID = ThemeCatalog.validatedThemeID(entry.darkThemeID)
+                tab.themeFollowsSystem = entry.themeFollowsSystem == true
+                    && (tab.lightThemeID != nil || tab.darkThemeID != nil)
                 tabs.append(tab)
             }
             let idx = max(0, min(r.selectedIndex, tabs.count - 1))
@@ -406,11 +413,99 @@ final class AppState: ObservableObject {
         pushWindowTheme()
     }
 
+    // MARK: - Per-tab themes
+
+    /// The theme a tab renders right now: its own override when it
+    /// carries one, else this window's effective theme (which may
+    /// itself be nil = global). Nil = the global theme.
+    func effectiveThemeID(for tab: Tab) -> String? {
+        tab.ownEffectiveThemeID ?? effectiveWindowThemeID
+    }
+
+    /// Set a tab's fixed theme and push it to that tab's surfaces
+    /// only; nil drops the tab's whole override (fixed, follow-macOS,
+    /// and both slots) back to inheriting the window. Mirrors
+    /// `setWindowTheme` one level down. Persisted per tab by
+    /// `SessionStore`.
+    func setTabTheme(_ tab: Tab, _ id: String?) {
+        tab.themeID = id
+        tab.themeFollowsSystem = false
+        if id == nil {
+            tab.lightThemeID = nil
+            tab.darkThemeID = nil
+        }
+        pushTabTheme(tab)
+    }
+
+    /// Switch a tab between its fixed theme and following macOS
+    /// Light/Dark, with the same seeding / keep-on-screen rules as
+    /// `setWindowThemeFollowsSystem`.
+    func setTabThemeFollowsSystem(_ tab: Tab, _ on: Bool) {
+        if on {
+            if tab.lightThemeID == nil, tab.darkThemeID == nil,
+               let fixed = tab.themeID {
+                if ThemeCatalog.systemIsDark {
+                    tab.darkThemeID = fixed
+                } else {
+                    tab.lightThemeID = fixed
+                }
+            }
+            tab.themeFollowsSystem = true
+        } else {
+            let shown = tab.ownEffectiveThemeID
+            tab.themeFollowsSystem = false
+            tab.themeID = shown
+        }
+        pushTabTheme(tab)
+    }
+
+    /// Fill one of a tab's follow-macOS slots and push the result.
+    func setTabSlotTheme(_ tab: Tab, _ id: String?, dark: Bool) {
+        if dark { tab.darkThemeID = id } else { tab.lightThemeID = id }
+        pushTabTheme(tab)
+    }
+
+    /// Live pane surfaces belonging to one tab.
+    private func controllers(for tab: Tab) -> [Ghostty.SurfaceController] {
+        tab.paneTree.root.leaves().compactMap(\.controller)
+    }
+
+    /// Push a tab's effective theme (its own, else the window's) to
+    /// that tab's surfaces only. While the user's config owns the
+    /// colors, push the plain chain instead, matching the window.
+    private func pushTabTheme(_ tab: Tab) {
+        guard let ghostty else { return }
+        ghostty.applyTheme(
+            prefs.themeFromConfig ? nil : effectiveThemeID(for: tab),
+            to: controllers(for: tab))
+    }
+
+    /// Re-apply every tab's effective theme, grouping tabs that
+    /// share a theme so each distinct config is built once. Used
+    /// after a global reload and on appearance changes, where tabs
+    /// may legitimately hold different themes.
+    private func pushAllTabThemes() {
+        guard let ghostty, !prefs.themeFromConfig else { return }
+        var byTheme: [String: [Ghostty.SurfaceController]] = [:]
+        var global: [Ghostty.SurfaceController] = []
+        for tab in tabs {
+            if let id = effectiveThemeID(for: tab) {
+                byTheme[id, default: []].append(contentsOf: controllers(for: tab))
+            } else {
+                global.append(contentsOf: controllers(for: tab))
+            }
+        }
+        for (id, ctrls) in byTheme { ghostty.applyTheme(id, to: ctrls) }
+        if !global.isEmpty { ghostty.applyTheme(nil, to: global) }
+    }
+
     /// macOS switched Light/Dark: a following window swaps themes.
     /// (Queued delivery is fine here — the system animates its own
     /// transition, unlike the reload path's flash constraint.)
     func systemAppearanceChanged() {
-        guard windowThemeFollowsSystem else { return }
+        guard windowThemeFollowsSystem
+                || tabs.contains(where: { $0.themeFollowsSystem })
+        else { return }
         applyWindowTheme()
     }
 
@@ -420,6 +515,12 @@ final class AppState: ObservableObject {
     /// state.
     private func pushWindowTheme() {
         guard let ghostty else { return }
+        // Tabs carrying their own theme keep it: push per-tab
+        // effective themes instead of flattening the whole window.
+        if tabs.contains(where: { $0.hasOwnTheme }) {
+            pushAllTabThemes()
+            return
+        }
         ghostty.applyTheme(
             prefs.themeFromConfig ? nil : effectiveWindowThemeID,
             to: liveControllers)
@@ -430,8 +531,12 @@ final class AppState: ObservableObject {
     /// override already hold the right config, so they skip the
     /// rebuild entirely.
     func applyWindowTheme() {
-        guard let id = effectiveWindowThemeID, !prefs.themeFromConfig,
-              let ghostty else { return }
+        guard !prefs.themeFromConfig, let ghostty else { return }
+        if tabs.contains(where: { $0.hasOwnTheme }) {
+            pushAllTabThemes()
+            return
+        }
+        guard let id = effectiveWindowThemeID else { return }
         ghostty.applyTheme(id, to: liveControllers)
     }
 

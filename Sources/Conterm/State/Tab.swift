@@ -30,6 +30,32 @@ final class Tab: ObservableObject, Identifiable {
     /// SessionStore.
     @Published var groupID: UUID? = nil
 
+    /// This tab's own terminal theme (a `ThemeCatalog` theme id),
+    /// mirroring the per-window fields on AppState one level down.
+    /// All nil/false = the tab inherits the window theme (which may
+    /// itself follow the global theme). Applied to this tab's
+    /// surfaces only — see `AppState.setTabTheme` — and persisted
+    /// per tab by `SessionStore`.
+    @Published var themeID: String?
+    @Published var themeFollowsSystem: Bool = false
+    @Published var lightThemeID: String?
+    @Published var darkThemeID: String?
+
+    /// The theme this tab itself carries right now, before window /
+    /// global inheritance. Nil = no tab-level override.
+    var ownEffectiveThemeID: String? {
+        ThemeCatalog.effectiveThemeID(
+            fixed: themeID, light: lightThemeID, dark: darkThemeID,
+            followsSystem: themeFollowsSystem,
+            isDark: ThemeCatalog.systemIsDark)
+    }
+
+    /// True when the tab carries any theme of its own, fixed or
+    /// following macOS — drives the menu's inherit/reset state.
+    var hasOwnTheme: Bool {
+        themeID != nil || lightThemeID != nil || darkThemeID != nil
+    }
+
     /// Most attention-worthy agent phase across this tab's panes, so the
     /// tab pill can show a glanceable dot for an agent running in a
     /// non-visible tab. Pane agents are nested ObservableObjects, so a

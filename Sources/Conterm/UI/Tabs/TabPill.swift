@@ -1,6 +1,20 @@
 import AppKit
 import SwiftUI
 
+/// Optional ThemeCatalog for views (like this pill) that also render
+/// in catalog-less contexts (tests, previews): the Theme menu simply
+/// doesn't appear there instead of trapping on a missing ancestor.
+private struct ThemeCatalogEnvironmentKey: EnvironmentKey {
+    static let defaultValue: ThemeCatalog? = nil
+}
+
+extension EnvironmentValues {
+    var contermThemeCatalog: ThemeCatalog? {
+        get { self[ThemeCatalogEnvironmentKey.self] }
+        set { self[ThemeCatalogEnvironmentKey.self] = newValue }
+    }
+}
+
 /// A tab on whatever surface carries it. Selection is not drawn here —
 /// TabBar owns a single travelling selection that glides between pills.
 /// Liquid Drop: resting tabs are a faint wash and the selection is one
@@ -43,6 +57,7 @@ struct TabPill: View {
     @EnvironmentObject var tabGroups: TabGroupStore
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Preferences
+    @Environment(\.contermThemeCatalog) private var themeCatalog
     @State private var hovering = false
     @State private var hoveringClose = false
     /// Live rendered width (horizontal pills only) — drives `squeezed`.
@@ -355,6 +370,7 @@ struct TabPill: View {
             Button("Close Tab") { onClose() }
             Divider()
             groupMenu
+            themeMenu
         }
         // Hover physicality differs by home: horizontal cards lift
         // slightly; sidebar rows nudge toward the terminal instead —
@@ -544,6 +560,52 @@ struct TabPill: View {
             .frame(width: Theme.ui(6), height: Theme.ui(6))
             .shadow(color: color.opacity(0.35 + 0.55 * phase), radius: 2 + 5 * phase)
             .opacity(0.5 + 0.5 * phase)
+    }
+
+    /// Right-click submenu for this tab's own terminal theme. The
+    /// theme catalog loads lazily (Settings defers the parse), so an
+    /// unloaded catalog offers the load explicitly rather than
+    /// paying the parse at launch.
+    @ViewBuilder
+    private var themeMenu: some View {
+        if let themes = themeCatalog {
+        Menu("Theme") {
+            if tab.hasOwnTheme {
+                Button("Inherit window theme") { state.setTabTheme(tab, nil) }
+                Divider()
+            }
+            Toggle("Follow macOS light/dark", isOn: Binding(
+                get: { tab.themeFollowsSystem },
+                set: { state.setTabThemeFollowsSystem(tab, $0) }))
+            if themes.themes.isEmpty {
+                Button(themes.isLoading ? "Loading themes…" : "Load themes…") {
+                    themes.ensureLoaded()
+                }
+                .disabled(themes.isLoading)
+            } else if tab.themeFollowsSystem {
+                Menu("Light theme") {
+                    ForEach(themes.themes) { t in
+                        Button(tab.lightThemeID == t.id ? "✓ \(t.name)" : t.name) {
+                            state.setTabSlotTheme(tab, t.id, dark: false)
+                        }
+                    }
+                }
+                Menu("Dark theme") {
+                    ForEach(themes.themes) { t in
+                        Button(tab.darkThemeID == t.id ? "✓ \(t.name)" : t.name) {
+                            state.setTabSlotTheme(tab, t.id, dark: true)
+                        }
+                    }
+                }
+            } else {
+                ForEach(themes.themes) { t in
+                    Button(tab.themeID == t.id ? "✓ \(t.name)" : t.name) {
+                        state.setTabTheme(tab, t.id)
+                    }
+                }
+            }
+        }
+        }
     }
 
     /// Right-click submenu for browser-style tab groups.
