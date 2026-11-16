@@ -122,6 +122,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // having to re-toggle the setting.
         AgentHooks.refreshIfInstalled()
         OpenCodeIntegration.refreshIfInstalled()
+        AntigravityIntegration.refreshIfInstalled()
+        PiIntegration.refreshIfInstalled()
+        OmpIntegration.refreshIfInstalled()
+        RemoteAgentChannel.shared.start()
+        RemoteTranscriptMirror.removeStale()
 
         MainMenu.install(delegate: self)
 

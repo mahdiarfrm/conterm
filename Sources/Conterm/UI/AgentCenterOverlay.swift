@@ -1047,7 +1047,7 @@ private struct AgentRowView: View {
     private var dropFigures: some View {
         if let u = entry.usage, u.totalTokens > 0 {
             HStack(alignment: .top, spacing: 0) {
-                dropFigure(money(u.estCost), "cost")
+                if u.hasCost { dropFigure(money(u.estCost), "cost") }
                 dropFigure(compactTokens(u.totalTokens), "tokens")
                 if let rate = burnRate(u) { dropFigure(rate, "per hour") }
             }
@@ -1260,7 +1260,9 @@ private struct AgentRowView: View {
     }
 
     private func metricsLine(_ u: AgentUsage) -> String {
-        var parts = [money(u.estCost), compactTokens(u.totalTokens) + " tok"]
+        var parts: [String] = []
+        if u.hasCost { parts.append(money(u.estCost)) }
+        parts.append(compactTokens(u.totalTokens) + " tok")
         if let rate = burnRate(u) { parts.append(rate + "/h") }
         if let m = shortModel(u.model) { parts.append(m) }
         return parts.joined(separator: "  ·  ")

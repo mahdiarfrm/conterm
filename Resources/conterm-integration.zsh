@@ -152,3 +152,24 @@ _conterm_terraform_preexec() {
         > "$HOME/.conterm/terraform/run-$CONTERM_PANE_ID"
 }
 preexec_functions+=(_conterm_terraform_preexec)
+
+# Agent forwarding over SSH: a plain interactive `ssh <host>` from a
+# Conterm pane reverse-forwards this pane's agent socket and exports
+# the pane identity on the far end, so harnesses there (usually
+# inside tmux) report status and tool calls back to THIS pane
+# (RemoteAgentChannel in the app; `agent-hook.sh` prefers the socket
+# and falls back to the tty escape, DCS-wrapped inside tmux).
+# Anything else — a remote command, -N/-L/-R/-f/-G forms, any extra
+# argument — passes through untouched, so git/scp/rsync over ssh are
+# unaffected. Opt out per shell with CONTERM_NO_SSH_WRAP=1.
+if [[ -n "$CONTERM_PANE_ID" && -z "$CONTERM_NO_SSH_WRAP" ]]; then
+    ssh() {
+        if [[ $# -eq 1 && -S "$HOME/.conterm/run/agent.sock" ]]; then
+            local _rsock=".conterm/run/agent-$CONTERM_PANE_ID.sock"
+            command ssh -R "$_rsock:$HOME/.conterm/run/agent.sock" -t "$1" \
+                "mkdir -p ~/.conterm/run && export CONTERM_PANE_ID='$CONTERM_PANE_ID' CONTERM_AGENT_SOCK=\"\$HOME/$_rsock\" && { tmux set-environment -g CONTERM_PANE_ID '$CONTERM_PANE_ID' 2>/dev/null; tmux set-environment -g CONTERM_AGENT_SOCK \"\$HOME/$_rsock\" 2>/dev/null; }; exec \${SHELL:-/bin/sh} -l"
+        else
+            command ssh "$@"
+        fi
+    }
+fi
