@@ -1499,25 +1499,15 @@ private struct ThemePicker: View {
     /// written to the config file), only the window this Settings
     /// panel belongs to (`AppState.windowThemeID`), or only its
     /// selected tab (`Tab.themeID`).
-    private enum Scope: Hashable { case allWindows, thisWindow, thisTab }
+    private typealias Scope = AppState.ThemeScopeTarget
     @State private var scope: Scope = .allWindows
 
     /// The tab a This-tab pick lands on (the window's selected tab).
     private var scopeTab: Tab? { state.selectedTab }
-    private var scopeFollows: Bool {
-        scope == .thisTab ? (scopeTab?.themeFollowsSystem ?? false)
-                          : state.windowThemeFollowsSystem
-    }
-    private var scopeLightID: String? {
-        scope == .thisTab ? scopeTab?.lightThemeID : state.windowLightThemeID
-    }
-    private var scopeDarkID: String? {
-        scope == .thisTab ? scopeTab?.darkThemeID : state.windowDarkThemeID
-    }
-    private var scopeHasOverride: Bool {
-        scope == .thisTab ? (scopeTab?.hasOwnTheme ?? false)
-                          : state.hasWindowTheme
-    }
+    private var scopeFollows: Bool { state.themeScopeFollows(scope, tab: scopeTab) }
+    private var scopeLightID: String? { state.themeScopeLightID(scope, tab: scopeTab) }
+    private var scopeDarkID: String? { state.themeScopeDarkID(scope, tab: scopeTab) }
+    private var scopeHasOverride: Bool { state.themeScopeHasOverride(scope, tab: scopeTab) }
     /// Which follow-macOS slot a swatch pick fills (This-window or
     /// This-tab scope with Follow on). Defaults to the current
     /// appearance.
@@ -1530,23 +1520,9 @@ private struct ThemePicker: View {
     /// override in This-window scope, and a scope without one shows
     /// the global pick it is following.
     private var selectedThemeID: String? {
-        switch scope {
-        case .allWindows:
-            return themes.current
-        case .thisWindow:
-            if state.windowThemeFollowsSystem {
-                return editingDark ? state.windowDarkThemeID
-                                   : state.windowLightThemeID
-            }
-            return state.windowThemeID ?? themes.current
-        case .thisTab:
-            guard let tab = scopeTab else { return themes.current }
-            if tab.themeFollowsSystem {
-                return editingDark ? tab.darkThemeID : tab.lightThemeID
-            }
-            return tab.themeID ?? state.effectiveThemeID(for: tab)
-                ?? themes.current
-        }
+        state.themeScopeSelectedID(scope, tab: scopeTab,
+                                    editingDark: editingDark,
+                                    globalCurrent: themes.current)
     }
 
     /// Follow-macOS toggle for the current scope: fixed theme, or
@@ -1556,11 +1532,7 @@ private struct ThemePicker: View {
             get: { scopeFollows },
             set: { on in
                 if on { editingDark = ThemeCatalog.systemIsDark }
-                if scope == .thisTab, let tab = scopeTab {
-                    state.setTabThemeFollowsSystem(tab, on)
-                } else {
-                    state.setWindowThemeFollowsSystem(on)
-                }
+                state.setThemeScopeFollows(on, target: scope, tab: scopeTab)
             })
     }
 
@@ -1646,11 +1618,11 @@ private struct ThemePicker: View {
             // Land on the scope this window is actually in, so a
             // themed tab (or window) doesn't offer a global pick by
             // default.
-            switch state.suggestedThemeScopeTarget {
-            case .thisTab:    scope = .thisTab
-            case .thisWindow: scope = .thisWindow
-            case .allWindows: scope = .allWindows
-            }
+            scope = initialScope()
+        }
+        // A This-tab scope requested from a tab menu lands here too.
+        .onChange(of: state.requestedThemeTabID) { _, _ in
+            scope = initialScope()
         }
     }
 
@@ -1682,11 +1654,10 @@ private struct ThemePicker: View {
                 .strokeBorder(Theme.stroke, lineWidth: 0.5)
         )
         // Flipping ON hands control back to the config (removes the
-        // managed block + reloads); OFF re-applies the window/tab
-        // overrides at once instead of waiting for an unrelated reload.
+        // managed block + reloads); turning it off is handled by each
+        // AppState's own prefs observation (see AppState).
         .onChange(of: prefs.themeFromConfig) { _, on in
             if on { themes.followConfig() }
-            else { state.applyWindowTheme() }
         }
     }
 
@@ -1762,43 +1733,24 @@ private struct ThemePicker: View {
         .opacity(prefs.themeFromConfig ? 0.4 : 1)
     }
 
+    /// The scope this picker opens on: an explicit This-tab
+    /// request wins, then the scope the current state suggests.
+    private func initialScope() -> Scope {
+        if state.requestedThemeTabID != nil { return .thisTab }
+        return state.suggestedThemeScopeTarget
+    }
+
     private func pick(_ theme: ThemeCatalog.Theme) {
-        switch scope {
-        case .allWindows:
+        if scope == .allWindows {
             themes.apply(theme)
-        case .thisWindow:
-            if state.windowThemeFollowsSystem {
-                state.setWindowSlotTheme(theme.id, dark: editingDark)
-            } else {
-                state.setWindowTheme(theme.id)
-            }
-        case .thisTab:
-            guard let tab = scopeTab else { return }
-            if tab.themeFollowsSystem {
-                state.setTabSlotTheme(tab, theme.id, dark: editingDark)
-            } else {
-                state.setTabTheme(tab, theme.id)
-            }
+        } else {
+            state.pickTheme(id: theme.id, target: scope, tab: scopeTab,
+                            editingDark: editingDark)
         }
     }
 
     private var scopeCaption: String {
-        if scope == .thisTab {
-            if scopeFollows {
-                return "This tab switches with macOS. Pick a swatch to "
-                    + "fill the Light or Dark slot."
-            }
-            return scopeHasOverride
-                ? "Only this tab uses this theme. Other tabs keep the window theme."
-                : "This tab follows the window theme. Pick a swatch to give it its own."
-        }
-        if state.windowThemeFollowsSystem {
-            return "This window switches with macOS. Pick a swatch to "
-                + "fill the Light or Dark slot."
-        }
-        return state.hasWindowTheme
-            ? "Only this window uses this theme. Other windows keep the global theme."
-            : "This window follows the global theme. Pick a swatch to give it its own."
+        state.themeScopeCaption(scope, tab: scopeTab, editingDark: editingDark)
     }
 
     /// One follow-macOS slot: shows its theme and takes the swatch

@@ -681,12 +681,10 @@ struct TabPill: View {
 
 }
 
-/// The tab Theme submenu's content. Observes the catalog (the pill
-/// only holds it as a plain environment value, so "Load themes…"
-/// would otherwise stay in the menu after loading) and the tab.
-/// The catalog holds ~460 themes; a short list plus Settings keeps
-/// every pill's menu small instead of building hundreds of buttons
-/// on each redraw.
+/// The tab Theme submenu's content. The pill holds the catalog as
+/// a plain environment value, which does not publish changes; this
+/// view observes the catalog and the tab directly. The menu shows
+/// a short list plus Settings rather than the full catalog.
 struct TabThemeMenu: View {
     @ObservedObject var themes: ThemeCatalog
     @ObservedObject var tab: Tab
@@ -694,8 +692,22 @@ struct TabThemeMenu: View {
 
     /// Short-list length shown before "More in Settings…".
     static var shortListCount: Int { 15 }
-    static func shortList<T>(_ items: [T]) -> [T] {
-        Array(items.prefix(shortListCount))
+
+    /// The short list: priority themes (the tab's own, the window's)
+    /// first, then the catalog in order, capped at shortListCount.
+    static func shortList(_ themes: [ThemeCatalog.Theme],
+                          priority: [String?]) -> [ThemeCatalog.Theme] {
+        var seen = Set<String>()
+        var out: [ThemeCatalog.Theme] = []
+        for id in priority {
+            guard let id, seen.insert(id).inserted,
+                  let t = themes.first(where: { $0.id == id }) else { continue }
+            out.append(t)
+        }
+        for t in themes where seen.insert(t.id).inserted {
+            out.append(t)
+        }
+        return Array(out.prefix(shortListCount))
     }
 
     var body: some View {
@@ -714,7 +726,8 @@ struct TabThemeMenu: View {
                 .disabled(themes.isLoading)
             } else if tab.themeFollowsSystem {
                 Menu("Light theme") {
-                    ForEach(Self.shortList(themes.themes)) { t in
+                    ForEach(Self.shortList(themes.themes,
+                        priority: [tab.lightThemeID, state.windowLightThemeID])) { t in
                         Button(tab.lightThemeID == t.id ? "✓ \(t.name)" : t.name) {
                             state.setTabSlotTheme(tab, t.id, dark: false)
                         }
@@ -723,7 +736,8 @@ struct TabThemeMenu: View {
                     moreInSettings
                 }
                 Menu("Dark theme") {
-                    ForEach(Self.shortList(themes.themes)) { t in
+                    ForEach(Self.shortList(themes.themes,
+                        priority: [tab.darkThemeID, state.windowDarkThemeID])) { t in
                         Button(tab.darkThemeID == t.id ? "✓ \(t.name)" : t.name) {
                             state.setTabSlotTheme(tab, t.id, dark: true)
                         }
@@ -732,7 +746,8 @@ struct TabThemeMenu: View {
                     moreInSettings
                 }
             } else {
-                ForEach(Self.shortList(themes.themes)) { t in
+                ForEach(Self.shortList(themes.themes,
+                    priority: [tab.themeID, state.effectiveThemeID(for: tab)])) { t in
                     Button(tab.themeID == t.id ? "✓ \(t.name)" : t.name) {
                         state.setTabTheme(tab, t.id)
                     }
@@ -745,7 +760,7 @@ struct TabThemeMenu: View {
 
     private var moreInSettings: some View {
         Button("More in Settings…") {
-            state.openSettings(section: "appearance")
+            state.requestThisTabThemeScope(for: tab)
         }
     }
 }

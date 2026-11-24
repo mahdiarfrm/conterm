@@ -126,6 +126,9 @@ struct TabThemeTests {
         let inheriting = state.tabs[2]
         state.setTabTheme(fixed, "F")
         state.setTabThemeFollowsSystem(following, true)
+        // Follow on but no slots filled: nothing can change.
+        #expect(!state.appearanceDependentTabs().contains { $0.id == following.id })
+        state.setTabSlotTheme(following, "L", dark: false)
         #expect(state.appearanceDependentTabs().map(\.id) == [following.id])
         state.setWindowThemeFollowsSystem(true)
         #expect(Set(state.appearanceDependentTabs().map(\.id))
@@ -135,9 +138,54 @@ struct TabThemeTests {
     /// The tab Theme menu shows a short list, not the whole
     /// ~460-theme catalog, on every pill redraw.
     @Test func themeMenuShortListIsBounded() {
-        let all = Array(0..<460)
-        #expect(TabThemeMenu.shortList(all).count == TabThemeMenu.shortListCount)
-        #expect(TabThemeMenu.shortList([1, 2, 3]) == [1, 2, 3])
+        func theme(_ id: String) -> ThemeCatalog.Theme {
+            ThemeCatalog.Theme(id: id, name: id, background: .black,
+                               foreground: .white, accent: .blue,
+                               warn: .yellow, isDark: true)
+        }
+        let all = (0..<460).map { theme("T\($0)") }
+        let list = TabThemeMenu.shortList(all, priority: ["T400", nil])
+        #expect(list.count == TabThemeMenu.shortListCount)
+        // The tab's own theme leads even though it sorts last.
+        #expect(list.first?.id == "T400")
+        #expect(TabThemeMenu.shortList([theme("A")], priority: [nil]).map(\.id) == ["A"])
+    }
+
+    /// Restored fields: slots without follow and without a fixed
+    /// theme are dropped, so the tab does not count as themed while
+    /// showing the window theme; follow needs a slot to survive.
+    @Test func restoredThemeFieldsDropOrphanSlots() {
+        var f = AppState.restoredThemeFields(themeID: nil, light: "A",
+                                             dark: "B", follows: false)
+        #expect(f.themeID == nil && f.light == nil && f.dark == nil && !f.follows)
+        f = AppState.restoredThemeFields(themeID: nil, light: "A",
+                                         dark: nil, follows: true)
+        #expect(f.light == "A" && f.follows)
+        f = AppState.restoredThemeFields(themeID: nil, light: nil,
+                                         dark: nil, follows: true)
+        #expect(!f.follows)
+        f = AppState.restoredThemeFields(themeID: "T", light: "A",
+                                         dark: "B", follows: false)
+        #expect(f.themeID == "T")
+    }
+
+    /// Only inheriting tabs move with a window-theme pick.
+    @Test func windowInheritingTabsSelection() {
+        let state = makeState()
+        state.addTab()
+        state.setTabTheme(state.tabs[1], "T")
+        #expect(state.windowInheritingTabs().map(\.id) == [state.tabs[0].id])
+    }
+
+    /// "More in Settings…" selects the tab and requests its scope.
+    @Test func requestThisTabThemeScopeSelectsTab() {
+        let state = makeState()
+        state.addTab()
+        let other = state.tabs[1]
+        state.requestThisTabThemeScope(for: other)
+        #expect(state.selectedID == other.id)
+        #expect(state.requestedThemeTabID == other.id)
+        #expect(state.requestedSettingsSection == "appearance")
     }
 
     /// Session round-trip: per-tab theme fields survive encode /

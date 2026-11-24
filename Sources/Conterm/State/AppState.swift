@@ -17,6 +17,11 @@ final class AppState: ObservableObject {
     /// rawValue), set by the command palette's settings search.
     /// SettingsPanel reads + clears it on appear / change.
     @Published var requestedSettingsSection: String?
+    /// A tab id whose This-tab theme scope Settings should honor
+    /// (set by the tab menu's "More in Settings…"). The picker reads
+    /// it on appear and whenever it changes.
+    @Published var requestedThemeTabID: UUID?
+    private var themeFromConfigSub: AnyCancellable?
     @Published var launchOverlayVisible: Bool = false
 
     /// Index of the focused row in the palette (0-based). Updated by the
@@ -206,6 +211,14 @@ final class AppState: ObservableObject {
         self.prefs = prefs
         self.ghostty = ghostty
         self.notesStore = notesStore
+        // Preferences are shared by every window, so each AppState
+        // re-applies its own overrides when config colors turn off,
+        // not just the window whose Settings panel flipped the toggle.
+        themeFromConfigSub = prefs.$themeFromConfig
+            .dropFirst()
+            .sink { [weak self] on in
+                if !on { self?.applyWindowTheme() }
+            }
         // Drop a saved theme whose file is gone (renamed/removed
         // theme, older build): the window follows the global theme
         // and the picker shows no dead selection.
@@ -283,11 +296,15 @@ final class AppState: ObservableObject {
                 }
                 // Per-tab theme, validated like the window's: a saved
                 // id whose theme file is gone drops to inheriting.
-                tab.themeID = ThemeCatalog.validatedThemeID(entry.themeID)
-                tab.lightThemeID = ThemeCatalog.validatedThemeID(entry.lightThemeID)
-                tab.darkThemeID = ThemeCatalog.validatedThemeID(entry.darkThemeID)
-                tab.themeFollowsSystem = entry.themeFollowsSystem == true
-                    && (tab.lightThemeID != nil || tab.darkThemeID != nil)
+                let fields = Self.restoredThemeFields(
+                    themeID: ThemeCatalog.validatedThemeID(entry.themeID),
+                    light: ThemeCatalog.validatedThemeID(entry.lightThemeID),
+                    dark: ThemeCatalog.validatedThemeID(entry.darkThemeID),
+                    follows: entry.themeFollowsSystem == true)
+                tab.themeID = fields.themeID
+                tab.lightThemeID = fields.light
+                tab.darkThemeID = fields.dark
+                tab.themeFollowsSystem = fields.follows
                 tabs.append(tab)
             }
             let idx = max(0, min(r.selectedIndex, tabs.count - 1))
@@ -434,9 +451,8 @@ final class AppState: ObservableObject {
             tab.lightThemeID = nil
             tab.darkThemeID = nil
         }
-        // Tab's @Published fields don't forward through AppState, but
-        // the Settings picker observes AppState: announce the change
-        // or its ring/name/chips/Inherit button stay stale.
+        // Tab fields don't publish through AppState; views observing
+        // AppState need this notification to re-read them.
         objectWillChange.send()
         pushTabTheme(tab)
     }
@@ -481,12 +497,129 @@ final class AppState: ObservableObject {
     }
 
     /// Tabs whose rendered theme can change with macOS appearance:
-    /// following tabs, plus inheriting tabs under a following window.
+    /// following tabs with at least one slot filled, plus inheriting
+    /// tabs under a following window. A following tab with no slots
+    /// renders the window theme, so it cannot change on its own.
     func appearanceDependentTabs() -> [Tab] {
         tabs.filter {
-            $0.themeFollowsSystem
+            ($0.themeFollowsSystem
+                && ($0.lightThemeID != nil || $0.darkThemeID != nil))
                 || (!$0.hasOwnTheme && windowThemeFollowsSystem)
         }
+    }
+
+    /// Tabs that render the window's theme (no own effective theme).
+    func windowInheritingTabs() -> [Tab] {
+        tabs.filter { $0.ownEffectiveThemeID == nil }
+    }
+
+    /// Theme fields for a restored tab, after id validation. Follow
+    /// survives only with a slot to follow to; slots without follow
+    /// and without a fixed theme are dropped, so a tab never counts
+    /// as themed while rendering the window theme.
+    static func restoredThemeFields(
+        themeID: String?, light: String?, dark: String?,
+        follows: Bool
+    ) -> (themeID: String?, light: String?, dark: String?, follows: Bool) {
+        let follows = follows && (light != nil || dark != nil)
+        if !follows, themeID == nil { return (nil, nil, nil, false) }
+        return (themeID, light, dark, follows)
+    }
+
+    /// Select `tab` and ask Settings to open its This-tab theme
+    /// scope (the tab menu's "More in Settings…").
+    func requestThisTabThemeScope(for tab: Tab) {
+        select(tab.id)
+        requestedThemeTabID = tab.id
+        openSettings(section: "appearance")
+    }
+
+    // MARK: - Theme picker logic (shared by both Settings styles)
+
+    func themeScopeFollows(_ target: ThemeScopeTarget, tab: Tab?) -> Bool {
+        target == .thisTab ? (tab?.themeFollowsSystem ?? false)
+                           : windowThemeFollowsSystem
+    }
+
+    func themeScopeLightID(_ target: ThemeScopeTarget, tab: Tab?) -> String? {
+        target == .thisTab ? tab?.lightThemeID : windowLightThemeID
+    }
+
+    func themeScopeDarkID(_ target: ThemeScopeTarget, tab: Tab?) -> String? {
+        target == .thisTab ? tab?.darkThemeID : windowDarkThemeID
+    }
+
+    func themeScopeHasOverride(_ target: ThemeScopeTarget, tab: Tab?) -> Bool {
+        target == .thisTab ? (tab?.hasOwnTheme ?? false) : hasWindowTheme
+    }
+
+    func themeScopeSelectedID(_ target: ThemeScopeTarget, tab: Tab?,
+                              editingDark: Bool,
+                              globalCurrent: String?) -> String? {
+        switch target {
+        case .allWindows:
+            return globalCurrent
+        case .thisWindow:
+            if windowThemeFollowsSystem {
+                return editingDark ? windowDarkThemeID : windowLightThemeID
+            }
+            return windowThemeID ?? globalCurrent
+        case .thisTab:
+            guard let tab else { return globalCurrent }
+            if tab.themeFollowsSystem {
+                return editingDark ? tab.darkThemeID : tab.lightThemeID
+            }
+            return tab.themeID ?? effectiveThemeID(for: tab) ?? globalCurrent
+        }
+    }
+
+    func setThemeScopeFollows(_ on: Bool, target: ThemeScopeTarget, tab: Tab?) {
+        if target == .thisTab, let tab {
+            setTabThemeFollowsSystem(tab, on)
+        } else {
+            setWindowThemeFollowsSystem(on)
+        }
+    }
+
+    func pickTheme(id: String, target: ThemeScopeTarget, tab: Tab?,
+                   editingDark: Bool) {
+        switch target {
+        case .allWindows:
+            break   // panels apply the global pick via ThemeCatalog
+        case .thisWindow:
+            if windowThemeFollowsSystem {
+                setWindowSlotTheme(id, dark: editingDark)
+            } else {
+                setWindowTheme(id)
+            }
+        case .thisTab:
+            guard let tab else { return }
+            if tab.themeFollowsSystem {
+                setTabSlotTheme(tab, id, dark: editingDark)
+            } else {
+                setTabTheme(tab, id)
+            }
+        }
+    }
+
+    func themeScopeCaption(_ target: ThemeScopeTarget, tab: Tab?,
+                            editingDark: Bool) -> String {
+        if target == .thisTab {
+            if themeScopeFollows(target, tab: tab) {
+                return "This tab switches with macOS. Pick a swatch to "
+                    + "fill the Light or Dark slot."
+            }
+            return themeScopeHasOverride(target, tab: tab)
+                ? "Only this tab uses this theme. Other tabs keep the window theme."
+                : "This tab follows the window theme. Pick a swatch to give it its own."
+        }
+        if windowThemeFollowsSystem {
+            return "This window switches with macOS. Pick a swatch to "
+                + "fill the Light or Dark slot."
+        }
+        return hasWindowTheme
+            ? "Only this window uses this theme. Other windows keep the global theme."
+            : "This window follows the global theme. Pick a swatch to give it its own."
     }
 
     /// Live pane surfaces belonging to one tab.
@@ -539,7 +672,9 @@ final class AppState: ObservableObject {
                 || tabs.contains(where: { $0.themeFollowsSystem })
         else { return }
         if tabs.contains(where: { $0.hasOwnTheme }) {
-            pushAllTabThemes(only: appearanceDependentTabs())
+            let dependent = appearanceDependentTabs()
+            guard !dependent.isEmpty else { return }
+            pushAllTabThemes(only: dependent)
             return
         }
         applyWindowTheme()
@@ -551,10 +686,10 @@ final class AppState: ObservableObject {
     /// state.
     private func pushWindowTheme() {
         guard let ghostty else { return }
-        // Tabs carrying their own theme keep it: push per-tab
-        // effective themes instead of flattening the whole window.
+        // A window-theme change can only move tabs that inherit it;
+        // tabs with their own effective theme are not re-pushed.
         if tabs.contains(where: { $0.hasOwnTheme }) {
-            pushAllTabThemes()
+            pushAllTabThemes(only: windowInheritingTabs())
             return
         }
         ghostty.applyTheme(
