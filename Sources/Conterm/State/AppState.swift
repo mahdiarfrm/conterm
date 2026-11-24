@@ -1537,29 +1537,40 @@ final class AppState: ObservableObject {
     }
 
     func togglePalette() {
-        withAnimation(Theme.Spring.bouncy) {
-            paletteOpen.toggle()
-        }
-        SoundEffects.shared.play(paletteOpen ? .paletteOpen : .paletteClose)
-        // Reset to command root and disarm hover so a stationary
-        // cursor over a palette row can't steal focus from keyboard
-        // navigation. The hover flag re-arms on the first real mouse
-        // movement (see AppDelegate.mouseMovedMonitor).
         if paletteOpen {
-            paletteMode = .commands
-            paletteFocusedIndex = 0
-            NSCursor.setHiddenUntilMouseMoves(true)
-            paletteHoverArmed = false
-            NSApp.keyWindow?.acceptsMouseMovedEvents = true
+            withAnimation(Theme.Spring.bouncy) { paletteOpen = false }
+            SoundEffects.shared.play(.paletteClose)
+        } else {
+            presentPalette(in: .commands)
         }
+    }
+
+    /// Opens the palette already showing `mode`. The mode is set before the
+    /// palette mounts: a mode switch during the open transition keeps the
+    /// outgoing mode's search field alive beside the new one, and the field
+    /// that claims the keyboard last can be the one being removed.
+    private func presentPalette(in mode: PaletteMode) {
+        paletteMode = mode
+        paletteFocusedIndex = 0
+        // Disarm hover so a stationary cursor over a palette row can't
+        // steal focus from keyboard navigation. The hover flag re-arms on
+        // the first real mouse movement (see AppDelegate.mouseMovedMonitor).
+        NSCursor.setHiddenUntilMouseMoves(true)
+        paletteHoverArmed = false
+        NSApp.keyWindow?.acceptsMouseMovedEvents = true
+        withAnimation(Theme.Spring.bouncy) { paletteOpen = true }
+        SoundEffects.shared.play(.paletteOpen)
     }
 
     /// Open the palette straight into one of its lists, as the matching
     /// palette command does from the root.
     func openPalette(mode: PaletteMode) {
-        if !paletteOpen { togglePalette() }
-        withAnimation(Theme.Spring.soft) { paletteMode = mode }
-        paletteFocusedIndex = 0
+        if paletteOpen {
+            withAnimation(Theme.Spring.soft) { paletteMode = mode }
+            paletteFocusedIndex = 0
+        } else {
+            presentPalette(in: mode)
+        }
     }
 
     enum OpenTarget { case finder, cursor, vscode }
