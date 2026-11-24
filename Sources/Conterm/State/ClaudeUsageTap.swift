@@ -11,9 +11,10 @@ import Foundation
 /// runs the user's previous status line command unchanged. No credentials
 /// and no network: Conterm only reads the files.
 ///
-/// The previous `statusLine` object rides along inside the new command, as
-/// a base64 argument, so settings.json alone is enough to restore it: a
-/// dotfiles sync to another Mac or a cleaned `~/.conterm` loses nothing.
+/// The previous command rides along inside the new one, as a base64
+/// argument, and the other `statusLine` keys stay where they are, so
+/// settings.json alone is enough to restore it: a dotfiles sync to another
+/// machine or a cleaned `~/.conterm` loses nothing.
 /// Without a previous status line, installing adds one that prints nothing,
 /// which hides Claude Code's footer hints; the Settings text says so.
 @MainActor
@@ -26,6 +27,9 @@ enum ClaudeUsageTap {
         case ok
         /// settings.json exists but isn't a JSON object: left untouched.
         case unreadableSettings
+        /// The installed command was edited by hand and no longer carries
+        /// the original: left in place.
+        case unrecognizedCommand
     }
 
     nonisolated static func dir(home: String) -> String { "\(home)/.conterm" }
@@ -43,53 +47,65 @@ enum ClaudeUsageTap {
     # Conterm usage-limits tap (managed; rewritten at launch).
     # Saves each of Claude Code's rate-limit windows for Conterm's widget,
     # then runs the status line command you had before, unchanged. $1 is
-    # that previous statusLine setting, base64-encoded JSON.
+    # that previous command, base64-encoded.
     dir=$(dirname "$0")
     in=$(cat)
     for w in five_hour seven_day; do
         tmp="$dir/claude-rate-limits.$w.json.$$"
         # A window Claude Code leaves out (it just reset) keeps its last
         # reading, whose reset time has passed, so it reads as 0%.
-        if printf '%s' "$in" | /usr/bin/plutil -extract "rate_limits.$w" json -o "$tmp" - 2>/dev/null; then
+        # Only a numeric reading replaces the last one.
+        type=$(printf '%s' "$in" | /usr/bin/plutil -type "rate_limits.$w.used_percentage" - 2>/dev/null)
+        if { [ "$type" = integer ] || [ "$type" = float ]; } \
+            && printf '%s' "$in" | /usr/bin/plutil -extract "rate_limits.$w" json -o "$tmp" - 2>/dev/null; then
             chmod 600 "$tmp" && mv -f "$tmp" "$dir/claude-rate-limits.$w.json"
         else
             rm -f "$tmp"
         fi
     done
-    cmd=$(printf '%s' "${1:-}" | /usr/bin/base64 -D 2>/dev/null \
-          | /usr/bin/plutil -extract command raw -o - - 2>/dev/null)
+    cmd=$(\#(decode))
     if [ -n "$cmd" ]; then
         # Trailing newline so a command that loops on `read` gets its last line.
-        printf '%s\n' "$in" | exec sh -c "$cmd"
+        printf '%s\n' "$in" | sh -c "$cmd"
+        exit $?
     fi
     exit 0
     """#
 
     /// Runs the script ($0) with the original ($1); when the script can't be
-    /// read (settings.json synced to a Mac without Conterm), runs the decoded
-    /// original directly, or prints nothing when there is none.
-    nonisolated private static let launcher = #"if [ -r "$0" ]; then exec sh "$0" "$1"; fi; c=$(printf %s "$1" | /usr/bin/base64 -D 2>/dev/null | /usr/bin/plutil -extract command raw -o - - 2>/dev/null); if [ -n "$c" ]; then exec sh -c "$c"; fi"#
+    /// read (settings.json synced to a machine without Conterm, Linux
+    /// included), runs the decoded original directly, or prints nothing when
+    /// there is none.
+    nonisolated private static let launcher = #"if [ -r "$0" ]; then exec sh "$0" "$1"; fi; c=$(\#(decode)); if [ -n "$c" ]; then exec sh -c "$c"; fi"#
 
-    /// `sh -c '<launcher>' "<script>" <base64 original> # conterm`. `$HOME`
-    /// for the real home so a synced settings.json works on another Mac.
-    nonisolated static func command(original: [String: Any], home: String) -> String {
-        let data = (try? JSONSerialization.data(withJSONObject: original, options: [.sortedKeys]))
-            ?? Data("{}".utf8)
+    /// Decodes $1. GNU base64 takes `-d`, older macOS ones only `-D`. Holds
+    /// no single quote: the launcher sits inside a pair.
+    nonisolated private static let decode =
+        #"printf %s "$1" | base64 -d 2>/dev/null || printf %s "$1" | base64 -D 2>/dev/null"#
+
+    /// `sh -c '<launcher>' <script> '<base64 original>' # conterm`. `$HOME`
+    /// for the real home so a synced settings.json works on another machine.
+    nonisolated static func command(original: String, home: String) -> String {
         let path = home == NSHomeDirectory()
-            ? "$HOME/.conterm/claude-statusline.sh"
-            : scriptPath(home: home)
-        return "sh -c '\(launcher)' \"\(path)\" \(data.base64EncodedString()) \(sentinel)"
+            ? #""$HOME/.conterm/claude-statusline.sh""#
+            : "'" + scriptPath(home: home).replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+        let payload = Data(original.utf8).base64EncodedString()
+        return "sh -c '\(launcher)' \(path) '\(payload)' \(sentinel)"
     }
 
-    /// The previous `statusLine` carried in an installed command; nil when
-    /// the command has none (hand-edited).
-    nonisolated static func original(inCommand command: String) -> [String: Any]? {
+    /// The previous command carried in an installed one, empty when there was
+    /// none; nil when the carried value can't be read (hand-edited).
+    nonisolated static func original(inCommand command: String) -> String? {
         let parts = command.components(separatedBy: " ")
-        guard let hash = parts.lastIndex(of: "#"), hash > 0,
-              let data = Data(base64Encoded: parts[hash - 1]),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
-        return obj
+        guard command.contains("claude-statusline.sh"),
+              let hash = parts.lastIndex(of: "#"), hash > 0,
+              let data = Data(base64Encoded: parts[hash - 1].trimmingCharacters(in: ["'"])),
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        // Earlier builds carried the whole statusLine object.
+        if let old = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            return old["command"] as? String ?? ""
+        }
+        return text
     }
 
     nonisolated private static func installedCommand(_ root: [String: Any]?) -> String? {
@@ -117,18 +133,27 @@ enum ClaudeUsageTap {
             return .unreadableSettings
         }
         writeScript(home: home)
-        guard installedCommand(existing) == nil else { return .ok }
+        if var root = existing, let cmd = installedCommand(root) {
+            // Upgrade an older build's command; leave a hand-edited one alone.
+            guard let saved = original(inCommand: cmd) else { return .ok }
+            let current = command(original: saved, home: home)
+            if cmd != current, var line = root["statusLine"] as? [String: Any] {
+                line["command"] = current
+                root["statusLine"] = line
+                AgentHooks.writeJSON(root, spec)
+            }
+            return .ok
+        }
         try? fm.createDirectory(atPath: (spec.settingsPath as NSString).deletingLastPathComponent,
                                 withIntermediateDirectories: true)
         if exists, !fm.fileExists(atPath: spec.backupPath) {
             try? fm.copyItem(atPath: spec.settingsPath, toPath: spec.backupPath)
         }
         var root = existing ?? [:]
-        let original = root["statusLine"] as? [String: Any] ?? [:]
         // Keep the user's other keys (padding, refreshInterval, …).
-        var line = original
+        var line = root["statusLine"] as? [String: Any] ?? [:]
         line["type"] = "command"
-        line["command"] = command(original: original, home: home)
+        line["command"] = command(original: line["command"] as? String ?? "", home: home)
         root["statusLine"] = line
         AgentHooks.writeJSON(root, spec)
         return .ok
@@ -143,10 +168,13 @@ enum ClaudeUsageTap {
             NSLog("conterm: \(spec.settingsPath) isn't a readable JSON object; usage tap left installed")
             return .unreadableSettings
         }
-        if var root, let cmd = installedCommand(root) {
-            let saved = original(inCommand: cmd) ?? [:]
-            if saved.isEmpty { root.removeValue(forKey: "statusLine") }
-            else { root["statusLine"] = saved }
+        if var root, let cmd = installedCommand(root), var line = root["statusLine"] as? [String: Any] {
+            guard let saved = original(inCommand: cmd) else {
+                NSLog("conterm: the status line in \(spec.settingsPath) was edited; usage tap left installed")
+                return .unrecognizedCommand
+            }
+            line["command"] = saved.isEmpty ? nil : saved
+            root["statusLine"] = line.keys.contains { $0 != "type" } ? line : nil
             AgentHooks.writeJSON(root, spec)
         }
         let files = [scriptPath(home: home)] + windows.map { dataPath($0, home: home) }
@@ -154,9 +182,9 @@ enum ClaudeUsageTap {
         return .ok
     }
 
-    /// At launch: keep the script current while the tap is installed.
-    static func refreshIfInstalled() {
-        if isInstalled { writeScript(home: InstanceState.userHome) }
+    /// At launch: keep the script and the command current while installed.
+    static func refreshIfInstalled(home: String = InstanceState.userHome) {
+        if isInstalled(home: home) { install(home: home) }
     }
 
     private static func writeScript(home: String) {
@@ -173,6 +201,8 @@ enum ClaudeUsageTap {
         switch problem {
         case .unreadableSettings?:
             return "~/.claude/settings.json isn't valid JSON, so it was left untouched. Fix the file and try again."
+        case .unrecognizedCommand?:
+            return "The statusLine command in ~/.claude/settings.json was edited by hand, so it was left in place. Remove or replace it there."
         default:
             break
         }
@@ -190,8 +220,11 @@ enum ClaudeUsageTap {
         return UsageWindow(usedPercent: used, resetsAt: reset)
     }
 
-    /// The last readings the tap saved, dated by the newest write.
+    /// The last readings the tap saved, dated by the newest write. Nil when
+    /// the tap is off: a status line run in flight during uninstall can
+    /// write a data file after it.
     nonisolated static func read(home: String = InstanceState.userHome) -> UsageLimits? {
+        guard isInstalled(home: home) else { return nil }
         let fm = FileManager.default
         var limits = UsageLimits()
         for w in windows {

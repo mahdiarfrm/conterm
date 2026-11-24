@@ -459,6 +459,9 @@ final class Preferences: ObservableObject {
             ?? launchCommandDelayDefault
     }
 
+    /// For readers that outlive the views holding `Preferences`.
+    static var storedWidgets: [String] { InstanceState.defaults.stringArray(forKey: K.enabledWidgets) ?? [] }
+
     private enum K {
         static let orientation = "conterm.tabOrientation"
         static let launchAnim  = "conterm.launchAnimation"

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// One rate-limit window: how much of it is spent and when it rolls over.
@@ -43,12 +44,40 @@ final class UsageLimitsModel: ObservableObject {
     /// `ClaudeUsageTap.isInstalled`, read off the main thread with each
     /// refresh so the popover doesn't parse settings.json on every render.
     @Published private(set) var claudeTapInstalled = false
+    /// `AgentCenter.openTools`, republished so the widget observes only this
+    /// and not the whole center, which changes every 2s while it's open.
+    @Published private(set) var openTools: Set<AgentTool> = []
+
+    struct Reading: Sendable {
+        var limits: UsageLimits?
+        /// nil for tools without a tap.
+        var tapInstalled: Bool?
+    }
+    private let isEnabled: () -> Bool
+    private let read: @Sendable (AgentTool, [String]) -> Reading
+    private var openToolsSink: AnyCancellable?
     private var timer: Timer?
     private var inFlight: Set<AgentTool> = []
     private var activeObs: NSObjectProtocol?
     private var inactiveObs: NSObjectProtocol?
 
-    private init() {
+    init(openTools: AnyPublisher<Set<AgentTool>, Never> = AgentCenter.shared.$openTools.eraseToAnyPublisher(),
+         isEnabled: @escaping () -> Bool = { Preferences.storedWidgets.contains(WidgetKind.usageLimits.rawValue) },
+         read: @escaping @Sendable (AgentTool, [String]) -> Reading = { tool, transcripts in
+             tool == .claude
+                 ? Reading(limits: ClaudeUsageTap.read(), tapInstalled: ClaudeUsageTap.isInstalled())
+                 : Reading(limits: UsageLimitsModel.readCodex(transcripts))
+         }) {
+        self.isEnabled = isEnabled
+        self.read = read
+        // Here, not in the view: with no session open the pill has no view to
+        // notice the first one. The hop lets AgentCenter finish its update.
+        openToolsSink = openTools.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] tools in
+            MainActor.assumeIsolated {
+                self?.openTools = tools
+                self?.refresh()
+            }
+        }
         let nc = NotificationCenter.default
         activeObs = nc.addObserver(forName: NSApplication.didBecomeActiveNotification,
                                    object: nil, queue: .main) { [weak self] _ in
@@ -78,24 +107,22 @@ final class UsageLimitsModel: ObservableObject {
     /// session appears, so the pill fills in without waiting for a tick.
     func refresh() {
         // The timer outlives the widget; only poll while it's enabled.
-        guard (InstanceState.defaults.stringArray(forKey: "conterm.enabledWidgets") ?? [])
-            .contains(WidgetKind.usageLimits.rawValue) else { return }
-        for tool in AgentCenter.shared.openTools where Self.providers.contains(tool) {
+        guard isEnabled() else { return }
+        for tool in openTools where Self.providers.contains(tool) {
             guard !inFlight.contains(tool) else { continue }
             inFlight.insert(tool)
             let transcripts = AgentCenter.shared.codexTranscripts
-            Task.detached(priority: .utility) {
-                let read = tool == .claude ? ClaudeUsageTap.read() : Self.readCodex(transcripts)
-                let tapInstalled = tool == .claude ? ClaudeUsageTap.isInstalled() : nil
+            Task.detached(priority: .utility) { [read] in
+                let reading = read(tool, transcripts)
                 await MainActor.run {
                     self.inFlight.remove(tool)
-                    if let tapInstalled, tapInstalled != self.claudeTapInstalled {
+                    if let tapInstalled = reading.tapInstalled, tapInstalled != self.claudeTapInstalled {
                         self.claudeTapInstalled = tapInstalled
                     }
-                    guard let read else { self.stale.insert(tool); return }
+                    guard let limits = reading.limits else { self.stale.insert(tool); return }
                     self.stale.remove(tool)
-                    if self.limits[tool] != read { self.limits[tool] = read }
-                    self.updatedAt[tool] = read.observedAt ?? Date()
+                    if self.limits[tool] != limits { self.limits[tool] = limits }
+                    self.updatedAt[tool] = limits.observedAt ?? Date()
                 }
             }
         }
@@ -123,10 +150,16 @@ final class UsageLimitsModel: ObservableObject {
         return "\(InstanceState.userHome)/.codex"
     }
 
-    /// The live sessions' own rollouts first, then the newest on disk.
+    /// The live sessions' own rollouts first; the newest on disk only when
+    /// none of them has a reading.
     nonisolated private static func readCodex(_ transcripts: [String]) -> UsageLimits? {
+        if let live = firstReading(in: transcripts) { return live }
         let root = URL(fileURLWithPath: codexHome).appendingPathComponent("sessions")
-        for path in transcripts + newestRollouts(under: root) {
+        return firstReading(in: newestRollouts(under: root))
+    }
+
+    nonisolated private static func firstReading(in paths: [String]) -> UsageLimits? {
+        for path in paths {
             guard let h = FileHandle(forReadingAtPath: path) else { continue }
             defer { try? h.close() }
             // A token_count lands after every turn, so the tail holds the latest.
@@ -167,7 +200,7 @@ final class UsageLimitsModel: ObservableObject {
 
     /// Newest `token_count` event with `rate_limits` in a rollout chunk.
     /// `primary` is the 5-hour window and `secondary` the weekly one, but
-    /// `window_minutes` decides when present.
+    /// `window_minutes` decides when it tells the two apart.
     nonisolated static func parseCodexRollout(_ text: String) -> UsageLimits? {
         for line in text.split(separator: "\n").reversed() where line.contains("\"rate_limits\"") {
             guard let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
@@ -176,22 +209,27 @@ final class UsageLimitsModel: ObservableObject {
                   let rl = payload["rate_limits"] as? [String: Any] else { continue }
             let at = parseISODate(obj["timestamp"] as? String) ?? Date()
             var limits = UsageLimits()
-            for (key, fallbackIsWeekly) in [("primary", false), ("secondary", true)] {
+            func window(_ key: String) -> (window: UsageWindow, weekly: Bool?)? {
                 guard let w = rl[key] as? [String: Any],
-                      let used = (w["used_percent"] as? NSNumber)?.doubleValue else { continue }
+                      let used = (w["used_percent"] as? NSNumber)?.doubleValue else { return nil }
                 var reset: Date?
                 if let ts = (w["resets_at"] as? NSNumber)?.doubleValue {
                     reset = Date(timeIntervalSince1970: ts)
                 } else if let secs = (w["resets_in_seconds"] as? NSNumber)?.doubleValue {
                     reset = at.addingTimeInterval(secs)  // older Codex builds
                 }
-                let window = UsageWindow(usedPercent: used, resetsAt: reset)
-                let minutes = (w["window_minutes"] as? NSNumber)?.intValue
-                if minutes.map({ $0 > 300 }) ?? fallbackIsWeekly {
-                    limits.weekly = window
-                } else {
-                    limits.fiveHour = window
-                }
+                return (UsageWindow(usedPercent: used, resetsAt: reset),
+                        (w["window_minutes"] as? NSNumber).map { $0.intValue > 300 })
+            }
+            let primary = window("primary"), secondary = window("secondary")
+            var primaryWeekly = primary?.weekly ?? false
+            var secondaryWeekly = secondary?.weekly ?? true
+            if primary != nil, secondary != nil, primaryWeekly == secondaryWeekly {
+                (primaryWeekly, secondaryWeekly) = (false, true)
+            }
+            for (w, weekly) in [(primary, primaryWeekly), (secondary, secondaryWeekly)] {
+                guard let w else { continue }
+                if weekly { limits.weekly = w.window } else { limits.fiveHour = w.window }
             }
             limits.observedAt = parseISODate(obj["timestamp"] as? String)
             if limits.fiveHour != nil || limits.weekly != nil { return limits }
@@ -205,13 +243,12 @@ final class UsageLimitsModel: ObservableObject {
 struct UsageLimitsWidget: View {
     var compact: Bool
     @ObservedObject private var model = UsageLimitsModel.shared
-    @ObservedObject private var agents = AgentCenter.shared
     @AppStorage("conterm.usageLimitsWidget.selected", store: InstanceState.defaults)
     private var selectedRaw = AgentTool.claude.rawValue
     @State private var showingPopover = false
 
     private var open: [AgentTool] {
-        UsageLimitsModel.providers.filter(agents.openTools.contains)
+        UsageLimitsModel.providers.filter(model.openTools.contains)
     }
     private var selected: AgentTool? {
         open.first { $0.rawValue == selectedRaw } ?? open.first
@@ -243,7 +280,6 @@ struct UsageLimitsWidget: View {
                 }
             }
         }
-        .onChange(of: agents.openTools) { model.refresh() }
     }
 
     private func reading(_ w: UsageWindow?, label: String) -> some View {

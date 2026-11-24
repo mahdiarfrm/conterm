@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 @testable import Conterm
@@ -45,6 +46,20 @@ struct UsageLimitsTests {
         #expect(l.weekly?.resetsAt == UsageLimitsModel.parseISODate("2026-10-14T10:01:00Z"))
     }
 
+    @Test func codexWindowsOnTheSameSideKeepTheirOwnSlots() throws {
+        for (a, b) in [(60, 300), (1440, 10080)] {
+            let line = #"{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":5,"window_minutes":\#(a)},"secondary":{"used_percent":9,"window_minutes":\#(b)}}}}"#
+            let l = try #require(UsageLimitsModel.parseCodexRollout(line))
+            #expect(l.fiveHour?.usedPercent == 5)
+            #expect(l.weekly?.usedPercent == 9)
+        }
+        // Swapped but unambiguous: minutes still win.
+        let swapped = #"{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":5,"window_minutes":10080},"secondary":{"used_percent":9,"window_minutes":300}}}}"#
+        let l = try #require(UsageLimitsModel.parseCodexRollout(swapped))
+        #expect(l.fiveHour?.usedPercent == 9)
+        #expect(l.weekly?.usedPercent == 5)
+    }
+
     @Test func passedResetReadsAsFresh() {
         let w = UsageWindow(usedPercent: 80, resetsAt: Date(timeIntervalSince1970: 100))
         #expect(w.used(at: Date(timeIntervalSince1970: 50)) == 80)
@@ -73,13 +88,26 @@ struct UsageLimitsTests {
         return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
+    private func command(_ home: String) throws -> String {
+        try #require((try settings(home)["statusLine"] as? [String: Any])?["command"] as? String)
+    }
+
+    /// Replace the installed command, as a hand edit or an older build would.
+    private func setCommand(_ cmd: String, _ home: String) throws {
+        var s = try settings(home)
+        s["statusLine"] = ["type": "command", "command": cmd]
+        try JSONSerialization.data(withJSONObject: s)
+            .write(to: URL(fileURLWithPath: "\(home)/.claude/settings.json"))
+    }
+
     /// Run the installed status line command the way Claude Code does; it
-    /// must exit 0 and stay quiet on stderr.
-    private func runStatusLine(_ home: String, input: String) throws -> String {
-        let cmd = try #require((try settings(home)["statusLine"] as? [String: Any])?["command"] as? String)
+    /// must stay quiet on stderr.
+    private func runStatusLine(_ home: String, input: String, path: String? = nil,
+                               status: Int32 = 0) throws -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = ["-c", cmd]
+        p.arguments = ["-c", try command(home)]
+        if let path { p.environment = ["PATH": path] }
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
         p.standardInput = stdin
         p.standardOutput = stdout
@@ -88,7 +116,7 @@ struct UsageLimitsTests {
         stdin.fileHandleForWriting.write(Data(input.utf8))
         try stdin.fileHandleForWriting.close()
         p.waitUntilExit()
-        #expect(p.terminationStatus == 0)
+        #expect(p.terminationStatus == status)
         #expect(stderr.fileHandleForReading.readDataToEndOfFile().isEmpty)
         return String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
     }
@@ -173,5 +201,122 @@ struct UsageLimitsTests {
             try FileManager.default.removeItem(atPath: ClaudeUsageTap.dir(home: home))
             #expect(try runStatusLine(home, input: "a\nlast") == "a\nlast sh\n")
         }
+    }
+
+    @Test func fallbackDecodesWithGNUOrBSDBase64() throws {
+        // settings.json synced to Linux: GNU base64 takes only -d; an old
+        // macOS takes only -D. Neither path may need plutil.
+        for flag in ["-d", "-D"] {
+            try withHome(#"{"statusLine":{"type":"command","command":"cat; echo ok"}}"#) { home in
+                #expect(ClaudeUsageTap.install(home: home) == .ok)
+                let cmd = try command(home)
+                #expect(!cmd.contains("plutil"))
+                try FileManager.default.removeItem(atPath: ClaudeUsageTap.dir(home: home))
+                let bin = "\(home)/bin"
+                try FileManager.default.createDirectory(atPath: bin, withIntermediateDirectories: true)
+                let shim = "#!/bin/sh\n[ \"$1\" = \(flag) ] || { echo bad flag >&2; exit 1; }\nexec /usr/bin/base64 -D\n"
+                try shim.write(toFile: "\(bin)/base64", atomically: true, encoding: .utf8)
+                try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: "\(bin)/base64")
+                #expect(try runStatusLine(home, input: "in ", path: "\(bin):/bin") == "in ok\n")
+            }
+        }
+    }
+
+    @Test func olderInstallsUpgradeAndStillRestore() throws {
+        // db23606's command: no fallback, the whole statusLine object as payload.
+        let payload = Data(#"{"command":"echo hi","padding":2,"type":"command"}"#.utf8).base64EncodedString()
+        for viaLaunch in [true, false] {
+            try withHome("{}") { home in
+                let old = "sh \"\(ClaudeUsageTap.scriptPath(home: home))\" \(payload) # conterm"
+                try setCommand(old, home)
+                if viaLaunch { ClaudeUsageTap.refreshIfInstalled(home: home) }
+                else { #expect(ClaudeUsageTap.install(home: home) == .ok) }
+                #expect(try command(home) == ClaudeUsageTap.command(original: "echo hi", home: home))
+                #expect(try runStatusLine(home, input: "{}") == "hi\n")
+                #expect(ClaudeUsageTap.uninstall(home: home) == .ok)
+                #expect(try command(home) == "echo hi")
+            }
+        }
+    }
+
+    @Test func anOlderInstallWithNoOriginalIsRemoved() throws {
+        try withHome("{}") { home in
+            try setCommand("sh \"\(ClaudeUsageTap.scriptPath(home: home))\" e30= # conterm", home)
+            #expect(ClaudeUsageTap.uninstall(home: home) == .ok)
+            #expect(try settings(home)["statusLine"] == nil)
+        }
+    }
+
+    @Test func aHandEditedCommandIsLeftInPlace() throws {
+        for edited in ["sh \"$HOME/.conterm/claude-statusline.sh\" %%% # conterm", "echo test # conterm"] {
+            try withHome("{}") { home in
+                try setCommand(edited, home)
+                ClaudeUsageTap.refreshIfInstalled(home: home)
+                #expect(ClaudeUsageTap.uninstall(home: home) == .unrecognizedCommand)
+                #expect(try command(home) == edited)
+                // What the kept command may run stays too.
+                #expect(FileManager.default.fileExists(atPath: ClaudeUsageTap.scriptPath(home: home)))
+            }
+        }
+    }
+
+    @Test func theOriginalsExitStatusComesThrough() throws {
+        try withHome(#"{"statusLine":{"type":"command","command":"exit 3"}}"#) { home in
+            #expect(ClaudeUsageTap.install(home: home) == .ok)
+            let out = try runStatusLine(home, input: "{}", status: 3)
+            #expect(out == "")
+        }
+    }
+
+    @Test func aNullPercentageKeepsTheLastReading() throws {
+        try withHome("{}") { home in
+            #expect(ClaudeUsageTap.install(home: home) == .ok)
+            _ = try runStatusLine(home, input: #"{"rate_limits":{"five_hour":{"used_percentage":23}}}"#)
+            for bad in ["null", #""31""#] {
+                _ = try runStatusLine(home, input: #"{"rate_limits":{"five_hour":{"used_percentage":\#(bad),"resets_at":1}}}"#)
+                #expect(ClaudeUsageTap.read(home: home)?.fiveHour?.usedPercent == 23)
+            }
+        }
+    }
+
+    @Test func aHomePathWithShellCharactersWorks() throws {
+        try withHome(nil) { base in
+            let home = "\(base)/a $x \"b\" 'c' `d`"
+            try FileManager.default.createDirectory(atPath: "\(home)/.claude", withIntermediateDirectories: true)
+            try #"{"statusLine":{"type":"command","command":"echo hi"}}"#
+                .write(toFile: "\(home)/.claude/settings.json", atomically: true, encoding: .utf8)
+            #expect(ClaudeUsageTap.install(home: home) == .ok)
+            #expect(try runStatusLine(home, input: #"{"rate_limits":{"five_hour":{"used_percentage":7}}}"#) == "hi\n")
+            #expect(ClaudeUsageTap.read(home: home)?.fiveHour?.usedPercent == 7)
+            #expect(ClaudeUsageTap.uninstall(home: home) == .ok)
+            #expect(try command(home) == "echo hi")
+        }
+    }
+
+    @Test func aLateWriteAfterUninstallIsNotRead() throws {
+        try withHome("{}") { home in
+            #expect(ClaudeUsageTap.install(home: home) == .ok)
+            #expect(ClaudeUsageTap.uninstall(home: home) == .ok)
+            try #"{"used_percentage":9}"#.write(toFile: ClaudeUsageTap.dataPath("five_hour", home: home),
+                                                atomically: true, encoding: .utf8)
+            #expect(ClaudeUsageTap.read(home: home) == nil)
+        }
+    }
+}
+
+/// The model follows the open sessions itself: the pill has no view mounted
+/// to notice the first one.
+@MainActor
+struct UsageLimitsModelTests {
+    @Test func firstSessionRefreshesWithoutAView() async throws {
+        let tools = CurrentValueSubject<Set<AgentTool>, Never>([])
+        let model = UsageLimitsModel(openTools: tools.eraseToAnyPublisher(), isEnabled: { true }) { _, _ in
+            .init(limits: UsageLimits(fiveHour: UsageWindow(usedPercent: 12)), tapInstalled: true)
+        }
+        tools.send([.claude])
+        for _ in 0..<100 where model.limits[.claude] == nil { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(model.openTools == [.claude])
+        #expect(model.limits[.claude]?.fiveHour?.usedPercent == 12)
+        #expect(model.claudeTapInstalled)
     }
 }
