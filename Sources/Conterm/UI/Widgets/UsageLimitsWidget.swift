@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import os
 import SwiftUI
 
 /// One rate-limit window: how much of it is spent and when it rolls over.
@@ -66,7 +67,10 @@ final class UsageLimitsModel: ObservableObject {
          read: @escaping @Sendable (AgentTool, [String]) -> Reading = { tool, transcripts in
              tool == .claude
                  ? Reading(limits: ClaudeUsageTap.read(), tapInstalled: ClaudeUsageTap.isInstalled())
-                 : Reading(limits: UsageLimitsModel.readCodex(transcripts))
+                 : Reading(limits: UsageLimitsModel.rolloutCache.withLock {
+                     UsageLimitsModel.readCodex(transcripts, root: URL(fileURLWithPath: UsageLimitsModel.codexHome)
+                         .appendingPathComponent("sessions"), cache: &$0)
+                 })
          }) {
         self.isEnabled = isEnabled
         self.read = read
@@ -104,7 +108,7 @@ final class UsageLimitsModel: ObservableObject {
     private func stop() { timer?.invalidate(); timer = nil }
 
     /// Re-read every open provider. Also called when a provider's first
-    /// session appears, so the pill fills in without waiting for a tick.
+    /// session or the pill appears, so neither waits for a tick.
     func refresh() {
         // The timer outlives the widget; only poll while it's enabled.
         guard isEnabled() else { return }
@@ -118,6 +122,10 @@ final class UsageLimitsModel: ObservableObject {
                     self.inFlight.remove(tool)
                     if let tapInstalled = reading.tapInstalled, tapInstalled != self.claudeTapInstalled {
                         self.claudeTapInstalled = tapInstalled
+                    }
+                    if reading.tapInstalled == false {
+                        self.limits[tool] = nil
+                        self.updatedAt[tool] = nil
                     }
                     guard let limits = reading.limits else { self.stale.insert(tool); return }
                     self.stale.remove(tool)
@@ -150,37 +158,53 @@ final class UsageLimitsModel: ObservableObject {
         return "\(InstanceState.userHome)/.codex"
     }
 
-    /// The live sessions' own rollouts first; the newest on disk only when
-    /// none of them has a reading.
-    nonisolated private static func readCodex(_ transcripts: [String]) -> UsageLimits? {
-        if let live = firstReading(in: transcripts) { return live }
-        let root = URL(fileURLWithPath: codexHome).appendingPathComponent("sessions")
-        return firstReading(in: newestRollouts(under: root))
+    /// What each rollout held when last read (nil: no reading), by mtime.
+    typealias RolloutCache = [String: (mtime: Date, limits: UsageLimits?)]
+    nonisolated private static let rolloutCache = OSAllocatedUnfairLock(initialState: RolloutCache())
+
+    /// The newest reading across the live sessions' rollouts and those on
+    /// disk. The limits are account-wide, so any session can hold it.
+    nonisolated static func readCodex(_ transcripts: [String], root: URL,
+                                      cache: inout RolloutCache) -> UsageLimits? {
+        let fm = FileManager.default
+        var mtimes: [String: Date] = [:]
+        for path in transcripts + recentRollouts(under: root) {
+            mtimes[path] = (try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+        }
+        cache = cache.filter { mtimes[$0.key] != nil }
+        var best: UsageLimits?
+        for (path, mtime) in mtimes.sorted(by: { $0.value > $1.value }) {
+            // A rollout holds no event later than its mtime.
+            if let at = best?.observedAt, mtime <= at { break }
+            if cache[path]?.mtime != mtime {
+                guard let text = tail(of: path) else { continue }
+                cache[path] = (mtime, parseCodexRollout(text))
+            }
+            guard let limits = cache[path]?.limits else { continue }
+            if best == nil || limits.observedAt ?? .distantPast > best?.observedAt ?? .distantPast {
+                best = limits
+            }
+        }
+        return best
     }
 
-    nonisolated private static func firstReading(in paths: [String]) -> UsageLimits? {
-        for path in paths {
-            guard let h = FileHandle(forReadingAtPath: path) else { continue }
-            defer { try? h.close() }
-            // A token_count lands after every turn, so the tail holds the latest.
-            let size = (try? h.seekToEnd()) ?? 0
-            try? h.seek(toOffset: size > 512_000 ? size - 512_000 : 0)
-            guard let data = try? h.readToEnd(),
-                  !data.isEmpty else { continue }
-            // Lossy decode: the tail can start mid-character; that partial
-            // first line just fails to parse.
-            let text = String(decoding: data, as: UTF8.self)
-            if let limits = parseCodexRollout(text) { return limits }
-        }
-        return nil
+    /// A token_count lands after every turn, so the tail holds the latest.
+    nonisolated private static func tail(of path: String) -> String? {
+        guard let h = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? h.close() }
+        let size = (try? h.seekToEnd()) ?? 0
+        try? h.seek(toOffset: size > 512_000 ? size - 512_000 : 0)
+        guard let data = try? h.readToEnd() else { return nil }
+        // Lossy decode: the tail can start mid-character; that partial
+        // first line just fails to parse.
+        return String(decoding: data, as: UTF8.self)
     }
 
     /// Rollouts live at `sessions/YYYY/MM/DD/rollout-*.jsonl`. Looks at the
-    /// newest few day folders only, newest file first.
-    nonisolated private static func newestRollouts(under root: URL) -> [String] {
-        let fm = FileManager.default
+    /// newest few day folders only.
+    nonisolated private static func recentRollouts(under root: URL) -> [String] {
         func children(_ dir: String) -> [String] {
-            ((try? fm.contentsOfDirectory(atPath: dir)) ?? []).sorted(by: >).map { "\(dir)/\($0)" }
+            ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).sorted(by: >).map { "\(dir)/\($0)" }
         }
         var days: [String] = []
         outer: for year in children(root.path) {
@@ -191,11 +215,7 @@ final class UsageLimitsModel: ObservableObject {
                 }
             }
         }
-        let files = days.flatMap(children).filter { $0.hasSuffix(".jsonl") }
-        func mtime(_ p: String) -> Date {
-            ((try? fm.attributesOfItem(atPath: p))?[.modificationDate] as? Date) ?? .distantPast
-        }
-        return files.map { ($0, mtime($0)) }.sorted { $0.1 > $1.1 }.map(\.0)
+        return days.flatMap(children).filter { $0.hasSuffix(".jsonl") }
     }
 
     /// Newest `token_count` event with `rate_limits` in a rollout chunk.
@@ -278,8 +298,10 @@ struct UsageLimitsWidget: View {
                     UsageLimitsPopover(tools: open, model: model,
                                        selected: tool, select: { selectedRaw = $0.rawValue })
                 }
+                .onAppear { model.refresh() }
             }
         }
+        .onChange(of: selected == nil) { _, gone in if gone { showingPopover = false } }
     }
 
     private func reading(_ w: UsageWindow?, label: String) -> some View {
@@ -318,6 +340,13 @@ private func resetPhrase(_ w: UsageWindow, prefix: String) -> String {
     let f = RelativeDateTimeFormatter()
     f.unitsStyle = .short
     return prefix + f.localizedString(for: at, relativeTo: Date())
+}
+
+private func agePhrase(_ at: Date) -> String {
+    if Date().timeIntervalSince(at) < 60 { return "just now" }
+    let f = RelativeDateTimeFormatter()
+    f.unitsStyle = .short
+    return f.localizedString(for: at, relativeTo: Date())
 }
 
 private struct UsageLimitsPopover: View {
@@ -359,7 +388,7 @@ private struct UsageLimitsPopover: View {
                                     .foregroundStyle(Theme.warning)
                             }
                             if let at = model.updatedAt[tool] {
-                                Text(at, style: .relative)
+                                Text(agePhrase(at))
                                     .font(.system(size: Theme.ui(9.5), design: .rounded))
                                     .foregroundStyle(Theme.textSecondary)
                             }

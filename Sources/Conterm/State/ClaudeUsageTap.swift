@@ -101,10 +101,6 @@ enum ClaudeUsageTap {
               let hash = parts.lastIndex(of: "#"), hash > 0,
               let data = Data(base64Encoded: parts[hash - 1].trimmingCharacters(in: ["'"])),
               let text = String(data: data, encoding: .utf8) else { return nil }
-        // Earlier builds carried the whole statusLine object.
-        if let old = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            return old["command"] as? String ?? ""
-        }
         return text
     }
 
@@ -133,17 +129,7 @@ enum ClaudeUsageTap {
             return .unreadableSettings
         }
         writeScript(home: home)
-        if var root = existing, let cmd = installedCommand(root) {
-            // Upgrade an older build's command; leave a hand-edited one alone.
-            guard let saved = original(inCommand: cmd) else { return .ok }
-            let current = command(original: saved, home: home)
-            if cmd != current, var line = root["statusLine"] as? [String: Any] {
-                line["command"] = current
-                root["statusLine"] = line
-                AgentHooks.writeJSON(root, spec)
-            }
-            return .ok
-        }
+        if installedCommand(existing) != nil { return .ok }
         try? fm.createDirectory(atPath: (spec.settingsPath as NSString).deletingLastPathComponent,
                                 withIntermediateDirectories: true)
         if exists, !fm.fileExists(atPath: spec.backupPath) {
@@ -182,9 +168,9 @@ enum ClaudeUsageTap {
         return .ok
     }
 
-    /// At launch: keep the script and the command current while installed.
+    /// At launch: keep the script current while installed.
     static func refreshIfInstalled(home: String = InstanceState.userHome) {
-        if isInstalled(home: home) { install(home: home) }
+        if isInstalled(home: home) { writeScript(home: home) }
     }
 
     private static func writeScript(home: String) {

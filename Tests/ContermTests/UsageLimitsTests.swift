@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import os
 import Testing
 @testable import Conterm
 
@@ -60,6 +61,64 @@ struct UsageLimitsTests {
         #expect(l.weekly?.usedPercent == 5)
     }
 
+    /// Write a rollout whose newest reading is `used` at `at`, or with no
+    /// reading, last touched at `mtime`.
+    private func rollout(_ path: String, used: Int? = nil, at: String = "", mtime: String) throws {
+        let limits = used.map { #"{"primary":{"used_percent":\#($0),"window_minutes":300}}"# } ?? "null"
+        try FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
+                                                withIntermediateDirectories: true)
+        try #"{"timestamp":"\#(at)","type":"event_msg","payload":{"type":"token_count","rate_limits":\#(limits)}}"#
+            .write(toFile: path, atomically: true, encoding: .utf8)
+        let date = try #require(UsageLimitsModel.parseISODate(mtime))
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: path)
+    }
+
+    private func withCodexHome(_ body: (String, URL) throws -> Void) throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("conterm-codex-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        try body(home.path, home.appendingPathComponent("sessions"))
+    }
+
+    @Test func newestCodexReadingWinsAcrossSessionsAndDisk() throws {
+        try withCodexHome { home, root in
+            let idle = "\(home)/idle.jsonl", active = "\(home)/active.jsonl"
+            let disk = "\(root.path)/2026/10/14/rollout-a.jsonl"
+            func used(_ live: [String]) -> Double? {
+                var cache = UsageLimitsModel.RolloutCache()
+                return UsageLimitsModel.readCodex(live, root: root, cache: &cache)?.fiveHour?.usedPercent
+            }
+            // The idle file was touched last; its reading is still the older.
+            try rollout(idle, used: 20, at: "2026-10-14T10:00:00Z", mtime: "2026-10-14T12:30:00Z")
+            try rollout(active, used: 55, at: "2026-10-14T12:00:00Z", mtime: "2026-10-14T12:00:00Z")
+            try rollout(disk, used: 30, at: "2026-10-14T11:00:00Z", mtime: "2026-10-14T13:00:00Z")
+            #expect(used([idle, active]) == 55)
+            #expect(used([active, idle]) == 55)
+            #expect(used([]) == 30)
+            // A reading on disk newer than every live one.
+            try rollout(disk, used: 60, at: "2026-10-14T12:45:00Z", mtime: "2026-10-14T12:45:00Z")
+            #expect(used([idle, active]) == 60)
+        }
+    }
+
+    @Test func codexRolloutsAreReadAgainOnlyWhenTheirMtimeMoves() throws {
+        try withCodexHome { _, root in
+            let path = "\(root.path)/2026/10/14/rollout-a.jsonl"
+            var cache = UsageLimitsModel.RolloutCache()
+            try rollout(path, mtime: "2026-10-14T10:00:00Z")
+            #expect(UsageLimitsModel.readCodex([], root: root, cache: &cache) == nil)
+            // Same mtime: the no-reading result stands, the file isn't opened.
+            try rollout(path, used: 7, at: "2026-10-14T10:00:00Z", mtime: "2026-10-14T10:00:00Z")
+            #expect(UsageLimitsModel.readCodex([], root: root, cache: &cache) == nil)
+            try rollout(path, used: 7, at: "2026-10-14T10:01:00Z", mtime: "2026-10-14T10:01:00Z")
+            #expect(UsageLimitsModel.readCodex([], root: root, cache: &cache)?.fiveHour?.usedPercent == 7)
+            // A rollout that's gone leaves the cache.
+            try FileManager.default.removeItem(atPath: path)
+            #expect(UsageLimitsModel.readCodex([], root: root, cache: &cache) == nil)
+            #expect(cache.isEmpty)
+        }
+    }
+
     @Test func passedResetReadsAsFresh() {
         let w = UsageWindow(usedPercent: 80, resetsAt: Date(timeIntervalSince1970: 100))
         #expect(w.used(at: Date(timeIntervalSince1970: 50)) == 80)
@@ -92,7 +151,7 @@ struct UsageLimitsTests {
         try #require((try settings(home)["statusLine"] as? [String: Any])?["command"] as? String)
     }
 
-    /// Replace the installed command, as a hand edit or an older build would.
+    /// Replace the installed command, as a hand edit would.
     private func setCommand(_ cmd: String, _ home: String) throws {
         var s = try settings(home)
         s["statusLine"] = ["type": "command", "command": cmd]
@@ -222,28 +281,17 @@ struct UsageLimitsTests {
         }
     }
 
-    @Test func olderInstallsUpgradeAndStillRestore() throws {
-        // db23606's command: no fallback, the whole statusLine object as payload.
-        let payload = Data(#"{"command":"echo hi","padding":2,"type":"command"}"#.utf8).base64EncodedString()
-        for viaLaunch in [true, false] {
-            try withHome("{}") { home in
-                let old = "sh \"\(ClaudeUsageTap.scriptPath(home: home))\" \(payload) # conterm"
-                try setCommand(old, home)
-                if viaLaunch { ClaudeUsageTap.refreshIfInstalled(home: home) }
-                else { #expect(ClaudeUsageTap.install(home: home) == .ok) }
-                #expect(try command(home) == ClaudeUsageTap.command(original: "echo hi", home: home))
-                #expect(try runStatusLine(home, input: "{}") == "hi\n")
-                #expect(ClaudeUsageTap.uninstall(home: home) == .ok)
-                #expect(try command(home) == "echo hi")
-            }
-        }
-    }
-
-    @Test func anOlderInstallWithNoOriginalIsRemoved() throws {
-        try withHome("{}") { home in
-            try setCommand("sh \"\(ClaudeUsageTap.scriptPath(home: home))\" e30= # conterm", home)
-            #expect(ClaudeUsageTap.uninstall(home: home) == .ok)
-            #expect(try settings(home)["statusLine"] == nil)
+    @Test func launchRewritesTheScriptAndKeepsTheCommand() throws {
+        try withHome(#"{"statusLine":{"type":"command","command":"echo hi"}}"#) { home in
+            #expect(ClaudeUsageTap.install(home: home) == .ok)
+            let installed = try command(home)
+            try "stale".write(toFile: ClaudeUsageTap.scriptPath(home: home), atomically: true, encoding: .utf8)
+            ClaudeUsageTap.refreshIfInstalled(home: home)
+            let script = try String(contentsOfFile: ClaudeUsageTap.scriptPath(home: home), encoding: .utf8)
+            #expect(script == ClaudeUsageTap.script)
+            // Installing over an install doesn't wrap the wrapper.
+            #expect(ClaudeUsageTap.install(home: home) == .ok)
+            #expect(try command(home) == installed)
         }
     }
 
@@ -318,5 +366,26 @@ struct UsageLimitsModelTests {
         #expect(model.openTools == [.claude])
         #expect(model.limits[.claude]?.fiveHour?.usedPercent == 12)
         #expect(model.claudeTapInstalled)
+    }
+
+    @Test func turningTheTapOffClearsTheClaudeReading() async throws {
+        let tools = CurrentValueSubject<Set<AgentTool>, Never>([])
+        let on = OSAllocatedUnfairLock(initialState: true)
+        let model = UsageLimitsModel(openTools: tools.eraseToAnyPublisher(), isEnabled: { true }) { _, _ in
+            on.withLock { $0 }
+                ? .init(limits: UsageLimits(fiveHour: UsageWindow(usedPercent: 12)), tapInstalled: true)
+                : .init(limits: nil, tapInstalled: false)
+        }
+        tools.send([.claude])
+        for _ in 0..<100 where model.limits[.claude] == nil { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(model.limits[.claude] != nil)
+        on.withLock { $0 = false }
+        for _ in 0..<100 where model.claudeTapInstalled {
+            model.refresh()
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(!model.claudeTapInstalled)
+        #expect(model.limits[.claude] == nil)
+        #expect(model.updatedAt[.claude] == nil)
     }
 }
