@@ -1421,7 +1421,7 @@ private struct ThemePicker: View {
     @EnvironmentObject var state: AppState
     @Binding var filter: String
     /// Which appearance a swatch tap assigns while following macOS.
-    @State private var editingLight = Preferences.systemIsLight
+    @State private var editingLight = !ThemeCatalog.systemIsDark
 
     /// Where a swatch pick lands: every window (the global theme,
     /// written to the config file), or only the window this Settings
@@ -1572,12 +1572,8 @@ private struct ThemePicker: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Theme.stroke, lineWidth: 0.5)
         )
-        // Flipping ON hands control back to the config (removes the
-        // managed block + reloads); OFF re-enables the swatches and the
-        // user picks one.
-        .onChange(of: prefs.themeFromConfig) { _, on in
-            if on { themes.followConfig() }
-        }
+        // `ThemeCatalog.bind` reacts to the flip, so the palette's toggle
+        // works with Settings closed.
     }
 
     /// Follow-macOS row. On: Light and Dark slots; a swatch tap fills the

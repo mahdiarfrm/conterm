@@ -3,9 +3,9 @@ import Combine
 import Foundation
 import SwiftUI
 
-/// Loads the bundled libghostty theme catalog (
-/// `Conterm.app/Contents/Resources/ghostty/themes/`) and parses each
-/// file just enough to render a swatch grid in Settings → Appearance.
+/// Loads the theme catalog, bundled libghostty themes
+/// (`Conterm.app/Contents/Resources/ghostty/themes/`) plus the user's own
+/// (`~/.config/conterm/themes`), and parses each file just enough to render a swatch grid in Settings → Appearance.
 @MainActor
 final class ThemeCatalog: ObservableObject {
     struct Theme: Identifiable, Hashable {
@@ -44,27 +44,41 @@ final class ThemeCatalog: ObservableObject {
     }
 
     private weak var prefs: Preferences?
-    private var appearanceObservation: NSKeyValueObservation?
+    private var appearanceObservation: AnyCancellable?
     private var followObservation: AnyCancellable?
+    private var sourceObservation: AnyCancellable?
 
     /// Wire follow-system mode once, at launch, so it works while Settings
-    /// is closed. Both hops go through the main queue: `@Published` fires
+    /// is closed. The hops go through the main queue: `@Published` fires
     /// before the new value is stored, and Preferences' own `didSet` (which
     /// saves or restores the manual tint) must run first.
     func bind(_ prefs: Preferences) {
         self.prefs = prefs
         followObservation = prefs.$followSystemAppearance
-            .dropFirst().removeDuplicates()
+            .removeDuplicates().dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] on in
                 MainActor.assumeIsolated { self?.setFollowSystem(on) }
             }
-        appearanceObservation = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
-            Task { @MainActor in
-                self?.prefs?.syncLightGlassToSystem()
-                self?.applyFollowedSlot()
+        // On hands the colors back to the config; off takes them again for
+        // the followed slot, or leaves them until a theme is picked.
+        sourceObservation = prefs.$themeFromConfig
+            .removeDuplicates().dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] on in
+                MainActor.assumeIsolated {
+                    if on { self?.followConfig() } else { self?.applyFollowedSlot() }
+                }
             }
-        }
+        appearanceObservation = DistributedNotificationCenter.default()
+            .publisher(for: Notification.Name("AppleInterfaceThemeChangedNotification"))
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.prefs?.syncLightGlassToSystem()
+                    self?.applyFollowedSlot()
+                }
+            }
         // macOS may have switched while Conterm wasn't running.
         applyFollowedSlot()
     }
@@ -90,15 +104,12 @@ final class ThemeCatalog: ObservableObject {
     /// + `static` so it can run on a background executor without
     /// touching `self`'s main-actor state.
     nonisolated private static func parseAll(in dirs: [URL]) -> [Theme] {
-        let fm = FileManager.default
         var byID: [String: Theme] = [:]
         // Later directories win, so a user theme shadows a bundled one.
         for dir in dirs {
-            let names = (try? fm.contentsOfDirectory(atPath: dir.path)) ?? []
-            for name in names {
-                if name.hasPrefix(".") || name.hasSuffix(".md") { continue }
-                let path = dir.appendingPathComponent(name).path
-                guard let theme = parse(path: path, name: name) else { continue }
+            for name in themeNames(in: dir) {
+                guard let theme = parse(path: dir.appendingPathComponent(name).path, name: name)
+                else { continue }
                 byID[name] = theme
             }
         }
@@ -114,15 +125,28 @@ final class ThemeCatalog: ObservableObject {
         if let bundled = Bundle.main.resourceURL?.appendingPathComponent("ghostty/themes") {
             dirs.append(bundled)
         }
-        dirs.append(URL(fileURLWithPath: InstanceState.configPath("themes"), isDirectory: true))
+        dirs.append(userThemeDirectory)
         return dirs.filter { FileManager.default.fileExists(atPath: $0.path) }
     }
 
-    /// The file behind a theme id, user directory first.
-    nonisolated static func path(forThemeID id: String) -> String? {
-        themeDirectories().reversed()
-            .map { $0.appendingPathComponent(id).path }
-            .first { FileManager.default.fileExists(atPath: $0) }
+    nonisolated static var userThemeDirectory: URL {
+        URL(fileURLWithPath: InstanceState.configPath("themes"), isDirectory: true)
+    }
+
+    nonisolated private static func themeNames(in dir: URL) -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
+            .filter { !$0.hasPrefix(".") && !$0.hasSuffix(".md") }
+    }
+
+    /// The file behind a theme id, by the picker's own rule (`parseAll`): the
+    /// last directory holding that exact name with a theme that parses. Names
+    /// are matched by listing, since a path lookup ignores case on APFS.
+    nonisolated static func url(forThemeID id: String,
+                                in dirs: [URL] = themeDirectories()) -> URL? {
+        dirs.reversed().first {
+            themeNames(in: $0).contains(id)
+                && parse(path: $0.appendingPathComponent(id).path, name: id) != nil
+        }?.appendingPathComponent(id)
     }
 
     nonisolated private static func parse(path: String, name: String) -> Theme? {
@@ -201,28 +225,27 @@ final class ThemeCatalog: ObservableObject {
     /// the colors, the slot is empty or missing, or it's already applied.
     func applyFollowedSlot() {
         guard let prefs, prefs.followSystemAppearance else { return }
-        applySlot(lightAppearance: Preferences.systemIsLight, prefs: prefs)
+        applySlot(lightAppearance: !Self.systemIsDark, prefs: prefs)
     }
 
     private func applySlot(lightAppearance: Bool, prefs: Preferences) {
         guard let id = Self.slotToApply(fromConfig: prefs.themeFromConfig,
                                         light: prefs.lightThemeID, dark: prefs.darkThemeID,
                                         lightAppearance: lightAppearance, current: current),
-              Self.path(forThemeID: id) != nil else { return }
+              Self.url(forThemeID: id) != nil else { return }
         apply(id: id)
     }
 
     /// The follow-macOS switch flipped. Runs after Preferences has synced
-    /// (on) or restored (off) the glass tint; see `bind`.
+    /// (on) or restored (off) the glass tint and theme source; see `bind`.
     private func setFollowSystem(_ on: Bool) {
         guard let prefs else { return }
         if on {
-            prefs.themeFromConfig = false
             // Seed empty or stale slots from the current pick so the first
             // toggle never blanks the terminal.
-            let seed = current.flatMap { Self.path(forThemeID: $0) == nil ? nil : $0 }
-            if prefs.lightThemeID.flatMap(Self.path(forThemeID:)) == nil { prefs.lightThemeID = seed }
-            if prefs.darkThemeID.flatMap(Self.path(forThemeID:)) == nil { prefs.darkThemeID = seed }
+            let seed = current.flatMap { Self.url(forThemeID: $0) == nil ? nil : $0 }
+            if prefs.lightThemeID.flatMap({ Self.url(forThemeID: $0) }) == nil { prefs.lightThemeID = seed }
+            if prefs.darkThemeID.flatMap({ Self.url(forThemeID: $0) }) == nil { prefs.darkThemeID = seed }
             applyFollowedSlot()
         } else {
             // Keep the terminal in step with the restored manual tint.
@@ -254,17 +277,31 @@ final class ThemeCatalog: ObservableObject {
         Ghostty.App.shared?.reloadConfig()
     }
 
-    /// Verbatim color-defining lines from a bundled theme file: every
-    /// `key = value` except `theme`/`config-file` (which a theme file
-    /// can't set anyway). Emitted into the user config so the theme's
+    /// Keys a user theme may set. Anything else (`keybind`, `font-size`)
+    /// would reach the managed block, or a window's config after the
+    /// last-word block, and override settings a theme doesn't own.
+    nonisolated private static let userThemeKeys: Set<String> = [
+        "background", "foreground", "palette", "bold-color",
+        "cursor-color", "cursor-text", "selection-background", "selection-foreground",
+        "search-background", "search-foreground",
+        "search-selected-background", "search-selected-foreground",
+        "split-divider-color", "unfocused-split-fill",
+    ]
+
+    /// Verbatim color-defining lines from a theme file: every `key = value`
+    /// of a bundled theme except `theme`/`config-file` (which a theme file
+    /// can't set anyway), only the color keys of a user theme. Emitted into the user config so the theme's
     /// colors land as explicit keys that override a hardcoded palette.
     /// Also used by `Ghostty.App.makeConfig(themeID:)` to build a
     /// per-window config variant without touching the global file.
-    nonisolated static func colorLines(forThemeID id: String) -> [String] {
-        guard let path = path(forThemeID: id),
-              let body = try? String(contentsOfFile: path, encoding: .utf8) else {
+    nonisolated static func colorLines(forThemeID id: String,
+                                       in dirs: [URL] = themeDirectories(),
+                                       userDirectory: URL = userThemeDirectory) -> [String] {
+        guard let url = url(forThemeID: id, in: dirs),
+              let body = try? String(contentsOf: url, encoding: .utf8) else {
             return []
         }
+        let isUser = url.deletingLastPathComponent().path == userDirectory.path
         var out: [String] = []
         for raw in body.split(omittingEmptySubsequences: true, whereSeparator: \.isNewline) {
             let line = String(raw).trimmingCharacters(in: .whitespaces)
@@ -272,6 +309,7 @@ final class ThemeCatalog: ObservableObject {
             guard let eq = line.firstIndex(of: "=") else { continue }
             let key = line[..<eq].trimmingCharacters(in: .whitespaces)
             if key == "theme" || key == "config-file" { continue }
+            if isUser && !userThemeKeys.contains(key) { continue }
             let value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
             out.append("\(key) = \(value)")
         }
@@ -288,9 +326,10 @@ final class ThemeCatalog: ObservableObject {
         return id
     }
 
-    /// Whether macOS itself is in Dark Mode. Read from the global
-    /// defaults domain: the app's own appearance is forced by the
-    /// glass tint, so `NSApp.effectiveAppearance` can't answer this.
+    /// Whether macOS itself is in Dark Mode: the one reading every follower
+    /// uses. The global defaults domain is already current when
+    /// `AppleInterfaceThemeChangedNotification` fires, and Conterm's pinned
+    /// window appearances never touch it.
     nonisolated static var systemIsDark: Bool {
         UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
     }

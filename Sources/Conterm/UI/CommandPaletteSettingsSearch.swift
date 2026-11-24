@@ -49,11 +49,11 @@ extension CommandPalette {
             })
         }
         func open(_ id: String, _ title: String, _ kw: String,
-                  _ section: Sec, _ icon: String) -> SettingsItem {
+                  _ section: Sec, _ icon: String, note: String? = nil) -> SettingsItem {
             SettingsItem(title: title, kw: kw, section: section, make: {
                 Command(
                     id: "set.\(id)", icon: icon, title: title,
-                    subtitle: "Settings · \(section.label)",
+                    subtitle: "Settings · \(section.label)" + (note.map { " · \($0)" } ?? ""),
                     shortcut: "", run: { [weak state] in
                         state?.openSettings(section: section.rawValue)
                     })
@@ -86,8 +86,11 @@ extension CommandPalette {
             toggle("themeFromConfig", "Use theme from terminal config",
                    "colors palette ghostty source defer", .appearance, "paintpalette",
                    prefs.themeFromConfig) { prefs.themeFromConfig = $0 },
-            toggle("lightGlass", "Light glass", "appearance white tint mode bright",
-                   .appearance, "sun.max", prefs.lightGlass) { prefs.lightGlass = $0 },
+            prefs.followSystemAppearance
+                ? open("lightGlass", "Light glass", "appearance white tint mode bright",
+                       .appearance, "sun.max", note: "Follows macOS")
+                : toggle("lightGlass", "Light glass", "appearance white tint mode bright",
+                         .appearance, "sun.max", prefs.lightGlass) { prefs.lightGlass = $0 },
             windowMode(),
             open("glassiness", "Glass frost", "blur frost transparency clear",
                  .appearance, "drop"),

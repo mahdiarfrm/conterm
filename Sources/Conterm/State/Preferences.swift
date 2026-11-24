@@ -93,8 +93,8 @@ final class Preferences: ObservableObject {
     /// other control (Tint, the palette toggle) snaps back to it.
     @Published var lightGlass: Bool {
         didSet {
-            if followSystemAppearance, lightGlass != Self.systemIsLight {
-                lightGlass = Self.systemIsLight
+            if followSystemAppearance, lightGlass == ThemeCatalog.systemIsDark {
+                lightGlass = !ThemeCatalog.systemIsDark
                 return
             }
             ud.set(lightGlass, forKey: K.lightGlass)
@@ -108,11 +108,18 @@ final class Preferences: ObservableObject {
             guard followSystemAppearance != oldValue else { return }
             ud.set(followSystemAppearance, forKey: K.followSystemAppearance)
             if followSystemAppearance {
-                // Remember the manual tint so turning this off restores it.
+                // Remember the manual tint and theme source so turning this
+                // off restores them.
                 ud.set(lightGlass, forKey: K.manualLightGlass)
+                ud.set(themeFromConfig, forKey: K.manualThemeFromConfig)
                 syncLightGlassToSystem()
-            } else if let manual = ud.object(forKey: K.manualLightGlass) as? Bool {
-                lightGlass = manual
+                themeFromConfig = false
+            } else {
+                if let manual = ud.object(forKey: K.manualLightGlass) as? Bool {
+                    lightGlass = manual
+                }
+                // Only ever back on: the config may have been chosen meanwhile.
+                if ud.bool(forKey: K.manualThemeFromConfig) { themeFromConfig = true }
             }
         }
     }
@@ -123,18 +130,11 @@ final class Preferences: ObservableObject {
     @Published var darkThemeID: String? {
         didSet { ud.set(darkThemeID, forKey: K.darkThemeID) }
     }
-    /// True when macOS is in Light mode. Read from NSApp, not a window:
-    /// Conterm pins its windows' appearance to the glass tint.
-    static var systemIsLight: Bool {
-        // NSApp is nil outside a running app (unit tests): treat as light.
-        NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) != .darkAqua
-    }
-
     /// Called at launch and, through `ThemeCatalog.bind`, on every macOS
     /// appearance change.
     func syncLightGlassToSystem() {
         guard followSystemAppearance else { return }
-        let light = Self.systemIsLight
+        let light = !ThemeCatalog.systemIsDark
         if lightGlass != light { lightGlass = light }
     }
     /// Theme source. OFF (default): the Settings ▸ Appearance picker owns
@@ -567,6 +567,7 @@ final class Preferences: ObservableObject {
         static let lightThemeID     = "conterm.lightThemeID"
         static let darkThemeID      = "conterm.darkThemeID"
         static let manualLightGlass = "conterm.manualLightGlass"
+        static let manualThemeFromConfig = "conterm.manualThemeFromConfig"
         static let solidGlass        = "conterm.solidGlass"   // pre-glassMode migration source
         static let glassMode         = "conterm.glassMode"
         static let interfaceStyle    = "conterm.interfaceStyle"

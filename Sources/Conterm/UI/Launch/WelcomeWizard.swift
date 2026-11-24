@@ -475,6 +475,12 @@ struct WelcomeWizard: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .disabled(prefs.followSystemAppearance)
+            if prefs.followSystemAppearance {
+                Text("Follows macOS Light and Dark (Settings ▸ Appearance ▸ Theme).")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+            }
 
             glassSection
         }
