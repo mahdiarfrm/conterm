@@ -434,6 +434,10 @@ final class AppState: ObservableObject {
             tab.lightThemeID = nil
             tab.darkThemeID = nil
         }
+        // Tab's @Published fields don't forward through AppState, but
+        // the Settings picker observes AppState: announce the change
+        // or its ring/name/chips/Inherit button stay stale.
+        objectWillChange.send()
         pushTabTheme(tab)
     }
 
@@ -456,13 +460,33 @@ final class AppState: ObservableObject {
             tab.themeFollowsSystem = false
             tab.themeID = shown
         }
+        objectWillChange.send()
         pushTabTheme(tab)
     }
 
     /// Fill one of a tab's follow-macOS slots and push the result.
     func setTabSlotTheme(_ tab: Tab, _ id: String?, dark: Bool) {
         if dark { tab.darkThemeID = id } else { tab.lightThemeID = id }
+        objectWillChange.send()
         pushTabTheme(tab)
+    }
+
+    /// Where Settings' theme picker should land: a selected tab with
+    /// its own theme first (a pick must change the visible tab), then
+    /// a window override, else the global theme.
+    enum ThemeScopeTarget { case allWindows, thisWindow, thisTab }
+    var suggestedThemeScopeTarget: ThemeScopeTarget {
+        if selectedTab?.hasOwnTheme == true { return .thisTab }
+        return hasWindowTheme ? .thisWindow : .allWindows
+    }
+
+    /// Tabs whose rendered theme can change with macOS appearance:
+    /// following tabs, plus inheriting tabs under a following window.
+    func appearanceDependentTabs() -> [Tab] {
+        tabs.filter {
+            $0.themeFollowsSystem
+                || (!$0.hasOwnTheme && windowThemeFollowsSystem)
+        }
     }
 
     /// Live pane surfaces belonging to one tab.
@@ -484,11 +508,17 @@ final class AppState: ObservableObject {
     /// share a theme so each distinct config is built once. Used
     /// after a global reload and on appearance changes, where tabs
     /// may legitimately hold different themes.
-    private func pushAllTabThemes() {
+    /// - includeGlobal: false skips the global (nil-theme) bucket —
+    /// a global reload has already pushed that config to every
+    /// surface, so rebuilding it for inheriting tabs is pure waste.
+    /// - only: restrict to these tabs (appearance changes, where
+    /// fixed tabs cannot change).
+    private func pushAllTabThemes(includeGlobal: Bool = true,
+                                  only: [Tab]? = nil) {
         guard let ghostty, !prefs.themeFromConfig else { return }
         var byTheme: [String: [Ghostty.SurfaceController]] = [:]
         var global: [Ghostty.SurfaceController] = []
-        for tab in tabs {
+        for tab in only ?? tabs {
             if let id = effectiveThemeID(for: tab) {
                 byTheme[id, default: []].append(contentsOf: controllers(for: tab))
             } else {
@@ -496,16 +526,22 @@ final class AppState: ObservableObject {
             }
         }
         for (id, ctrls) in byTheme { ghostty.applyTheme(id, to: ctrls) }
-        if !global.isEmpty { ghostty.applyTheme(nil, to: global) }
+        if includeGlobal, !global.isEmpty { ghostty.applyTheme(nil, to: global) }
     }
 
     /// macOS switched Light/Dark: a following window swaps themes.
+    /// Only tabs whose theme depends on the appearance are pushed —
+    /// a fixed tab cannot change, and re-pushing it is a rebuild.
     /// (Queued delivery is fine here — the system animates its own
     /// transition, unlike the reload path's flash constraint.)
     func systemAppearanceChanged() {
         guard windowThemeFollowsSystem
                 || tabs.contains(where: { $0.themeFollowsSystem })
         else { return }
+        if tabs.contains(where: { $0.hasOwnTheme }) {
+            pushAllTabThemes(only: appearanceDependentTabs())
+            return
+        }
         applyWindowTheme()
     }
 
@@ -533,7 +569,9 @@ final class AppState: ObservableObject {
     func applyWindowTheme() {
         guard !prefs.themeFromConfig, let ghostty else { return }
         if tabs.contains(where: { $0.hasOwnTheme }) {
-            pushAllTabThemes()
+            // Reload path: the global config already reached every
+            // surface, so only themed buckets are rebuilt.
+            pushAllTabThemes(includeGlobal: false)
             return
         }
         guard let id = effectiveWindowThemeID else { return }

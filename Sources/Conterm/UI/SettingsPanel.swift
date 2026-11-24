@@ -1518,15 +1518,17 @@ private struct ThemePicker: View {
         scope == .thisTab ? (scopeTab?.hasOwnTheme ?? false)
                           : state.hasWindowTheme
     }
-    /// Which follow-macOS slot a swatch pick fills (This-window
-    /// scope with Follow on). Defaults to the current appearance.
+    /// Which follow-macOS slot a swatch pick fills (This-window or
+    /// This-tab scope with Follow on). Defaults to the current
+    /// appearance.
     @State private var editingDark: Bool = ThemeCatalog.systemIsDark
 
     private let columns = [GridItem(.adaptive(minimum: 132), spacing: 10)]
 
     /// The theme the swatch grid should mark selected in the current
-    /// scope: a window override wins in This-window scope, and a
-    /// window without one shows the global pick it is following.
+    /// scope: a tab override wins in This-tab scope, a window
+    /// override in This-window scope, and a scope without one shows
+    /// the global pick it is following.
     private var selectedThemeID: String? {
         switch scope {
         case .allWindows:
@@ -1642,8 +1644,13 @@ private struct ThemePicker: View {
         }
         .onAppear {
             // Land on the scope this window is actually in, so a
-            // themed window doesn't offer a global pick by default.
-            scope = state.hasWindowTheme ? .thisWindow : .allWindows
+            // themed tab (or window) doesn't offer a global pick by
+            // default.
+            switch state.suggestedThemeScopeTarget {
+            case .thisTab:    scope = .thisTab
+            case .thisWindow: scope = .thisWindow
+            case .allWindows: scope = .allWindows
+            }
         }
     }
 
@@ -1675,17 +1682,18 @@ private struct ThemePicker: View {
                 .strokeBorder(Theme.stroke, lineWidth: 0.5)
         )
         // Flipping ON hands control back to the config (removes the
-        // managed block + reloads); OFF re-enables the swatches and the
-        // user picks one.
+        // managed block + reloads); OFF re-applies the window/tab
+        // overrides at once instead of waiting for an unrelated reload.
         .onChange(of: prefs.themeFromConfig) { _, on in
             if on { themes.followConfig() }
+            else { state.applyWindowTheme() }
         }
     }
 
-    /// Scope row: does the next swatch pick retheme every window, or
-    /// only this one? A window with its own theme can drop back to
-    /// following the global pick here. Disabled while the config owns
-    /// the colors, like the swatches below.
+    /// Scope row: does the next swatch pick retheme every window,
+    /// only this window, or only this tab? A scope with its own theme
+    /// can drop back to inheriting here. Disabled while the config
+    /// owns the colors, like the swatches below.
     private var scopeRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {

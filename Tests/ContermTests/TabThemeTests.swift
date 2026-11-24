@@ -1,4 +1,5 @@
 import Testing
+import Combine
 import Foundation
 @testable import Conterm
 
@@ -84,6 +85,59 @@ struct TabThemeTests {
         state.setTabTheme(second, "T2")
         #expect(state.effectiveThemeID(for: first) == nil)
         #expect(state.effectiveThemeID(for: second) == "T2")
+    }
+
+    /// The Settings picker observes AppState, not the tab: a tab
+    /// pick must announce a change on AppState or the picker (ring,
+    /// name, chips, Inherit button) stays stale after picking.
+    @Test func tabSettersNotifyAppStateObservers() {
+        let state = makeState()
+        let tab = state.tabs[0]
+        var fired = 0
+        let sub = state.objectWillChange.sink { fired += 1 }
+        state.setTabTheme(tab, "T")
+        state.setTabSlotTheme(tab, "L", dark: false)
+        state.setTabThemeFollowsSystem(tab, true)
+        #expect(fired >= 3)
+        _ = sub
+    }
+
+    /// Settings must open on This tab when the selected tab carries
+    /// its own theme, else a pick changes the window/global theme
+    /// and the visible tab doesn't change.
+    @Test func suggestedScopePrefersThemedTab() {
+        let state = makeState()
+        #expect(state.suggestedThemeScopeTarget == .allWindows)
+        state.setWindowTheme("W")
+        #expect(state.suggestedThemeScopeTarget == .thisWindow)
+        state.setTabTheme(state.tabs[0], "T")
+        #expect(state.suggestedThemeScopeTarget == .thisTab)
+    }
+
+    /// On an appearance change only appearance-dependent tabs are
+    /// re-pushed: following tabs, and inheriting tabs under a
+    /// following window. Fixed tabs are excluded.
+    @Test func appearanceDependentTabsSelection() {
+        let state = makeState()
+        state.addTab()
+        state.addTab()
+        let fixed = state.tabs[0]
+        let following = state.tabs[1]
+        let inheriting = state.tabs[2]
+        state.setTabTheme(fixed, "F")
+        state.setTabThemeFollowsSystem(following, true)
+        #expect(state.appearanceDependentTabs().map(\.id) == [following.id])
+        state.setWindowThemeFollowsSystem(true)
+        #expect(Set(state.appearanceDependentTabs().map(\.id))
+            == [following.id, inheriting.id])
+    }
+
+    /// The tab Theme menu shows a short list, not the whole
+    /// ~460-theme catalog, on every pill redraw.
+    @Test func themeMenuShortListIsBounded() {
+        let all = Array(0..<460)
+        #expect(TabThemeMenu.shortList(all).count == TabThemeMenu.shortListCount)
+        #expect(TabThemeMenu.shortList([1, 2, 3]) == [1, 2, 3])
     }
 
     /// Session round-trip: per-tab theme fields survive encode /

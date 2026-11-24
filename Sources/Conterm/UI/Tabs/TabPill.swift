@@ -562,49 +562,14 @@ struct TabPill: View {
             .opacity(0.5 + 0.5 * phase)
     }
 
-    /// Right-click submenu for this tab's own terminal theme. The
-    /// theme catalog loads lazily (Settings defers the parse), so an
-    /// unloaded catalog offers the load explicitly rather than
-    /// paying the parse at launch.
+    /// Right-click submenu for this tab's own terminal theme. Hidden
+    /// while the terminal config owns the colors (Settings disables
+    /// its picker then): a pick here would be saved and checked but
+    /// change nothing until some later config reload.
     @ViewBuilder
     private var themeMenu: some View {
-        if let themes = themeCatalog {
-        Menu("Theme") {
-            if tab.hasOwnTheme {
-                Button("Inherit window theme") { state.setTabTheme(tab, nil) }
-                Divider()
-            }
-            Toggle("Follow macOS light/dark", isOn: Binding(
-                get: { tab.themeFollowsSystem },
-                set: { state.setTabThemeFollowsSystem(tab, $0) }))
-            if themes.themes.isEmpty {
-                Button(themes.isLoading ? "Loading themes…" : "Load themes…") {
-                    themes.ensureLoaded()
-                }
-                .disabled(themes.isLoading)
-            } else if tab.themeFollowsSystem {
-                Menu("Light theme") {
-                    ForEach(themes.themes) { t in
-                        Button(tab.lightThemeID == t.id ? "✓ \(t.name)" : t.name) {
-                            state.setTabSlotTheme(tab, t.id, dark: false)
-                        }
-                    }
-                }
-                Menu("Dark theme") {
-                    ForEach(themes.themes) { t in
-                        Button(tab.darkThemeID == t.id ? "✓ \(t.name)" : t.name) {
-                            state.setTabSlotTheme(tab, t.id, dark: true)
-                        }
-                    }
-                }
-            } else {
-                ForEach(themes.themes) { t in
-                    Button(tab.themeID == t.id ? "✓ \(t.name)" : t.name) {
-                        state.setTabTheme(tab, t.id)
-                    }
-                }
-            }
-        }
+        if !prefs.themeFromConfig, let themes = themeCatalog {
+            TabThemeMenu(themes: themes, tab: tab, state: state)
         }
     }
 
@@ -714,4 +679,73 @@ struct TabPill: View {
             .animation(Theme.Spring.snappy, value: hoveringClose)
     }
 
+}
+
+/// The tab Theme submenu's content. Observes the catalog (the pill
+/// only holds it as a plain environment value, so "Load themes…"
+/// would otherwise stay in the menu after loading) and the tab.
+/// The catalog holds ~460 themes; a short list plus Settings keeps
+/// every pill's menu small instead of building hundreds of buttons
+/// on each redraw.
+struct TabThemeMenu: View {
+    @ObservedObject var themes: ThemeCatalog
+    @ObservedObject var tab: Tab
+    var state: AppState
+
+    /// Short-list length shown before "More in Settings…".
+    static var shortListCount: Int { 15 }
+    static func shortList<T>(_ items: [T]) -> [T] {
+        Array(items.prefix(shortListCount))
+    }
+
+    var body: some View {
+        Menu("Theme") {
+            if tab.hasOwnTheme {
+                Button("Inherit window theme") { state.setTabTheme(tab, nil) }
+                Divider()
+            }
+            Toggle("Follow macOS light/dark", isOn: Binding(
+                get: { tab.themeFollowsSystem },
+                set: { state.setTabThemeFollowsSystem(tab, $0) }))
+            if themes.themes.isEmpty {
+                Button(themes.isLoading ? "Loading themes…" : "Load themes…") {
+                    themes.ensureLoaded()
+                }
+                .disabled(themes.isLoading)
+            } else if tab.themeFollowsSystem {
+                Menu("Light theme") {
+                    ForEach(Self.shortList(themes.themes)) { t in
+                        Button(tab.lightThemeID == t.id ? "✓ \(t.name)" : t.name) {
+                            state.setTabSlotTheme(tab, t.id, dark: false)
+                        }
+                    }
+                    Divider()
+                    moreInSettings
+                }
+                Menu("Dark theme") {
+                    ForEach(Self.shortList(themes.themes)) { t in
+                        Button(tab.darkThemeID == t.id ? "✓ \(t.name)" : t.name) {
+                            state.setTabSlotTheme(tab, t.id, dark: true)
+                        }
+                    }
+                    Divider()
+                    moreInSettings
+                }
+            } else {
+                ForEach(Self.shortList(themes.themes)) { t in
+                    Button(tab.themeID == t.id ? "✓ \(t.name)" : t.name) {
+                        state.setTabTheme(tab, t.id)
+                    }
+                }
+                Divider()
+                moreInSettings
+            }
+        }
+    }
+
+    private var moreInSettings: some View {
+        Button("More in Settings…") {
+            state.openSettings(section: "appearance")
+        }
+    }
 }
