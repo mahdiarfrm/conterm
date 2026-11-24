@@ -129,6 +129,8 @@ final class AppState: ObservableObject {
         case sshHosts              // pick an ssh host (recents first, then all)
         case clipboard             // recent copies from panes (session-only)
         case groups                // manage tab groups: rename / recolor / reorder
+        case favorites             // saved commands: run one here, or save the query
+        case runAll                // type one command into every terminal at a prompt
 
         /// The note editor owns all text-navigation keys (Return, arrows,
         /// ⌫); the global key monitor leaves them alone in this mode.
@@ -1571,6 +1573,13 @@ final class AppState: ObservableObject {
         } else {
             presentPalette(in: mode)
         }
+    }
+
+    /// A list's own shortcut: opens the palette on it, or closes the
+    /// palette when that list is already showing.
+    func togglePalette(mode: PaletteMode) {
+        if paletteOpen && paletteMode == mode { togglePalette() }
+        else { openPalette(mode: mode) }
     }
 
     enum OpenTarget { case finder, cursor, vscode }

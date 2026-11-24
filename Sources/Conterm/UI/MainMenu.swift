@@ -202,7 +202,8 @@ enum MainMenu {
 
     /// The pages that report on work (what happened while away, what an
     /// agent did and changed, the last Ansible run and Terraform plan), the
-    /// ways to reach hosts, and the palette's history and notes lists.
+    /// ways to reach hosts and run across terminals, and the palette's
+    /// history, favorites and notes lists.
     private static func makeToolsMenu(delegate: AppDelegate) -> NSMenuItem {
         let root = NSMenuItem()
         let menu = NSMenu(title: "Tools")
@@ -223,11 +224,17 @@ enum MainMenu {
                           action: #selector(AppDelegate.connectToHost(_:)), target: delegate))
         menu.addItem(item("Fleet Run…",
                           action: #selector(AppDelegate.showFleetRun(_:)), target: delegate))
+        menu.addItem(item("Run in All Terminals…",
+                          action: #selector(AppDelegate.showRunInAllTerminals(_:)),
+                          key: "i", modifiers: [.command, .shift], target: delegate))
         menu.addItem(.separator())
         menu.addItem(item("Clipboard History",
                           action: #selector(AppDelegate.showClipboardHistory(_:)), target: delegate))
         menu.addItem(item("Shell History",
                           action: #selector(AppDelegate.showShellHistory(_:)), target: delegate))
+        menu.addItem(item("Favorites…",
+                          action: #selector(AppDelegate.showFavorites(_:)),
+                          key: "k", modifiers: [.command, .shift], target: delegate))
         menu.addItem(.separator())
         menu.addItem(item("Notes",
                           action: #selector(AppDelegate.showNotes(_:)), target: delegate))

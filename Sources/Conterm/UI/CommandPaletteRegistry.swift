@@ -437,6 +437,24 @@ extension CommandPalette {
                     subtitle: "One command across many hosts — a pane per host",
                     shortcut: "",
                     run: { state.openFleetRun() }),
+            Command(id: "run_all", icon: "rectangle.split.3x3",
+                    title: "Run in All Terminals",
+                    subtitle: "Type one command into every terminal at a prompt",
+                    shortcut: "⌘⇧I",
+                    run: {
+                        withAnimation(Theme.Spring.soft) {
+                            state.paletteMode = .runAll
+                        }
+                    }),
+            Command(id: "favorites", icon: "star",
+                    title: "Favorites",
+                    subtitle: "Saved commands: run one in this pane",
+                    shortcut: "⌘⇧K",
+                    run: {
+                        withAnimation(Theme.Spring.soft) {
+                            state.paletteMode = .favorites
+                        }
+                    }),
             Command(id: "clipboard_history", icon: "doc.on.clipboard",
                     title: "Clipboard History",
                     subtitle: "Recent copies from panes — paste one back",
@@ -586,6 +604,8 @@ extension CommandPalette {
         ("sessions",         "Sessions",                    "rectangle.3.group"),
         ("ssh_hosts",        "SSH",                         "network"),
         ("fleet_run",        "Fleet Run",                   "antenna.radiowaves.left.and.right"),
+        ("run_all",          "Run in All Terminals",        "rectangle.split.3x3"),
+        ("favorites",        "Favorites",                   "star"),
         ("tab_groups",       "Tab Groups",                  "square.stack.3d.up"),
         ("shell_history",    "Shell History",               "clock.arrow.circlepath"),
         ("clipboard_history", "Clipboard History",          "doc.on.clipboard"),
@@ -615,7 +635,7 @@ extension CommandPalette {
         // switch mode) must not be double-toggled.
         let staysOpen = ["notes", "new_note", "sessions", "agents",
                          "shell_history", "ssh_hosts", "tab_groups",
-                         "clipboard_history"]
+                         "clipboard_history", "favorites", "run_all"]
         let managesPalette = command.id.hasPrefix("ssh.")
             || command.id.hasPrefix("hist.")
             || command.id.hasPrefix("note.")

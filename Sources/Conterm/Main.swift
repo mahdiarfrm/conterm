@@ -529,6 +529,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func connectToHost(_ sender: Any?)    { openPalette(.sshHosts) }
     @objc func showClipboardHistory(_ sender: Any?) { openPalette(.clipboard) }
     @objc func showShellHistory(_ sender: Any?) { openPalette(.shellHistory) }
+    @objc func showFavorites(_ sender: Any?)    { openPalette(.favorites) }
+    @objc func showRunInAllTerminals(_ sender: Any?) { openPalette(.runAll) }
     @objc func showNotes(_ sender: Any?)        { openPalette(.notesList) }
     @objc func newNote(_ sender: Any?) {
         openPalette(.noteEdit(noteID: state.notes.create().id))
@@ -720,7 +722,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                               !event.modifierFlags.contains(.option) &&
                               !event.modifierFlags.contains(.control) &&
                               !event.modifierFlags.contains(.shift)
-                // ⌘⌫ deletes focused note (in notes-list / note-edit).
+                // ⌘⌫ deletes the focused note (notes list / note edit) or
+                // favorite.
                 if event.keyCode == 51, cmdOnly {
                     self.state.paletteDeleteTick &+= 1
                     return nil
@@ -856,6 +859,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // ⌘⇧A = toggle the agent command center.
             if cmd && shift && key == "a" {
                 self.state.toggleAgentCenter()
+                NSApp.keyWindow?.makeFirstResponder(nil)
+                return nil
+            }
+            // ⌘⇧K = Favorites, ⌘⇧I = Run in All Terminals; again closes.
+            if cmd && shift && !opt && !ctrl && (key == "k" || key == "i") {
+                self.state.togglePalette(mode: key == "k" ? .favorites : .runAll)
                 NSApp.keyWindow?.makeFirstResponder(nil)
                 return nil
             }

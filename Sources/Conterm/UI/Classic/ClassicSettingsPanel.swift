@@ -1209,6 +1209,8 @@ private struct KeyboardShortcuts {
         Group(title: "Overlays", items: [
             Item(label: "Command palette",      keys: "⌘K"),
             Item(label: "Agent command center", keys: "⌘⇧A"),
+            Item(label: "Favorites",            keys: "⌘⇧K"),
+            Item(label: "Run in all terminals", keys: "⌘⇧I"),
             Item(label: "Settings",             keys: "⌘,"),
             Item(label: "Dismiss overlay",      keys: "Esc"),
         ]),
@@ -1216,7 +1218,7 @@ private struct KeyboardShortcuts {
             Item(label: "Move selection",    keys: "↑ ↓"),
             Item(label: "Switch suggestion", keys: "← →"),
             Item(label: "Run selection",     keys: "↩"),
-            Item(label: "Delete note",       keys: "⌘⌫"),
+            Item(label: "Delete note or favorite", keys: "⌘⌫"),
         ]),
     ]
 }

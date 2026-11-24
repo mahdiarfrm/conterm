@@ -378,6 +378,8 @@ Treat it as beta.
 | `⌘↑` / `⌘↓` | Jump to previous / next prompt |
 | `⌘K` | Command palette |
 | `⌘⇧A` | Agent command center |
+| `⌘⇧K` | Favorites: run a saved command (up to 20) in this pane |
+| `⌘⇧I` | Run one command in every terminal at a prompt |
 | `⌘⇧M` | Orbit — the fleet map |
 | `⌘F` | Find in scrollback / Claude conversation |
 | `⌘G` / `⌘⇧G` | Next / previous match |
