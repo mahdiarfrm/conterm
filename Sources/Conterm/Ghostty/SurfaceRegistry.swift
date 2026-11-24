@@ -149,6 +149,8 @@ extension Ghostty {
                     .flatMap(Ghostty.App.backgroundColor)
                     .map { .configBackground($0) }
             case GHOSTTY_ACTION_COLOR_CHANGE:
+                // OSC 21 background changes send no color_change, so the tone
+                // doesn't track them.
                 let c = action.action.color_change
                 decoded = c.kind == GHOSTTY_ACTION_COLOR_KIND_BACKGROUND
                     ? .programBackground(.init(r: c.r, g: c.g, b: c.b)) : nil

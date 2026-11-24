@@ -161,7 +161,8 @@ struct ClassicAgentPill: View {
     // MARK: - Neon ring
 
     /// Per-agent accent (Claude=orange, opencode=violet, …).
-    private var glowColor: Color { status.tool.glowColor }
+    @Environment(\.colorScheme) private var scheme
+    private var glowColor: Color { status.tool.chipGlow(scheme) }
 
     @ViewBuilder
     private var neonRing: some View {
@@ -199,7 +200,7 @@ struct ClassicAgentPill: View {
 }
 
 /// Classic interface style. One kind of call in flight as a bubble: the mark, monochrome on the
-/// pill's dark bed, ringed in the kind's colour — the mark says what, the
+/// pill's bed, ringed in the kind's colour — the mark says what, the
 /// ring says whose. While the call runs the ring is the same
 /// compositor-side sweep the agent pill uses; a bubble held past its
 /// call's end shows a still rim, with a red dot when the call failed.
@@ -218,7 +219,7 @@ struct ClassicAgentToolBubble: View {
     @State private var hovering = false
 
     private var color: Color { run.kind.chipColor }
-    private static let failColor = Color(red: 1.0, green: 0.42, blue: 0.42)
+    private static let failColor = Theme.badOnChip
     private static let bed = PanePill.bed
     /// Follows the bed, like the pill's label.
     private static let ink = PanePill.ink
@@ -364,8 +365,7 @@ struct ClassicCommandBadge: View {
 
     private var tint: Color {
         if unknownExit { return Theme.onChip.opacity(0.6) }
-        return result.failed ? Color(red: 1.0, green: 0.42, blue: 0.42)
-                             : Theme.goodOnChip
+        return result.failed ? Theme.badOnChip : Theme.goodOnChip
     }
     private var icon: String {
         if unknownExit { return "clock" }

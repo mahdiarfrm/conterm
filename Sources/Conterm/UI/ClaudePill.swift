@@ -155,7 +155,8 @@ struct AgentPill: View {
     // MARK: - Neon ring
 
     /// Per-agent accent (Claude=orange, opencode=violet, …).
-    private var glowColor: Color { status.tool.glowColor }
+    @Environment(\.colorScheme) private var scheme
+    private var glowColor: Color { status.tool.chipGlow(scheme) }
 
     @ViewBuilder
     private var neonRing: some View {

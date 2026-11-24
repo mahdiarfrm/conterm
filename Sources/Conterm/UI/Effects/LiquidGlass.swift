@@ -317,7 +317,8 @@ func chromeEdge(_ prefs: Preferences, light: Bool? = nil) -> [Color] {
 
 extension View {
     /// Wrap a pill/capsule control in the flat chrome capsule. `light`
-    /// overrides the glass tint for a pill that sits on something else.
+    /// overrides the glass tint for a pill that sits on something else;
+    /// Classic only, the Liquid Drop lens always follows the tint.
     func glassPill(light: Bool? = nil) -> some View {
         modifier(GlassPillModifier(light: light))
     }

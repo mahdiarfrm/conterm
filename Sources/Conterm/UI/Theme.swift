@@ -70,7 +70,7 @@ enum Theme {
     /// appearances (the suggestion strip). The regular `accent` flips
     /// near-black in light mode and would vanish on a dark bed.
     static let accentOnDark  = Color(red: 0.92, green: 0.96, blue: 1.00)
-    /// Ink on the pane chips (title pill, badges, close button): white on
+    /// Ink on the pane chips (title pill, badges, Host Overview button): white on
     /// the dark chip bed, cool near-black on the light bed a light terminal
     /// background gives them (the pane chrome's appearance, see PaneBox).
     static let onChip        = dynamic(

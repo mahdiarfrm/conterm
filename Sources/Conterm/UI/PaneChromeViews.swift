@@ -216,14 +216,14 @@ struct PaneTitleBar: View {
     }
 
     /// Glass tint: a light frost when collapsed, dimmer on an inactive
-    /// pane; otherwise the dark bed, cool while remote.
+    /// pane; otherwise the chip bed, cool while remote.
     private var glassTint: Color {
         if collapsed { return Color.white.opacity(isActive ? 0.80 : 0.45) }
         return (remoteHost != nil ? Theme.paneRemoteBar : Theme.paneTitleBar).opacity(0.55)
     }
 
-    /// Capsule border: cyan while remote, neutral white otherwise; darker
-    /// on the collapsed light bed. Flat solid colours only — see the note
+    /// Capsule border: cyan while remote, the chip ink otherwise; black
+    /// on the collapsed capsule. Flat solid colours only — see the note
     /// on the stroke overlay.
     private var borderColor: Color {
         if collapsed { return Color.black.opacity(0.12) }
@@ -385,7 +385,7 @@ struct CommandBadge: View {
 
     private var tint: Color {
         if unknownExit { return Theme.onChip.opacity(0.6) }
-        return result.failed ? Drop.bad : Self.good
+        return result.failed ? Theme.badOnChip : Self.good
     }
     /// The success check: `Drop.good` on the dark bed, deeper on the light.
     private static let good = Theme.onChipTone(Drop.good,

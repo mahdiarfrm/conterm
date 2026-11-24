@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import GhosttyKit
 import SwiftUI
@@ -64,6 +65,26 @@ struct PaneChipToneTests {
         #expect(bg.isLight)
     }
 
+    /// The box is built inside a SwiftUI view update, where a publish is
+    /// undefined behavior, so the tone reaches the chrome as a plain value.
+    @Test func theBoxTakesItsToneWithoutPublishing() throws {
+        let pane = Pane()
+        var publishes = 0
+        let sink = pane.objectWillChange.sink { publishes += 1 }
+        defer { sink.cancel() }
+        let box = PaneBox(pane: pane,
+                          host: .init(surfaceView: Ghostty.SurfaceView(frame: .zero)),
+                          prefs: Preferences(), tab: nil, terminalIsLight: true)
+        let chrome = try #require(box.subviews.lazy
+            .compactMap { $0 as? NSHostingView<PaneChrome> }.first)
+        #expect(chrome.rootView.terminalIsLight)
+        #expect(chrome.appearance?.name == .aqua)
+        box.terminalIsLight = false
+        #expect(!chrome.rootView.terminalIsLight)
+        #expect(chrome.appearance?.name == .darkAqua)
+        #expect(publishes == 0)
+    }
+
     // MARK: - Dark values
 
     /// Every chip colour's dark value equals its pinned sRGB constant.
@@ -80,6 +101,8 @@ struct PaneChipToneTests {
             ("goodOnChip", Theme.goodOnChip, Color(red: 0.45, green: 0.86, blue: 0.55)),
             ("badOnChip", Theme.badOnChip, Color(red: 1.0, green: 0.42, blue: 0.42)),
         ] + AgentToolKind.allCases.map { ("kind.\($0)", $0.chipColor, $0.color) }
+          + Self.agents.map { ("glow.\($0)", $0.chipGlow(.dark), $0.glowColor) }
+          + [("rim", PaneChrome.rimTint(light: false), Theme.highlight)]
         for (name, now, pinned) in pairs {
             let a = Self.srgb(now, dark: true)
             let b = Self.srgb(pinned, dark: true)
@@ -102,7 +125,9 @@ struct PaneChipToneTests {
     /// No accent stays pale on the light bed.
     @Test func everyAccentHoldsUpOnTheLightBed() {
         let accents = AgentToolKind.allCases.map { ("\($0)", $0.chipColor) }
-            + [("good", Theme.goodOnChip), ("bad", Theme.badOnChip)]
+            + Self.agents.map { ("\($0)", $0.chipGlow(.light)) }
+            + [("good", Theme.goodOnChip), ("bad", Theme.badOnChip),
+               ("rim", PaneChrome.rimTint(light: true))]
         for (name, color) in accents {
             let light = Self.luminance(Self.srgb(color, dark: false))
             #expect(light < 0.65, "\(name): \(light)")
@@ -110,6 +135,8 @@ struct PaneChipToneTests {
     }
 
     // MARK: - Helpers
+
+    private static let agents: [AgentTool] = [.claude, .opencode, .codex, .generic]
 
     private static func srgb(_ color: Color, dark: Bool) -> [Double] {
         let ns = NSColor(color)

@@ -96,6 +96,16 @@ extension AgentToolKind {
     }
 }
 
+extension AgentTool {
+    /// `glowColor` on the pane chips. The soft blue, tuned for the
+    /// near-black bed, takes a deeper shade on the light bed. Resolved here
+    /// rather than dynamic: the pulse's layers hold the colour they drew.
+    func chipGlow(_ scheme: ColorScheme) -> Color {
+        self == .generic && scheme == .light
+            ? Color(red: 0.20, green: 0.42, blue: 0.78) : glowColor
+    }
+}
+
 /// Built once: a dynamic colour per access would rebuild on every redraw.
 private enum ChipTones {
     static let github = Theme.onChipTone(AgentToolKind.github.color,
@@ -117,7 +127,7 @@ private enum ChipTones {
 }
 
 /// One kind of call in flight as a bubble: the mark, monochrome on the
-/// pill's dark bed, ringed in the kind's colour — the mark says what, the
+/// pill's bed, ringed in the kind's colour — the mark says what, the
 /// ring says whose. While the call runs the ring is the same
 /// compositor-side sweep the agent pill uses; a bubble held past its
 /// call's end shows a still rim, with a red dot when the call failed.
@@ -136,7 +146,7 @@ struct AgentToolBubble: View {
     @State private var hovering = false
 
     private var color: Color { run.kind.chipColor }
-    private static let failColor = Drop.bad
+    private static let failColor = Theme.badOnChip
     private static let bed = PanePill.bed
     private static let ink = PanePill.ink
 
