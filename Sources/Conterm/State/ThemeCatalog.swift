@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import os
 import SwiftUI
 
 /// Loads the theme catalog, bundled libghostty themes
@@ -25,8 +26,6 @@ final class ThemeCatalog: ObservableObject {
     @Published private(set) var themes: [Theme] = []
     @Published private(set) var isLoading = false
     @Published var current: String?     // currently-applied theme name
-
-    private var didStartLoad = false
 
     /// Init is intentionally cheap — it only reads ONE config line.
     /// Parsing the ~460 bundled theme files is deferred to the first
@@ -83,19 +82,24 @@ final class ThemeCatalog: ObservableObject {
         applyFollowedSlot()
     }
 
-    /// Kick off a one-time background parse. Safe to call repeatedly
-    /// (no-ops after the first call). Results publish on the main actor
-    /// when ready; the picker shows a spinner via `isLoading` until then.
+    private var isScanning = false
+
+    /// Scan the theme folders in the background, each time Appearance
+    /// opens, so a theme file added or edited meanwhile shows up. Results
+    /// publish on the main actor when ready; the picker shows a spinner
+    /// via `isLoading` until the first ones.
     func ensureLoaded() {
-        guard !didStartLoad else { return }
-        didStartLoad = true
-        isLoading = true
+        guard !isScanning else { return }
+        isScanning = true
+        isLoading = themes.isEmpty
         let dirs = Self.themeDirectories()
         Task.detached(priority: .userInitiated) {
             let parsed = Self.parseAll(in: dirs)
             await MainActor.run {
+                Self.forgetResolvedURLs()
                 self.themes = parsed
                 self.isLoading = false
+                self.isScanning = false
             }
         }
     }
@@ -108,8 +112,11 @@ final class ThemeCatalog: ObservableObject {
         // Later directories win, so a user theme shadows a bundled one.
         for dir in dirs {
             for name in themeNames(in: dir) {
-                guard let theme = parse(path: dir.appendingPathComponent(name).path, name: name)
-                else { continue }
+                let path = dir.appendingPathComponent(name).path
+                guard let theme = parse(path: path, name: name) else {
+                    clog("conterm: skipped theme \(path): needs background and foreground as #RRGGBB")
+                    continue
+                }
                 byID[name] = theme
             }
         }
@@ -138,15 +145,36 @@ final class ThemeCatalog: ObservableObject {
             .filter { !$0.hasPrefix(".") && !$0.hasSuffix(".md") }
     }
 
+    struct URLKey: Hashable { let id: String; let dirs: [URL] }
+    /// Resolved theme files: windows look their theme up on every config
+    /// reload, on the main thread. Valid until the next catalog scan.
+    nonisolated static let resolvedURLs = OSAllocatedUnfairLock<[URLKey: URL]>(initialState: [:])
+
+    nonisolated static func forgetResolvedURLs() {
+        resolvedURLs.withLock { $0.removeAll() }
+    }
+
     /// The file behind a theme id, by the picker's own rule (`parseAll`): the
-    /// last directory holding that exact name with a theme that parses. Names
-    /// are matched by listing, since a path lookup ignores case on APFS.
+    /// last directory holding that exact name with a theme that parses, else
+    /// the same ignoring case. Names are matched by listing, since a path
+    /// lookup ignores case on APFS.
     nonisolated static func url(forThemeID id: String,
                                 in dirs: [URL] = themeDirectories()) -> URL? {
-        dirs.reversed().first {
-            themeNames(in: $0).contains(id)
-                && parse(path: $0.appendingPathComponent(id).path, name: id) != nil
-        }?.appendingPathComponent(id)
+        let key = URLKey(id: id, dirs: dirs)
+        if let known = resolvedURLs.withLock({ $0[key] }) { return known }
+        let files = dirs.reversed().flatMap { dir in
+            themeNames(in: dir).sorted().map(dir.appendingPathComponent)
+        }
+        func firstTheme(_ matches: (String) -> Bool) -> URL? {
+            files.first {
+                let name = $0.lastPathComponent
+                return matches(name) && parse(path: $0.path, name: name) != nil
+            }
+        }
+        let found = firstTheme { $0 == id }
+            ?? firstTheme { $0.caseInsensitiveCompare(id) == .orderedSame }
+        if let found { resolvedURLs.withLock { $0[key] = found } }
+        return found
     }
 
     nonisolated private static func parse(path: String, name: String) -> Theme? {
@@ -213,7 +241,7 @@ final class ThemeCatalog: ObservableObject {
 
     /// The slot to write for an appearance, or nil to leave the block
     /// alone: the user's config owns the colors, the slot is empty, or
-    /// it's already the applied theme.
+    /// it's already in the managed block (`current`).
     nonisolated static func slotToApply(fromConfig: Bool, light: String?, dark: String?,
                                         lightAppearance: Bool, current: String?) -> String? {
         guard !fromConfig, let id = lightAppearance ? light : dark, id != current else { return nil }
@@ -225,31 +253,47 @@ final class ThemeCatalog: ObservableObject {
     /// the colors, the slot is empty or missing, or it's already applied.
     func applyFollowedSlot() {
         guard let prefs, prefs.followSystemAppearance else { return }
-        applySlot(lightAppearance: !Self.systemIsDark, prefs: prefs)
-    }
-
-    private func applySlot(lightAppearance: Bool, prefs: Preferences) {
         guard let id = Self.slotToApply(fromConfig: prefs.themeFromConfig,
                                         light: prefs.lightThemeID, dark: prefs.darkThemeID,
-                                        lightAppearance: lightAppearance, current: current),
-              Self.url(forThemeID: id) != nil else { return }
-        apply(id: id)
+                                        lightAppearance: !Self.systemIsDark,
+                                        current: UserConfigStore.managedThemeID())
+        else { return }
+        writeBlock(id: id)
+    }
+
+    /// Put a theme on without a swatch pick: the user's own `theme =` line
+    /// stays, and an unreadable theme changes nothing.
+    private func writeBlock(id: String) {
+        let colors = Self.colorLines(forThemeID: id)
+        guard !colors.isEmpty else { return }
+        UserConfigStore.writeManagedThemeBlock(themeID: id, colorLines: colors,
+                                               keepingThemeLine: true)
+        current = id
+        Ghostty.App.shared?.reloadConfig()
+    }
+
+    /// Back to the managed block from before following, or to none.
+    private func restoreManualTheme(_ id: String?) {
+        guard let id, id != UserConfigStore.managedThemeID() ?? "" else { return }
+        guard id.isEmpty else { return writeBlock(id: id) }
+        UserConfigStore.removeManagedThemeBlock()
+        reloadCurrent()
+        Ghostty.App.shared?.reloadConfig()
     }
 
     /// The follow-macOS switch flipped. Runs after Preferences has synced
     /// (on) or restored (off) the glass tint and theme source; see `bind`.
-    private func setFollowSystem(_ on: Bool) {
+    func setFollowSystem(_ on: Bool) {
         guard let prefs else { return }
         if on {
             // Seed empty or stale slots from the current pick so the first
             // toggle never blanks the terminal.
-            let seed = current.flatMap { Self.url(forThemeID: $0) == nil ? nil : $0 }
+            let seed = current.flatMap { Self.url(forThemeID: $0)?.lastPathComponent }
             if prefs.lightThemeID.flatMap({ Self.url(forThemeID: $0) }) == nil { prefs.lightThemeID = seed }
             if prefs.darkThemeID.flatMap({ Self.url(forThemeID: $0) }) == nil { prefs.darkThemeID = seed }
             applyFollowedSlot()
-        } else {
-            // Keep the terminal in step with the restored manual tint.
-            applySlot(lightAppearance: prefs.lightGlass, prefs: prefs)
+        } else if !prefs.themeFromConfig {
+            restoreManualTheme(prefs.manualThemeID)
         }
     }
 

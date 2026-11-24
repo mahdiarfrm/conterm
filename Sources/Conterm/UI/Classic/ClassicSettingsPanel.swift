@@ -384,9 +384,9 @@ struct ClassicSettingsPanel: View {
             }
         }
         .onAppear {
-            // Lazily kick off the heavy catalog loads the first time
-            // the user actually visits Appearance (kept OUT of app
-            // launch so the intro animation stays smooth).
+            // Lazily kick off the heavy catalog loads when the user
+            // actually visits Appearance (kept OUT of app launch so the
+            // intro animation stays smooth). Themes rescan every time.
             themes.ensureLoaded()
             fonts.ensureLoaded()
         }

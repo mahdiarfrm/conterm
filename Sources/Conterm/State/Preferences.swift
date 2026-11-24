@@ -108,10 +108,11 @@ final class Preferences: ObservableObject {
             guard followSystemAppearance != oldValue else { return }
             ud.set(followSystemAppearance, forKey: K.followSystemAppearance)
             if followSystemAppearance {
-                // Remember the manual tint and theme source so turning this
-                // off restores them.
+                // Remember the manual tint, theme source and picked theme so
+                // turning this off restores them.
                 ud.set(lightGlass, forKey: K.manualLightGlass)
                 ud.set(themeFromConfig, forKey: K.manualThemeFromConfig)
+                ud.set(UserConfigStore.managedThemeID() ?? "", forKey: K.manualThemeID)
                 syncLightGlassToSystem()
                 themeFromConfig = false
             } else {
@@ -130,6 +131,9 @@ final class Preferences: ObservableObject {
     @Published var darkThemeID: String? {
         didSet { ud.set(darkThemeID, forKey: K.darkThemeID) }
     }
+    /// The managed theme from before following the system; empty when there
+    /// was none, nil when following was never turned on.
+    var manualThemeID: String? { ud.string(forKey: K.manualThemeID) }
     /// Called at launch and, through `ThemeCatalog.bind`, on every macOS
     /// appearance change.
     func syncLightGlassToSystem() {
@@ -567,6 +571,7 @@ final class Preferences: ObservableObject {
         static let lightThemeID     = "conterm.lightThemeID"
         static let darkThemeID      = "conterm.darkThemeID"
         static let manualLightGlass = "conterm.manualLightGlass"
+        static let manualThemeID    = "conterm.manualThemeID"
         static let manualThemeFromConfig = "conterm.manualThemeFromConfig"
         static let solidGlass        = "conterm.solidGlass"   // pre-glassMode migration source
         static let glassMode         = "conterm.glassMode"

@@ -6,9 +6,9 @@ import Foundation
 /// without nuking the user's hand-written customization above.
 @MainActor
 enum UserConfigStore {
-    static var path: String {
-        let home = InstanceState.userHome
-        return InstanceState.configPath("config")
+    /// Settable so a test can point the store at a scratch file.
+    static var path = InstanceState.configPath("config") {
+        didSet { cache = nil }
     }
 
     /// Parsed config keyed by the file's modification date. A whole-file
@@ -138,10 +138,13 @@ enum UserConfigStore {
     /// the pick win regardless. Non-destructive: the user's earlier lines
     /// stay (just overridden); removing this block restores them.
     /// `colorLines` are verbatim `key = value` lines from the theme file.
-    static func writeManagedThemeBlock(themeID: String, colorLines: [String]) {
+    /// `keepingThemeLine` leaves the user's own `theme =` in place under the
+    /// block, for a write the user can undo without picking a swatch.
+    static func writeManagedThemeBlock(themeID: String, colorLines: [String],
+                                       keepingThemeLine: Bool = false) {
         var lines = currentLines()
         lines = strippingManagedThemeBlock(lines)
-        lines = strippingTopLevelTheme(lines)
+        if !keepingThemeLine { lines = strippingTopLevelTheme(lines) }
         while let last = lines.last,
               last.trimmingCharacters(in: .whitespaces).isEmpty {
             lines.removeLast()
