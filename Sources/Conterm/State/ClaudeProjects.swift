@@ -94,7 +94,7 @@ enum ClaudeProjects {
     /// A transcript's own `cwd`. Only the head of the file is read: `cwd` sits a
     /// couple of lines in, past the session header, and a long session's
     /// transcript is measured in megabytes.
-    private static func cwd(inTranscript path: String) -> String? {
+    static func cwd(inTranscript path: String) -> String? {
         guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? handle.close() }
         guard let head = try? handle.read(upToCount: 64 * 1024),

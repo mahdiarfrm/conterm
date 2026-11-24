@@ -157,7 +157,15 @@ One search over everything:
   Codex's in `~/.codex/hooks.json`; both run one script). Claude, Muse and
   Antigravity also report token usage in the command center — Muse's and
   Antigravity's sessions carry their own cost totals (Antigravity via its
-  status line, stacked under the built-in one; yours is never replaced).
+  status line, stacked under the built-in one; yours is never replaced). Agents on an SSH
+  host — a Coder workspace included — report back too: install from
+  Settings → Integrations, then a plain `ssh host` from a pane forwards a
+  per-pane socket, so agents inside tmux (invisible panes included) still
+  drive the pill. Their transcripts mirror back over ssh, so usage, tool
+  detail and transcript search work as they do locally, and a restored
+  window resumes the session on the host. Without the socket, hook
+  escapes are DCS-wrapped for tmux, which needs
+  `set -g allow-passthrough on` (or `all`).
 - **Tool bubbles** — whatever Claude or Codex is doing pops up beside the pill
   as a monochrome bubble, one per kind in flight, its ring sweeping in that
   kind's colour: terraform, ansible, kubectl, helm, docker, ssh, git, gh,

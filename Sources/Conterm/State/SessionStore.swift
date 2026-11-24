@@ -75,7 +75,12 @@ enum SessionStore {
     /// Codable mirror of `PaneNode`. Indirect so split nodes can
     /// hold child snapshots recursively.
     indirect enum PaneTreeSnapshot: Codable {
-        case leaf(cwd: String?, scrollback: String?, agentSession: String?)
+        /// `agentRemote` is a `RemoteResume` encoded as JSON (how to
+        /// dial back + the session's remote directory) when
+        /// `agentSession` lives on an SSH host; absent for local
+        /// sessions and in every older session file.
+        case leaf(cwd: String?, scrollback: String?, agentSession: String?,
+                  agentRemote: String?)
         case split(axis: String, fraction: Double,
                    first: PaneTreeSnapshot, second: PaneTreeSnapshot)
 
@@ -83,16 +88,17 @@ enum SessionStore {
             case leaf, split
         }
         private enum CodingKeys: String, CodingKey {
-            case kind, cwd, scrollback, agentSession, axis, fraction, first, second
+            case kind, cwd, scrollback, agentSession, agentRemote, axis, fraction, first, second
         }
         func encode(to encoder: Encoder) throws {
             var c = encoder.container(keyedBy: CodingKeys.self)
             switch self {
-            case .leaf(let cwd, let scrollback, let agentSession):
+            case .leaf(let cwd, let scrollback, let agentSession, let agentRemote):
                 try c.encode(Kind.leaf, forKey: .kind)
                 try c.encodeIfPresent(cwd, forKey: .cwd)
                 try c.encodeIfPresent(scrollback, forKey: .scrollback)
                 try c.encodeIfPresent(agentSession, forKey: .agentSession)
+                try c.encodeIfPresent(agentRemote, forKey: .agentRemote)
             case .split(let axis, let frac, let a, let b):
                 try c.encode(Kind.split, forKey: .kind)
                 try c.encode(axis, forKey: .axis)
@@ -107,7 +113,8 @@ enum SessionStore {
             case .leaf:
                 self = .leaf(cwd: try c.decodeIfPresent(String.self, forKey: .cwd),
                              scrollback: try c.decodeIfPresent(String.self, forKey: .scrollback),
-                             agentSession: try c.decodeIfPresent(String.self, forKey: .agentSession))
+                             agentSession: try c.decodeIfPresent(String.self, forKey: .agentSession),
+                             agentRemote: try c.decodeIfPresent(String.self, forKey: .agentRemote))
             case .split:
                 self = .split(
                     axis: try c.decode(String.self, forKey: .axis),

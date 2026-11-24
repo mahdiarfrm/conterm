@@ -206,6 +206,9 @@ extension Ghostty {
             // `~/.conterm` and the rest of the user's files live.
             var env: [(String, String)] = []
             if let paneID { env.append(("CONTERM_PANE_ID", paneID.uuidString)) }
+            if RemoteAgentChannel.shared.ownsSocket {
+                env.append(("CONTERM_AGENT_LISTEN", RemoteAgentChannel.socketPath))
+            }
             if let restoreEnvironment { env.append(restoreEnvironment) }
             if InstanceState.stagedUserHome {
                 env.append(("CONTERM_USER_HOME", InstanceState.userHome))

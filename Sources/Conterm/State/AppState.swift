@@ -1684,6 +1684,7 @@ final class AppState: ObservableObject {
         // `forceFreeSurface()` is idempotent, so the eventual deinit
         // calling it again is a safe no-op.
         for pane in tab.paneTree.root.leaves() {
+            RemoteTranscriptMirror.shared.stop(paneID: pane.id)
             // Out of any cockpit dock or window it was mounted in first.
             PaneMounts.shared.forget(pane.id)
             pane.controller?.forceFreeSurface()
@@ -1970,6 +1971,7 @@ final class AppState: ObservableObject {
     /// Cascades to closing the tab if no panes remain; cascades to
     /// terminating the app if no tabs remain.
     func closePane(tab: Tab, paneID: UUID) {
+        RemoteTranscriptMirror.shared.stop(paneID: paneID)
         let stillAlive = tab.paneTree.closePane(id: paneID)
         if !stillAlive {
             closeTab(tab)

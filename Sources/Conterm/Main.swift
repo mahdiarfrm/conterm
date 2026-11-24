@@ -125,6 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         AntigravityIntegration.refreshIfInstalled()
         PiIntegration.refreshIfInstalled()
         OmpIntegration.refreshIfInstalled()
+        RemoteAgentChannel.shared.start()
+        RemoteTranscriptMirror.removeStale()
 
         MainMenu.install(delegate: self)
 
@@ -289,6 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                     wc.state.answerDropAlert()
                     for tab in wc.state.tabs {
                         for pane in tab.paneTree.root.leaves() {
+                            RemoteTranscriptMirror.shared.stop(paneID: pane.id)
                             // Out of any cockpit dock or window it was mounted in first.
                             PaneMounts.shared.forget(pane.id)
                             pane.controller?.forceFreeSurface()
@@ -1319,6 +1322,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        RemoteTranscriptMirror.shared.stopAll()
+        RemoteAgentChannel.shared.stop()
         Self.stopCompanion()
         // The plan's writes are coalesced to one per run-loop turn, so a
         // just-queued schedule could still be pending here.

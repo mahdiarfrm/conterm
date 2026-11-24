@@ -90,6 +90,94 @@ struct AgentIntegrationTests {
         #expect(!AntigravityIntegration.isInstalled(at: path))
     }
 
+    /// Remote channel events: one JSON object per line, strict
+    /// enough that tty noise can never become an agent state.
+    @Test func remoteEventParsing() {
+        let event = RemoteAgentChannel.parse(
+            line: #"{"agent":"claude","pane":"P1","state":"start:/t.jsonl"}"#)
+        #expect(event == RemoteAgentChannel.Event(
+            agent: "claude", pane: "P1", state: "start:/t.jsonl"))
+        #expect(RemoteAgentChannel.parse(line: "not json") == nil)
+        #expect(RemoteAgentChannel.parse(
+            line: #"{"agent":"","pane":"P1","state":"start:"}"#) == nil)
+        #expect(RemoteAgentChannel.parse(
+            line: #"{"agent":"pi","pane":"P1"}"#) == nil)
+    }
+
+    /// The generated remote installer carries every harness: the
+    /// payload decodes to the hook script, the three JSON-hook specs,
+    /// the Antigravity group, and the plugin/extension files.
+    @Test func remoteInstallerPayload() throws {
+        let script = RemoteAgentInstall.installerScript()
+        #expect(script.hasPrefix("import base64"))
+        #expect(script.contains("SKIPPED"))
+        let start = try #require(script.range(of: "b64decode(\""))
+        let rest = script[start.upperBound...]
+        let end = try #require(rest.firstIndex(of: "\""))
+        let payloadData = try #require(
+            Data(base64Encoded: String(rest[..<end])))
+        let payload = try #require(
+            (try JSONSerialization.jsonObject(with: payloadData)) as? [String: Any])
+        #expect((payload["hookScript"] as? String)?.isEmpty == false)
+        let specs = try #require(payload["hookSpecs"] as? [[String: Any]])
+        #expect(Set(specs.compactMap { $0["identity"] as? String })
+                    == ["claude", "codex", "muse"])
+        let files = try #require(payload["files"] as? [[String]])
+        #expect(files.count == 4)
+        #expect(files[0][0].contains("opencode"))
+        #expect(files[3][0].contains("antigravity-statusline"))
+    }
+
+    /// The remote installer, executed with python3 against a fake
+    /// home, lands every harness's files and merges hooks without
+    /// disturbing a pre-existing user hook. This is the exact script
+    /// `ssh <host> python3 -` runs.
+    @Test func remoteInstallerExecutesAgainstFakeHome() throws {
+        let dir = try scratch()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let home = "\(dir)/home"
+        try FileManager.default.createDirectory(
+            atPath: "\(home)/.claude", withIntermediateDirectories: true)
+        try #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo mine"}]}]}}"#
+            .write(toFile: "\(home)/.claude/settings.json",
+                   atomically: true, encoding: .utf8)
+
+        let scriptPath = "\(dir)/installer.py"
+        try RemoteAgentInstall.installerScript().write(
+            toFile: scriptPath, atomically: true, encoding: .utf8)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        p.arguments = [scriptPath]
+        var env = ProcessInfo.processInfo.environment
+        env["HOME"] = home
+        p.environment = env
+        let outPipe = Pipe()
+        p.standardOutput = outPipe
+        p.standardError = outPipe
+        try p.run()
+        p.waitUntilExit()
+        let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(),
+                         encoding: .utf8) ?? ""
+        #expect(p.terminationStatus == 0, "installer failed: \(out)")
+        #expect(out.contains("hooks: claude"))
+
+        let fm = FileManager.default
+        #expect(fm.fileExists(atPath: "\(home)/.conterm/agent-hook.sh"))
+        #expect(fm.fileExists(atPath: "\(home)/.config/opencode/plugin/conterm-agent.js"))
+        #expect(fm.fileExists(atPath: "\(home)/.pi/agent/extensions/conterm-agent.ts"))
+        #expect(fm.fileExists(atPath: "\(home)/.omp/agent/extensions/conterm-agent.ts"))
+        #expect(fm.fileExists(atPath: "\(home)/.claude/settings.json.conterm-backup"))
+
+        let claude = try String(contentsOfFile: "\(home)/.claude/settings.json",
+                                encoding: .utf8)
+        #expect(claude.contains("echo mine"))          // user's hook kept
+        #expect(claude.contains("# conterm"))          // ours merged in
+        let antigravity = try String(
+            contentsOfFile: "\(home)/.gemini/config/hooks.json", encoding: .utf8)
+        #expect(antigravity.contains("\"conterm\""))
+        #expect(antigravity.contains("PreInvocation"))
+    }
+
     /// The Pi-family template carries the harness identity, the OSC
     /// prefix, and the remote-socket env hook; install/uninstall
     /// round-trips at the given path.

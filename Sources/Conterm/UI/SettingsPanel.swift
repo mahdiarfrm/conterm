@@ -24,6 +24,8 @@ struct SettingsPanel: View {
     @State private var antigravityIntegrationOn = false
     @State private var piIntegrationOn = false
     @State private var ompIntegrationOn = false
+    @State private var remoteInstallHost: String = ""
+    @State private var remoteInstallStatus: String = ""
     @State private var themeFilter: String = ""
 
     enum Section: String, CaseIterable, Identifiable {
@@ -955,6 +957,28 @@ struct SettingsPanel: View {
                     ).withSound())
                     .toggleStyle(.drop)
                     .labelsHidden()
+                }
+                SettingsRow(title: "Agent integration on an SSH host",
+                            subtitle: remoteInstallStatus.isEmpty
+                                ? "Install the same hooks on a remote host or Coder workspace (key/agent auth only — no password prompt). Then plain ssh from a pane forwards agent status back, tmux included."
+                                : remoteInstallStatus) {
+                    HStack(spacing: 8) {
+                        TextField("host", text: $remoteInstallHost)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 130)
+                        Button("Install") {
+                            let host = remoteInstallHost
+                                .trimmingCharacters(in: .whitespaces)
+                            guard !host.isEmpty else { return }
+                            remoteInstallStatus = "Installing on \(host)…"
+                            RemoteAgentInstall.install(host: host) { out in
+                                remoteInstallStatus = out
+                            }
+                        }
+                        .buttonStyle(.drop)
+                        .disabled(remoteInstallHost
+                            .trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
                 }
                 SettingsRow(title: "Diagnostic logging",
                             subtitle: "Write internal events to ~/Library/Logs/Conterm/conterm.log. A development aid; off by default.") {
