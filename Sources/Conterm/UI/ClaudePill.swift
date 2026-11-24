@@ -43,8 +43,8 @@ struct AgentPill: View {
             mark
             Text(status.label)
                 .font(Drop.display(13, .semibold))
-                // Follows the bed (PanePill), which is light under a light
-                // tint and dark otherwise.
+                // Follows the bed (PanePill), which is light over a light
+                // terminal background and dark otherwise.
                 .foregroundStyle(PanePill.ink)
                 .lineLimit(1)
                 .fixedSize()
@@ -88,7 +88,7 @@ struct AgentPill: View {
         .onReceive(SystemPressure.shared.$wantsLowAnimation) { systemLite = $0 }
     }
 
-    /// Flat near-black capsule bed — opaque so the streaming terminal
+    /// Flat capsule bed, light or dark with the terminal — opaque so the streaming terminal
     /// behind costs nothing, with the shared edge light for definition when
     /// the animated ring is quiet.
     private var flatPillBackground: some View {

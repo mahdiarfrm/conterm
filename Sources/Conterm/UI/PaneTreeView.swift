@@ -25,8 +25,9 @@ func makePaneSurface(pane: Pane,
     controller.paneID = pane.id
     controller.fontSize = fontSize
     pane.controller = controller
-    if pane.terminalIsLight != app.backgroundIsLight {
-        pane.terminalIsLight = app.backgroundIsLight
+    controller.background = .init(base: app.background)
+    if pane.terminalIsLight != controller.background.isLight {
+        pane.terminalIsLight = controller.background.isLight
     }
     controller.onBackgroundChange = { [weak pane] light in
         if pane?.terminalIsLight != light { pane?.terminalIsLight = light }
@@ -1150,7 +1151,8 @@ struct PaneChrome: View {
             && KubeContextWatch.isDanger(pane.kubeSessionContext ?? kube.current)
     }
     private var focusTint: Color {
-        paneKubeDanger ? Color(red: 1.0, green: 0.30, blue: 0.30) : Theme.highlight
+        paneKubeDanger ? Color(red: 1.0, green: 0.30, blue: 0.30)
+            : pane.terminalIsLight ? Theme.sshAccentDeep : Theme.highlight
     }
 
     /// One rim stroke concentric with the tile. `inset` is the stroke's
@@ -1217,12 +1219,17 @@ struct PaneChrome: View {
                 // over the aurora backdrop, so on an inactive tile it
                 // reads as a stray white edge where the tile meets the
                 // window's bright top band.
-                rim(isActive ? Color.white.opacity(0.55) : Color.white.opacity(0.05),
+                // Over a light terminal white vanishes into the tile edge,
+                // so the rim is dark there and the additive one is skipped.
+                let light = pane.terminalIsLight
+                rim((light ? Color.black : .white).opacity(isActive ? (light ? 0.35 : 0.55) : 0.05),
                     width: isActive ? 1 : 0.5,
                     inset: isActive ? 0.5 : 0.25)
                 if isActive {
-                    rim(Color.white.opacity(0.32), width: 1.5, inset: 0.75)
-                        .blendMode(.plusLighter)
+                    if !light {
+                        rim(Color.white.opacity(0.32), width: 1.5, inset: 0.75)
+                            .blendMode(.plusLighter)
+                    }
                     rim(focusTint.opacity(paneKubeDanger ? 0.30 : 0.18),
                         width: 3, inset: 1.5)
                     rim(focusTint.opacity(0.75), width: 1.5, inset: 0.75)

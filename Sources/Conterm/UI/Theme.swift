@@ -88,6 +88,11 @@ enum Theme {
     }
     /// SSH cyan on the chips; `sshAccentDeep` on the light bed.
     static let sshOnChip     = onChipTone(sshAccent, light: NSColor(sshAccentDeep))
+    /// Success green and failure red on the chips.
+    static let goodOnChip    = onChipTone(Color(red: 0.45, green: 0.86, blue: 0.55),
+        light: NSColor(srgbRed: 0.10, green: 0.58, blue: 0.30, alpha: 1))
+    static let badOnChip     = onChipTone(Color(red: 1.0, green: 0.42, blue: 0.42),
+        light: NSColor(srgbRed: 0.80, green: 0.16, blue: 0.16, alpha: 1))
     /// Pale amber on dark glass; a deeper amber under a light tint, where
     /// the pale one washes out.
     static let warning       = dynamic(

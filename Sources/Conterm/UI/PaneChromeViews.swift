@@ -7,7 +7,7 @@ import SwiftUI
 /// card's rim, so the button promises the surface it opens.
 struct HostInfoButton: View {
     var action: () -> Void
-    /// Light chrome tint: additive blend vanishes on light backdrops,
+    /// Light terminal background: additive blend vanishes on light backdrops,
     /// so the ring draws normally there.
     var light: Bool = false
     @State private var hovering = false
@@ -15,7 +15,7 @@ struct HostInfoButton: View {
     var body: some View {
         Button(action: action) {
             // Floats over the terminal on the chip bed; `onChip` follows
-            // that bed (dark, or light under a light tint).
+            // that bed (dark, or light over a light terminal).
             Image(systemName: "info")
                 .font(.system(size: 8.5, weight: .bold))
                 .foregroundStyle(Theme.onChip.opacity(hovering ? 0.95 : 0.72))
@@ -327,8 +327,8 @@ struct UploadBadge: View {
     private var tint: Color {
         switch upload.phase {
         case .uploading: return Theme.sshOnChip
-        case .done:      return Color(red: 0.45, green: 0.86, blue: 0.55)
-        case .failed:    return Color(red: 1.0, green: 0.42, blue: 0.42)
+        case .done:      return Theme.goodOnChip
+        case .failed:    return Theme.badOnChip
         }
     }
     private var label: String {

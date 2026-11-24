@@ -86,6 +86,11 @@ extension AgentToolKind {
         case .github: return ChipTones.github
         case .shell:  return ChipTones.shell
         case .todo:   return ChipTones.todo
+        case .read:   return ChipTones.read
+        case .edit:   return ChipTones.edit
+        case .search: return ChipTones.search
+        case .webSearch: return ChipTones.webSearch
+        case .skill:  return ChipTones.skill
         default:      return color
         }
     }
@@ -99,6 +104,16 @@ private enum ChipTones {
         light: NSColor(srgbRed: 0.38, green: 0.38, blue: 0.40, alpha: 1))
     static let todo = Theme.onChipTone(AgentToolKind.todo.color,
         light: NSColor(srgbRed: 0.78, green: 0.52, blue: 0.00, alpha: 1))
+    static let read = Theme.onChipTone(AgentToolKind.read.color,
+        light: NSColor(srgbRed: 0.20, green: 0.42, blue: 0.78, alpha: 1))
+    static let edit = Theme.onChipTone(AgentToolKind.edit.color,
+        light: NSColor(srgbRed: 0.10, green: 0.58, blue: 0.30, alpha: 1))
+    static let search = Theme.onChipTone(AgentToolKind.search.color,
+        light: NSColor(srgbRed: 0.50, green: 0.28, blue: 0.78, alpha: 1))
+    static let webSearch = Theme.onChipTone(AgentToolKind.webSearch.color,
+        light: NSColor(srgbRed: 0.00, green: 0.50, blue: 0.50, alpha: 1))
+    static let skill = Theme.onChipTone(AgentToolKind.skill.color,
+        light: NSColor(srgbRed: 0.72, green: 0.30, blue: 0.62, alpha: 1))
 }
 
 /// One kind of call in flight as a bubble: the mark, monochrome on the

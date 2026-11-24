@@ -6,8 +6,8 @@ import Testing
 @testable import Conterm
 
 /// The pane chips take a light or dark bed from the terminal background's
-/// luminance, never the glass tint, and their dark bed must stay exactly
-/// what it was before the light bed existed.
+/// luminance, never the glass tint, and their dark values equal the pinned
+/// sRGB constants.
 @MainActor
 struct PaneChipToneTests {
 
@@ -37,20 +37,37 @@ struct PaneChipToneTests {
     /// The signal is read from libghostty's resolved config, so the
     /// `background` getter must actually return the colour.
     @Test func resolvedConfigBackgroundDecidesTheBed() {
-        #expect(Self.withConfig("") { Ghostty.App.backgroundIsLight($0) } == false)
-        #expect(Self.withConfig("background = #fdf6e3\n") {
-            Ghostty.App.backgroundIsLight($0)
-        } == true)
+        func isLight(_ text: String) -> Bool? {
+            Self.withConfig(text) {
+                Ghostty.App.backgroundColor($0).map { Ghostty.TerminalBackground(base: $0).isLight }
+            } ?? nil
+        }
+        #expect(isLight("") == false)
+        #expect(isLight("background = #fdf6e3\n") == true)
         #expect(Self.withConfig("background = #282c34\n") {
             Ghostty.App.backgroundColor($0).map { [$0.r, $0.g, $0.b] }
         } == [0x28, 0x2c, 0x34])
     }
 
-    // MARK: - Dark is unchanged
+    @Test func aConfigChangeKeepsTheProgramsBackground() {
+        let dark = Ghostty.TerminalBackground.RGB(r: 0x28, g: 0x2c, b: 0x34)
+        let darker = Ghostty.TerminalBackground.RGB(r: 0, g: 0, b: 0)
+        let white = Ghostty.TerminalBackground.RGB(r: 255, g: 255, b: 255)
+        var bg = Ghostty.TerminalBackground(base: dark)
+        bg.programSet(white)    // OSC 11
+        #expect(bg.isLight)
+        bg.base = darker        // theme pick, reload
+        #expect(bg.isLight)
+        bg.programSet(darker)   // OSC 111 reports the new default
+        #expect(!bg.isLight)
+        bg.base = white         // no override left
+        #expect(bg.isLight)
+    }
 
-    /// Every chip colour's dark value against the SwiftUI sRGB value it
-    /// replaced, compared in sRGB.
-    @Test func darkValuesMatchTheOldSRGBColors() {
+    // MARK: - Dark values
+
+    /// Every chip colour's dark value equals its pinned sRGB constant.
+    @Test func darkValuesEqualThePinnedSRGBConstants() {
         let pairs: [(String, Color, Color)] = [
             ("paneTitleBar", Theme.paneTitleBar, Color(red: 0.12, green: 0.13, blue: 0.16)),
             ("paneRemoteBar", Theme.paneRemoteBar, Color(red: 0.07, green: 0.13, blue: 0.20)),
@@ -60,10 +77,12 @@ struct PaneChipToneTests {
             ("onChip", Theme.onChip, Color.white),
             ("onChipAccent", Theme.onChipAccent, Theme.accentOnDark),
             ("sshOnChip", Theme.sshOnChip, Theme.sshAccent),
+            ("goodOnChip", Theme.goodOnChip, Color(red: 0.45, green: 0.86, blue: 0.55)),
+            ("badOnChip", Theme.badOnChip, Color(red: 1.0, green: 0.42, blue: 0.42)),
         ] + AgentToolKind.allCases.map { ("kind.\($0)", $0.chipColor, $0.color) }
-        for (name, now, old) in pairs {
+        for (name, now, pinned) in pairs {
             let a = Self.srgb(now, dark: true)
-            let b = Self.srgb(old, dark: true)
+            let b = Self.srgb(pinned, dark: true)
             for i in 0..<4 {
                 #expect(abs(a[i] - b[i]) < 1e-4, "\(name) component \(i): \(a) vs \(b)")
             }
@@ -80,12 +99,13 @@ struct PaneChipToneTests {
         }
     }
 
-    /// The pale accents get a shade that holds up on the light bed.
-    @Test func paleAccentsDeepenOnTheLightBed() {
-        for kind in [AgentToolKind.ssh, .github, .shell, .todo] {
-            let dark = Self.luminance(Self.srgb(kind.chipColor, dark: true))
-            let light = Self.luminance(Self.srgb(kind.chipColor, dark: false))
-            #expect(light < dark - 0.15, "\(kind): \(light) vs \(dark)")
+    /// No accent stays pale on the light bed.
+    @Test func everyAccentHoldsUpOnTheLightBed() {
+        let accents = AgentToolKind.allCases.map { ("\($0)", $0.chipColor) }
+            + [("good", Theme.goodOnChip), ("bad", Theme.badOnChip)]
+        for (name, color) in accents {
+            let light = Self.luminance(Self.srgb(color, dark: false))
+            #expect(light < 0.65, "\(name): \(light)")
         }
     }
 

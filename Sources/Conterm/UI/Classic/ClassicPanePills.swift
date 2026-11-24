@@ -48,8 +48,8 @@ struct ClassicAgentPill: View {
             mark
             Text(status.label)
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
-                // Follows the bed (PanePill), which is light under a light
-                // tint and dark otherwise.
+                // Follows the bed (PanePill), which is light over a light
+                // terminal background and dark otherwise.
                 .foregroundStyle(PanePill.ink)
                 .lineLimit(1)
                 .fixedSize()
@@ -331,7 +331,7 @@ struct ClassicAgentToolHistoryButton: View {
             .padding(.leading, 10).padding(.trailing, 7)
             .frame(height: height)
             .background(glass)
-            .glassPill()
+            .glassPill(light: scheme == .light)
             .shadow(color: .black.opacity(hovering ? 0.35 : 0.22),
                     radius: hovering ? 8 : 4, y: 1)
             .contentShape(Capsule())
@@ -359,16 +359,13 @@ struct ClassicCommandBadge: View {
     let result: Pane.CommandResult
     @EnvironmentObject var prefs: Preferences
     @Environment(\.colorScheme) private var scheme
-    /// The success green, deeper on the light bed.
-    private static let good = Theme.onChipTone(Color(red: 0.45, green: 0.86, blue: 0.55),
-        light: NSColor(srgbRed: 0.10, green: 0.58, blue: 0.30, alpha: 1))
 
     private var unknownExit: Bool { result.exitCode < 0 }
 
     private var tint: Color {
         if unknownExit { return Theme.onChip.opacity(0.6) }
         return result.failed ? Color(red: 1.0, green: 0.42, blue: 0.42)
-                             : Self.good
+                             : Theme.goodOnChip
     }
     private var icon: String {
         if unknownExit { return "clock" }
