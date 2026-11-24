@@ -60,6 +60,8 @@ func makePaneSurface(pane: Pane,
                     if pane?.remoteHost != host { pane?.remoteHost = host }
                     // This path *is* the far end reporting where it is.
                     pane?.cwdIsRemote = true
+                    // A dial may be what the transcript tail was
+                    // waiting for.
                 }
             }
             if let tab = owningTab {
@@ -152,6 +154,15 @@ func makePaneSurface(pane: Pane,
             guard let toolRaw = parts.first else { return }
             let tool = AgentTool(rawValue: toolRaw) ?? .generic
             let stateStr = parts.count > 1 ? parts[1] : ""
+            // A usage report, not a phase: the harness's own token /
+            // cost totals (Antigravity's status line). Carried on the
+            // pane for AgentCenter; never moves the pill.
+            if stateStr == "usage", parts.count > 2,
+               let usage = ReportedUsage.decodeEvent(parts[2]) {
+                pane.reportedUsage = usage
+                AgentCenter.shared.noteAgentActivity()
+                return
+            }
             // A tool call, not a phase: `tool:start:…` / `tool:end:…` (see
             // AgentToolEvent). Only a live session's calls count — a pill that
             // isn't showing has no bubbles to hang. A call starting is also
@@ -168,7 +179,9 @@ func makePaneSurface(pane: Pane,
                 AgentCenter.shared.scheduleToolEnrichment()
                 return
             }
-            if parts.count > 2, !parts[2].isEmpty { pane.agentTranscriptPath = parts[2] }
+            if parts.count > 2, !parts[2].isEmpty {
+                pane.agentTranscriptPath = parts[2]
+            }
             let phase: AgentStatus.Phase
             switch stateStr {
             case "start", "idle", "stop": phase = .ready
@@ -177,7 +190,9 @@ func makePaneSurface(pane: Pane,
             case "end", "exit":           phase = .idle
             default:                      return
             }
-            if phase == .idle { pane.agentTranscriptPath = nil }
+            if phase == .idle {
+                pane.agentTranscriptPath = nil
+                }
             let prev = pane.agent.phase
             let next = AgentStatus(phase: phase, tool: tool, progress: nil)
             guard pane.agent != next else { return }
@@ -251,13 +266,14 @@ func makePaneSurface(pane: Pane,
 
     _ = controller.start(view: view)
     // A fresh surface starts from the app-level (global) config. If
-    // this window carries its own theme, layer it on now — splits
-    // and new tabs in a themed window open themed, not global.
+    // this pane's tab carries an effective theme (its own, else the
+    // window's), layer it on now — splits and new tabs in a themed
+    // tab open themed, not global.
     // Tab panes only: Orbit's floating terminals belong to no tab,
     // so `AppState.liveControllers` never re-themes them; they stay
     // on the global theme rather than freezing at creation time.
-    if owningTab != nil,
-       let themeID = state.effectiveWindowThemeID,
+    if let owningTab,
+       let themeID = state.effectiveThemeID(for: owningTab),
        !state.prefs.themeFromConfig {
         app.applyTheme(themeID, to: [controller])
     }
@@ -300,8 +316,8 @@ struct RestoreHandoff {
     /// Resume the agent if one was running, else replay the saved
     /// scrollback. nil for a plain pane (cwd alone covers it) or when the
     /// file can't be written.
-    static func make(resumeSession: String?, scrollback: String?,
-                     cwd: String?) -> RestoreHandoff? {
+    static func make(resumeSession: String?,
+                     scrollback: String?, cwd: String?) -> RestoreHandoff? {
         if let id = resumeSession, !id.isEmpty {
             // The session's own directory, from its transcript — not the
             // pane's. Claude runs full-screen and the shell emits no OSC 7

@@ -152,6 +152,13 @@ final class Pane: ObservableObject, Identifiable {
     /// transcript). Plain var: AgentCenter reads it on its refresh tick.
     var agentTranscriptPath: String?
 
+    /// Usage the harness reported about itself (Antigravity's status
+    /// line, over the socket/OSC usage event). Local panes are read
+    /// from the reporter's file instead; this carries remote panes,
+    /// whose home Conterm can't read. AgentCenter prefers the file
+    /// when both exist (it is at least as fresh).
+    var reportedUsage: AgentUsage?
+
     /// Live core-search state for this pane: match count and 1-based
     /// selected index, mirrored from libghostty's search engine. Both
     /// nil while no search session is active — the engine clears them
@@ -199,14 +206,20 @@ final class Pane: ObservableObject, Identifiable {
 }
 
 /// Which agent is running — selects the pill's logo + name.
+/// Raw values are the identities the hook script / extensions put
+/// after `conterm-agent:` — renaming one silently orphans it.
 enum AgentTool: String, Equatable {
-    case claude, opencode, codex, generic
+    case claude, opencode, codex, muse, antigravity, pi, omp, generic
     var displayName: String {
         switch self {
-        case .claude:   return "Claude"
-        case .opencode: return "opencode"
-        case .codex:    return "Codex"
-        case .generic:  return "Agent"
+        case .claude:      return "Claude"
+        case .opencode:    return "opencode"
+        case .codex:       return "Codex"
+        case .muse:        return "Muse"
+        case .antigravity: return "Antigravity"
+        case .pi:          return "Pi"
+        case .omp:         return "OMP"
+        case .generic:     return "Agent"
         }
     }
     /// Reads a session transcript Conterm can parse (see
@@ -219,7 +232,7 @@ enum AgentTool: String, Equatable {
         case .claude:   return "claude-mark"
         case .opencode: return "opencode-mark"
         case .codex:    return "codex-mark"
-        case .generic:  return nil
+        case .muse, .antigravity, .pi, .omp, .generic: return nil
         }
     }
     /// Mark for the floating status pill. Claude shows the Claude Code
@@ -238,25 +251,33 @@ enum AgentTool: String, Equatable {
         // render it as-is rather than flattening it to a tint.
         case .opencode: return false
         case .codex:    return true
-        case .generic:  return true
+        case .muse, .antigravity, .pi, .omp, .generic: return true
         }
     }
     /// SF Symbol used when the bundled mark isn't present.
     var fallbackSymbol: String {
         switch self {
-        case .claude:   return "sparkle"
-        case .opencode: return "chevron.left.forwardslash.chevron.right"
-        case .codex:    return "asterisk"
-        case .generic:  return "circle.dotted"
+        case .claude:      return "sparkle"
+        case .opencode:    return "chevron.left.forwardslash.chevron.right"
+        case .codex:       return "asterisk"
+        case .muse:        return "m.circle"
+        case .antigravity: return "globe"
+        case .pi:          return "pi"
+        case .omp:         return "o.circle"
+        case .generic:     return "circle.dotted"
         }
     }
     /// Accent / glow colour — per agent so the pill reads at a glance.
     var glowColor: Color {
         switch self {
-        case .claude:   return Color(red: 0.93, green: 0.49, blue: 0.20) // warm orange
-        case .opencode: return Color(red: 0.55, green: 0.36, blue: 0.92) // deep violet
-        case .codex:    return Color(red: 0.13, green: 0.55, blue: 0.90) // ChatGPT blue
-        case .generic:  return Color(red: 0.60, green: 0.78, blue: 1.00) // soft blue
+        case .claude:      return Color(red: 0.93, green: 0.49, blue: 0.20) // warm orange
+        case .opencode:    return Color(red: 0.55, green: 0.36, blue: 0.92) // deep violet
+        case .codex:       return Color(red: 0.13, green: 0.55, blue: 0.90) // ChatGPT blue
+        case .muse:        return Color(red: 0.15, green: 0.75, blue: 0.70) // teal
+        case .antigravity: return Color(red: 0.35, green: 0.55, blue: 1.00) // blue
+        case .pi:          return Color(red: 0.95, green: 0.75, blue: 0.25) // amber
+        case .omp:         return Color(red: 0.95, green: 0.45, blue: 0.65) // pink
+        case .generic:     return Color(red: 0.60, green: 0.78, blue: 1.00) // soft blue
         }
     }
 }
