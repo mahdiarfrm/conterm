@@ -2,12 +2,12 @@ import AppKit
 import Foundation
 
 /// Over-the-air updates straight from GitHub Releases — no server of our
-/// own. On launch (and on demand) we ask the GitHub API for the latest
-/// release of `mahdiarfrm/conterm`, compare its tag to this build's
-/// version, and surface a Liquid Glass "Update" pill in the toolbar when
-/// something newer exists. Installing downloads the release `.zip`,
-/// unpacks it, and hands a detached shell script the job of swapping the
-/// app bundle once we quit, then relaunching.
+/// own. On launch, every few hours while running, and on demand we ask the
+/// GitHub API for the latest release of `mahdiarfrm/conterm`, compare its
+/// tag to this build's version, and surface a Liquid Glass "Update" pill
+/// in the toolbar when something newer exists. Installing downloads the
+/// release `.zip`, unpacks it, and hands a detached shell script the job
+/// of swapping the app bundle once we quit, then relaunching.
 @MainActor
 final class UpdateChecker: ObservableObject {
     static let shared = UpdateChecker()
@@ -33,23 +33,41 @@ final class UpdateChecker: ObservableObject {
     @Published private(set) var latest: Release?
 
     private let repo = "mahdiarfrm/conterm"
-    private var dailyTimer: Timer?
+    private var recheckTimer: Timer?
+    private var wakeObserver: NSObjectProtocol?
+    /// Wall-clock time GitHub last answered a check. A failed check leaves
+    /// it alone, so the next tick tries again.
+    private var lastAnswered: Date?
+    /// Gap between checks while the app stays running, in wall-clock time.
+    static let recheckInterval: TimeInterval = 6 * 3600
 
-    /// Re-check once a day while the app stays running — long-lived
-    /// sessions otherwise only ever see the launch check. `enabled` is
-    /// read at each tick so the Settings toggle applies without a
-    /// relaunch; the wide tolerance lets the system coalesce the wake.
-    func beginDailyChecks(enabled: @escaping @MainActor () -> Bool) {
-        guard dailyTimer == nil else { return }
-        let t = Timer.scheduledTimer(withTimeInterval: 24 * 3600,
-                                     repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, enabled() else { return }
-                self.checkInBackground()
+    /// Re-check while the app stays running; long-lived sessions otherwise
+    /// only ever see the launch check. A timer's interval doesn't advance
+    /// while the Mac sleeps, so the hourly tick and each wake compare the
+    /// wall clock against the last answered check instead of waiting out
+    /// a long interval. `enabled` is read at each tick so the Settings
+    /// toggle applies without a relaunch.
+    func beginPeriodicChecks(enabled: @escaping @MainActor () -> Bool) {
+        guard recheckTimer == nil else { return }
+        let checkIfDue: @MainActor () -> Void = { [weak self] in
+            guard let self, enabled() else { return }
+            if let last = self.lastAnswered,
+               Date().timeIntervalSince(last) < Self.recheckInterval { return }
+            self.checkInBackground()
+        }
+        let t = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in
+            Task { @MainActor in checkIfDue() }
+        }
+        t.tolerance = 600
+        recheckTimer = t
+        // The network is rarely back the instant the Mac wakes.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+                MainActor.assumeIsolated { checkIfDue() }
             }
         }
-        t.tolerance = 3600
-        dailyTimer = t
     }
 
     var currentVersion: String {
@@ -102,6 +120,7 @@ final class UpdateChecker: ObservableObject {
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if code == 200 || code == 404 { lastAnswered = Date() }
             // 404 = repo has no published release yet. Treat as "current".
             if code == 404 {
                 latest = nil; phase = .upToDate
