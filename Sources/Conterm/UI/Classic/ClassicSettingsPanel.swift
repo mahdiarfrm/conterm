@@ -17,6 +17,8 @@ struct ClassicSettingsPanel: View {
     // would repeat a settings.json read + parse on the main thread. Config
     // isn't the default section, so the initial `false` is never shown.
     @State private var claudeIntegrationOn = false
+    @State private var claudeUsageTapOn = false
+    @State private var claudeUsageTapProblem: ClaudeUsageTap.Outcome?
     @State private var codexIntegrationOn = false
     @State private var codexAwaitsTrust = false
     @State private var openCodeIntegrationOn = false
@@ -47,6 +49,7 @@ struct ClassicSettingsPanel: View {
             // One disk read per panel-open for the integration toggles
             // (see the @State declarations above).
             claudeIntegrationOn = ClaudeIntegration.isInstalled
+            claudeUsageTapOn = ClaudeUsageTap.isInstalled
             codexIntegrationOn = CodexIntegration.isInstalled
             codexAwaitsTrust = CodexIntegration.awaitsTrust
             openCodeIntegrationOn = OpenCodeIntegration.isInstalled
@@ -929,6 +932,23 @@ struct ClassicSettingsPanel: View {
                     ).withSound())
                     .toggleStyle(.switch)
                     .labelsHidden()
+                }
+                SettingsRow(title: "Claude usage limits",
+                            subtitle: ClaudeUsageTap.settingsSubtitle(
+                                integrationOn: claudeIntegrationOn, problem: claudeUsageTapProblem)) {
+                    Toggle("", isOn: Binding(
+                        get: { claudeUsageTapOn },
+                        set: { on in
+                            let outcome = on ? ClaudeUsageTap.install() : ClaudeUsageTap.uninstall()
+                            claudeUsageTapProblem = outcome == .ok ? nil : outcome
+                            claudeUsageTapOn = ClaudeUsageTap.isInstalled
+                        }
+                    ).withSound())
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    // The widget only learns a Claude session is open from the
+                    // integration's hooks; an installed tap can still be removed.
+                    .disabled(!claudeIntegrationOn && !claudeUsageTapOn)
                 }
                 SettingsRow(title: "Codex integration",
                             subtitle: codexAwaitsTrust

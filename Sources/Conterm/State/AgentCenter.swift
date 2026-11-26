@@ -687,6 +687,13 @@ final class AgentCenter: ObservableObject {
     /// (event-driven, no timer), so the toolbar's agent pill can appear
     /// the moment an agent starts even with no center surface open.
     @Published private(set) var runningCount = 0
+    /// Which agent CLIs have a live session in any pane — gates the
+    /// usage-limits widget's providers. Kept beside `runningCount`.
+    @Published private(set) var openTools: Set<AgentTool> = []
+    /// Rollout files of the live Codex sessions, so the usage widget reads
+    /// them directly instead of finding `$CODEX_HOME`, which a Dock launch
+    /// doesn't inherit.
+    private(set) var codexTranscripts: [String] = []
 
     private let store = AgentTranscriptStore()
     private let ioQueue = DispatchQueue(label: "conterm.agentcenter.io", qos: .utility)
@@ -715,14 +722,13 @@ final class AgentCenter: ObservableObject {
     /// if a center surface is open, refreshes the roster immediately rather
     /// than waiting for the next 2s tick.
     func noteAgentActivity() {
-        let c = (NSApp.delegate as? AppDelegate)?.windows.reduce(0) { acc, wc in
-            acc + wc.state.tabs.reduce(0) { a, t in
-                a + t.paneTree.root.leaves().reduce(0) {
-                    $0 + ($1.agent.phase != .idle ? 1 : 0)
-                }
-            }
-        } ?? 0
-        if c != runningCount { runningCount = c }
+        let panes = (NSApp.delegate as? AppDelegate)?.windows.flatMap { wc in
+            wc.state.tabs.flatMap { $0.paneTree.root.leaves() }
+        }.filter { $0.agent.phase != .idle } ?? []
+        if panes.count != runningCount { runningCount = panes.count }
+        let tools = Set(panes.map(\.agent.tool))
+        if tools != openTools { openTools = tools }
+        codexTranscripts = panes.filter { $0.agent.tool == .codex }.compactMap(\.agentTranscriptPath)
         if observers > 0 { refresh() }
         syncToolPoll()
     }
