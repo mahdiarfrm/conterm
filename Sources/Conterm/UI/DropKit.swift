@@ -19,6 +19,17 @@ enum Drop {
     static let bad = Color(red: 1.00, green: 0.44, blue: 0.46)
     static let warn = Theme.warning
 
+    /// `color` deepened to read as text on light glass. The status tones
+    /// are tuned pale for dark glass and wash out on a light bed; this
+    /// keeps the hue and drops the brightness to text contrast.
+    static func inkOnLight(_ color: Color) -> Color {
+        guard let c = NSColor(color).usingColorSpace(.sRGB) else { return color }
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return Color(nsColor: NSColor(hue: h, saturation: min(1, s * 1.3 + 0.15),
+                                      brightness: b * 0.55, alpha: a))
+    }
+
     /// Categorical tints for chips and marks: one quiet family, a step of
     /// hue apart, so kinds can be told apart without the card turning
     /// colourful. Status colours (`good`/`warn`/`bad`) stay the loud ones.
@@ -210,8 +221,11 @@ struct DropEyebrow: View {
         self.text = text; self.tint = tint; self.branded = branded
     }
 
+    @Environment(\.colorScheme) private var scheme
+
     var body: some View {
-        let ink = tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(Drop.sheen)
+        let tone = tint.map { scheme == .light ? Drop.inkOnLight($0) : $0 }
+        let ink = tone.map { AnyShapeStyle($0) } ?? AnyShapeStyle(Drop.sheen)
         HStack(spacing: 8) {
             if branded {
                 ContermGlyph().fill(ink).frame(width: 18, height: 18)
@@ -221,7 +235,7 @@ struct DropEyebrow: View {
             Text(text.uppercased())
                 .font(Drop.mono(9.5, .medium))
                 .kerning(2.2)
-                .foregroundStyle(tint ?? Theme.textSecondary)
+                .foregroundStyle(tone ?? Theme.textSecondary)
         }
     }
 }
