@@ -343,6 +343,11 @@ Treat it as beta.
   the close prompt share it; the selected tab is a drop that flows from tab
   to tab. **Classic**, the flat-card interface, stays one click away
   (*Settings → Appearance → Interface*, or the setup wizard).
+- **Follow system appearance** — pair a light and a dark theme in
+  *Settings → Appearance* and both the theme and the glass tint switch with
+  macOS. Your own `theme =` line stays in the config, so a user theme that
+  sets only some colours (say `background` and `foreground`) takes the rest,
+  such as the palette, cursor and selection, from that line's theme.
 - **Liquid Glass chrome** *(macOS 26)* — refractive glass behind every surface
   with a Clear↔Frosted slider and light/dark tint, plus an opaque Solid mode
   when you want it. On macOS 14–15 the app runs fully with plain (non-glass)

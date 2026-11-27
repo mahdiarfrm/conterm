@@ -98,8 +98,26 @@ struct UserThemeTests {
             #expect(dir() == "bundled")
             try write(colors, user, "Mine")
             #expect(dir() == "bundled")
-            ThemeCatalog.forgetResolvedURLs()
+            // Only this test's key: the cache is global and other suites run in parallel.
+            ThemeCatalog.resolvedURLs.withLock { $0[ThemeCatalog.URLKey(id: "Mine", dirs: [bundled, user])] = nil }
             #expect(dir() == "user")
+        }
+    }
+
+    @Test func aDeletedFileResolvesAgain() throws {
+        try withDirs { bundled, user in
+            func dir() -> String? {
+                ThemeCatalog.url(forThemeID: "Gone", in: [bundled, user])?
+                    .deletingLastPathComponent().lastPathComponent
+            }
+            try write(colors, bundled, "Gone")
+            try write(colors, user, "Gone")
+            #expect(dir() == "user")
+            try FileManager.default.removeItem(at: user.appendingPathComponent("Gone"))
+            #expect(dir() == "bundled")
+            try FileManager.default.removeItem(at: bundled.appendingPathComponent("Gone"))
+            #expect(dir() == nil)
+            #expect(ThemeCatalog.resolvedURLs.withLock { $0[ThemeCatalog.URLKey(id: "Gone", dirs: [bundled, user])] } == nil)
         }
     }
 }

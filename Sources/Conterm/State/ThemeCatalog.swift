@@ -161,7 +161,10 @@ final class ThemeCatalog: ObservableObject {
     nonisolated static func url(forThemeID id: String,
                                 in dirs: [URL] = themeDirectories()) -> URL? {
         let key = URLKey(id: id, dirs: dirs)
-        if let known = resolvedURLs.withLock({ $0[key] }) { return known }
+        // A deleted file resolves again, so a removed user theme falls back
+        // to the bundled one it shadowed.
+        if let known = resolvedURLs.withLock({ $0[key] }),
+           FileManager.default.fileExists(atPath: known.path) { return known }
         let files = dirs.reversed().flatMap { dir in
             themeNames(in: dir).sorted().map(dir.appendingPathComponent)
         }
@@ -173,7 +176,7 @@ final class ThemeCatalog: ObservableObject {
         }
         let found = firstTheme { $0 == id }
             ?? firstTheme { $0.caseInsensitiveCompare(id) == .orderedSame }
-        if let found { resolvedURLs.withLock { $0[key] = found } }
+        resolvedURLs.withLock { $0[key] = found }
         return found
     }
 
