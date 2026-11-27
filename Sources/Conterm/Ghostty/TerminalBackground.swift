@@ -10,7 +10,9 @@ extension Ghostty {
         init(base: RGB) { self.base = base }
 
         /// OSC 111 is reported as a change to the default color, so that
-        /// value ends the override.
+        /// value ends the override. A program that sets exactly the config
+        /// background is read as a reset too, until the kit reports resets
+        /// separately.
         mutating func programSet(_ color: RGB) {
             program = color == base ? nil : color
         }
