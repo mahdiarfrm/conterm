@@ -1069,8 +1069,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         ]
     }
 
-    /// Subtle window scale-in when the app first launches — the
-    /// LaunchOverlay handles the foreground show; this gives the window
+    /// Subtle window scale-in when the app first launches — the launch
+    /// intro handles the foreground show; this gives the window
     /// itself a tiny rise so it doesn't pop in flat.
     private func runLaunchScaleIn() {
         guard let w = window else { return }

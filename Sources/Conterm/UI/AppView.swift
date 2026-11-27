@@ -950,7 +950,7 @@ struct AppView: View {
     @ViewBuilder
     private var launchOverlay: some View {
         if state.launchOverlayVisible {
-            LaunchOverlayHost(liquidDrop: prefs.liquidDrop,
+            LaunchOverlayHost(light: prefs.lightGlass,
                               playSound: prefs.launchSoundEnabled) {
                 state.dismissLaunchOverlay()
             }

@@ -355,7 +355,8 @@ final class AppState: ObservableObject {
         }
         guard !launchDismissScheduled else { return }
         launchDismissScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { [weak self] in
+        // The intro ends itself at about 2.3 s; this is the backstop.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) { [weak self] in
             guard let self else { return }
             withAnimation(.easeOut(duration: 0.35)) {
                 self.launchOverlayVisible = false
