@@ -109,6 +109,9 @@ extension Ghostty {
         /// rows). `total == len` means there is no scrollback — the
         /// terminal is on the alternate screen or freshly cleared.
         var onScrollbar: ((UInt64, UInt64, UInt64) -> Void)?
+        var background = TerminalBackground(base: .init(r: 0, g: 0, b: 0))
+        /// Fires with whether the terminal background is now light.
+        var onBackgroundChange: ((Bool) -> Void)?
 
         /// The pane's SSH target when one is live (nil for local shells)
         /// and the action opening its Host Overview — both feed the
@@ -721,6 +724,10 @@ extension Ghostty {
             /// pane can appear frozen or black while the pty and
             /// input keep working.
             case rendererHealth(healthy: Bool)
+            /// A new config's background (global reload, window theme).
+            case configBackground(TerminalBackground.RGB)
+            /// The program set the background (OSC 11) or reset it (OSC 111).
+            case programBackground(TerminalBackground.RGB)
         }
 
         func handle(decoded: DecodedAction) {
@@ -801,6 +808,14 @@ extension Ghostty {
                 // On recovery the last errored frame was never presented;
                 // force one so the pane doesn't hold a stale image.
                 if healthy { draw() }
+
+            case .configBackground(let color):
+                background.base = color
+                onBackgroundChange?(background.isLight)
+
+            case .programBackground(let color):
+                background.programSet(color)
+                onBackgroundChange?(background.isLight)
             }
         }
 

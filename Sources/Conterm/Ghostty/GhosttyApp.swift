@@ -34,6 +34,10 @@ extension Ghostty {
         }
         private(set) var inheritWorkingDirectory = InheritWorkingDirectory()
 
+        /// The app config's terminal background; a new pane seeds its
+        /// chips from it until its own surface reports.
+        private(set) var background = TerminalBackground.RGB(r: 0, g: 0, b: 0)
+
         /// Coalesces libghostty wakeups into one queued tick. `wakeup_cb`
         /// fires far faster than the main runloop drains — and a tick can
         /// itself schedule the next wakeup — so posting one `app.tick()`
@@ -177,6 +181,7 @@ extension Ghostty {
 
             self.config = cfg
             self.inheritWorkingDirectory = App.readInheritWorkingDirectory(cfg)
+            self.background = App.backgroundColor(cfg) ?? self.background
             self.handle = nil  // satisfy "all properties initialized"
 
             // Reserve the back-pointer slot. We can't take Unmanaged of self
@@ -273,6 +278,7 @@ extension Ghostty {
             // Surface.updateConfig as `ghostty_surface_update_config`.
             ghostty_app_update_config(handle, newCfg)
             inheritWorkingDirectory = App.readInheritWorkingDirectory(newCfg)
+            background = App.backgroundColor(newCfg) ?? background
             // Free the ephemeral config — both app + surfaces have
             // copied what they need internally.
             ghostty_config_free(newCfg)
@@ -688,6 +694,18 @@ extension Ghostty {
                 ghostty_config_get(cfg, &value, keyPtr, UInt(strlen(keyPtr)))
             }
             return ok ? value : fallback
+        }
+
+        /// The resolved `background` colour, nil if the key can't be read.
+        nonisolated static func backgroundColor(
+            _ cfg: ghostty_config_t
+        ) -> TerminalBackground.RGB? {
+            var color = ghostty_config_color_s()
+            let key = "background"
+            let ok = key.withCString { keyPtr in
+                ghostty_config_get(cfg, &color, keyPtr, UInt(strlen(keyPtr)))
+            }
+            return ok ? .init(r: color.r, g: color.g, b: color.b) : nil
         }
 
         /// Defaults mirror libghostty's own (all three inherit).

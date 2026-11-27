@@ -143,6 +143,19 @@ extension Ghostty {
                     decoded = .openURL(String(decoding: Data(bytes: c, count: Int(u.len)),
                                               as: UTF8.self))
                 } else { decoded = nil }
+            case GHOSTTY_ACTION_CONFIG_CHANGE:
+                // The config is libghostty's, alive only for this call.
+                decoded = action.action.config_change.config
+                    .flatMap(Ghostty.App.backgroundColor)
+                    .map { .configBackground($0) }
+            case GHOSTTY_ACTION_COLOR_CHANGE:
+                // OSC 21 background changes send no color_change, so the tone
+                // doesn't track them. OSC 111 arrives as the config color, so a
+                // program setting exactly the config background also counts as
+                // a reset, until the kit reports resets separately.
+                let c = action.action.color_change
+                decoded = c.kind == GHOSTTY_ACTION_COLOR_KIND_BACKGROUND
+                    ? .programBackground(.init(r: c.r, g: c.g, b: c.b)) : nil
             default:
                 decoded = nil
             }

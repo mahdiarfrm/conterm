@@ -298,8 +298,8 @@ struct OverlayPanelBackground: View {
 /// a touch so an active control reads as more present without changing the
 /// material.
 @MainActor
-func chromeFill(_ prefs: Preferences, selected: Bool = false) -> Color {
-    if prefs.lightGlass {
+func chromeFill(_ prefs: Preferences, selected: Bool = false, light: Bool? = nil) -> Color {
+    if light ?? prefs.lightGlass {
         return Color.white.opacity(selected ? 0.58 : 0.40)
     }
     return Color.black.opacity(selected ? 0.32 : 0.20)
@@ -309,16 +309,18 @@ func chromeFill(_ prefs: Preferences, selected: Bool = false) -> Color {
 /// catches the rim. Used with `.blendMode(.plusLighter)` so it only ever
 /// brightens.
 @MainActor
-func chromeEdge(_ prefs: Preferences) -> [Color] {
-    prefs.lightGlass
+func chromeEdge(_ prefs: Preferences, light: Bool? = nil) -> [Color] {
+    (light ?? prefs.lightGlass)
         ? [Color.white.opacity(0.85), Color.white.opacity(0.20)]
         : [Color.white.opacity(0.30), Color.white.opacity(0.06)]
 }
 
 extension View {
-    /// Wrap a pill/capsule control in the flat chrome capsule.
-    func glassPill() -> some View {
-        modifier(GlassPillModifier())
+    /// Wrap a pill/capsule control in the flat chrome capsule. `light`
+    /// overrides the glass tint for a pill that sits on something else;
+    /// Classic only, the Liquid Drop lens always follows the tint.
+    func glassPill(light: Bool? = nil) -> some View {
+        modifier(GlassPillModifier(light: light))
     }
 
     /// Conditionally wrap in a glass pill — when `enabled` is false the
@@ -331,6 +333,7 @@ extension View {
 }
 
 private struct GlassPillModifier: ViewModifier {
+    let light: Bool?
     @EnvironmentObject private var prefs: Preferences
 
     @ViewBuilder
@@ -344,11 +347,11 @@ private struct GlassPillModifier: ViewModifier {
 
     private func classic(_ content: Content) -> some View {
         content
-            .background(Capsule(style: .continuous).fill(chromeFill(prefs)))
+            .background(Capsule(style: .continuous).fill(chromeFill(prefs, light: light)))
             .overlay(
                 Capsule(style: .continuous)
                     .strokeBorder(
-                        LinearGradient(colors: chromeEdge(prefs),
+                        LinearGradient(colors: chromeEdge(prefs, light: light),
                                        startPoint: .top, endPoint: .bottom),
                         lineWidth: 0.5)
                     .blendMode(.plusLighter)

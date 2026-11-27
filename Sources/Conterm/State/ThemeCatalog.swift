@@ -123,7 +123,7 @@ final class ThemeCatalog: ObservableObject {
             foreground: fg,
             accent: palette[4] ?? palette[12] ?? fg,
             warn: palette[3] ?? palette[11] ?? fg,
-            isDark: bg.luminance < 0.5
+            isDark: isDark(bg)
         )
     }
 
@@ -189,6 +189,18 @@ final class ThemeCatalog: ObservableObject {
         guard let id, !id.isEmpty,
               !colorLines(forThemeID: id).isEmpty else { return nil }
         return id
+    }
+
+    /// Dark vs light for a terminal background: the theme picker's
+    /// grouping, and which bed the pane chips take over the cells.
+    nonisolated static func isDark(_ background: Color) -> Bool {
+        background.luminance < 0.5
+    }
+
+    /// `isDark` for an 8-bit background, as libghostty reports it.
+    nonisolated static func isDark(r: UInt8, g: UInt8, b: UInt8) -> Bool {
+        isDark(Color(red: Double(r) / 255, green: Double(g) / 255,
+                     blue: Double(b) / 255))
     }
 
     /// Whether macOS itself is in Dark Mode. Read from the global
