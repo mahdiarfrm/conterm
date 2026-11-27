@@ -216,3 +216,41 @@ enum SetupAssistant {
                                        atomically: true, encoding: .utf8)
     }
 }
+
+extension SetupAssistant {
+    /// The theme and font a Ghostty config sets, read from its own lines
+    /// (not from files it includes). The last occurrence wins, as it does
+    /// for libghostty. Each is nil when the config doesn't set it.
+    struct GhosttySummary: Equatable {
+        var theme: String?
+        var fontFamily: String?
+        var fontSize: String?
+    }
+
+    static func ghosttySummary(at path: String) -> GhosttySummary {
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8)
+        else { return GhosttySummary() }
+        return ghosttySummary(parsing: content)
+    }
+
+    static func ghosttySummary(parsing content: String) -> GhosttySummary {
+        var summary = GhosttySummary()
+        for raw in content.split(separator: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard !line.hasPrefix("#"), let eq = line.firstIndex(of: "=") else { continue }
+            let key = line[..<eq].trimmingCharacters(in: .whitespaces).lowercased()
+            var value = line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces)
+            if value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") {
+                value = String(value.dropFirst().dropLast())
+            }
+            guard !value.isEmpty else { continue }
+            switch key {
+            case "theme":       summary.theme = value
+            case "font-family": summary.fontFamily = value
+            case "font-size":   summary.fontSize = value
+            default:            break
+            }
+        }
+        return summary
+    }
+}

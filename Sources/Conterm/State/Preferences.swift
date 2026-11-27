@@ -704,12 +704,14 @@ final class Preferences: ObservableObject {
         }
     }
 
-    /// First launch always shows the intro so the user sees what it does.
-    /// `SPLASH_SCREEN=1` in the env forces it on, for visual testing
-    /// after the first run has been completed.
+    /// Whether the launch window opens on an intro. Until setup is done the
+    /// intro is the welcome (AppState swaps it in); after that it's the
+    /// launch animation, when enabled. `SPLASH_SCREEN=1` forces the launch
+    /// animation and `SETUP_WIZARD=1` the welcome, for visual testing.
     var shouldShowLaunchOverlay: Bool {
-        if ProcessInfo.processInfo.environment["SPLASH_SCREEN"] != nil { return true }
-        return !hasLaunched || launchAnimationEnabled
+        let env = ProcessInfo.processInfo.environment
+        if env["SPLASH_SCREEN"] != nil || env["SETUP_WIZARD"] != nil { return true }
+        return !hasLaunched || !hasCompletedSetup || launchAnimationEnabled
     }
 
     private var ghosttyConfigPath: String {

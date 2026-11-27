@@ -107,9 +107,18 @@ final class AppState: ObservableObject {
     /// whichever pane is active by then.
     weak var searchPane: Pane?
 
-    /// First-run setup wizard visibility (this window only). Shown once
-    /// after the launch animation until the user completes or skips it.
-    @Published var setupWizardVisible: Bool = false
+    /// The welcome, in this window only: on first run it is the intro,
+    /// and it comes back at each launch until finished or skipped.
+    /// Settings ▸ Run setup wizard opens it again. Setting this starts or
+    /// ends a run in `welcomeFlow`.
+    @Published var setupWizardVisible: Bool = false {
+        didSet {
+            guard setupWizardVisible != oldValue else { return }
+            if setupWizardVisible { startWelcome() } else { welcomeFlow = nil }
+        }
+    }
+    /// The run on screen while the welcome is up.
+    @Published private(set) var welcomeFlow: WelcomeFlow?
 
     /// Signed deltas from arrow-key navigation in the settings panel.
     /// Settings panel observes the value (not just the change) so it
@@ -225,7 +234,18 @@ final class AppState: ObservableObject {
         self.windowDarkThemeID = restoredDark
         self.windowThemeFollowsSystem = restore?.themeFollowsSystem == true
             && (restoredLight != nil || restoredDark != nil)
-        self.launchOverlayVisible = showLaunchOverlay
+        // On a first run the welcome is the intro: it replaces the launch
+        // overlay in the launch window and is up from the first frame, so
+        // the terminal never shows beneath it first. SPLASH_SCREEN keeps
+        // the overlay for previewing it.
+        let env = ProcessInfo.processInfo.environment
+        let welcomeFirst = showLaunchOverlay
+            && env["SPLASH_SCREEN"] == nil
+            && (env["SETUP_WIZARD"] != nil || !prefs.hasCompletedSetup)
+            && !AppState.wizardPresentedThisLaunch
+        if welcomeFirst { AppState.wizardPresentedThisLaunch = true }
+        self.launchOverlayVisible = showLaunchOverlay && !welcomeFirst
+        self.setupWizardVisible = welcomeFirst
         // A global config reload (theme pick, font change, blur
         // slider…) pushes the global config to every surface,
         // clobbering this window's theme. Re-apply the override on
@@ -291,9 +311,24 @@ final class AppState: ObservableObject {
         } else {
             addTab()
         }
+        // Assigned during init, so its didSet didn't run.
+        if setupWizardVisible { startWelcome() }
         // Guarantee the launch overlay tears down on a fixed wall-clock
         // schedule, independent of any SwiftUI view lifecycle.
         scheduleLaunchOverlayDismissIfNeeded()
+    }
+
+    /// Starts a welcome run over this window. Settings and the palette
+    /// close first, since the stage covers them and takes the keyboard.
+    private func startWelcome() {
+        let flow = WelcomeFlow(prefs: prefs)
+        flow.onDone = { [weak self] in
+            withAnimation(.easeOut(duration: 0.15)) { self?.setupWizardVisible = false }
+        }
+        welcomeFlow = flow
+        if settingsOpen { toggleSettings() }
+        if paletteOpen { togglePalette() }
+        NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
     /// True once the launch overlay's guaranteed teardown has been
@@ -1745,7 +1780,7 @@ final class AppState: ObservableObject {
         // Bail while any focused overlay owns the keyboard, otherwise a
         // stray focus retry yanks first responder back to the terminal
         // and typing lands there instead of the overlay's TextField.
-        if paletteOpen || settingsOpen || searchOpen
+        if paletteOpen || settingsOpen || searchOpen || setupWizardVisible
            || renameTarget != nil || renameGroupID != nil {
             return
         }

@@ -654,6 +654,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 }
             }
 
+            // The welcome owns the keyboard while it's up: Return moves on,
+            // Esc and ⌘[ go back, ⌘Q still quits, and nothing else reaches
+            // the terminal or opens a panel behind the stage.
+            if let flow = self.state.welcomeFlow {
+                let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
+                switch (event.keyCode, mods) {
+                case (36, []), (76, []):  flow.primary()
+                case (53, []), (33, [.command]): flow.back()
+                case (12, [.command]):    return event   // ⌘Q
+                default:                  break
+                }
+                return nil
+            }
+
             // A dialog over Orbit owns the keyboard the same way: Esc cancels
             // it, Return answers it, and no bare key reaches the map behind
             // it. A field inside the dialog keeps its own keys, and ⇥ still

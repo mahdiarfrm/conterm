@@ -78,7 +78,9 @@ struct AppView: View {
                 paletteOverlay.windowBound().id("overlay.palette").zIndex(20)
                 settingsOverlay.windowBound().id("overlay.settings").zIndex(21)
                 launchOverlay.windowBound().id("overlay.launch").zIndex(30)
-                setupWizardOverlay.windowBound().id("overlay.setup").zIndex(31)
+                // Over the palette and Settings, under the quit prompt and
+                // alerts, which can still be raised while it's up.
+                setupWizardOverlay.windowBound().id("overlay.setup").zIndex(22)
             }
             .windowBound()
             .zIndex(10)
@@ -106,6 +108,7 @@ struct AppView: View {
         .onChange(of: prefs.autoHideSidebar)  { _, _ in sidebarRevealed = false; sidebarDropMounted = false }
         .onChange(of: prefs.tabOrientation)   { _, _ in sidebarRevealed = false; sidebarDropMounted = false }
         .onChange(of: state.launchOverlayVisible) { _, vis in if !vis { state.focusActiveSurface() } }
+        .onChange(of: state.setupWizardVisible) { _, vis in if !vis { state.focusActiveSurface() } }
     }
 
     // MARK: - Layers
@@ -955,20 +958,14 @@ struct AppView: View {
         }
     }
 
-    /// First-run wizard in the current interface style. Its Look step
-    /// changes the style live, which swaps the wizard here; the run carries
-    /// across in `SetupWizardDraft`.
+    /// The welcome. One design in both interface styles: the style is
+    /// chosen inside it, and nothing it picks reaches the window until
+    /// Finish.
     @ViewBuilder
     private var setupWizardOverlay: some View {
-        if state.setupWizardVisible {
-            Group {
-                if prefs.liquidDrop {
-                    WelcomeWizard { state.setupWizardVisible = false }
-                } else {
-                    ClassicWelcomeWizard { state.setupWizardVisible = false }
-                }
-            }
-            .transition(.opacity)
+        if let flow = state.welcomeFlow {
+            WelcomeStage(flow: flow)
+                .transition(.opacity)
         }
     }
 }
