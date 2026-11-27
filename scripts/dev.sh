@@ -35,6 +35,9 @@ make_copy() {
     rm -rf "$APP"
     cp -R Conterm.app "$APP"
     mv "$APP/Contents/MacOS/Conterm" "$APP/Contents/MacOS/ContermDev"
+    # The shell integration's ssh wrapper runs "$GHOSTTY_BIN_DIR/ghostty";
+    # the link has to follow the renamed binary.
+    ln -sfn ContermDev "$APP/Contents/MacOS/ghostty"
     P="$APP/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable ContermDev" "$P"
     /usr/libexec/PlistBuddy -c "Set :CFBundleName Conterm Dev" "$P"

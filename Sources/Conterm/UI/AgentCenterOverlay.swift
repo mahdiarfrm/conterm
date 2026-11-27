@@ -1461,13 +1461,20 @@ private struct AgentRowView: View {
 }
 
 /// Apple-system-aligned status palette — the single saturated colour each
-/// row is allowed, so the roster reads by state, not by decoration.
+/// row is allowed, so the roster reads by state, not by decoration. Each
+/// is deeper on light glass, so labels like "Ready" keep text contrast.
 private enum AgentColor {
-    static let ready       = Color(red: 0.30, green: 0.82, blue: 0.46)
-    static let working     = Color(red: 0.22, green: 0.56, blue: 1.00)
-    static let attention   = Color(red: 1.00, green: 0.62, blue: 0.12)
-    static let interrupted = Color(red: 0.66, green: 0.69, blue: 0.76)
-    static let danger      = Color(red: 1.00, green: 0.36, blue: 0.34)
+    static let ready       = tone(0.30, 0.82, 0.46, light: (0.08, 0.50, 0.24))
+    static let working     = tone(0.22, 0.56, 1.00, light: (0.08, 0.38, 0.82))
+    static let attention   = tone(1.00, 0.62, 0.12, light: (0.78, 0.40, 0.00))
+    static let interrupted = tone(0.66, 0.69, 0.76, light: (0.38, 0.41, 0.48))
+    static let danger      = tone(1.00, 0.36, 0.34, light: (0.80, 0.16, 0.16))
+
+    private static func tone(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat,
+                             light l: (CGFloat, CGFloat, CGFloat)) -> Color {
+        Theme.dynamic(light: NSColor(srgbRed: l.0, green: l.1, blue: l.2, alpha: 1),
+                      dark: NSColor(srgbRed: r, green: g, blue: b, alpha: 1))
+    }
 }
 
 private func agentVisual(_ p: AgentStatus.Phase) -> (label: String, color: Color) {

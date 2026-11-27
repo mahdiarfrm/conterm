@@ -1,291 +1,127 @@
 import SwiftUI
 
-/// Launch overlay: the wordmark over a full-bleed colour page. It covers
-/// the whole window with nothing of the terminal showing, so there is
-/// nothing for a `LiquidDrop` to refract — the page is SwiftUI-drawn, and
-/// its motion follows the drop cards' rules instead: one-shot, 60 fps, and
-/// no animated blur over the whole surface (the exit is a fade with a
-/// slight lift, not a window-sized blur pass per frame).
-///
-/// Choreography (~3.2 s):
-///   0.00 s   black backdrop fades up
-///   0.20 s   colour page fades in
-///   0.40 s   wordmark blurs in
-///   0.85 s   tagline rises in
-///   1.10 s   ambient chord plays
-///   2.40 s   the whole overlay fades out, lifting slightly
-///   3.20 s   removed
-struct LaunchOverlay: View {
-    var playSound: Bool = true
-    var onFinish: () -> Void
+/// The launch animation, the same in both interface styles and set like
+/// the welcome's hero: the brand's colour fields bloom over the ink page
+/// and drift while it plays, and the cream wordmark comes out of a blur at
+/// the lower left with the branded eyebrow above and the tagline below.
+/// To leave, the words blur away, the colour fields run off past the
+/// edges, and the page fades onto the window. About 2.2 seconds, played
+/// once per mount; nothing in it repeats, and nothing draws once it's
+/// gone.
+struct LaunchIntro: View {
+    let light: Bool
+    let playSound: Bool
+    let onFinish: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var backdropOpacity: Double = 0.0
-    @State private var washOpacity:     Double = 0.0
-    @State private var wordIn:          Bool   = false
-    @State private var taglineIn:       Bool   = false
-    @State private var exiting:         Bool   = false
-    @State private var overlayOpacity:  Double = 1.0
-    /// One-shot guard. `.onAppear` can fire more than once for this
-    /// view (its ZStack slot shifts whenever a sibling overlay toggles
-    /// or SystemStats republishes). Without this guard each re-fire
-    /// restarted + compounded the choreography, pinning the main
-    /// thread at ~50% CPU indefinitely (looked like a freeze at the
-    /// "loading animation"). The actual teardown is now owned by
-    /// AppState; this view just plays its intro exactly once.
-    @State private var started = false
+    @State private var bloom: CGFloat = 0.7
+    @State private var auroraIn = false
+    @State private var drifted = false
+    @State private var markIn = false
+    @State private var linesIn = false
+    /// The words blur and fade first…
+    @State private var wordsOut = false
+    /// …then the colour runs off the screen…
+    @State private var colorsOut = false
+    /// …and the page fades onto the window.
+    @State private var groundOut = false
+
+    private let markHeight: CGFloat = 72
+    private let margin: CGFloat = 56
+
+    private var aurora: WelcomeAurora {
+        let base: WelcomeAurora = drifted ? .spectrumDrift : .spectrum
+        return colorsOut ? base.runaway() : base
+    }
 
     var body: some View {
-        ZStack {
-            // Black scrim
-            Color.black
-                .opacity(backdropOpacity * 0.78)
-            // Static page-spanning color gradient (kept as a soft base).
-            colorWash
-                .opacity(washOpacity)
-            // Animated coloured blobs drifting through the backdrop
-            // for the full duration of the overlay. Layered over the
-            // wash + under the wordmark; opacity fades with the rest.
-            movingColors
-                .opacity(washOpacity * 0.95)
-            // Film grain on top of the colour layers — animated so it
-            // shimmers instead of reading as a still texture.
-            grain
-                .opacity(washOpacity * 0.55)
-            // Wordmark
-            VStack(spacing: 10) {
-                wordmark
-                tagline
-            }
-        }
-        .scaleEffect(exiting ? 1.04 : 1.0)
-        .opacity(overlayOpacity)
-        .ignoresSafeArea()
-        .onAppear(perform: runSequence)
-        .allowsHitTesting(overlayOpacity > 0.3)
-    }
-
-    // MARK: - Layers
-
-    /// Static, painted-once gradient page (no motion, no drift).
-    /// Rasterized via `.drawingGroup()` so it composes cheaply.
-    private var colorWash: some View {
         GeometryReader { geo in
-            // One cohesive red family — crimson, the signature red
-            // (#FF383C), coral, raspberry. A single harmonious hue,
-            // balanced like a calm aurora; no clashing tints.
-            LinearGradient(
-                stops: [
-                    .init(color: .clear,                                                  location: 0.00),
-                    .init(color: Color(red: 0.80, green: 0.10, blue: 0.16).opacity(0.42), location: 0.30),
-                    .init(color: Color(red: 1.00, green: 0.22, blue: 0.24).opacity(0.44), location: 0.50),
-                    .init(color: Color(red: 1.00, green: 0.42, blue: 0.34).opacity(0.40), location: 0.65),
-                    .init(color: Color(red: 0.96, green: 0.25, blue: 0.40).opacity(0.38), location: 0.80),
-                    .init(color: .clear,                                                  location: 1.00),
-                ],
-                startPoint: .topLeading,
-                endPoint:   .bottomTrailing
-            )
-            .frame(width: geo.size.width, height: geo.size.height)
-            .blendMode(.plusLighter)
-            .drawingGroup()
-        }
-        .allowsHitTesting(false)
-    }
-
-    /// Four large, blurred colour blobs that drift on independent sine
-    /// orbits. TimelineView keeps them animating smoothly without a
-    /// SwiftUI value-based animation that would have to re-evaluate
-    /// the whole view tree on every frame.
-    private var movingColors: some View {
-        GeometryReader { geo in
-            TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { tl in
-                let t = tl.date.timeIntervalSinceReferenceDate
-                // Cohesive red family — matching `colorWash`.
-                let palette: [Color] = [
-                    Color(red: 0.80, green: 0.10, blue: 0.16),  // crimson
-                    Color(red: 1.00, green: 0.22, blue: 0.24),  // signature red
-                    Color(red: 1.00, green: 0.42, blue: 0.34),  // coral
-                    Color(red: 0.96, green: 0.25, blue: 0.40),  // raspberry
-                ]
-                let w = geo.size.width, h = geo.size.height
-                Canvas { ctx, size in
-                    for i in 0..<palette.count {
-                        let phase = Double(i) * 1.7
-                        let dx = (sin(t * 0.18 + phase) * 0.30 + 0.50) * w
-                        let dy = (cos(t * 0.13 + phase * 1.4) * 0.30 + 0.50) * h
-                        let radius = min(w, h) * 0.55
-                        let blob = Path(ellipseIn: CGRect(
-                            x: dx - radius / 2,
-                            y: dy - radius / 2,
-                            width: radius, height: radius))
-                        var blurredCtx = ctx
-                        blurredCtx.addFilter(.blur(radius: 110))
-                        blurredCtx.fill(blob, with: .color(palette[i].opacity(0.48)))
-                    }
+            let size = geo.size
+            let mark = WelcomeWordmark(style: WelcomeColor.wordmark(light), height: markHeight)
+            let top = size.height - 206
+            ZStack(alignment: .topLeading) {
+                WelcomeColor.ground(light)
+                    .opacity(groundOut ? 0 : 1)
+                WelcomeAuroraView(aurora: aurora, light: light, bloom: bloom,
+                                  softness: colorsOut ? 0.14 : 0.08)
+                    .opacity(auroraIn && !colorsOut ? 1 : 0)
+                WelcomeGrain(light: light)
+                    .opacity(groundOut ? 0 : 1)
+                ZStack(alignment: .topLeading) {
+                    DropEyebrow("Conterm", branded: true)
+                        .opacity(linesIn ? 1 : 0)
+                        .offset(x: margin + 2, y: top - 40 + (linesIn ? 0 : 9))
+                    mark
+                        .blur(radius: markIn ? 0 : 22)
+                        .opacity(markIn ? 1 : 0)
+                        .offset(x: margin, y: top)
+                    WelcomeTagline(light: light)
+                        .opacity(linesIn ? 1 : 0)
+                        .offset(x: margin + 4, y: top + markHeight + 22 + (linesIn ? 0 : 9))
                 }
-                .blendMode(.plusLighter)
+                .blur(radius: wordsOut ? 18 : 0)
+                .opacity(wordsOut ? 0 : 1)
+                .offset(y: wordsOut ? -16 : 0)
             }
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
         }
-        .allowsHitTesting(false)
+        .allowsHitTesting(!groundOut)
+        .task { await play() }
     }
 
-    /// Film-grain layer. Canvas re-renders each frame so dots shift
-    /// per frame and read as live grain rather than a fixed dither.
-    private var grain: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { tl in
-            let t = tl.date.timeIntervalSinceReferenceDate
-            Canvas { ctx, size in
-                // Deterministic-but-shifting noise: seed from t.
-                var rng = SeededRandom(seed: UInt64(t * 60))
-                let count = 5500
-                for _ in 0..<count {
-                    let x = CGFloat(rng.next01()) * size.width
-                    let y = CGFloat(rng.next01()) * size.height
-                    let a = Double(rng.next01()) * 0.18
-                    ctx.fill(
-                        Path(CGRect(x: x, y: y, width: 1, height: 1)),
-                        with: .color(Color.white.opacity(a))
-                    )
-                }
+    private func play() async {
+        if reduceMotion {
+            withAnimation(.easeOut(duration: 0.3)) {
+                auroraIn = true; bloom = 1; markIn = true; linesIn = true
             }
-            .blendMode(.overlay)
-        }
-        .allowsHitTesting(false)
-    }
-
-    private var wordmark: some View {
-        // The bundled text-logo PNG is a white-on-transparent wordmark
-        // (see docs/assets/text-logo.png). Treated as a template so
-        // the foreground gradient tints it the same way the old
-        // Big Caslon text did.
-        Image(nsImage: Self.textLogo)
-            .resizable()
-            .interpolation(.high)
-            .aspectRatio(contentMode: .fit)
-            .frame(height: 96)
-            .foregroundStyle(
-                LinearGradient(
-                    colors: [
-                        // Warm cream (#F4F2EC), the brand's text colour —
-                        // not a cold white.
-                        Color(red: 0.97, green: 0.95, blue: 0.90),
-                        Color(red: 0.90, green: 0.86, blue: 0.78),
-                    ],
-                    startPoint: .top, endPoint: .bottom
-                )
-            )
-            .blur(radius: wordIn ? 0 : 22)
-            .opacity(wordIn ? 1 : 0)
-            .scaleEffect(wordIn ? 1.0 : 0.96)
-            .shadow(color: Color(red: 1.00, green: 0.40, blue: 0.42).opacity(0.22), radius: 30)
-    }
-
-    /// Cheap deterministic PRNG. Avoids a per-frame `Int.random` syscall
-    /// for the grain layer (4–5k points per frame is enough to feel
-    /// the system jitter otherwise).
-    private struct SeededRandom {
-        private var state: UInt64
-        init(seed: UInt64) { state = seed &+ 0x9E37_79B9_7F4A_7C15 }
-        mutating func next() -> UInt64 {
-            state = state &+ 0x9E37_79B9_7F4A_7C15
-            var z = state
-            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
-            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
-            return z ^ (z >> 31)
-        }
-        mutating func next01() -> Double {
-            Double(next() >> 11) / Double(1 << 53)
-        }
-    }
-
-    /// One-shot bundle load of the wordmark PNG. Template mode lets
-    /// SwiftUI's foreground tint take over so the same asset reads
-    /// on dark and light backgrounds.
-    private static let textLogo: NSImage = {
-        if let url = Bundle.main.url(forResource: "text-logo", withExtension: "png"),
-           let img = NSImage(contentsOf: url) {
-            img.isTemplate = true
-            return img
-        }
-        return NSImage(size: .zero)
-    }()
-
-    private var tagline: some View {
-        Text("a modern way to connect")
-            .font(.system(size: 12, weight: .regular, design: .monospaced))
-            .tracking(3)
-            .foregroundStyle(Color(red: 0.95, green: 0.91, blue: 0.82).opacity(0.55))
-            .opacity(taglineIn ? 1 : 0)
-            .offset(y: taglineIn ? 0 : 9)
-    }
-
-    // MARK: - Choreography
-
-    private func runSequence() {
-        // Idempotent: a re-fired onAppear must NOT restart the
-        // choreography (that was the perpetual-redraw bug).
-        guard !started else { return }
-        started = true
-        // 0.00 — backdrop in
-        withAnimation(.easeOut(duration: 0.30)) {
-            backdropOpacity = 1
-        }
-        // 0.20 — color page fades in (static thereafter)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
-            withAnimation(.easeOut(duration: 0.7)) {
-                washOpacity = 1
-            }
-        }
-        // 0.40 — wordmark blur-in
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.40) {
-            withAnimation(.easeOut(duration: 1.0)) {
-                wordIn = true
-            }
-        }
-        // 0.85 — tagline rises in
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85) {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-                taglineIn = true
-            }
-        }
-        // 1.10 — chord
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.10) {
             if playSound { LaunchChime.shared.play() }
-        }
-        // 2.40 — fade out, lifting
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.40) {
-            withAnimation(.easeIn(duration: 0.80)) {
-                overlayOpacity = 0
-                exiting = true
+            guard await pause(1100) else { return }
+            withAnimation(.easeInOut(duration: 0.35)) {
+                wordsOut = true; groundOut = true; auroraIn = false
             }
-        }
-        // 3.20 — gone
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.20) {
+            guard await pause(380) else { return }
             onFinish()
+            return
         }
+        withAnimation(.easeOut(duration: 0.7)) { auroraIn = true }
+        withAnimation(.spring(response: 1.3, dampingFraction: 0.86)) { bloom = 1 }
+        withAnimation(.timingCurve(0.45, 0, 0.35, 1, duration: 2.4)) { drifted = true }
+        guard await pause(200) else { return }
+        withAnimation(.easeOut(duration: 0.9)) { markIn = true }
+        if playSound { LaunchChime.shared.play() }
+        guard await pause(350) else { return }
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.78)) { linesIn = true }
+        guard await pause(850) else { return }
+        withAnimation(.timingCurve(0.4, 0, 0.6, 1, duration: 0.45)) { wordsOut = true }
+        guard await pause(60) else { return }
+        // Outward and accelerating, softening as they go; they fade only
+        // late, so most of each field leaves past the edge.
+        withAnimation(.timingCurve(0.5, 0, 0.75, 0.4, duration: 0.75)) { colorsOut = true }
+        guard await pause(150) else { return }
+        withAnimation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.6)) { groundOut = true }
+        guard await pause(640) else { return }
+        onFinish()
+    }
+
+    private func pause(_ milliseconds: Int) async -> Bool {
+        (try? await Task.sleep(for: .milliseconds(milliseconds))) != nil
     }
 }
 
-/// Picks the launch overlay for the interface style — once. The style is
-/// latched when the intro mounts, so changing it while the intro plays
-/// can't swap the view underneath and replay the sequence (and its chime);
-/// the other look shows from the next launch.
+/// Mounts the launch animation with the tint latched, so changing it while
+/// the intro plays can't restyle it mid-sequence.
 struct LaunchOverlayHost: View {
     let playSound: Bool
     let onFinish: () -> Void
-    @State private var liquidDrop: Bool
+    @State private var light: Bool
 
-    init(liquidDrop: Bool, playSound: Bool, onFinish: @escaping () -> Void) {
-        _liquidDrop = State(initialValue: liquidDrop)
+    init(light: Bool, playSound: Bool, onFinish: @escaping () -> Void) {
+        _light = State(initialValue: light)
         self.playSound = playSound
         self.onFinish = onFinish
     }
 
     var body: some View {
-        if liquidDrop {
-            LaunchOverlay(playSound: playSound, onFinish: onFinish)
-        } else {
-            ClassicLaunchOverlay(playSound: playSound, onFinish: onFinish)
-        }
+        LaunchIntro(light: light, playSound: playSound, onFinish: onFinish)
     }
 }

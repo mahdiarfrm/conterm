@@ -223,10 +223,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 UpdateChecker.shared.checkInBackground()
             }
         }
-        // Long-lived sessions re-check daily; the launch check only
-        // covers fresh starts. The pref is read at each tick, so the
-        // Settings toggle applies without a relaunch.
-        UpdateChecker.shared.beginDailyChecks { [weak prefs] in
+        // Long-lived sessions re-check on a wall-clock interval; the launch
+        // check only covers fresh starts. The pref is read at each tick, so
+        // the Settings toggle applies without a relaunch.
+        UpdateChecker.shared.beginPeriodicChecks { [weak prefs] in
             prefs?.autoCheckUpdates ?? false
         }
 
@@ -530,6 +530,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     @objc func connectToHost(_ sender: Any?)    { openPalette(.sshHosts) }
     @objc func showClipboardHistory(_ sender: Any?) { openPalette(.clipboard) }
     @objc func showShellHistory(_ sender: Any?) { openPalette(.shellHistory) }
+    @objc func showFavorites(_ sender: Any?)    { openPalette(.favorites) }
+    @objc func showRunInAllTerminals(_ sender: Any?) { openPalette(.runAll) }
     @objc func showNotes(_ sender: Any?)        { openPalette(.notesList) }
     @objc func newNote(_ sender: Any?) {
         openPalette(.noteEdit(noteID: state.notes.create().id))
@@ -653,6 +655,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                 }
             }
 
+            // The welcome owns the keyboard while it's up: Return moves on,
+            // Esc and ⌘[ go back, ⌘Q still quits, and nothing else reaches
+            // the terminal or opens a panel behind the stage.
+            if let flow = self.state.welcomeFlow {
+                let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
+                switch (event.keyCode, mods) {
+                case (36, []), (76, []):  flow.primary()
+                case (53, []), (33, [.command]): flow.back()
+                case (12, [.command]):    return event   // ⌘Q
+                default:                  break
+                }
+                return nil
+            }
+
             // A dialog over Orbit owns the keyboard the same way: Esc cancels
             // it, Return answers it, and no bare key reaches the map behind
             // it. A field inside the dialog keeps its own keys, and ⇥ still
@@ -721,7 +737,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
                               !event.modifierFlags.contains(.option) &&
                               !event.modifierFlags.contains(.control) &&
                               !event.modifierFlags.contains(.shift)
-                // ⌘⌫ deletes focused note (in notes-list / note-edit).
+                // ⌘⌫ deletes the focused note (notes list / note edit) or
+                // favorite.
                 if event.keyCode == 51, cmdOnly {
                     self.state.paletteDeleteTick &+= 1
                     return nil
@@ -857,6 +874,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             // ⌘⇧A = toggle the agent command center.
             if cmd && shift && key == "a" {
                 self.state.toggleAgentCenter()
+                NSApp.keyWindow?.makeFirstResponder(nil)
+                return nil
+            }
+            // ⌘⇧K = Favorites, ⌘⇧I = Run in All Terminals; again closes.
+            if cmd && shift && !opt && !ctrl && (key == "k" || key == "i") {
+                self.state.togglePalette(mode: key == "k" ? .favorites : .runAll)
                 NSApp.keyWindow?.makeFirstResponder(nil)
                 return nil
             }
@@ -1047,8 +1070,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         ]
     }
 
-    /// Subtle window scale-in when the app first launches — the
-    /// LaunchOverlay handles the foreground show; this gives the window
+    /// Subtle window scale-in when the app first launches — the launch
+    /// intro handles the foreground show; this gives the window
     /// itself a tiny rise so it doesn't pop in flat.
     private func runLaunchScaleIn() {
         guard let w = window else { return }

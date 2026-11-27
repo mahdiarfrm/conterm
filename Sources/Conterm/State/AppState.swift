@@ -107,9 +107,18 @@ final class AppState: ObservableObject {
     /// whichever pane is active by then.
     weak var searchPane: Pane?
 
-    /// First-run setup wizard visibility (this window only). Shown once
-    /// after the launch animation until the user completes or skips it.
-    @Published var setupWizardVisible: Bool = false
+    /// The welcome, in this window only: on first run it is the intro,
+    /// and it comes back at each launch until finished or skipped.
+    /// Settings ▸ Run setup wizard opens it again. Setting this starts or
+    /// ends a run in `welcomeFlow`.
+    @Published var setupWizardVisible: Bool = false {
+        didSet {
+            guard setupWizardVisible != oldValue else { return }
+            if setupWizardVisible { startWelcome() } else { welcomeFlow = nil }
+        }
+    }
+    /// The run on screen while the welcome is up.
+    @Published private(set) var welcomeFlow: WelcomeFlow?
 
     /// Signed deltas from arrow-key navigation in the settings panel.
     /// Settings panel observes the value (not just the change) so it
@@ -129,6 +138,8 @@ final class AppState: ObservableObject {
         case sshHosts              // pick an ssh host (recents first, then all)
         case clipboard             // recent copies from panes (session-only)
         case groups                // manage tab groups: rename / recolor / reorder
+        case favorites             // saved commands: run one here, or save the query
+        case runAll                // type one command into every terminal at a prompt
 
         /// The note editor owns all text-navigation keys (Return, arrows,
         /// ⌫); the global key monitor leaves them alone in this mode.
@@ -223,7 +234,18 @@ final class AppState: ObservableObject {
         self.windowDarkThemeID = restoredDark
         self.windowThemeFollowsSystem = restore?.themeFollowsSystem == true
             && (restoredLight != nil || restoredDark != nil)
-        self.launchOverlayVisible = showLaunchOverlay
+        // On a first run the welcome is the intro: it replaces the launch
+        // overlay in the launch window and is up from the first frame, so
+        // the terminal never shows beneath it first. SPLASH_SCREEN keeps
+        // the overlay for previewing it.
+        let env = ProcessInfo.processInfo.environment
+        let welcomeFirst = showLaunchOverlay
+            && env["SPLASH_SCREEN"] == nil
+            && (env["SETUP_WIZARD"] != nil || !prefs.hasCompletedSetup)
+            && !AppState.wizardPresentedThisLaunch
+        if welcomeFirst { AppState.wizardPresentedThisLaunch = true }
+        self.launchOverlayVisible = showLaunchOverlay && !welcomeFirst
+        self.setupWizardVisible = welcomeFirst
         // A global config reload (theme pick, font change, blur
         // slider…) pushes the global config to every surface,
         // clobbering this window's theme. Re-apply the override on
@@ -289,9 +311,24 @@ final class AppState: ObservableObject {
         } else {
             addTab()
         }
+        // Assigned during init, so its didSet didn't run.
+        if setupWizardVisible { startWelcome() }
         // Guarantee the launch overlay tears down on a fixed wall-clock
         // schedule, independent of any SwiftUI view lifecycle.
         scheduleLaunchOverlayDismissIfNeeded()
+    }
+
+    /// Starts a welcome run over this window. Settings and the palette
+    /// close first, since the stage covers them and takes the keyboard.
+    private func startWelcome() {
+        let flow = WelcomeFlow(prefs: prefs)
+        flow.onDone = { [weak self] in
+            withAnimation(.easeOut(duration: 0.15)) { self?.setupWizardVisible = false }
+        }
+        welcomeFlow = flow
+        if settingsOpen { toggleSettings() }
+        if paletteOpen { togglePalette() }
+        NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
     /// True once the launch overlay's guaranteed teardown has been
@@ -318,7 +355,8 @@ final class AppState: ObservableObject {
         }
         guard !launchDismissScheduled else { return }
         launchDismissScheduled = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.4) { [weak self] in
+        // The intro ends itself at about 2.3 s; this is the backstop.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) { [weak self] in
             guard let self else { return }
             withAnimation(.easeOut(duration: 0.35)) {
                 self.launchOverlayVisible = false
@@ -1537,29 +1575,47 @@ final class AppState: ObservableObject {
     }
 
     func togglePalette() {
-        withAnimation(Theme.Spring.bouncy) {
-            paletteOpen.toggle()
-        }
-        SoundEffects.shared.play(paletteOpen ? .paletteOpen : .paletteClose)
-        // Reset to command root and disarm hover so a stationary
-        // cursor over a palette row can't steal focus from keyboard
-        // navigation. The hover flag re-arms on the first real mouse
-        // movement (see AppDelegate.mouseMovedMonitor).
         if paletteOpen {
-            paletteMode = .commands
-            paletteFocusedIndex = 0
-            NSCursor.setHiddenUntilMouseMoves(true)
-            paletteHoverArmed = false
-            NSApp.keyWindow?.acceptsMouseMovedEvents = true
+            withAnimation(Theme.Spring.bouncy) { paletteOpen = false }
+            SoundEffects.shared.play(.paletteClose)
+        } else {
+            presentPalette(in: .commands)
         }
+    }
+
+    /// Opens the palette already showing `mode`. The mode is set before the
+    /// palette mounts: a mode switch during the open transition keeps the
+    /// outgoing mode's search field alive beside the new one, and the field
+    /// that claims the keyboard last can be the one being removed.
+    private func presentPalette(in mode: PaletteMode) {
+        paletteMode = mode
+        paletteFocusedIndex = 0
+        // Disarm hover so a stationary cursor over a palette row can't
+        // steal focus from keyboard navigation. The hover flag re-arms on
+        // the first real mouse movement (see AppDelegate.mouseMovedMonitor).
+        NSCursor.setHiddenUntilMouseMoves(true)
+        paletteHoverArmed = false
+        NSApp.keyWindow?.acceptsMouseMovedEvents = true
+        withAnimation(Theme.Spring.bouncy) { paletteOpen = true }
+        SoundEffects.shared.play(.paletteOpen)
     }
 
     /// Open the palette straight into one of its lists, as the matching
     /// palette command does from the root.
     func openPalette(mode: PaletteMode) {
-        if !paletteOpen { togglePalette() }
-        withAnimation(Theme.Spring.soft) { paletteMode = mode }
-        paletteFocusedIndex = 0
+        if paletteOpen {
+            withAnimation(Theme.Spring.soft) { paletteMode = mode }
+            paletteFocusedIndex = 0
+        } else {
+            presentPalette(in: mode)
+        }
+    }
+
+    /// A list's own shortcut: opens the palette on it, or closes the
+    /// palette when that list is already showing.
+    func togglePalette(mode: PaletteMode) {
+        if paletteOpen && paletteMode == mode { togglePalette() }
+        else { openPalette(mode: mode) }
     }
 
     enum OpenTarget { case finder, cursor, vscode }
@@ -1725,7 +1781,7 @@ final class AppState: ObservableObject {
         // Bail while any focused overlay owns the keyboard, otherwise a
         // stray focus retry yanks first responder back to the terminal
         // and typing lands there instead of the overlay's TextField.
-        if paletteOpen || settingsOpen || searchOpen
+        if paletteOpen || settingsOpen || searchOpen || setupWizardVisible
            || renameTarget != nil || renameGroupID != nil {
             return
         }

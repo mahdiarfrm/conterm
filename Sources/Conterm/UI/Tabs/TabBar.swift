@@ -421,7 +421,14 @@ struct TabBar: View {
                                                     row: ungrouped.count + tabGroups.groups.count))
                     }
                     .backgroundPreferenceValue(TabSelectionFrameKey.self) { dropSelection($0) }
+                    // Room inside the scroll view's clip for the selected
+                    // tab's drop shadow; the negative padding below hands
+                    // it back, so the rows keep their place on the plate.
+                    .padding(.horizontal, Self.selectionBleedX)
+                    .padding(.top, Self.selectionBleedTop)
                 }
+                .padding(.horizontal, -Self.selectionBleedX)
+                .padding(.top, -Self.selectionBleedTop)
                 .frame(maxHeight: .infinity, alignment: .top)
                 .animation(Theme.Spring.soft, value: state.selectedID)
                 .animation(Theme.Spring.soft, value: state.tabs.map(\.id))
@@ -983,6 +990,13 @@ struct TabBar: View {
     /// they scale, so a raw constant here made the row ragged at any interface
     /// size but 1.
     static var heavyPillHeight: CGFloat { Theme.ui(30) }
+
+    /// How far the sidebar list's clip reaches past its rows, so the
+    /// selected tab's drop shadow (radius 9, 3 down) isn't cut. Both stay
+    /// inside the plate's 14pt padding; the top is shallower so rows
+    /// scrolled up don't reach the plate's rounded corners.
+    private static var selectionBleedX: CGFloat { Theme.ui(12) }
+    private static var selectionBleedTop: CGFloat { Theme.ui(8) }
 
     private var shortcutHint: some View {
         ShortcutHintButton()

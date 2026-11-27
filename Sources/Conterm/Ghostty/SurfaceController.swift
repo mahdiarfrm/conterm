@@ -552,6 +552,25 @@ extension Ghostty {
             }
         }
 
+        /// The surface exists and its child process hasn't exited.
+        var hasLiveProcess: Bool {
+            guard let h = handle else { return false }
+            return !ghostty_surface_process_exited(h)
+        }
+
+        /// Short name of the process in this terminal's foreground: the
+        /// shell (`zsh`) at a prompt, `vim` or `claude` while one runs. nil
+        /// when the child has exited or the name can't be read.
+        var foregroundProcessName: String? {
+            guard hasLiveProcess, let h = handle else { return nil }
+            let pid = pid_t(truncatingIfNeeded: ghostty_surface_foreground_pid(h))
+            guard pid > 0 else { return nil }
+            var name = [CChar](repeating: 0, count: 64)
+            guard proc_name(pid, &name, UInt32(name.count)) > 0 else { return nil }
+            return String(decoding: name.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
+                          as: UTF8.self)
+        }
+
         /// Send a discrete Return keypress. Injected text (`sendText`) can
         /// land as a bracketed paste, where a trailing newline is a literal
         /// line break — TUIs like Claude Code only SUBMIT on a real Enter

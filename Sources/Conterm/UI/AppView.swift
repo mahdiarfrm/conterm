@@ -78,7 +78,9 @@ struct AppView: View {
                 paletteOverlay.windowBound().id("overlay.palette").zIndex(20)
                 settingsOverlay.windowBound().id("overlay.settings").zIndex(21)
                 launchOverlay.windowBound().id("overlay.launch").zIndex(30)
-                setupWizardOverlay.windowBound().id("overlay.setup").zIndex(31)
+                // Over the palette and Settings, under the quit prompt and
+                // alerts, which can still be raised while it's up.
+                setupWizardOverlay.windowBound().id("overlay.setup").zIndex(22)
             }
             .windowBound()
             .zIndex(10)
@@ -106,6 +108,7 @@ struct AppView: View {
         .onChange(of: prefs.autoHideSidebar)  { _, _ in sidebarRevealed = false; sidebarDropMounted = false }
         .onChange(of: prefs.tabOrientation)   { _, _ in sidebarRevealed = false; sidebarDropMounted = false }
         .onChange(of: state.launchOverlayVisible) { _, vis in if !vis { state.focusActiveSurface() } }
+        .onChange(of: state.setupWizardVisible) { _, vis in if !vis { state.focusActiveSurface() } }
     }
 
     // MARK: - Layers
@@ -227,7 +230,11 @@ struct AppView: View {
                     .frame(height: !hideTabBar ? nil : 0)
                     .opacity(!hideTabBar ? 1 : 0)
                     .allowsHitTesting(!hideTabBar)
-                    .clipped()
+                    // Collapsed, the bar clips to its zero height; shown, the
+                    // clip extends below it so the selected tab's drop shadow
+                    // fades out instead of ending in a hard edge. The panes
+                    // are laid after the bar, so they stay on top of it.
+                    .clipShape(BottomBleedRect(bleed: hideTabBar ? 0 : 20))
                     // The gap that floats the bar clear of the panes. Tuned
                     // so the toolbar pills sit the same distance below the
                     // window top as above the pane: top = 6 pad + 4 centering
@@ -943,7 +950,7 @@ struct AppView: View {
     @ViewBuilder
     private var launchOverlay: some View {
         if state.launchOverlayVisible {
-            LaunchOverlayHost(liquidDrop: prefs.liquidDrop,
+            LaunchOverlayHost(light: prefs.lightGlass,
                               playSound: prefs.launchSoundEnabled) {
                 state.dismissLaunchOverlay()
             }
@@ -951,20 +958,14 @@ struct AppView: View {
         }
     }
 
-    /// First-run wizard in the current interface style. Its Look step
-    /// changes the style live, which swaps the wizard here; the run carries
-    /// across in `SetupWizardDraft`.
+    /// The welcome. One design in both interface styles: the style is
+    /// chosen inside it, and nothing it picks reaches the window until
+    /// Finish.
     @ViewBuilder
     private var setupWizardOverlay: some View {
-        if state.setupWizardVisible {
-            Group {
-                if prefs.liquidDrop {
-                    WelcomeWizard { state.setupWizardVisible = false }
-                } else {
-                    ClassicWelcomeWizard { state.setupWizardVisible = false }
-                }
-            }
-            .transition(.opacity)
+        if let flow = state.welcomeFlow {
+            WelcomeStage(flow: flow)
+                .transition(.opacity)
         }
     }
 }
@@ -1011,5 +1012,22 @@ extension View {
         // Top-aligned, as the root stack places its children.
         frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity,
               alignment: .top)
+    }
+}
+
+/// A clip rectangle that reaches `bleed` points past the bottom edge, so
+/// shadows hanging below a view survive the clip. Animatable, so the
+/// bleed eases with the view's own collapse.
+private struct BottomBleedRect: Shape {
+    var bleed: CGFloat
+
+    var animatableData: CGFloat {
+        get { bleed }
+        set { bleed = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        Path(CGRect(x: rect.minX, y: rect.minY,
+                    width: rect.width, height: rect.height + bleed))
     }
 }

@@ -218,4 +218,91 @@ extension CommandPalette {
         )
         .contentShape(Rectangle())
     }
+
+    func classicFavoriteRow(command: String, isFocused: Bool) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "star.fill")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(isFocused ? Theme.accent : Theme.textSecondary)
+                .frame(width: 18)
+            Text(command)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isFocused ? Theme.selectionFill : .clear)
+        )
+    }
+
+    func classicFavoriteSaveRow(command: String, full: Bool,
+                                isFocused: Bool) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: full ? "exclamationmark.circle" : "plus.circle")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(isFocused ? Theme.accent : Theme.textSecondary)
+                .frame(width: 18)
+            if full {
+                Text("Favorites are full (\(FavoritesStore.limit)). ⌘⌫ removes one.")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+            } else {
+                Text("Save")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+                Text(command)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer()
+            Text("\(favorites.commands.count)/\(FavoritesStore.limit)")
+                .font(.system(size: 10, design: .rounded))
+                .foregroundStyle(Theme.textSecondary.opacity(0.75))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isFocused ? Theme.selectionFill : .clear)
+        )
+    }
+
+    func classicRunAllRow(command: String, count: Int) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "play.fill")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Theme.accent)
+                .frame(width: 18)
+            if command.isEmpty {
+                Text("Type a command, then Return runs it everywhere")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(Theme.textSecondary)
+            } else {
+                Text(command)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer()
+            Text(Self.terminalCount(count))
+                .font(.system(size: 9.5, design: .rounded))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Capsule().fill(Theme.stroke))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Theme.selectionFill)
+        )
+    }
 }

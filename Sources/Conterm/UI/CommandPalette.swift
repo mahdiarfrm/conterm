@@ -48,6 +48,10 @@ struct CommandPalette: View {
     /// Settings match-table, built lazily once per palette open; per
     /// keystroke it is only filtered, and rows materialize per match.
     @State var cachedSettingsItems: [SettingsItem] = []
+    /// Every pane and whether it takes a run-in-all command, surveyed when
+    /// that mode opens; the run itself surveys again.
+    @State var cachedRunAllTargets: [RunAllTerminals.Target] = []
+    @ObservedObject var favorites = FavoritesStore.shared
 
     @EnvironmentObject var tabGroups: TabGroupStore
     /// Shared by every row so the selection glides (see `paletteRow`).
@@ -93,6 +97,7 @@ struct CommandPalette: View {
                 appeared = true
             }
             if state.paletteMode == .sshHosts { refreshSSHRowsIfNeeded() }
+            if state.paletteMode == .runAll { refreshRunAllTargets() }
             // Commands mode searches across hosts + cwd files too.
             if state.paletteMode == .commands { refreshOmniSources() }
             syncTrayState(focusTray: true)
@@ -111,6 +116,7 @@ struct CommandPalette: View {
                 queryFocused = true
             }
             if mode == .sshHosts { refreshSSHRowsIfNeeded() }
+            if mode == .runAll { refreshRunAllTargets() }
             if mode == .commands { refreshOmniSources() }
             syncTrayState(focusTray: mode == .commands)
         }
@@ -167,6 +173,8 @@ struct CommandPalette: View {
             withAnimation(Theme.Spring.soft) {
                 state.paletteMode = .notesList
             }
+        case .favorites:
+            removeFocusedFavorite()
         default:
             break
         }
@@ -202,6 +210,10 @@ struct CommandPalette: View {
             barBubble("Filter SSH hosts…", "network")
         case .clipboard:
             barBubble("Search recent copies…", "doc.on.clipboard")
+        case .favorites:
+            barBubble("Run a favorite, or type a command to save…", "star")
+        case .runAll:
+            barBubble("Command to run in every terminal…", "rectangle.split.3x3")
         }
     }
 
@@ -256,6 +268,10 @@ struct CommandPalette: View {
                 clipboardView
             case .groups:
                 groupsView
+            case .favorites:
+                favoritesView
+            case .runAll:
+                runAllView
             }
         }
     }
@@ -280,7 +296,7 @@ struct CommandPalette: View {
             withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
         case .clipboard:
             withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
-        case .groups:
+        case .groups, .favorites, .runAll:
             withAnimation(Theme.Spring.snappy) { state.paletteMode = .commands }
         }
     }
@@ -296,6 +312,8 @@ struct CommandPalette: View {
         case .sshHosts:        connectFocusedSSHHost();   SoundEffects.shared.play(.paletteConfirm)
         case .clipboard:       pasteFocusedClipboardEntry(); SoundEffects.shared.play(.paletteConfirm)
         case .groups:          break  // managed via inline buttons
+        case .favorites:       runFocusedFavorite()      // plays its own sound
+        case .runAll:          runInAllTerminals()       // plays its own sound
         }
     }
 
@@ -310,6 +328,8 @@ struct CommandPalette: View {
         case .shellHistory: count = filteredShellHistory.count
         case .sshHosts:     count = filteredSSHRows.count
         case .clipboard:    count = filteredClipboard.count
+        case .favorites:    count = favoriteRowCount
+        case .runAll:       count = 1
         case .groups:    return
         }
         guard count > 0 else { state.paletteFocusedIndex = 0; return }
@@ -356,9 +376,15 @@ struct CommandPalette: View {
                 keyHint("⌘⌫ delete")
                 keyHint("esc")
             }
+        case .favorites:
+            HStack(spacing: 4) {
+                keyHint("⌘⌫ remove")
+                keyHint("esc")
+            }
         case .noteEdit:
             EmptyView()
-        case .commands, .sessions, .agents, .shellHistory, .sshHosts, .clipboard, .groups:
+        case .commands, .sessions, .agents, .shellHistory, .sshHosts, .clipboard, .groups,
+             .runAll:
             keyHint("esc")
         }
     }
