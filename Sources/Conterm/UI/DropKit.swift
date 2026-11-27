@@ -617,6 +617,7 @@ struct DropFilterChip: View {
     var count: Int? = nil
     let selected: Bool
     let action: () -> Void
+    @Environment(\.isEnabled) private var enabled
     @State private var hovering = false
 
     var body: some View {
@@ -630,7 +631,7 @@ struct DropFilterChip: View {
             .foregroundStyle(selected ? Theme.textPrimary : Theme.textSecondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(Capsule().fill(selected ? Theme.strokeStrong : Theme.selectionFill.opacity(hovering ? 1 : 0)))
+            .background(Capsule().fill(selected ? Theme.strokeStrong : Theme.selectionFill.opacity(hovering && enabled ? 1 : 0)))
             .overlay(Capsule().strokeBorder(
                 selected ? AnyShapeStyle(Drop.sheen) : AnyShapeStyle(Theme.stroke),
                 lineWidth: selected ? 1 : 0.5))
@@ -638,6 +639,7 @@ struct DropFilterChip: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        .opacity(enabled ? 1 : 0.4)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selected)
         .animation(.easeOut(duration: 0.15), value: hovering)
     }

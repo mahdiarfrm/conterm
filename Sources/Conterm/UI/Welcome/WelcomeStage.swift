@@ -54,6 +54,7 @@ private struct WelcomeLayout {
 /// size and the stage fades onto it.
 struct WelcomeStage: View {
     @ObservedObject var flow: WelcomeFlow
+    @EnvironmentObject private var prefs: Preferences
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -386,8 +387,16 @@ struct WelcomeStage: View {
                            options: [(Preferences.InterfaceStyle.liquidDrop, "Liquid Drop"), (.classic, "Classic")])
             }
             DropSection(label: "Tint", order: 1) {
-                DropChoice(selection: $flow.picks.lightGlass,
-                           options: [(false, "Dark"), (true, "Light")])
+                VStack(alignment: .leading, spacing: 6) {
+                    DropChoice(selection: $flow.picks.lightGlass,
+                               options: [(false, "Dark"), (true, "Light")])
+                        .disabled(prefs.followSystemAppearance)
+                    if prefs.followSystemAppearance {
+                        Text("Follows macOS Light and Dark (Settings ▸ Appearance ▸ Theme).")
+                            .font(Drop.display(11.5, .regular))
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
             }
             DropSection(label: "Window", order: 2) {
                 VStack(alignment: .leading, spacing: 10) {
