@@ -61,7 +61,19 @@ enum AgentHooks {
         events: ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
                  "PermissionRequest", "Stop", "SessionEnd"])
 
-    static let all = [claude, codex]
+    /// Muse Code speaks the same hook protocol in the same JSON
+    /// shape (`~/.config/muse/settings.json`): same event names,
+    /// including PostToolUseFailure and PermissionRequest. Payload
+    /// field positions are assumed Claude-like (the script degrades
+    /// to a plain prompt event when a field it looks for is absent).
+    static let muse = AgentHookSpec(
+        identity: "muse",
+        settingsPath: "\(InstanceState.userHome)/.config/muse/settings.json",
+        events: ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
+                 "PostToolUseFailure", "PermissionRequest", "Stop",
+                 "Notification", "SessionEnd"])
+
+    static let all = [claude, codex, muse]
 
     private static let sentinel = "# conterm"
 
@@ -93,8 +105,9 @@ enum AgentHooks {
     # survive.
     #
     # The agent runs this once per hook event with the event's JSON on
-    # stdin: `agent-hook.sh <Event> <agent>`, where <agent> is `claude` or
-    # `codex`. It writes a private OSC 9 escape to the terminal that owns
+    # stdin: `agent-hook.sh <Event> <agent>`, where <agent> is the harness
+    # identity (`claude`, `codex`, `muse`, `antigravity`). It writes a
+    # private OSC 9 escape to the terminal that owns
     # the agent process, which is how the pane learns what the agent is
     # doing:
     #
@@ -162,6 +175,22 @@ enum AgentHooks {
         done
     }
 
+    # The session's transcript, however this harness names it:
+    # Claude/Codex `transcript_path`, Antigravity `transcriptPath`.
+    # Muse sends `transcript_path: null` — its durable journal is
+    # found by session id under ~/.local/share/muse/sessions/.
+    tp=$(jfield transcript_path first)
+    [ -n "$tp" ] || tp=$(jfield transcriptPath first)
+    if [ -z "$tp" ] && [ "$agent" = muse ]; then
+        sid=$(jfield session_id first)
+        [ -n "$sid" ] || sid=$(jfield sessionId first)
+        if [ -n "$sid" ]; then
+            for f in "$HOME"/.local/share/muse/sessions/*/*/*/"$sid"/session.jsonl; do
+                [ -f "$f" ] && { tp=$f; break; }
+            done
+        fi
+    fi
+
     # Session record, for restore: the pane (CONTERM_PANE_ID, inherited from
     # its shell) keeps the agent, its pid and its current transcript in a
     # file. The OSC 9 below can be lost (libghostty passes one per second
@@ -173,8 +202,7 @@ enum AgentHooks {
         rec="$recdir/pane-$CONTERM_PANE_ID"
         case "$event" in
             SessionEnd) rm -f "$rec" 2>/dev/null ;;
-            SessionStart|UserPromptSubmit|Stop|Notification|PermissionRequest)
-                tp=$(jfield transcript_path first)
+            SessionStart|UserPromptSubmit|PreInvocation|Stop|Notification|PermissionRequest)
                 if [ -n "$tp" ]; then
                     apid=; p=$PPID; n=0
                     while [ "$n" -lt 6 ]; do
@@ -193,20 +221,46 @@ enum AgentHooks {
         esac
     fi
 
+    # Remote channel: when Conterm's ssh wrapper forwarded a socket
+    # ($CONTERM_AGENT_SOCK in the environment — a tmux session started
+    # after the connection inherits it), events go as JSON lines and
+    # no tty is involved, so invisible tmux panes still report.
+    # python3 does the unix-socket write; without it, fall back to
+    # the tty escape below.
+    send_sock() {
+        [ -n "$CONTERM_AGENT_SOCK" ] && [ -S "$CONTERM_AGENT_SOCK" ] || return 1
+        command -v python3 >/dev/null 2>&1 || return 1
+        python3 -c 'import json, socket, sys; s = socket.socket(socket.AF_UNIX); s.settimeout(2); s.connect(sys.argv[1]); s.sendall((json.dumps({"agent": sys.argv[2], "pane": sys.argv[3], "state": sys.argv[4]}) + "\n").encode()); s.close()' \
+            "$CONTERM_AGENT_SOCK" "$agent" "${CONTERM_PANE_ID:-}" "$1" 2>/dev/null
+    }
+
     tty=$(find_tty)
-    [ -n "$tty" ] || exit 0
-    send() { printf '\033]9;conterm-agent:%s:%s\a' "$agent" "$1" >> "$tty" 2>/dev/null; }
+    send() {
+        if send_sock "$1"; then return; fi
+        [ -n "$tty" ] || return
+        if [ -n "$TMUX" ]; then
+            # Inside tmux the raw escape dies in the pane; the DCS
+            # passthrough form reaches the outer terminal when the
+            # user allows it (tmux `allow-passthrough on|all`). The
+            # inner escape is doubled, as the tmux form requires.
+            printf '\033Ptmux;\033\033]9;conterm-agent:%s:%s\a\033\\' \
+                "$agent" "$1" >> "$tty" 2>/dev/null
+        else
+            printf '\033]9;conterm-agent:%s:%s\a' "$agent" "$1" >> "$tty" 2>/dev/null
+        fi
+    }
 
     case "$event" in
-        SessionStart)     send "start:$(jfield transcript_path first)" ;;
-        UserPromptSubmit) send "prompt:$(jfield transcript_path first)" ;;
+        SessionStart)     send "start:$tp" ;;
+        UserPromptSubmit|PreInvocation)
+                          send "prompt:$tp" ;;
         PreToolUse)
             # One event, not a phase plus a tool: libghostty admits one
             # desktop notification per second app-wide, and the second of a
             # pair is the one that is lost. A tool starting is the agent
             # working; the app reads it that way.
             tid=$(jfield tool_use_id "$idpos")
-            [ -n "$tid" ] || { send "prompt:$(jfield transcript_path first)"; exit 0; }
+            [ -n "$tid" ] || { send "prompt:$tp"; exit 0; }
             tn=$(jfield tool_name first)
             # What the call is about, in the input's own words: the command
             # for Bash, else the first of the fields the other tools carry.
@@ -226,9 +280,9 @@ enum AgentHooks {
             tid=$(jfield tool_use_id "$idpos")
             [ -n "$tid" ] && send "tool:end:$tid:fail"
             ;;
-        Stop)             send "idle:$(jfield transcript_path first)" ;;
+        Stop)             send "idle:$tp" ;;
         Notification|PermissionRequest)
-                          send "attention:$(jfield transcript_path first)" ;;
+                          send "attention:$tp" ;;
         SessionEnd)       send "end:" ;;
     esac
     exit 0
@@ -299,7 +353,10 @@ enum AgentHooks {
             writeJSON(root, spec)
         }
         // The script serves every agent; it goes only with the last of them.
-        if !all.contains(where: { $0.identity != spec.identity && hasAnyHook($0) }) {
+        // Antigravity's hooks run the same script through a separate
+        // settings file, so it must survive while that group is installed.
+        if !all.contains(where: { $0.identity != spec.identity && hasAnyHook($0) }),
+           !AntigravityIntegration.isInstalled {
             try? FileManager.default.removeItem(atPath: scriptPath)
         }
     }
@@ -404,6 +461,15 @@ enum ClaudeIntegration {
     static func uninstall() { AgentHooks.uninstall(AgentHooks.claude) }
     static func refreshIfInstalled() { AgentHooks.refreshIfInstalled() }
     nonisolated static var script: String { AgentHooks.script }
+}
+
+/// Muse Code's hooks in `~/.config/muse/settings.json` — same
+/// protocol and file shape as Claude Code, driven by the same script.
+@MainActor
+enum MuseIntegration {
+    static var isInstalled: Bool { AgentHooks.isInstalled(AgentHooks.muse) }
+    static func install() { AgentHooks.install(AgentHooks.muse) }
+    static func uninstall() { AgentHooks.uninstall(AgentHooks.muse) }
 }
 
 /// Codex's hooks in `~/.codex/hooks.json` (lifecycle hooks are on by

@@ -62,6 +62,14 @@ enum SessionStore {
         /// positionally. Optional for older session files (fall back to
         /// the first leaf).
         var activePaneIndex: Int?
+        /// Per-tab terminal theme (a `ThemeCatalog` theme id), mirroring
+        /// the per-window fields above one level down. Nil = the tab
+        /// inherits the window theme. Optional so session files written
+        /// before per-tab themes decode.
+        var themeID: String? = nil
+        var themeFollowsSystem: Bool? = nil
+        var lightThemeID: String? = nil
+        var darkThemeID: String? = nil
     }
 
     /// Codable mirror of `PaneNode`. Indirect so split nodes can
@@ -134,7 +142,11 @@ enum SessionStore {
                     indexLabel: tab.indexLabel,
                     tree: tab.paneTree.root.toSnapshot(),
                     groupID: tab.groupID?.uuidString,
-                    activePaneIndex: activeIdx)
+                    activePaneIndex: activeIdx,
+                    themeID: tab.themeID,
+                    themeFollowsSystem: tab.themeFollowsSystem,
+                    lightThemeID: tab.lightThemeID,
+                    darkThemeID: tab.darkThemeID)
             }
             let selected: Int = {
                 if let id = wc.state.selectedID,

@@ -1,6 +1,20 @@
 import AppKit
 import SwiftUI
 
+/// Optional ThemeCatalog for views (like this pill) that also render
+/// in catalog-less contexts (tests, previews): the Theme menu simply
+/// doesn't appear there instead of trapping on a missing ancestor.
+private struct ThemeCatalogEnvironmentKey: EnvironmentKey {
+    static let defaultValue: ThemeCatalog? = nil
+}
+
+extension EnvironmentValues {
+    var contermThemeCatalog: ThemeCatalog? {
+        get { self[ThemeCatalogEnvironmentKey.self] }
+        set { self[ThemeCatalogEnvironmentKey.self] = newValue }
+    }
+}
+
 /// A tab on whatever surface carries it. Selection is not drawn here —
 /// TabBar owns a single travelling selection that glides between pills.
 /// Liquid Drop: resting tabs are a faint wash and the selection is one
@@ -43,6 +57,7 @@ struct TabPill: View {
     @EnvironmentObject var tabGroups: TabGroupStore
     @EnvironmentObject var state: AppState
     @EnvironmentObject var prefs: Preferences
+    @Environment(\.contermThemeCatalog) private var themeCatalog
     @State private var hovering = false
     @State private var hoveringClose = false
     /// Live rendered width (horizontal pills only) — drives `squeezed`.
@@ -355,6 +370,7 @@ struct TabPill: View {
             Button("Close Tab") { onClose() }
             Divider()
             groupMenu
+            themeMenu
         }
         // Hover physicality differs by home: horizontal cards lift
         // slightly; sidebar rows nudge toward the terminal instead —
@@ -546,6 +562,17 @@ struct TabPill: View {
             .opacity(0.5 + 0.5 * phase)
     }
 
+    /// Right-click submenu for this tab's own terminal theme. Hidden
+    /// while the terminal config owns the colors (Settings disables
+    /// its picker then): a pick here would be saved and checked but
+    /// change nothing until some later config reload.
+    @ViewBuilder
+    private var themeMenu: some View {
+        if !prefs.themeFromConfig, let themes = themeCatalog {
+            TabThemeMenu(themes: themes, tab: tab, state: state)
+        }
+    }
+
     /// Right-click submenu for browser-style tab groups.
     @ViewBuilder
     private var groupMenu: some View {
@@ -652,4 +679,88 @@ struct TabPill: View {
             .animation(Theme.Spring.snappy, value: hoveringClose)
     }
 
+}
+
+/// The tab Theme submenu's content. The pill holds the catalog as
+/// a plain environment value, which does not publish changes; this
+/// view observes the catalog and the tab directly. The menu shows
+/// a short list plus Settings rather than the full catalog.
+struct TabThemeMenu: View {
+    @ObservedObject var themes: ThemeCatalog
+    @ObservedObject var tab: Tab
+    var state: AppState
+
+    /// Short-list length shown before "More in Settings…".
+    static var shortListCount: Int { 15 }
+
+    /// The short list: priority themes (the tab's own, the window's)
+    /// first, then the catalog in order, capped at shortListCount.
+    static func shortList(_ themes: [ThemeCatalog.Theme],
+                          priority: [String?]) -> [ThemeCatalog.Theme] {
+        var seen = Set<String>()
+        var out: [ThemeCatalog.Theme] = []
+        for id in priority {
+            guard let id, seen.insert(id).inserted,
+                  let t = themes.first(where: { $0.id == id }) else { continue }
+            out.append(t)
+        }
+        for t in themes where seen.insert(t.id).inserted {
+            out.append(t)
+        }
+        return Array(out.prefix(shortListCount))
+    }
+
+    var body: some View {
+        Menu("Theme") {
+            if tab.hasOwnTheme {
+                Button("Inherit window theme") { state.setTabTheme(tab, nil) }
+                Divider()
+            }
+            Toggle("Follow macOS light/dark", isOn: Binding(
+                get: { tab.themeFollowsSystem },
+                set: { state.setTabThemeFollowsSystem(tab, $0) }))
+            if themes.themes.isEmpty {
+                Button(themes.isLoading ? "Loading themes…" : "Load themes…") {
+                    themes.ensureLoaded()
+                }
+                .disabled(themes.isLoading)
+            } else if tab.themeFollowsSystem {
+                Menu("Light theme") {
+                    ForEach(Self.shortList(themes.themes,
+                        priority: [tab.lightThemeID, state.windowLightThemeID])) { t in
+                        Button(tab.lightThemeID == t.id ? "✓ \(t.name)" : t.name) {
+                            state.setTabSlotTheme(tab, t.id, dark: false)
+                        }
+                    }
+                    Divider()
+                    moreInSettings
+                }
+                Menu("Dark theme") {
+                    ForEach(Self.shortList(themes.themes,
+                        priority: [tab.darkThemeID, state.windowDarkThemeID])) { t in
+                        Button(tab.darkThemeID == t.id ? "✓ \(t.name)" : t.name) {
+                            state.setTabSlotTheme(tab, t.id, dark: true)
+                        }
+                    }
+                    Divider()
+                    moreInSettings
+                }
+            } else {
+                ForEach(Self.shortList(themes.themes,
+                    priority: [tab.themeID, state.effectiveThemeID(for: tab)])) { t in
+                    Button(tab.themeID == t.id ? "✓ \(t.name)" : t.name) {
+                        state.setTabTheme(tab, t.id)
+                    }
+                }
+                Divider()
+                moreInSettings
+            }
+        }
+    }
+
+    private var moreInSettings: some View {
+        Button("More in Settings…") {
+            state.requestThisTabThemeScope(for: tab)
+        }
+    }
 }

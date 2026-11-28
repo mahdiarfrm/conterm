@@ -35,9 +35,9 @@ https://github.com/user-attachments/assets/afbe93e9-9741-46d3-9eef-1c7b0d62ab64
 - Split panes, top or sidebar tabs, tab groups, and full session restore.
 - `⌘K` searches commands, shell and clipboard history, SSH hosts, files,
   notes and every open pane.
-- Claude Code, Codex and opencode report *ready / thinking / needs you* per
-  pane, with a command center for all of them and a review of what each
-  changed.
+- Claude Code, Codex, opencode, Muse Code, Antigravity, Pi and OMP report
+  *ready / thinking / needs you* per pane, with a command center for all of
+  them and a review of what each changed — including over SSH and tmux.
 - Host, Kubernetes, container, Ansible and Terraform overviews built from
   the commands you already run.
 - Orbit maps your sessions and fleet; routines repeat work across hosts.
@@ -149,11 +149,15 @@ One search over everything:
 
 - **Status pills** — a per-pane pill shows when
   [Claude Code](https://www.anthropic.com/claude-code),
-  [Codex](https://github.com/openai/codex) or
-  [opencode](https://opencode.ai) is *ready*, *thinking*, or *needs you*, with
+  [Codex](https://github.com/openai/codex),
+  [opencode](https://opencode.ai), Muse Code, Antigravity, Pi or OMP is
+  *ready*, *thinking*, or *needs you*, with
   a notification center for what finished while you were away. Hooks are
   installed non-destructively (Claude's in `~/.claude/settings.json`,
-  Codex's in `~/.codex/hooks.json`; both run one script).
+  Codex's in `~/.codex/hooks.json`; both run one script). Claude, Muse and
+  Antigravity also report token usage in the command center — Muse's and
+  Antigravity's sessions carry their own cost totals (Antigravity via its
+  status line, stacked under the built-in one; yours is never replaced).
 - **Tool bubbles** — whatever Claude or Codex is doing pops up beside the pill
   as a monochrome bubble, one per kind in flight, its ring sweeping in that
   kind's colour: terraform, ansible, kubectl, helm, docker, ssh, git, gh,

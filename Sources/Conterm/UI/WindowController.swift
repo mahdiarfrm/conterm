@@ -46,6 +46,7 @@ final class WindowController {
             .environmentObject(state)
             .environmentObject(prefs)
             .environmentObject(themes)
+            .environment(\.contermThemeCatalog, themes)
             .environmentObject(fonts)
             .environmentObject(notifications)
             .environmentObject(tabGroups)
