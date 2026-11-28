@@ -152,3 +152,64 @@ _conterm_terraform_preexec() {
         > "$HOME/.conterm/terraform/run-$CONTERM_PANE_ID"
 }
 preexec_functions+=(_conterm_terraform_preexec)
+
+# Agent forwarding over SSH: a plain interactive `ssh <host>` from a
+# Conterm pane reverse-forwards this pane's agent socket and exports
+# the pane identity on the far end, so harnesses there (usually
+# inside tmux) report status and tool calls back to THIS pane
+# (RemoteAgentChannel in the app; `agent-hook.sh` prefers the socket
+# and falls back to the tty escape, DCS-wrapped inside tmux).
+# Anything else — a remote command, -N/-L/-R/-f/-G forms, any extra
+# argument — passes through untouched, so git/scp/rsync over ssh are
+# unaffected. Opt out per shell with CONTERM_NO_SSH_WRAP=1.
+#
+# Ghostty's own ssh wrapper is defined in _ghostty_deferred_init,
+# which runs at the FIRST PROMPT and would replace a ssh() defined
+# at source time. So this file only registers a precmd hook (added
+# after Ghostty's, so it runs after it) that installs the wrapper
+# on top of `ghostty +ssh` — ssh-env/terminfo handling stays
+# Ghostty's, we add only the -R forward and the pane identity.
+_conterm_ghostty_ssh() {
+    if [[ -n "$GHOSTTY_BIN_DIR" && -x "$GHOSTTY_BIN_DIR/ghostty" ]]; then
+        "$GHOSTTY_BIN_DIR/ghostty" +ssh --terminfo=false -- "$@"
+    else
+        command ssh "$@"
+    fi
+}
+_conterm_install_ssh_wrap() {
+    builtin emulate -L zsh
+    precmd_functions=(${precmd_functions:#_conterm_install_ssh_wrap})
+    builtin unfunction _conterm_install_ssh_wrap
+    [[ -n "$CONTERM_PANE_ID" ]] || return 0
+    ssh() {
+        builtin emulate -L zsh
+        local _listen="${CONTERM_AGENT_LISTEN:-$HOME/.conterm/run/agent.sock}"
+        if [[ $# -eq 1 && -z "$CONTERM_NO_SSH_WRAP" && -S "$_listen" ]]; then
+            # A host with RemoteCommand in its config cannot also take
+            # a command-line command (OpenSSH refuses the pair). Skip
+            # the wrapper for it; Ghostty's env handling still applies.
+            local _rc=""
+            _rc=$(command ssh -G "$1" 2>/dev/null \
+                | command awk '$1=="remotecommand" { $1=""; sub(/^ /, ""); print; exit }')
+            if [[ -n "$_rc" ]]; then
+                _conterm_ghostty_ssh "$@"
+                return
+            fi
+            # Absolute remote path: sshd binds a relative -R path from
+            # /, where it never binds. StreamLocalBindUnlink makes
+            # sshd clear a stale socket left by a previous connection.
+            local _rsock="$HOME/.conterm/run/agent-$CONTERM_PANE_ID.sock"
+            # The injected command runs under a POSIX shell whatever
+            # the login shell is (fish/csh/nushell cannot parse it),
+            # and tmux env is per-session, never server-global (-g
+            # would make two panes on one host report to the last one).
+            local _inner="mkdir -p ~/.conterm/run && export CONTERM_PANE_ID=$CONTERM_PANE_ID CONTERM_AGENT_SOCK=\"\$HOME/.conterm/run/agent-$CONTERM_PANE_ID.sock\" && { tmux set-environment CONTERM_PANE_ID $CONTERM_PANE_ID 2>/dev/null; tmux set-environment CONTERM_AGENT_SOCK \"\$HOME/.conterm/run/agent-$CONTERM_PANE_ID.sock\" 2>/dev/null; }; exec \"\${SHELL:-/bin/sh}\" -l"
+            _conterm_ghostty_ssh -o StreamLocalBindUnlink=yes \
+                -R "$_rsock:$_listen" -t "$1" "exec /bin/sh -c '$_inner'"
+        else
+            _conterm_ghostty_ssh "$@"
+        fi
+    }
+}
+builtin typeset -ag precmd_functions
+precmd_functions+=(_conterm_install_ssh_wrap)

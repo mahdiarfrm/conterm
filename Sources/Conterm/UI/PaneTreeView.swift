@@ -33,10 +33,13 @@ func makePaneSurface(pane: Pane,
     // Capture restore intent before starting, then clear it so a later
     // re-mount of this pane never replays it.
     let resumeSession = pane.pendingAgentResume
+    let remoteResume = pane.pendingRemoteResume
     let scrollback = pane.pendingScrollback
     pane.pendingAgentResume = nil
+    pane.pendingRemoteResume = nil
     pane.pendingScrollback = nil
     let handoff = RestoreHandoff.make(resumeSession: resumeSession,
+                                      remoteResume: remoteResume,
                                       scrollback: scrollback, cwd: pane.cwd)
     controller.restoreEnvironment = handoff?.environment
     let pendingRestore = handoff.map { PendingRestore(handoff: $0, controller: controller) }
@@ -60,6 +63,9 @@ func makePaneSurface(pane: Pane,
                     if pane?.remoteHost != host { pane?.remoteHost = host }
                     // This path *is* the far end reporting where it is.
                     pane?.cwdIsRemote = true
+                    // A dial may be what the transcript tail was
+                    // waiting for.
+                    if let pane { RemoteTranscriptMirror.shared.sync(pane: pane) }
                 }
             }
             if let tab = owningTab {
@@ -78,6 +84,7 @@ func makePaneSurface(pane: Pane,
             if let dial = extractSshDial(from: newTitle) {
                 if pane?.remoteHost != dial.host { pane?.remoteHost = dial.host }
                 if pane?.remoteDial != dial { pane?.remoteDial = dial }
+                if let pane { RemoteTranscriptMirror.shared.sync(pane: pane) }
                 // Learned from the title, so `cwd` is still whatever the local
                 // shell last reported.
                 pane?.cwdIsRemote = false
@@ -107,6 +114,7 @@ func makePaneSurface(pane: Pane,
     controller.onClose = { [weak pane, weak owningTab, weak state] in
         DispatchQueue.main.async {
             guard let pane, let tab = owningTab, let state else { return }
+            RemoteTranscriptMirror.shared.stop(paneID: pane.id)
             state.closePane(tab: tab, paneID: pane.id)
         }
     }
@@ -152,6 +160,15 @@ func makePaneSurface(pane: Pane,
             guard let toolRaw = parts.first else { return }
             let tool = AgentTool(rawValue: toolRaw) ?? .generic
             let stateStr = parts.count > 1 ? parts[1] : ""
+            // A usage report, not a phase: the harness's own token /
+            // cost totals (Antigravity's status line). Carried on the
+            // pane for AgentCenter; never moves the pill.
+            if stateStr == "usage", parts.count > 2,
+               let usage = ReportedUsage.decodeEvent(parts[2]) {
+                pane.reportedUsage = usage
+                AgentCenter.shared.noteAgentActivity()
+                return
+            }
             // A tool call, not a phase: `tool:start:…` / `tool:end:…` (see
             // AgentToolEvent). Only a live session's calls count — a pill that
             // isn't showing has no bubbles to hang. A call starting is also
@@ -168,7 +185,11 @@ func makePaneSurface(pane: Pane,
                 AgentCenter.shared.scheduleToolEnrichment()
                 return
             }
-            if parts.count > 2, !parts[2].isEmpty { pane.agentTranscriptPath = parts[2] }
+            if parts.count > 2, !parts[2].isEmpty {
+                pane.agentTranscriptPath = parts[2]
+                RemoteTranscriptMirror.shared.noteTranscript(
+                    pane: pane, reportedPath: parts[2])
+            }
             let phase: AgentStatus.Phase
             switch stateStr {
             case "start", "idle", "stop": phase = .ready
@@ -177,7 +198,11 @@ func makePaneSurface(pane: Pane,
             case "end", "exit":           phase = .idle
             default:                      return
             }
-            if phase == .idle { pane.agentTranscriptPath = nil }
+            if phase == .idle {
+                pane.agentTranscriptPath = nil
+                pane.remoteTranscriptPath = nil
+                RemoteTranscriptMirror.shared.stop(paneID: pane.id)
+            }
             let prev = pane.agent.phase
             let next = AgentStatus(phase: phase, tool: tool, progress: nil)
             guard pane.agent != next else { return }
@@ -227,6 +252,7 @@ func makePaneSurface(pane: Pane,
                 pane.agent = .idle
                 owningTab?.recomputeAgentPhase()
             }
+            RemoteTranscriptMirror.shared.stop(paneID: pane.id)
             // Record the result unconditionally (Orbit's run-result capture reads
             // it); only the badge/notification is gated behind commandAlerts.
             let result = Pane.CommandResult(exitCode: exitCode, durationNs: durationNs, at: Date())
@@ -251,13 +277,14 @@ func makePaneSurface(pane: Pane,
 
     _ = controller.start(view: view)
     // A fresh surface starts from the app-level (global) config. If
-    // this window carries its own theme, layer it on now — splits
-    // and new tabs in a themed window open themed, not global.
+    // this pane's tab carries an effective theme (its own, else the
+    // window's), layer it on now — splits and new tabs in a themed
+    // tab open themed, not global.
     // Tab panes only: Orbit's floating terminals belong to no tab,
     // so `AppState.liveControllers` never re-themes them; they stay
     // on the global theme rather than freezing at creation time.
-    if owningTab != nil,
-       let themeID = state.effectiveWindowThemeID,
+    if let owningTab,
+       let themeID = state.effectiveThemeID(for: owningTab),
        !state.prefs.themeFromConfig {
         app.applyTheme(themeID, to: [controller])
     }
@@ -300,8 +327,26 @@ struct RestoreHandoff {
     /// Resume the agent if one was running, else replay the saved
     /// scrollback. nil for a plain pane (cwd alone covers it) or when the
     /// file can't be written.
-    static func make(resumeSession: String?, scrollback: String?,
-                     cwd: String?) -> RestoreHandoff? {
+    static func make(resumeSession: String?, remoteResume: RemoteResume? = nil,
+                     scrollback: String?, cwd: String?) -> RestoreHandoff? {
+        if let id = resumeSession, !id.isEmpty, let remote = remoteResume {
+            // The session lives on the remote host: dial back and
+            // resume it there, in its own directory (the snapshot's
+            // remote dir — the local ClaudeProjects lookup must not
+            // run, the session was never on this machine). One typed
+            // line, like the local resume; tmux users land in claude
+            // directly and can re-attach their session around it.
+            // No local-cwd fallback: `cwd` here is on this Mac, so a
+            // `cd` to it on the host fails and claude never starts.
+            // The snapshot's directory (from the mirrored transcript)
+            // is the only remote directory we trust.
+            let dir = remote.directory
+            let inner = dir.map {
+                "cd \(shellQuote($0)) && claude --resume \(shellQuote(id))"
+            } ?? "claude --resume \(shellQuote(id))"
+            let line = "\(remote.sshPrefix) \(shellQuote(inner))"
+            return write(line, ext: "cmd").map { RestoreHandoff(kind: .command, path: $0) }
+        }
         if let id = resumeSession, !id.isEmpty {
             // The session's own directory, from its transcript — not the
             // pane's. Claude runs full-screen and the shell emits no OSC 7

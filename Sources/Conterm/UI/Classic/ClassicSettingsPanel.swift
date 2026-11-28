@@ -20,6 +20,12 @@ struct ClassicSettingsPanel: View {
     @State private var codexIntegrationOn = false
     @State private var codexAwaitsTrust = false
     @State private var openCodeIntegrationOn = false
+    @State private var museIntegrationOn = false
+    @State private var antigravityIntegrationOn = false
+    @State private var piIntegrationOn = false
+    @State private var ompIntegrationOn = false
+    @State private var remoteInstallHost: String = ""
+    @State private var remoteInstallStatus: String = ""
     @State private var themeFilter: String = ""
 
     /// Shared with the Liquid Drop panel, so a section requested by raw
@@ -50,6 +56,10 @@ struct ClassicSettingsPanel: View {
             codexIntegrationOn = CodexIntegration.isInstalled
             codexAwaitsTrust = CodexIntegration.awaitsTrust
             openCodeIntegrationOn = OpenCodeIntegration.isInstalled
+            museIntegrationOn = MuseIntegration.isInstalled
+            antigravityIntegrationOn = AntigravityIntegration.isInstalled
+            piIntegrationOn = PiIntegration.isInstalled
+            ompIntegrationOn = OmpIntegration.isInstalled
             // Jump to the section a palette settings result asked for.
             applyRequestedSection()
         }
@@ -967,6 +977,79 @@ struct ClassicSettingsPanel: View {
                     .toggleStyle(.switch)
                     .labelsHidden()
                 }
+                SettingsRow(title: "Muse Code integration",
+                            subtitle: "Add hooks to ~/.config/muse/settings.json so a running Muse shows ready / thinking / needs-input in its pane. Your other hooks are preserved.") {
+                    Toggle("", isOn: Binding(
+                        get: { museIntegrationOn },
+                        set: { on in
+                            if on { MuseIntegration.install() }
+                            else  { MuseIntegration.uninstall() }
+                            museIntegrationOn = MuseIntegration.isInstalled
+                        }
+                    ).withSound())
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+                SettingsRow(title: "Antigravity integration",
+                            subtitle: "Add Conterm's hook group to ~/.gemini/config/hooks.json so a running Antigravity (CLI or IDE) shows ready / thinking and tool bubbles. Your other hook groups are preserved.") {
+                    Toggle("", isOn: Binding(
+                        get: { antigravityIntegrationOn },
+                        set: { on in
+                            if on { AntigravityIntegration.install() }
+                            else  { AntigravityIntegration.uninstall() }
+                            antigravityIntegrationOn = AntigravityIntegration.isInstalled
+                        }
+                    ).withSound())
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+                SettingsRow(title: "Pi integration",
+                            subtitle: "Install a Pi extension (~/.pi/agent/extensions/) that drives the same status pill and tool bubbles. Your other extensions are untouched.") {
+                    Toggle("", isOn: Binding(
+                        get: { piIntegrationOn },
+                        set: { on in
+                            if on { PiIntegration.install() }
+                            else  { PiIntegration.uninstall() }
+                            piIntegrationOn = PiIntegration.isInstalled
+                        }
+                    ).withSound())
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+                SettingsRow(title: "OMP integration",
+                            subtitle: "Install an OMP extension (~/.omp/agent/extensions/) that drives the same status pill and tool bubbles. Your other extensions are untouched.") {
+                    Toggle("", isOn: Binding(
+                        get: { ompIntegrationOn },
+                        set: { on in
+                            if on { OmpIntegration.install() }
+                            else  { OmpIntegration.uninstall() }
+                            ompIntegrationOn = OmpIntegration.isInstalled
+                        }
+                    ).withSound())
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+                SettingsRow(title: "Agent integration on an SSH host",
+                            subtitle: remoteInstallStatus.isEmpty
+                                ? "Install the same hooks on a remote host or Coder workspace (key/agent auth only — no password prompt). Then plain ssh from a pane forwards agent status back, tmux included."
+                                : remoteInstallStatus) {
+                    HStack(spacing: 8) {
+                        TextField("host", text: $remoteInstallHost)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 130)
+                        Button("Install") {
+                            let host = remoteInstallHost
+                                .trimmingCharacters(in: .whitespaces)
+                            guard !host.isEmpty else { return }
+                            remoteInstallStatus = "Installing on \(host)…"
+                            RemoteAgentInstall.install(host: host) { out in
+                                remoteInstallStatus = out
+                            }
+                        }
+                        .disabled(remoteInstallHost
+                            .trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
                 SettingsRow(title: "Diagnostic logging",
                             subtitle: "Write internal events to ~/Library/Logs/Conterm/conterm.log. A development aid; off by default.") {
                     HStack(spacing: 10) {
@@ -1421,36 +1504,43 @@ private struct ThemePicker: View {
     @Binding var filter: String
 
     /// Where a swatch pick lands: every window (the global theme,
-    /// written to the config file), or only the window this Settings
-    /// panel belongs to (`AppState.windowThemeID`).
-    private enum Scope: Hashable { case allWindows, thisWindow }
+    /// written to the config file), only the window this Settings
+    /// panel belongs to (`AppState.windowThemeID`), or only its
+    /// selected tab (`Tab.themeID`).
+    private typealias Scope = AppState.ThemeScopeTarget
     @State private var scope: Scope = .allWindows
-    /// Which follow-macOS slot a swatch pick fills (This-window
-    /// scope with Follow on). Defaults to the current appearance.
+
+    /// The tab a This-tab pick lands on (the window's selected tab).
+    private var scopeTab: Tab? { state.selectedTab }
+    private var scopeFollows: Bool { state.themeScopeFollows(scope, tab: scopeTab) }
+    private var scopeLightID: String? { state.themeScopeLightID(scope, tab: scopeTab) }
+    private var scopeDarkID: String? { state.themeScopeDarkID(scope, tab: scopeTab) }
+    private var scopeHasOverride: Bool { state.themeScopeHasOverride(scope, tab: scopeTab) }
+    /// Which follow-macOS slot a swatch pick fills (This-window or
+    /// This-tab scope with Follow on). Defaults to the current
+    /// appearance.
     @State private var editingDark: Bool = ThemeCatalog.systemIsDark
 
     private let columns = [GridItem(.adaptive(minimum: 132), spacing: 10)]
 
     /// The theme the swatch grid should mark selected in the current
-    /// scope: a window override wins in This-window scope, and a
-    /// window without one shows the global pick it is following.
+    /// scope: a tab override wins in This-tab scope, a window
+    /// override in This-window scope, and a scope without one shows
+    /// the global pick it is following.
     private var selectedThemeID: String? {
-        guard scope == .thisWindow else { return themes.current }
-        if state.windowThemeFollowsSystem {
-            return editingDark ? state.windowDarkThemeID
-                               : state.windowLightThemeID
-        }
-        return state.windowThemeID ?? themes.current
+        state.themeScopeSelectedID(scope, tab: scopeTab,
+                                    editingDark: editingDark,
+                                    globalCurrent: themes.current)
     }
 
-    /// Follow-macOS toggle for a window with its own theme: fixed
-    /// theme, or the Light/Dark pair switching with the system.
+    /// Follow-macOS toggle for the current scope: fixed theme, or
+    /// the Light/Dark pair switching with the system.
     private var followBinding: Binding<Bool> {
         Binding(
-            get: { state.windowThemeFollowsSystem },
+            get: { scopeFollows },
             set: { on in
                 if on { editingDark = ThemeCatalog.systemIsDark }
-                state.setWindowThemeFollowsSystem(on)
+                state.setThemeScopeFollows(on, target: scope, tab: scopeTab)
             })
     }
 
@@ -1534,8 +1624,17 @@ private struct ThemePicker: View {
         }
         .onAppear {
             // Land on the scope this window is actually in, so a
-            // themed window doesn't offer a global pick by default.
-            scope = state.hasWindowTheme ? .thisWindow : .allWindows
+            // themed tab (or window) doesn't offer a global pick by
+            // default.
+            scope = initialScope()
+        }
+        // A This-tab scope requested from a tab menu lands here too.
+        // Clearing the request re-fires this with nil; that must not
+        // move the scope the request just set.
+        .onChange(of: state.requestedThemeTabID) { _, new in
+            guard new != nil else { return }
+            scope = .thisTab
+            state.requestedThemeTabID = nil
         }
     }
 
@@ -1567,17 +1666,17 @@ private struct ThemePicker: View {
                 .strokeBorder(Theme.stroke, lineWidth: 0.5)
         )
         // Flipping ON hands control back to the config (removes the
-        // managed block + reloads); OFF re-enables the swatches and the
-        // user picks one.
+        // managed block + reloads); turning it off is handled by each
+        // AppState's own prefs observation (see AppState).
         .onChange(of: prefs.themeFromConfig) { _, on in
             if on { themes.followConfig() }
         }
     }
 
-    /// Scope row: does the next swatch pick retheme every window, or
-    /// only this one? A window with its own theme can drop back to
-    /// following the global pick here. Disabled while the config owns
-    /// the colors, like the swatches below.
+    /// Scope row: does the next swatch pick retheme every window,
+    /// only this window, or only this tab? A scope with its own theme
+    /// can drop back to inheriting here. Disabled while the config
+    /// owns the colors, like the swatches below.
     private var scopeRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
@@ -1587,19 +1686,27 @@ private struct ThemePicker: View {
                 Picker("", selection: $scope) {
                     Text("All windows").tag(Scope.allWindows)
                     Text("This window").tag(Scope.thisWindow)
+                    Text("This tab").tag(Scope.thisTab)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .fixedSize()
                 Spacer(minLength: 8)
-                if scope == .thisWindow, state.hasWindowTheme {
-                    Button("Use global theme") { state.setWindowTheme(nil) }
+                if scope != .allWindows, scopeHasOverride {
+                    Button(scope == .thisTab ? "Inherit window theme"
+                                             : "Use global theme") {
+                        if scope == .thisTab, let tab = scopeTab {
+                            state.setTabTheme(tab, nil)
+                        } else {
+                            state.setWindowTheme(nil)
+                        }
+                    }
                         .font(.system(size: 11, design: .rounded))
                         .buttonStyle(.plain)
                         .foregroundStyle(Theme.accent)
                 }
             }
-            if scope == .thisWindow {
+            if scope != .allWindows {
                 HStack(spacing: 10) {
                     Text("Follow macOS light/dark")
                         .font(.system(size: 12, design: .rounded))
@@ -1608,18 +1715,18 @@ private struct ThemePicker: View {
                     Toggle("", isOn: followBinding)
                         .labelsHidden()
                 }
-                if state.windowThemeFollowsSystem {
+                if scopeFollows {
                     HStack(spacing: 6) {
                         slotChip(title: "Light",
-                                 themeID: state.windowLightThemeID,
+                                 themeID: scopeLightID,
                                  dark: false)
                         slotChip(title: "Dark",
-                                 themeID: state.windowDarkThemeID,
+                                 themeID: scopeDarkID,
                                  dark: true)
                         Spacer(minLength: 0)
                     }
                 }
-                Text(windowCaption)
+                Text(scopeCaption)
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1638,27 +1745,24 @@ private struct ThemePicker: View {
         .opacity(prefs.themeFromConfig ? 0.4 : 1)
     }
 
+    /// The scope this picker opens on: an explicit This-tab
+    /// request wins, then the scope the current state suggests.
+    private func initialScope() -> Scope {
+        if state.takeThemeScopeRequest() != nil { return .thisTab }
+        return state.suggestedThemeScopeTarget
+    }
+
     private func pick(_ theme: ThemeCatalog.Theme) {
-        switch scope {
-        case .allWindows:
+        if scope == .allWindows {
             themes.apply(theme)
-        case .thisWindow:
-            if state.windowThemeFollowsSystem {
-                state.setWindowSlotTheme(theme.id, dark: editingDark)
-            } else {
-                state.setWindowTheme(theme.id)
-            }
+        } else {
+            state.pickTheme(id: theme.id, target: scope, tab: scopeTab,
+                            editingDark: editingDark)
         }
     }
 
-    private var windowCaption: String {
-        if state.windowThemeFollowsSystem {
-            return "This window switches with macOS. Pick a swatch to "
-                + "fill the Light or Dark slot."
-        }
-        return state.hasWindowTheme
-            ? "Only this window uses this theme. Other windows keep the global theme."
-            : "This window follows the global theme. Pick a swatch to give it its own."
+    private var scopeCaption: String {
+        state.themeScopeCaption(scope, tab: scopeTab, editingDark: editingDark)
     }
 
     /// One follow-macOS slot: shows its theme and takes the swatch

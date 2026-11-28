@@ -128,7 +128,7 @@ import Foundation
     }
 
     @Test func restoreClampsDividerFraction() {
-        let leaf = SessionStore.PaneTreeSnapshot.leaf(cwd: nil, scrollback: nil, agentSession: nil)
+        let leaf = SessionStore.PaneTreeSnapshot.leaf(cwd: nil, scrollback: nil, agentSession: nil, agentRemote: nil)
         let squeezed = PaneNode.from(snapshot: .split(axis: "horizontal", fraction: 0.01,
                                                       first: leaf, second: leaf))
         #expect(abs(squeezed.firstFraction - 0.12) < 0.0001)
@@ -139,7 +139,7 @@ import Foundation
     }
 
     @Test func restoreFallsBackToHorizontalOnUnknownAxis() {
-        let leaf = SessionStore.PaneTreeSnapshot.leaf(cwd: nil, scrollback: nil, agentSession: nil)
+        let leaf = SessionStore.PaneTreeSnapshot.leaf(cwd: nil, scrollback: nil, agentSession: nil, agentRemote: nil)
         let node = PaneNode.from(snapshot: .split(axis: "diagonal", fraction: 0.5,
                                                   first: leaf, second: leaf))
         guard case .split(let axis, _, _) = node.kind else {
@@ -151,7 +151,7 @@ import Foundation
 
     @Test func restoredLeafCarriesScrollbackAndAgentSession() {
         let node = PaneNode.from(snapshot: .leaf(cwd: "/srv", scrollback: "old output",
-                                                 agentSession: "abc-123"))
+                                                 agentSession: "abc-123", agentRemote: nil))
         let pane = node.leaves().first!
         #expect(pane.cwd == "/srv")
         #expect(pane.pendingScrollback == "old output")

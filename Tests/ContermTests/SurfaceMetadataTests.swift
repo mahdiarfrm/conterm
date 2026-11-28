@@ -119,6 +119,24 @@ import Foundation
         #expect(extractSshDial(from: "ssh host")?.scpFlags == [])
     }
 
+    /// A remote host controls the window title: shell syntax in it
+    /// must never become a dial that a snapshot can persist.
+    @Test func dialRejectsShellSyntaxInTitle() {
+        #expect(extractSshDial(from: "ssh host;touch${IFS}/tmp/pwn") == nil)
+        #expect(extractSshDial(from: "ssh -p 22x host") == nil)
+        #expect(extractSshDial(from: "ssh -p 99999 host") == nil)
+        #expect(extractSshDial(from: "ssh ev`il`@host") == nil)
+        #expect(extractSshDial(from: "ssh -J a@b:22x host") == nil)
+    }
+
+    /// The resume prefix is eval'd on restore, so every component
+    /// is shell-quoted even for a well-formed dial.
+    @Test func sshResumePrefixQuotesEveryComponent() {
+        let dial = extractSshDial(from: "ssh -p 2222 -i /tmp/k admin@example.com")
+        #expect(dial?.sshResumePrefix
+            == "'ssh' '-t' '-p' '2222' '-i' '/tmp/k' 'admin@example.com'")
+    }
+
     // MARK: - Title → cwd extraction
 
     @Test func cwdFromTitleTilde() {

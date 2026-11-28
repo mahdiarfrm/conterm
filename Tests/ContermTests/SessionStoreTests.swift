@@ -24,10 +24,10 @@ import Foundation
     private func sampleSnapshot() -> SessionStore.Snapshot {
         let tree = SessionStore.PaneTreeSnapshot.split(
             axis: "horizontal", fraction: 0.3,
-            first: .leaf(cwd: "/tmp/a", scrollback: "old output", agentSession: "sess-1"),
+            first: .leaf(cwd: "/tmp/a", scrollback: "old output", agentSession: "sess-1", agentRemote: nil),
             second: .split(axis: "vertical", fraction: 0.5,
-                           first: .leaf(cwd: "/tmp/b", scrollback: nil, agentSession: nil),
-                           second: .leaf(cwd: nil, scrollback: nil, agentSession: nil)))
+                           first: .leaf(cwd: "/tmp/b", scrollback: nil, agentSession: nil, agentRemote: nil),
+                           second: .leaf(cwd: nil, scrollback: nil, agentSession: nil, agentRemote: nil)))
         let tabs = [
             SessionStore.Tab(title: "work", customTitle: true, cwd: "/tmp/a",
                              indexLabel: "1", tree: tree,

@@ -33,6 +33,14 @@ struct AgentUsage: Equatable {
     /// actually doing at the shell. Claude only.
     var shellCommands: [ShellCommand] = []
 
+    /// Spend the harness itself reported (Antigravity's status line
+    /// carries a running USD total). Wins over any local estimate.
+    var reportedCost: Double? = nil
+    /// Whether a per-model rate is known for this usage. Muse's models
+    /// have no public rate, so its usage is tokens-only: pricing it at
+    /// the fallback tier would print an invented dollar figure.
+    var priced: Bool = true
+
     /// Tokens the session *produced* — input + output + cache writes.
     /// Cache READS are deliberately excluded: a long session re-reads the
     /// same cached context every turn, so summing them balloons the count
@@ -41,10 +49,16 @@ struct AgentUsage: Equatable {
     var totalTokens: Int {
         inputTokens + outputTokens + cacheCreateTokens
     }
-    /// Estimated spend in USD from the per-model rate table. Best-effort:
-    /// Anthropic bills each request independently, so summing per-message
+    /// Estimated spend in USD: the harness-reported total when there
+    /// is one, else the per-model rate table. Best-effort: Anthropic
+    /// bills each request independently, so summing per-message
     /// usage × rate matches the session total.
-    var estCost: Double { AgentPricing.cost(for: self) }
+    var estCost: Double {
+        if let reportedCost { return reportedCost }
+        return priced ? AgentPricing.cost(for: self) : 0
+    }
+    /// Whether any dollar figure may be shown for this usage.
+    var hasCost: Bool { reportedCost != nil || priced }
 }
 
 /// One sub-agent (Claude Code Task tool) spawned by a parent session, read
@@ -690,6 +704,13 @@ final class AgentCenter: ObservableObject {
 
     private let store = AgentTranscriptStore()
     private let ioQueue = DispatchQueue(label: "conterm.agentcenter.io", qos: .utility)
+    /// `muse trace` can take seconds; it must not stall Claude usage /
+    /// tool enrichment on the shared io queue. One run in flight,
+    /// throttled, results applied on the main queue.
+    private let museQueue = DispatchQueue(label: "conterm.agentcenter.muse", qos: .utility)
+    private var museInFlight = false
+    private var lastMuseRun: Date = .distantPast
+    private static let museThrottle: TimeInterval = 5
     private var timer: Timer?
     private var observers = 0
 
@@ -748,13 +769,67 @@ final class AgentCenter: ObservableObject {
         let claude = roster.compactMap { e in
             e.tool == .claude ? (e.id, e.cwd, e.transcriptPath) : nil
         }
-        guard !claude.isEmpty else { return }
+        // Muse usage comes from its journal via `muse trace`;
+        // Antigravity reports its own (status line → per-pane file
+        // locally, usage event into `reportedUsage` remotely).
+        let muse = roster.compactMap { e in
+            e.tool == .muse ? (e.id, e.transcriptPath) : nil
+        }
+        let antigravity = roster.compactMap { e in
+            e.tool == .antigravity ? (e.id, e.pane?.reportedUsage) : nil
+        }
+        guard !claude.isEmpty || !muse.isEmpty || !antigravity.isEmpty
+        else { return }
+        clog("usage: jobs claude=\(claude.count) muse=\(muse.count) "
+             + "agy=\(antigravity.count) paths="
+             + "muse:\(muse.map { $0.1 ?? "nil" }) "
+             + "agy-reported:\(antigravity.map { $0.1 != nil })")
+        // Muse runs on its own queue (see museQueue), throttled to one
+        // in-flight run; Claude/Antigravity keep the shared io queue.
+        if !muse.isEmpty, !museInFlight,
+           Date().timeIntervalSince(lastMuseRun) >= Self.museThrottle {
+            museInFlight = true
+            lastMuseRun = Date()
+            let jobs = muse
+            museQueue.async {
+                var byID: [UUID: AgentUsage] = [:]
+                for (id, journal) in jobs {
+                    if let journal,
+                       let u = MuseUsageReader.shared.usage(forJournal: journal) {
+                        byID[id] = u
+                    }
+                }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.museInFlight = false
+                    guard !byID.isEmpty else { return }
+                    var updated = self.entries
+                    var changed = false
+                    for i in updated.indices where byID[updated[i].id] != nil {
+                        if updated[i].usage != byID[updated[i].id] {
+                            updated[i].usage = byID[updated[i].id]
+                            changed = true
+                        }
+                    }
+                    if changed { self.entries = updated }
+                }
+            }
+        }
+        guard !claude.isEmpty || !antigravity.isEmpty else { return }
         let store = self.store
         ioQueue.async {
             var byID: [UUID: AgentUsage] = [:]
             for (id, cwd, transcript) in claude {
                 if let u = store.usage(forCwd: cwd, transcriptPath: transcript) { byID[id] = u }
             }
+            for (id, reported) in antigravity {
+                if let u = AntigravityIntegration.usage(forPane: id) ?? reported {
+                    byID[id] = u
+                }
+            }
+            clog("usage: filled "
+                 + byID.map { "\($0.key.uuidString.prefix(8)):\($0.value.totalTokens)t" }
+                    .joined(separator: " "))
             guard !byID.isEmpty else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }

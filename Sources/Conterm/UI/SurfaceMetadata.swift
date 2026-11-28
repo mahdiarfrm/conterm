@@ -171,6 +171,72 @@ struct SSHDial: Equatable, Sendable {
         if let jump, !jump.isEmpty { out += ["-J", jump] }
         return out
     }
+
+    /// The same flags in `ssh` spelling, for reconnecting the way
+    /// the shell did (transcript tails, remote resume).
+    var sshFlags: [String] {
+        var out: [String] = []
+        if let port, !port.isEmpty { out += ["-p", port] }
+        if let identity, !identity.isEmpty {
+            out += ["-i", (identity as NSString).expandingTildeInPath]
+        }
+        if let jump, !jump.isEmpty { out += ["-J", jump] }
+        return out
+    }
+
+    /// `ssh -t [flags] [user@]host` as one string — the prefix of a
+    /// remote-resume line typed into a restored pane. Every component
+    /// is shell-quoted: the parts come from a window title a remote
+    /// host controls, and the string is eval'd by the zsh restore
+    /// integration, so unquoted shell syntax in a title would run
+    /// on this Mac at the next launch.
+    var sshResumePrefix: String {
+        (["ssh", "-t"] + sshFlags + [target]).map(shellQuote).joined(separator: " ")
+    }
+
+    /// Host/user/port must be plain dial tokens before they reach a
+    /// snapshot or a resume line. Anything with whitespace or shell
+    /// metacharacters is rejected, not quoted-and-trusted.
+    var isValid: Bool {
+        Self.isValidHost(host) && (user.map(Self.isValidUser) ?? true)
+            && (port.map(Self.isValidPort) ?? true)
+            && (jump.map(Self.isValidJump) ?? true)
+    }
+
+    static func isValidHost(_ s: String) -> Bool {
+        !s.isEmpty && s.count <= 253 && s.utf8.allSatisfy {
+            ($0 >= 48 && $0 <= 57) || ($0 >= 65 && $0 <= 90)
+                || ($0 >= 97 && $0 <= 122) || $0 == 46 || $0 == 45
+                || $0 == 95 || $0 == 37   // . - _ % (ssh config patterns)
+        }
+    }
+
+    static func isValidUser(_ s: String) -> Bool {
+        !s.isEmpty && s.count <= 64 && s.utf8.allSatisfy {
+            ($0 >= 48 && $0 <= 57) || ($0 >= 65 && $0 <= 90)
+                || ($0 >= 97 && $0 <= 122) || $0 == 46 || $0 == 45 || $0 == 95
+        }
+    }
+
+    static func isValidPort(_ s: String) -> Bool {
+        guard !s.isEmpty, s.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }),
+              let n = Int(s) else { return false }
+        return (1...65535).contains(n)
+    }
+
+    /// A `-J` value is `[user@]host[:port]` in ssh spelling.
+    static func isValidJump(_ s: String) -> Bool {
+        var rest = s
+        if let at = rest.firstIndex(of: "@") {
+            guard isValidUser(String(rest[rest.startIndex..<at])) else { return false }
+            rest = String(rest[rest.index(after: at)...])
+        }
+        if let colon = rest.lastIndex(of: ":") {
+            guard isValidPort(String(rest[rest.index(after: colon)...])) else { return false }
+            rest = String(rest[rest.startIndex..<colon])
+        }
+        return isValidHost(rest)
+    }
 }
 
 /// If the title looks like a command line that starts with `ssh`
@@ -232,7 +298,7 @@ func extractSshDial(from title: String) -> SSHDial? {
     } else {
         dial.host = word
     }
-    return dial.host.isEmpty ? nil : dial
+    return dial.isValid ? dial : nil
 }
 
 /// Is this title in the local `user@<localhostname>:path` form? We

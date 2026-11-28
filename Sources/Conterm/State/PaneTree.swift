@@ -1,6 +1,36 @@
 import Foundation
 import SwiftUI
 
+/// How to resume an agent session that lives on a remote host:
+/// the `ssh -t …` prefix to dial back with, and the session's
+/// directory on that host. Carried in the session snapshot as one
+/// JSON string (`SessionStore.PaneTreeSnapshot.agentRemote`).
+struct RemoteResume: Equatable, Sendable {
+    var sshPrefix: String
+    var directory: String?
+
+    func encoded() -> String? {
+        var obj: [String: String] = ["ssh": sshPrefix]
+        if let directory { obj["dir"] = directory }
+        guard let data = try? JSONSerialization.data(withJSONObject: obj)
+        else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func decoded(_ string: String?) -> RemoteResume? {
+        guard let string,
+              let data = string.data(using: .utf8),
+              let obj = (try? JSONSerialization.jsonObject(with: data))
+                as? [String: String],
+              let ssh = obj["ssh"], !ssh.isEmpty else { return nil }
+        // The prefix is eval'd by the restore integration; a stored
+        // prefix carrying shell syntax (written by an older build from
+        // an unvalidated window title) must not be replayed.
+        guard !ssh.contains(where: { ";|&$`<>\n()".contains($0) }) else { return nil }
+        return RemoteResume(sshPrefix: ssh, directory: obj["dir"])
+    }
+}
+
 /// A leaf in the pane tree — owns one libghostty surface.
 @MainActor
 final class Pane: ObservableObject, Identifiable {
@@ -98,6 +128,23 @@ final class Pane: ObservableObject, Identifiable {
     /// agent). Drives a typed `claude --resume <id>` once the shell is up.
     var pendingAgentResume: String?
 
+    /// The remote half of a resume: how to dial back to the host the
+    /// session lives on. Set alongside `pendingAgentResume` when the
+    /// session is remote, so the typed line becomes
+    /// `ssh -t <host> 'cd <dir> && claude --resume <id>'`.
+    var pendingRemoteResume: RemoteResume?
+
+    /// The transcript path the remote hook reported, in the REMOTE
+    /// filesystem. `agentTranscriptPath` points at the local mirror
+    /// (`RemoteTranscriptMirror`) once tailing starts; this keeps the
+    /// original for retargeting and resume bookkeeping.
+    var remoteTranscriptPath: String?
+
+    /// Agent events for this pane have arrived over the forwarded
+    /// socket (`RemoteAgentChannel`), so the agent is remote by
+    /// construction even before any title/OSC-7 hint lands.
+    var agentEventsRemote = false
+
     /// Live status of an AI coding agent (Claude Code / opencode)
     /// running in this pane. Driven by the `conterm-agent:<tool>:<state>`
     /// OSC the agents' hooks emit (see ClaudeIntegration /
@@ -152,6 +199,13 @@ final class Pane: ObservableObject, Identifiable {
     /// transcript). Plain var: AgentCenter reads it on its refresh tick.
     var agentTranscriptPath: String?
 
+    /// Usage the harness reported about itself (Antigravity's status
+    /// line, over the socket/OSC usage event). Local panes are read
+    /// from the reporter's file instead; this carries remote panes,
+    /// whose home Conterm can't read. AgentCenter prefers the file
+    /// when both exist (it is at least as fresh).
+    var reportedUsage: AgentUsage?
+
     /// Live core-search state for this pane: match count and 1-based
     /// selected index, mirrored from libghostty's search engine. Both
     /// nil while no search session is active — the engine clears them
@@ -199,14 +253,20 @@ final class Pane: ObservableObject, Identifiable {
 }
 
 /// Which agent is running — selects the pill's logo + name.
+/// Raw values are the identities the hook script / extensions put
+/// after `conterm-agent:` — renaming one silently orphans it.
 enum AgentTool: String, Equatable {
-    case claude, opencode, codex, generic
+    case claude, opencode, codex, muse, antigravity, pi, omp, generic
     var displayName: String {
         switch self {
-        case .claude:   return "Claude"
-        case .opencode: return "opencode"
-        case .codex:    return "Codex"
-        case .generic:  return "Agent"
+        case .claude:      return "Claude"
+        case .opencode:    return "opencode"
+        case .codex:       return "Codex"
+        case .muse:        return "Muse"
+        case .antigravity: return "Antigravity"
+        case .pi:          return "Pi"
+        case .omp:         return "OMP"
+        case .generic:     return "Agent"
         }
     }
     /// Reads a session transcript Conterm can parse (see
@@ -219,7 +279,7 @@ enum AgentTool: String, Equatable {
         case .claude:   return "claude-mark"
         case .opencode: return "opencode-mark"
         case .codex:    return "codex-mark"
-        case .generic:  return nil
+        case .muse, .antigravity, .pi, .omp, .generic: return nil
         }
     }
     /// Mark for the floating status pill. Claude shows the Claude Code
@@ -238,25 +298,33 @@ enum AgentTool: String, Equatable {
         // render it as-is rather than flattening it to a tint.
         case .opencode: return false
         case .codex:    return true
-        case .generic:  return true
+        case .muse, .antigravity, .pi, .omp, .generic: return true
         }
     }
     /// SF Symbol used when the bundled mark isn't present.
     var fallbackSymbol: String {
         switch self {
-        case .claude:   return "sparkle"
-        case .opencode: return "chevron.left.forwardslash.chevron.right"
-        case .codex:    return "asterisk"
-        case .generic:  return "circle.dotted"
+        case .claude:      return "sparkle"
+        case .opencode:    return "chevron.left.forwardslash.chevron.right"
+        case .codex:       return "asterisk"
+        case .muse:        return "m.circle"
+        case .antigravity: return "globe"
+        case .pi:          return "pi"
+        case .omp:         return "o.circle"
+        case .generic:     return "circle.dotted"
         }
     }
     /// Accent / glow colour — per agent so the pill reads at a glance.
     var glowColor: Color {
         switch self {
-        case .claude:   return Color(red: 0.93, green: 0.49, blue: 0.20) // warm orange
-        case .opencode: return Color(red: 0.55, green: 0.36, blue: 0.92) // deep violet
-        case .codex:    return Color(red: 0.13, green: 0.55, blue: 0.90) // ChatGPT blue
-        case .generic:  return Color(red: 0.60, green: 0.78, blue: 1.00) // soft blue
+        case .claude:      return Color(red: 0.93, green: 0.49, blue: 0.20) // warm orange
+        case .opencode:    return Color(red: 0.55, green: 0.36, blue: 0.92) // deep violet
+        case .codex:       return Color(red: 0.13, green: 0.55, blue: 0.90) // ChatGPT blue
+        case .muse:        return Color(red: 0.15, green: 0.75, blue: 0.70) // teal
+        case .antigravity: return Color(red: 0.35, green: 0.55, blue: 1.00) // blue
+        case .pi:          return Color(red: 0.95, green: 0.75, blue: 0.25) // amber
+        case .omp:         return Color(red: 0.95, green: 0.45, blue: 0.65) // pink
+        case .generic:     return Color(red: 0.60, green: 0.78, blue: 1.00) // soft blue
         }
     }
 }
@@ -360,9 +428,41 @@ final class PaneNode: ObservableObject, Identifiable {
             // A running Claude agent restores via `claude --resume`; only
             // capture scrollback for plain panes (the agent redraws its own).
             let session = Self.agentSessionID(for: p)
+            // A session with no local hook record on a remote pane
+            // lives on the host: carry how to dial back, so restore
+            // resumes it there instead of typing `claude --resume`
+            // into a local shell.
+            let remote: String? = {
+                guard session != nil,
+                      AgentSessionRecord.read(paneID: p.id) == nil,
+                      p.agentEventsRemote || p.remoteDial != nil
+                        || p.remoteHost != nil || p.cwdIsRemote
+                else { return nil }
+                // Only validated dial data reaches the snapshot: the
+                // prefix is eval'd on restore, so a host/user/port with
+                // shell syntax in it must never be persisted.
+                let prefix: String?
+                if let dial = p.remoteDial, dial.isValid {
+                    prefix = dial.sshResumePrefix
+                } else if let host = p.remoteHost, SSHDial.isValidHost(host) {
+                    prefix = ["ssh", "-t", host].map(shellQuote).joined(separator: " ")
+                } else {
+                    prefix = nil
+                }
+                guard let prefix else { return nil }
+                // The remote directory comes from the mirrored
+                // transcript's own cwd, not the pane's local cwd.
+                let directory = p.agentTranscriptPath
+                    .flatMap { ClaudeProjects.cwd(inTranscript: $0) }
+                    ?? (p.cwdIsRemote ? p.cwd : nil)
+                return RemoteResume(
+                    sshPrefix: prefix,
+                    directory: directory).encoded()
+            }()
             return .leaf(cwd: p.cwd,
                          scrollback: session == nil ? p.controller?.captureScrollback() : nil,
-                         agentSession: session)
+                         agentSession: session,
+                         agentRemote: remote)
         case .split(let axis, let a, let b):
             return .split(axis: axis.rawValue,
                           fraction: firstFraction,
@@ -375,15 +475,19 @@ final class PaneNode: ObservableObject, Identifiable {
     /// a session-store snapshot.
     static func from(snapshot: SessionStore.PaneTreeSnapshot) -> PaneNode {
         switch snapshot {
-        case .leaf(let cwd, let scrollback, let agentSession):
+        case .leaf(let cwd, let scrollback, let agentSession, let agentRemote):
             let pane = Pane()
+            let remote = RemoteResume.decoded(agentRemote)
             // `startingDir` is what libghostty's surface_new uses to
             // spawn the shell in the right place. `cwd` keeps the
-            // title bar accurate before the OSC 7 report lands.
-            pane.startingDir = cwd
+            // title bar accurate before the OSC 7 report lands. A
+            // remote session's cwd is a path on the host — the local
+            // shell starts at home and the resume line dials back.
+            pane.startingDir = remote == nil ? cwd : nil
             pane.cwd = cwd
             pane.pendingScrollback = scrollback
             pane.pendingAgentResume = agentSession
+            pane.pendingRemoteResume = remote
             return PaneNode(kind: .leaf(pane))
         case .split(let axisRaw, let frac, let aSnap, let bSnap):
             let axis = SplitAxis(rawValue: axisRaw) ?? .horizontal
