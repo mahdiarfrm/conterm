@@ -177,6 +177,21 @@ struct TabThemeTests {
         #expect(state.windowInheritingTabs().map(\.id) == [state.tabs[0].id])
     }
 
+    /// A scope request is consumed once: after the picker reads it,
+    /// a later plain Settings open must not land on This tab again,
+    /// and a repeat request for the same tab is a fresh request.
+    @Test func themeScopeRequestIsConsumedOnce() {
+        let state = makeState()
+        state.addTab()
+        let other = state.tabs[1]
+        state.requestThisTabThemeScope(for: other)
+        #expect(state.takeThemeScopeRequest() == other.id)
+        #expect(state.requestedThemeTabID == nil)
+        #expect(state.takeThemeScopeRequest() == nil)
+        state.requestThisTabThemeScope(for: other)
+        #expect(state.takeThemeScopeRequest() == other.id)
+    }
+
     /// "More in Settings…" selects the tab and requests its scope.
     @Test func requestThisTabThemeScopeSelectsTab() {
         let state = makeState()

@@ -211,13 +211,17 @@ final class AppState: ObservableObject {
         self.prefs = prefs
         self.ghostty = ghostty
         self.notesStore = notesStore
-        // Preferences are shared by every window, so each AppState
-        // re-applies its own overrides when config colors turn off,
-        // not just the window whose Settings panel flipped the toggle.
+        // Every AppState holds this subscription, and Preferences is
+        // shared, so every window re-applies its own overrides when
+        // config colors turn off. The publisher fires before the
+        // value commits, so delivery hops to the next runloop turn,
+        // where `prefs.themeFromConfig` reads the new value.
         themeFromConfigSub = prefs.$themeFromConfig
+            .removeDuplicates()
             .dropFirst()
-            .sink { [weak self] on in
-                if !on { self?.applyWindowTheme() }
+            .filter { !$0 }
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.applyWindowTheme() }
             }
         // Drop a saved theme whose file is gone (renamed/removed
         // theme, older build): the window follows the global theme
@@ -534,6 +538,14 @@ final class AppState: ObservableObject {
         openSettings(section: "appearance")
     }
 
+    /// Read and clear the pending This-tab scope request, like
+    /// `requestedSettingsSection`: a request is honored once, and a
+    /// repeat request for the same tab reads as a new one.
+    func takeThemeScopeRequest() -> UUID? {
+        defer { requestedThemeTabID = nil }
+        return requestedThemeTabID
+    }
+
     // MARK: - Theme picker logic (shared by both Settings styles)
 
     func themeScopeFollows(_ target: ThemeScopeTarget, tab: Tab?) -> Bool {
@@ -668,15 +680,15 @@ final class AppState: ObservableObject {
     /// (Queued delivery is fine here — the system animates its own
     /// transition, unlike the reload path's flash constraint.)
     func systemAppearanceChanged() {
-        guard windowThemeFollowsSystem
-                || tabs.contains(where: { $0.themeFollowsSystem })
-        else { return }
         if tabs.contains(where: { $0.hasOwnTheme }) {
+            // Nothing appearance-dependent (e.g. a following tab with
+            // no slots) means nothing to re-push.
             let dependent = appearanceDependentTabs()
             guard !dependent.isEmpty else { return }
             pushAllTabThemes(only: dependent)
             return
         }
+        guard windowThemeFollowsSystem else { return }
         applyWindowTheme()
     }
 

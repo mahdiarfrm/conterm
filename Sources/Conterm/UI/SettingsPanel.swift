@@ -1621,8 +1621,12 @@ private struct ThemePicker: View {
             scope = initialScope()
         }
         // A This-tab scope requested from a tab menu lands here too.
-        .onChange(of: state.requestedThemeTabID) { _, _ in
-            scope = initialScope()
+        // Clearing the request re-fires this with nil; that must not
+        // move the scope the request just set.
+        .onChange(of: state.requestedThemeTabID) { _, new in
+            guard new != nil else { return }
+            scope = .thisTab
+            state.requestedThemeTabID = nil
         }
     }
 
@@ -1736,7 +1740,7 @@ private struct ThemePicker: View {
     /// The scope this picker opens on: an explicit This-tab
     /// request wins, then the scope the current state suggests.
     private func initialScope() -> Scope {
-        if state.requestedThemeTabID != nil { return .thisTab }
+        if state.takeThemeScopeRequest() != nil { return .thisTab }
         return state.suggestedThemeScopeTarget
     }
 
